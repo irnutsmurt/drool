@@ -1,0 +1,81 @@
+
+@@DROOL:os-release@@
+NAME="Fedora Linux"
+VERSION="41 (Container Image)"
+RELEASE_TYPE=stable
+ID=fedora
+VERSION_ID=41
+VERSION_CODENAME=""
+PLATFORM_ID="platform:f41"
+PRETTY_NAME="Fedora Linux 41 (Container Image)"
+ANSI_COLOR="0;38;2;60;110;180"
+LOGO=fedora-logo-icon
+CPE_NAME="cpe:/o:fedoraproject:fedora:41"
+DEFAULT_HOSTNAME="fedora"
+HOME_URL="https://fedoraproject.org/"
+DOCUMENTATION_URL="https://docs.fedoraproject.org/en-US/fedora/f41/"
+SUPPORT_URL="https://ask.fedoraproject.org/"
+BUG_REPORT_URL="https://bugzilla.redhat.com/"
+REDHAT_BUGZILLA_PRODUCT="Fedora"
+REDHAT_BUGZILLA_PRODUCT_VERSION=41
+REDHAT_SUPPORT_PRODUCT="Fedora"
+REDHAT_SUPPORT_PRODUCT_VERSION=41
+SUPPORT_END=2025-12-15
+VARIANT="Container Image"
+VARIANT_ID=container
+
+@@DROOL:uname@@
+Linux
+6.11.10-300.fc41.x86_64
+x86_64
+
+@@DROOL:hostname@@
+m3-fedora-41
+
+@@DROOL:boot-id@@
+5781c8e5-745b-444c-8aa1-23c187ef39ae
+
+@@DROOL:cpu@@
+12
+model name	: Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz
+
+@@DROOL:meminfo@@
+MemTotal:       18265948 kB
+MemAvailable:    9928792 kB
+SwapTotal:      20107456 kB
+SwapFree:       19829132 kB
+
+@@DROOL:df@@
+Filesystem     Type 1024-blocks      Used Available Capacity Mounted on
+/dev/sda1 ext4   963276132 391109640 523161004      43% /etc/hosts
+
+@@DROOL:ip-addr@@
+1: lo    inet 127.0.0.1/8 scope host lo\       valid_lft forever preferred_lft forever
+1: lo    inet6 ::1/128 scope host proto kernel_lo \       valid_lft forever preferred_lft forever
+2: eth0    inet 172.17.0.5/16 brd 172.17.255.255 scope global eth0\       valid_lft forever preferred_lft forever
+
+@@DROOL:ip-link@@
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000\    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+2: eth0@if80: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DEFAULT group default \    link/ether e6:90:55:19:ef:7f brd ff:ff:ff:ff:ff:ff link-netnsid 0
+
+@@DROOL:pkg@@
+dnf
+yum
+
+@@DROOL:init@@
+sshd
+
+@@DROOL:services@@
+
+@@DROOL:failed@@
+
+@@DROOL:ports@@
+tcp LISTEN 0      128    0.0.0.0:22 0.0.0.0:*
+tcp LISTEN 0      128       [::]:22    [::]:*
+
+@@DROOL:containers@@
+
+@@DROOL:virt@@
+docker
+
+@@DROOL:end@@

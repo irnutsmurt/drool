@@ -1,0 +1,13 @@
+
+@@DROOL:dnf-check@@
+xz.x86_64      1:5.8.1-4.fc41 updates
+xz-libs.x86_64 1:5.8.1-4.fc41 updates
+@@rc=100
+
+@@DROOL:dnf-security@@
+@@rc=0
+
+@@DROOL:needs-restarting@@
+@@rc=0
+
+@@DROOL:end@@

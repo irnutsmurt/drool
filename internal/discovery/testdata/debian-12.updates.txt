@@ -1,0 +1,7 @@
+
+@@DROOL:apt@@
+Listing...
+perl-base/oldstable-security 5.36.0-7+deb12u4 amd64 [upgradable from: 5.36.0-7+deb12u3]
+@@rc=0
+
+@@DROOL:end@@

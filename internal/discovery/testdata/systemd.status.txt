@@ -1,0 +1,22 @@
+@@DROOL:boot-id@@
+0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b
+@@DROOL:uptime@@
+93784.52 180000.10
+@@DROOL:loadavg@@
+0.42 0.31 0.25 1/245 9876
+@@DROOL:meminfo@@
+MemTotal:        4000000 kB
+MemAvailable:    1000000 kB
+@@DROOL:df@@
+Filesystem     Type 1024-blocks    Used Available Capacity Mounted on
+/dev/sda1      ext4    40000000 30000000  10000000      75% /
+/dev/sdb1      xfs    100000000 90000000  10000000      90% /srv/data store
+@@DROOL:failed@@
+systemd-running
+backup.service    loaded failed failed Nightly backup
+@@DROOL:reboot-file@@
+@@DROOL:kernels@@
+5.14.0-427.13.1.el9_4.x86_64
+5.14.0-427.13.1.el9_4.x86_64
+5.14.0-503.11.1.el9_5.x86_64
+@@DROOL:end@@

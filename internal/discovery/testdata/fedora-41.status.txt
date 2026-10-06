@@ -1,0 +1,26 @@
+
+@@DROOL:boot-id@@
+5781c8e5-745b-444c-8aa1-23c187ef39ae
+
+@@DROOL:uptime@@
+346036.32 3265981.32
+
+@@DROOL:loadavg@@
+2.48 2.55 1.77 1/2015 57
+
+@@DROOL:meminfo@@
+MemTotal:       18265948 kB
+MemAvailable:    9932056 kB
+
+@@DROOL:df@@
+Filesystem     Type 1024-blocks      Used Available Capacity Mounted on
+/dev/sda1 ext4   963276132 391109644 523161000      43% /etc/hosts
+
+@@DROOL:failed@@
+
+@@DROOL:reboot-file@@
+
+@@DROOL:kernels@@
+6.11.10-300.fc41.x86_64
+
+@@DROOL:end@@

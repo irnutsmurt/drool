@@ -77,10 +77,50 @@ type HostAddress struct {
 	LastSeenAt  int64
 }
 
+type HostFact struct {
+	HostID            string
+	CollectedAt       int64
+	OsFamily          string
+	Distro            string
+	DistroVersion     string
+	DistroName        string
+	Kernel            string
+	Arch              string
+	Hostname          string
+	CpuCount          sql.NullInt64
+	MemBytes          sql.NullInt64
+	PkgManager        string
+	InitSystem        string
+	ContainerRuntimes string
+	FactsJson         string
+}
+
 type HostHop struct {
 	HostID    string
 	HopIndex  int64
 	ViaHostID string
+}
+
+type HostStatus struct {
+	HostID              string
+	CheckedAt           int64
+	Reachable           int64
+	BootID              string
+	UptimeS             sql.NullInt64
+	Load1               sql.NullFloat64
+	MemUsedPct          sql.NullFloat64
+	MaxFsUsedPct        sql.NullFloat64
+	MaxFsMount          string
+	FailedUnits         sql.NullInt64
+	FailedUnitNames     string
+	RebootRequired      sql.NullInt64
+	RebootReason        string
+	UpdatesAvailable    sql.NullInt64
+	SecurityUpdates     sql.NullInt64
+	UpdatesCheckedAt    sql.NullInt64
+	MetadataRefreshedAt sql.NullInt64
+	LastErrorClass      string
+	LastError           string
 }
 
 type HostTag struct {
