@@ -1,6 +1,6 @@
 # Technical Alpha: Internal Architecture
 
-**v0.1 · 2026-10-06** · Implements the *Technical Alpha* slice of `DESIGN.md` v0.3 (§33).
+**v0.2 · 2026-10-06** · Implements the *Technical Alpha* slice of `DESIGN.md` v0.3 (§33).
 
 This document is where we argue about concrete things: schema, operation semantics, SSH handling, job execution, package abstractions and API contracts. New product features go in `DESIGN.md`, not here.
 
@@ -139,7 +139,10 @@ Defined as Go types in `internal/model`. JSON Schema is generated from them and 
 { "type": "package", "action": "install" | "remove" | "upgrade", "names": ["htop"] }
 
 // system_update
-{ "type": "system_update", "scope": "all" | "security", "refresh": true,
+{ "type": "system_update",
+  "mode": "upgrade" | "full_upgrade" | "security",
+  "allow_removals": false,       // required true for unattended full_upgrade that removes packages
+  "refresh": true,
   "reboot": "never" | "if_required" | "always" }
 
 // service (idempotent states; restarted/reloaded are inherently imperative)
@@ -444,7 +447,7 @@ dial(host):
 ```
 
 - The jump host and the target are **each** verified against their own pinned key.
-- The jump host must itself be an inventory host (optionally `jump_only`) with its own credential and pinned key.
+- **Decision D8:** a jump host must itself be a normal inventory host (optionally `jump_only`) with its own pinned key, credential, health state and audit history. Inline jump definitions are not supported.
 - Library: `golang.org/x/crypto/ssh`. No `ssh_config` parsing or ProxyCommand in the alpha.
 
 ### 8.2 Host key pinning
@@ -469,7 +472,7 @@ dial(host):
   - Root login: no wrapper.
   - NOPASSWD sudo: `sudo -n -- <cmd>`.
   - Password sudo: `sudo -k -S -p '' -- <cmd>`, with the password as the first line of stdin. `-k` guarantees sudo actually consumes it, so a cached sudo timestamp can't let the password leak into the command's stdin.
-- **No PTY by default**, which keeps stdout and stderr separate. If sudo replies `sorry, you must have a tty`, that's classified as `AuthorizationError` with a hint to set `ssh_needs_pty`.
+- **No PTY by default**, which keeps stdout and stderr separate. If sudo replies `sorry, you must have a tty`, that's classified as `AuthorizationError` with a hint to set `ssh_needs_pty`. Per-host `ssh_needs_pty` is the only PTY control (decision D2).
 - `Probe` checks: TCP reachable → host key matches → auth → `become` works (`sudo -n true` / password variant) → `uname -s` is Linux → systemd present.
 
 ---
@@ -485,7 +488,7 @@ exec(host, script, {become, stdin, timeout, env})
 - Scripts are sent on **stdin** to `sh -s` (or `bash -s`), wrapped with `set -eu` where the op owns the script. User scripts run as written.
 - Locale fixed: `LC_ALL=C` for parsed output. `DEBIAN_FRONTEND=noninteractive` for apt.
 - **Structured output from built-in ops:** built-in op scripts print delimited sections (`@@FM:section@@`) that the controller parses, so we don't need `jq` or Python on hosts.
-- **Cancellation and timeouts:** the remote command runs as `setsid sh -c '...' & echo $! > /run/user/.../fm-<op>.pid; wait`. Cancel = a separate session sends `kill -TERM -<pgid>`, then KILL after 10 s. The state becomes `cancelled`, the result is "may be partial", and this is documented. (OpenSSH's handling of `session.Signal` is unreliable, so we don't depend on it.)
+- **Cancellation and timeouts (decision D5):** every execution first creates a private run directory: `mktemp -d "$base/fm.XXXXXXXXXX"` (mode 0700), where `$base` is `$XDG_RUNTIME_DIR`, then `/run/user/$(id -u)` if it exists and is owned by the user, then `${TMPDIR:-/tmp}`. Nothing uses predictable names. The wrapper prints the created path on a marker line so the controller learns it, then runs `setsid sh -c '...' & echo $! > "$dir/pid"; wait`, and removes the directory on exit. Cancel = a separate session reads `"$dir/pid"` (after checking the directory is owned by the login user and not a symlink) and sends `kill -TERM -<pgid>`, then KILL after 10 s. The state becomes `cancelled`, the result is "may be partial", and this is documented. (OpenSSH's handling of `session.Signal` is unreliable, so we don't depend on it.)
 - **Exit codes:** for built-in ops, the parser decides success, not just the exit code (e.g. `dnf check-update` exits with 100 when updates exist).
 
 ---
@@ -518,12 +521,15 @@ type PackageBackend interface {
 | Refresh | `apt-get update` | `dnf makecache` |
 | Install | `apt-get install -y --no-install-recommends?` (setting) | `dnf install -y` |
 | Remove | `apt-get remove -y` | `dnf remove -y` |
-| Upgrade all | `apt-get dist-upgrade -y` *(see Q3)* | `dnf upgrade -y` |
-| Security only | **Ubuntu:** packages from `*-security` pockets via `apt-get install --only-upgrade <list>`; **Debian:** same via `-security` origin. Unsupported origin → `ValidationError` | `dnf upgrade --security -y` (needs updateinfo; Fedora metadata is thin, so we show a warning) |
+| `mode: upgrade` | `apt-get upgrade -y` (never removes; may hold back) | `dnf upgrade -y` |
+| `mode: full_upgrade` | `apt-get full-upgrade -y` (may remove/replace packages; see below) | same as `upgrade` (dnf has no distinction) |
+| `mode: security` | **Not supported in alpha** → `ValidationError` (decision D4) | `dnf upgrade --security -y` where updateinfo exists; otherwise `ValidationError` with an explanation |
 | List updates | `apt list --upgradable` (parsed; origin decides `security`) | `dnf check-update` / `dnf updateinfo list --security` |
 | Reboot required | `/var/run/reboot-required` exists | `needs-restarting -r` (dnf4) / `dnf needs-restarting -r` (dnf5); fallback: compare running kernel with newest installed |
 | Lock detection | `Could not get lock` / `dpkg frontend lock` | `Waiting for process with pid` / dnf lock messages |
 
+- **APT full upgrade removals (decision D3):** before running, the backend simulates (`apt-get -s full-upgrade`) and parses `Remv` lines. If any packages would be removed and `allow_removals` is false, the host fails with `ValidationError{retryable: false}` listing them, and nothing is changed. `POST /jobs/preview` runs the same simulation so the UI can show removals and require explicit approval, which sets `allow_removals: true`.
+- **Security updates on APT are detected and displayed only:** `ListUpdates` marks packages whose candidate comes from a `*-security` origin, and these feed the `security_updates` count. We don't execute origin-based security-only patching in the alpha.
 - Lock contention → `PackageManagerError{retryable: true, detail: "locked by <process>"}`. The engine retries with backoff, up to 5 attempts over about 10 min.
 - `Changed` is computed by comparing package versions before and after for the named packages (or from the upgraded-package list).
 - dpkg interrupted state (`dpkg was interrupted`) → `PackageManagerError{retryable: false}`, with the explanation "run `dpkg --configure -a`". The alpha does **not** auto-repair.
@@ -613,7 +619,7 @@ Per job: **5 consecutive** host failures with the same class among {Authenticati
 On startup, every job in `running`/`pending` and every host in a non-terminal state is marked `interrupted` (outcome unknown). Nothing is resubmitted automatically. The UI offers "Re-run on interrupted hosts".
 
 ### 11.7 Output
-- Chunks (≤ 32 KiB) are written to `job_output` in batches, through the writer, about every 250 ms.
+- Output stays in SQLite for the alpha (decision D1). Each host/step buffers output in memory and flushes one row when the buffer reaches **64 KiB** or **250 ms** have passed, whichever comes first. Rows are written through the single writer. We benchmark this in M2 and move to files only if measurements show write contention or database growth is a problem.
 - Per-host per-step cap (default **10 MB**, combined streams). After the cap: drain and discard, set `truncated=1`, and append a marker line.
 - Live view: SSE (`GET /jobs/{id}/events`) sends state changes and output chunks. Clients resume with `Last-Event-ID`.
 
@@ -621,6 +627,7 @@ On startup, every job in `running`/`pending` and every host in a non-terminal st
 - Every **5 min** per ready host (jittered): reachable, `boot_id`, uptime, load, memory, max filesystem %, failed units count, reboot required. Takes a shared lock and is skipped if the host is exclusively locked.
 - Every **6 h** (and after any package job): update counts (ListUpdates **without** refreshing; a refresh happens once a day).
 - Polls are not jobs (no job history), but status transitions emit events (e.g. reachable → unreachable).
+- **Polling yields to jobs (decision D6):** polls use a separate, small worker budget (default 4) and run only when job workers aren't saturated. They never wait on a host lock: if a host is locked, the poll is skipped. Under load, poll data goes stale rather than competing with jobs. `host_status.checked_at` drives a **"stale"** indicator in the UI (older than 3× the interval).
 - A changed `boot_id` outside our own reboots is recorded as an event ("web01 rebooted").
 
 ---
@@ -655,7 +662,9 @@ Checks are written against permissions, not role names, so custom roles later ar
 
 ### 12.4 TLS
 - Default: listen on `:8080` with HTTPS using an auto-generated self-signed certificate (fingerprint shown on the console at first start).
-- `tls.mode: provided` (cert/key paths) or `tls.mode: off`, for use behind a reverse proxy, together with `trusted_proxies` for `X-Forwarded-For`. With `off`, the server refuses to start unless bound to loopback or `trusted_proxies` is set.
+- `tls.mode: provided` (cert/key paths), or `tls.mode: off` for a reverse proxy on the same machine.
+- **Decision D7:** with `tls.mode: off`, the server refuses to start unless bound to a loopback address. Configuring `trusted_proxies` does **not** make a non-loopback plaintext listener acceptable. Running one requires an explicit `server.allow_insecure_plaintext: true`, which logs a security warning at startup and shows a persistent banner in the UI.
+- `trusted_proxies` only controls whether `X-Forwarded-For`/`X-Forwarded-Proto` are honored.
 
 ---
 
@@ -828,13 +837,24 @@ Environment overrides: `FLEETMGR_SERVER_WEB_PORT`, and so on (path → upper sna
 
 ---
 
-## 21. Open Questions (to argue about)
+## 21. Resolved Decisions (v0.2)
 
-1. **Job output storage:** SQLite chunks (one-file backup; DB grows by up to cap × hosts) vs. files on disk (needs separate backup and pruning). Proposed: SQLite plus retention; revisit if DB size becomes a problem.
-2. **PTY:** default off (separate streams, no prompts). Is per-host `ssh_needs_pty` enough, or do we also need per-operation control?
-3. **`dist-upgrade` vs `upgrade` on APT** for "upgrade all". `upgrade` never removes packages but holds back kernel/meta changes. Proposed: `full-upgrade` for "all", with a preview listing removals before confirmation.
-4. **Security-only updates on Debian/Ubuntu:** origin-based selection is our own logic. Should the alpha ship it, or defer it and ship DNF `--security` only?
-5. **Remote cancellation:** `setsid` + pidfile in `/run/user/…` or `/tmp`. Which path works for root and non-root, given `noexec` and `PrivateTmp` setups?
-6. **Default status poll interval** (5 min) for SSH load at 200 hosts: about 0.7 polls/s, which is fine. Should polling also stretch out under backpressure?
-7. **Self-signed TLS by default** vs. plain HTTP on loopback with a setup wizard nudging toward a reverse proxy.
-8. **Jump host as an inventory host:** required (a pinned key and credential either way) or allow inline jump definitions?
+| # | Question | Decision |
+|---|---|---|
+| D1 | Job output storage | SQLite, buffered and flushed at ~64 KiB / 250 ms; existing cap and retention kept. Benchmark in M2; move to files only if measurements require it (§11.7) |
+| D2 | PTY | Off by default; per-host `ssh_needs_pty` only (§8.4) |
+| D3 | APT upgrade semantics | `upgrade` → `apt-get upgrade`; `full_upgrade` → `apt-get full-upgrade` with removal preview, and `allow_removals` required to proceed when packages would be removed (§5.1, §10.2) |
+| D4 | Debian/Ubuntu security-only | Deferred. Security updates are detected and displayed only; DNF uses native `--security` (§10.2) |
+| D5 | Remote cancellation | Private `mktemp -d` run directory under `$XDG_RUNTIME_DIR` → `/run/user/$UID` → `/tmp`; no predictable names (§9) |
+| D6 | Status polling under load | Separate small budget, yields to jobs, skips locked hosts, UI shows stale data (§11.8) |
+| D7 | TLS default | Self-signed HTTPS. `tls.mode: off` needs loopback, or an explicit `allow_insecure_plaintext`; `trusted_proxies` alone is not enough (§12.4) |
+| D8 | Jump hosts | Must be normal inventory hosts; no inline definitions (§8.1) |
+
+The design is frozen. Changes from here on come only from implementation blockers, contradictions or security issues, and are recorded in §22.
+
+## 22. Implementation Decision Log
+
+Meaningful choices made during implementation, newest last.
+
+| Milestone | Decision | Rationale |
+|---|---|---|
