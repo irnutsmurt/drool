@@ -1,0 +1,10 @@
+/bin/
+/data/
+*.db
+*.db-shm
+*.db-wal
+
+web/node_modules/
+web/dist/*
+!web/dist/.gitkeep
+web/*.tsbuildinfo

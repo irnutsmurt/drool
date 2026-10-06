@@ -1,0 +1,378 @@
+openapi: 3.1.0
+info:
+  title: Fleet Manager API
+  version: 0.1.0
+  description: |
+    Public REST API. The web UI uses this same API.
+
+    Authentication: a browser session cookie (`fm_session`) or `Authorization: Bearer fm_tok_...`.
+    State-changing requests made with a session cookie must send the `X-FM-CSRF` header,
+    using the value of `csrf_token` from `/auth/me` or the login response.
+
+    Errors use RFC 9457 `application/problem+json`.
+servers:
+  - url: /api/v1
+security:
+  - session: []
+  - bearer: []
+
+paths:
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Logged in; sets the session cookie.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      responses:
+        '204': { description: Logged out. }
+        '401': { $ref: '#/components/responses/Problem' }
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      responses:
+        '200':
+          description: Current principal.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Problem' }
+  /auth/password:
+    post:
+      operationId: changeOwnPassword
+      tags: [auth]
+      description: Change the current user's password. Requires an interactive session. Revokes the user's other sessions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '204': { description: Password changed. }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      description: 'Requires `users.manage`.'
+      responses:
+        '200':
+          description: All users.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/User' } }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      operationId: createUser
+      tags: [users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUserRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /users/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getUser
+      tags: [users]
+      responses:
+        '200':
+          description: User.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '404': { $ref: '#/components/responses/Problem' }
+    patch:
+      operationId: updateUser
+      tags: [users]
+      description: Disabling a user or setting their password revokes their sessions. The last enabled administrator cannot be demoted or disabled.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateUserRequest' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      responses:
+        '204': { description: Deleted. }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /tokens:
+    get:
+      operationId: listTokens
+      tags: [tokens]
+      description: The current user's API tokens.
+      responses:
+        '200':
+          description: Tokens (secrets are never returned).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/APIToken' } }
+    post:
+      operationId: createToken
+      tags: [tokens]
+      description: Requires an interactive session, so a leaked token cannot mint more tokens. The token secret is returned once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTokenRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreatedAPIToken' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /tokens/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    delete:
+      operationId: deleteToken
+      tags: [tokens]
+      responses:
+        '204': { description: Revoked. }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /audit:
+    get:
+      operationId: listAudit
+      tags: [audit]
+      description: 'Requires `audit.read`. Newest first; cursor pagination.'
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 50 } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: actor, in: query, description: Actor id, schema: { type: string } }
+        - { name: action, in: query, description: Action prefix, e.g. "auth.", schema: { type: string } }
+        - { name: target, in: query, description: Target id, schema: { type: string } }
+        - { name: since, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: Audit events.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/AuditEvent' } }
+                  next_cursor: { type: string }
+        '403': { $ref: '#/components/responses/Problem' }
+
+  /system/info:
+    get:
+      operationId: getSystemInfo
+      tags: [system]
+      description: 'Configuration values and their sources are included only with `settings.read`.'
+      responses:
+        '200':
+          description: System information.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SystemInfo' }
+
+components:
+  securitySchemes:
+    session: { type: apiKey, in: cookie, name: fm_session }
+    bearer: { type: http, scheme: bearer }
+
+  responses:
+    Problem:
+      description: Error.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code: { type: string }
+        error_class: { type: string }
+        retryable: { type: boolean }
+        request_id: { type: string }
+        fields: { type: object, additionalProperties: { type: string } }
+
+    Role:
+      type: string
+      enum: [admin, operator, auditor, viewer]
+
+    User:
+      type: object
+      required: [id, username, role, disabled, last_login_at]
+      properties:
+        id: { type: string }
+        username: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        disabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        last_login_at: { type: [string, 'null'], format: date-time }
+
+    Me:
+      type: object
+      required: [user, permissions, auth_kind]
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        permissions: { type: array, items: { type: string } }
+        auth_kind: { type: string, enum: [session, token] }
+        csrf_token: { type: string, description: Present for session authentication. }
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      additionalProperties: false
+      properties:
+        username: { type: string }
+        password: { type: string, format: password }
+
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      additionalProperties: false
+      properties:
+        current_password: { type: string, format: password }
+        new_password: { type: string, format: password, minLength: 12 }
+
+    CreateUserRequest:
+      type: object
+      required: [username, password, role]
+      additionalProperties: false
+      properties:
+        username: { type: string, pattern: '^[A-Za-z0-9._@-]{1,64}$' }
+        password: { type: string, format: password, minLength: 12 }
+        role: { $ref: '#/components/schemas/Role' }
+
+    UpdateUserRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        role: { $ref: '#/components/schemas/Role' }
+        disabled: { type: boolean }
+        password: { type: string, format: password, minLength: 12 }
+
+    APIToken:
+      type: object
+      required: [id, name, created_at, last_used_at, expires_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: [string, 'null'], format: date-time }
+        expires_at: { type: [string, 'null'], format: date-time }
+
+    CreatedAPIToken:
+      allOf:
+        - $ref: '#/components/schemas/APIToken'
+        - type: object
+          required: [token]
+          properties:
+            token: { type: string, description: Shown once. }
+
+    CreateTokenRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        expires_in_days: { type: integer, minimum: 1, maximum: 3650 }
+
+    AuditEvent:
+      type: object
+      required: [id, ts, actor, action, target, result, source_ip, request_id, details]
+      properties:
+        id: { type: string }
+        ts: { type: string, format: date-time }
+        actor:
+          type: object
+          required: [type, id, name]
+          properties:
+            type: { type: string, enum: [user, token, system, anonymous] }
+            id: { type: string }
+            name: { type: string }
+        action: { type: string }
+        target:
+          type: object
+          required: [type, id]
+          properties:
+            type: { type: string }
+            id: { type: string }
+        result: { type: string, enum: [success, failure, denied] }
+        source_ip: { type: string }
+        request_id: { type: string }
+        details: { type: object, additionalProperties: true }
+
+    ConfigValue:
+      type: object
+      required: [key, value, source, env_var]
+      properties:
+        key: { type: string }
+        value: {}
+        source: { type: string, enum: [default, file, env] }
+        env_var: { type: string }
+
+    SystemInfo:
+      type: object
+      required: [version, commit, build_date, go_version, schema_version, tls_mode, insecure_plaintext]
+      properties:
+        version: { type: string }
+        commit: { type: string }
+        build_date: { type: string }
+        go_version: { type: string }
+        schema_version: { type: integer }
+        tls_mode: { type: string, enum: [self_signed, provided, 'off'] }
+        insecure_plaintext: { type: boolean }
+        config_file: { type: string }
+        config: { type: array, items: { $ref: '#/components/schemas/ConfigValue' } }

@@ -858,3 +858,21 @@ Meaningful choices made during implementation, newest last.
 
 | Milestone | Decision | Rationale |
 |---|---|---|
+| M0 | Go module path is `fleetmgr` | It's an application, not a library. Rename once hosting is decided |
+| M0 | Standard-library `net/http.ServeMux` with method patterns; no router dependency | Enough for our routing; fewer dependencies |
+| M0 | The first administrator is created with `fleetmgr user create` (CLI), not a web setup page | A setup page on a fresh controller is a race: whoever reaches it first on the network becomes admin |
+| M0 | `POST /tokens` requires an interactive session | A leaked API token must not be able to mint more long-lived tokens |
+| M0 | Self-service password change at `POST /auth/password` (requires the current password); admins reset via `PATCH /users/{id}`. Password changes revoke the user's other sessions | Standard account hygiene |
+| M0 | CSRF token stored per session (`sessions.csrf_token`), returned by login and `/auth/me`, required in `X-FM-CSRF` on session-authenticated state-changing requests | Implements §12.1; bearer-token requests are exempt |
+| M0 | Login rate limiter is in memory (reset on restart). Locking out a known username is possible (5 failures → 15 min) | Acceptable for a single-instance alpha; revisit alongside MFA in 1.0 |
+| M0 | A disabled user's login returns the same error as a bad password; audit records `disabled` | Don't reveal account state to unauthenticated clients |
+| M0 | New permission `settings.read` (admin, auditor) gates config values and sources in `/system/info` | Config can reveal topology; viewers don't need it. Extends the §12.2 table |
+| M0 | Audit actor type `anonymous` added for failed logins | Failed logins have no authenticated actor |
+| M0 | If the audit write for a successful login fails, the session is revoked and login fails | Never grant a session we couldn't audit |
+| M0 | **Known gap:** for other mutations, the audit record is written after the change in a separate statement; a failed audit write is logged but doesn't undo the change | Fix in M1 by writing audit records inside the same transaction as the change they describe (writer accepts a transaction) |
+| M0 | `/metrics` is unauthenticated on the main listener | No sensitive labels (route patterns, status codes); a separate listener can come later if needed |
+| M0 | HSTS only when `tls.mode=provided` | HSTS on a self-signed cert can strand users who later switch to a reverse proxy or another hostname |
+| M0 | No HTTP `WriteTimeout` | M2 job output uses long-lived SSE streams; `ReadHeaderTimeout` and `IdleTimeout` are set |
+| M0 | Migration `0001` contains only M0 tables; hosts, secrets and jobs come in later migrations. Until the `v0.1.0-alpha` tag, existing migrations may still be amended; after it they are strictly forward-only | Nothing is deployed yet |
+| M0 | Frontend TypeScript pinned to 5.x | `openapi-typescript` needs the TypeScript JS compiler API, which TypeScript 7 (native port) doesn't ship |
+| M0 | Frontend: React 19, React Router 8, TanStack Query 5, Tailwind 4, `openapi-fetch` with generated types. Visuals deliberately minimal: semantic CSS tokens + a few primitives | Easy to restyle after the planned UI review |

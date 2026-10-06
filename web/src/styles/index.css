@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens.
+ *
+ * Components use only these semantic tokens (via the Tailwind utilities
+ * mapped below, e.g. bg-surface, text-muted, border-line). Restyling the app
+ * means changing values here, not editing components.
+ */
+:root {
+  --fm-bg: #f6f7f9;
+  --fm-surface: #ffffff;
+  --fm-surface-2: #f0f2f5;
+  --fm-line: #dde1e7;
+  --fm-text: #16191d;
+  --fm-muted: #5d6673;
+  --fm-accent: #2f6fde;
+  --fm-accent-fg: #ffffff;
+  --fm-danger: #c93a3a;
+  --fm-danger-bg: #fdecec;
+  --fm-warn: #a36200;
+  --fm-warn-bg: #fff4e0;
+  --fm-ok: #1e7a46;
+  --fm-ok-bg: #e5f5ec;
+  --fm-radius: 6px;
+  --fm-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fm-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fm-bg: #111418;
+    --fm-surface: #181c21;
+    --fm-surface-2: #20252b;
+    --fm-line: #2e353d;
+    --fm-text: #e6e9ed;
+    --fm-muted: #98a2ae;
+    --fm-accent: #5b93f0;
+    --fm-accent-fg: #0b0e12;
+    --fm-danger: #f07272;
+    --fm-danger-bg: #3a1d1f;
+    --fm-warn: #f0b350;
+    --fm-warn-bg: #3a2c14;
+    --fm-ok: #5cc98a;
+    --fm-ok-bg: #16301f;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--fm-bg);
+  --color-surface: var(--fm-surface);
+  --color-surface-2: var(--fm-surface-2);
+  --color-line: var(--fm-line);
+  --color-fg: var(--fm-text);
+  --color-muted: var(--fm-muted);
+  --color-accent: var(--fm-accent);
+  --color-accent-fg: var(--fm-accent-fg);
+  --color-danger: var(--fm-danger);
+  --color-danger-bg: var(--fm-danger-bg);
+  --color-warn: var(--fm-warn);
+  --color-warn-bg: var(--fm-warn-bg);
+  --color-ok: var(--fm-ok);
+  --color-ok-bg: var(--fm-ok-bg);
+  --radius-fm: var(--fm-radius);
+  --font-sans: var(--fm-font);
+  --font-mono: var(--fm-mono);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--fm-bg);
+  color: var(--fm-text);
+  font-family: var(--fm-font);
+  font-size: 14px;
+}

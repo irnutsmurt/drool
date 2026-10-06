@@ -1,0 +1,33 @@
+# Runs on GitHub Actions and Gitea/Forgejo Actions.
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install sqlc
+        run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
+      - name: Web dependencies
+        run: make web-deps
+      - name: Generated code is current
+        run: PATH="$PATH:$(go env GOPATH)/bin" make check-generated
+      - name: gofmt
+        run: make fmt-check
+      - name: go vet
+        run: make vet
+      - name: Tests
+        run: make test
+      - name: Build
+        run: make build
