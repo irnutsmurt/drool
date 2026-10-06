@@ -1,12 +1,16 @@
 # Linux Fleet Management Platform
 
-**Design Document v0.3**
+**Design Document v0.3.1**
 Status: Draft · 2026-10-06 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Working name: *Fleet Manager* (placeholder). Binary/path placeholder: `fleetmgr`.
 
 ---
 
 ## 0. Changes
+
+### v0.3 → v0.3.1
+
+- Added §2.5 *Simple by default, progressively hardened*, including the refuse vs. usable-but-not-hardened distinction.
 
 ### v0.2 → v0.3
 
@@ -91,6 +95,19 @@ Every interface reads and writes the same typed schema. YAML is a serialization 
 ### 2.4 Fail safe
 
 When the platform cannot prove an action is safe, such as firewall precedence, an identity conflict or a stale command, it refuses and explains why rather than guessing.
+
+### 2.5 Simple by default, progressively hardened
+
+A new user should get from `docker compose up -d` to a usable dashboard in a couple of minutes. Hardening (MFA, custom TLS certificates, offline CA handling, stricter agent capabilities, external audit sinks, ...) is **recommended and configured after first login**, not required before first use.
+
+Security acts as **guardrails around the experience, not obstacles in front of it**. Every security-relevant default falls into one of two categories:
+
+| Category | Behavior | Examples |
+|---|---|---|
+| **Unsafe: refuse to run** | Startup or the action fails with a clear explanation and an explicit opt-out only where one makes sense | Plaintext HTTP on a non-loopback address without explicit opt-in; a trivially short operator-provided setup secret; a changed SSH host key; stale or replayed commands |
+| **Usable, not maximally hardened yet** | Works out of the box; the UI recommends the stronger setting | Self-signed TLS; root CA kept online; one-time setup code on the console; no MFA; local-only audit log |
+
+New defaults must be placed in one of these categories deliberately. When in doubt, prefer a working default plus a visible recommendation over a prerequisite.
 
 ---
 

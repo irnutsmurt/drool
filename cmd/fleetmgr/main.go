@@ -38,7 +38,8 @@ const usage = `Usage: fleetmgr [--config FILE] <command> [options]
 Commands:
   serve                 Run the controller
   migrate               Apply database migrations and exit
-  user create           Create a local user (prompts for password)
+  setup code            Issue a new one-time setup code for first-admin setup
+  user create           Create a local user (prompts for password); recovery path
   version               Print version information
 
 Configuration is read from built-in defaults, then the config file
@@ -74,6 +75,11 @@ func run(args []string) error {
 		return cmdServe(*cfgPath, explicit)
 	case "migrate":
 		return cmdMigrate(*cfgPath, explicit)
+	case "setup":
+		if len(rest) < 2 || rest[1] != "code" {
+			return errors.New("usage: fleetmgr setup code")
+		}
+		return cmdSetupCode(*cfgPath, explicit, rest[2:])
 	case "user":
 		if len(rest) < 2 || rest[1] != "create" {
 			return errors.New("usage: fleetmgr user create --username NAME [--role admin]")
@@ -154,17 +160,19 @@ func cmdUserCreate(path string, explicit bool, args []string) error {
 		return err
 	}
 	defer st.Close()
+	// CLI commands persist audit records to the database only; mirroring them to
+	// the log stream would print JSON on stdout in container deployments.
 	logs := logging.Discard()
-	if l, err := logging.New(cfg.Logging, cfg.DataDir); err == nil {
-		logs = l
-		defer l.Close()
-	}
-	svc := auth.NewService(st, auth.Options{
-		IdleTimeout: cfg.Auth.SessionIdleTimeout, AbsoluteTimeout: cfg.Auth.SessionAbsoluteTimeout,
-	})
+	svc := newAuthService(cfg, st)
 	u, err := svc.CreateUser(ctx, *username, password, *role)
 	if err != nil {
 		return err
+	}
+	if u.Role == auth.RoleAdmin {
+		// An administrator exists now, so pending setup codes must stop working.
+		if err := svc.ClearSetupCodes(ctx); err != nil {
+			return err
+		}
 	}
 	actor := audit.Actor{Type: audit.ActorSystem, Name: "cli:" + currentOSUser()}
 	if err := audit.NewWriter(st, logs.Audit).Record(ctx, audit.Event{
@@ -210,6 +218,12 @@ func currentOSUser() string {
 	return strconv.Itoa(os.Getuid())
 }
 
+func newAuthService(cfg *config.Loaded, st *store.Store) *auth.Service {
+	return auth.NewService(st, auth.Options{
+		IdleTimeout: cfg.Auth.SessionIdleTimeout, AbsoluteTimeout: cfg.Auth.SessionAbsoluteTimeout,
+	})
+}
+
 func cmdServe(path string, explicit bool) error {
 	cfg, err := loadConfig(path, explicit)
 	if err != nil {
@@ -242,9 +256,11 @@ func cmdServe(path string, explicit bool) error {
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
-	authSvc := auth.NewService(st, auth.Options{
-		IdleTimeout: cfg.Auth.SessionIdleTimeout, AbsoluteTimeout: cfg.Auth.SessionAbsoluteTimeout,
-	})
+	authSvc := newAuthService(cfg, st)
+	setup, err := prepareSetup(ctx, cfg, authSvc, logs)
+	if err != nil {
+		return fmt.Errorf("first-admin setup: %w", err)
+	}
 	auditW := audit.NewWriter(st, logs.Audit)
 
 	srv, err := api.New(api.Deps{
@@ -279,18 +295,10 @@ func cmdServe(path string, explicit bool) error {
 		"config_file", cfg.FilePath, "data_dir", cfg.DataDir)
 	if tlsRes.Fingerprint != "" {
 		log.Info("TLS certificate", "file", tlsRes.CertFile, "sha256", tlsRes.Fingerprint, "generated", tlsRes.Generated)
-		if tlsRes.Generated {
-			fmt.Fprintf(os.Stderr, "Generated self-signed certificate %s\nSHA-256 fingerprint: %s\n",
-				tlsRes.CertFile, tlsRes.Fingerprint)
-		}
 	}
 	if cfg.IsInsecurePlaintext() {
 		logs.Security.Warn("serving plaintext HTTP on a non-loopback address; credentials and session cookies cross the network unencrypted",
 			"bind", cfg.Server.Bind)
-	}
-	if n, err := st.R.CountUsers(ctx); err == nil && n == 0 {
-		log.Warn("no users exist; create an administrator with: fleetmgr user create --username admin")
-		fmt.Fprintln(os.Stderr, "No users exist. Create an administrator with: fleetmgr user create --username admin")
 	}
 	_ = auditW.Record(ctx, audit.Event{Action: "system.start", Actor: &audit.System,
 		Details: map[string]any{"version": version.Version, "tls_mode": tlsRes.Mode}})
@@ -306,6 +314,7 @@ func cmdServe(path string, explicit bool) error {
 		}
 	}()
 	srv.SetReady(true)
+	printBanner(os.Stderr, cfg, scheme, tlsRes.Fingerprint, setup)
 
 	select {
 	case err := <-errCh:

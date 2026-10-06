@@ -66,14 +66,14 @@ type Options struct {
 type Service struct {
 	st      *store.Store
 	opts    Options
-	limiter *loginLimiter
+	limiter *failureLimiter
 }
 
 func NewService(st *store.Store, opts Options) *Service {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	return &Service{st: st, opts: opts, limiter: newLoginLimiter(opts.Now)}
+	return &Service{st: st, opts: opts, limiter: newFailureLimiter(opts.Now)}
 }
 
 func (s *Service) now() int64 { return s.opts.Now().UnixMilli() }
@@ -98,14 +98,14 @@ func (f *LoginFailure) Unwrap() error { return f.Err }
 // Login verifies credentials and creates a session.
 func (s *Service) Login(ctx context.Context, username, password, ip, userAgent string) (*LoginResult, error) {
 	username = strings.TrimSpace(username)
-	if !s.limiter.allow(username, ip) {
+	if !s.limiter.under(map[string]int{userKey(username): maxFailuresPerUser, ipKey(ip): maxFailuresPerIP}) {
 		return nil, &LoginFailure{Err: ErrRateLimited, Reason: "rate_limited"}
 	}
 
 	u, err := s.st.R.GetUserByUsername(ctx, username)
 	if errors.Is(err, sql.ErrNoRows) {
 		VerifyPassword(dummyHash, password) // equalize timing
-		s.limiter.fail(username, ip)
+		s.limiter.record(userKey(username), ipKey(ip))
 		return nil, &LoginFailure{Err: ErrInvalidCredentials, Reason: "unknown_user"}
 	}
 	if err != nil {
@@ -116,15 +116,26 @@ func (s *Service) Login(ctx context.Context, username, password, ip, userAgent s
 		return nil, err
 	}
 	if !ok {
-		s.limiter.fail(username, ip)
+		s.limiter.record(userKey(username), ipKey(ip))
 		return nil, &LoginFailure{Err: ErrInvalidCredentials, UserID: u.ID, Reason: "bad_password"}
 	}
 	if u.Disabled != 0 {
 		// Report as invalid credentials to the client; audit records the reason.
 		return nil, &LoginFailure{Err: ErrInvalidCredentials, UserID: u.ID, Reason: "disabled"}
 	}
-	s.limiter.succeed(username)
+	s.limiter.reset(userKey(username))
 
+	var res *LoginResult
+	err = s.st.InTx(ctx, func(q *db.Queries) error {
+		var err error
+		res, err = s.createSession(ctx, q, u, ip, userAgent)
+		return err
+	})
+	return res, err
+}
+
+// createSession inserts a new session for u using q.
+func (s *Service) createSession(ctx context.Context, q *db.Queries, u db.User, ip, userAgent string) (*LoginResult, error) {
 	cookie, hash, err := newSecret()
 	if err != nil {
 		return nil, err
@@ -135,22 +146,19 @@ func (s *Service) Login(ctx context.Context, username, password, ip, userAgent s
 	}
 	now := s.opts.Now()
 	expires := now.Add(s.opts.AbsoluteTimeout)
-	err = s.st.InTx(ctx, func(q *db.Queries) error {
-		if err := q.CreateSession(ctx, db.CreateSessionParams{
-			TokenHash:  hash,
-			UserID:     u.ID,
-			CsrfToken:  csrf,
-			CreatedAt:  now.UnixMilli(),
-			LastSeenAt: now.UnixMilli(),
-			ExpiresAt:  expires.UnixMilli(),
-			SourceIp:   ip,
-			UserAgent:  truncate(userAgent, 512),
-		}); err != nil {
-			return err
-		}
-		return q.TouchUserLogin(ctx, db.TouchUserLoginParams{LastLoginAt: sql.NullInt64{Int64: now.UnixMilli(), Valid: true}, ID: u.ID})
-	})
-	if err != nil {
+	if err := q.CreateSession(ctx, db.CreateSessionParams{
+		TokenHash:  hash,
+		UserID:     u.ID,
+		CsrfToken:  csrf,
+		CreatedAt:  now.UnixMilli(),
+		LastSeenAt: now.UnixMilli(),
+		ExpiresAt:  expires.UnixMilli(),
+		SourceIp:   ip,
+		UserAgent:  truncate(userAgent, 512),
+	}); err != nil {
+		return nil, err
+	}
+	if err := q.TouchUserLogin(ctx, db.TouchUserLoginParams{LastLoginAt: sql.NullInt64{Int64: now.UnixMilli(), Valid: true}, ID: u.ID}); err != nil {
 		return nil, err
 	}
 	return &LoginResult{
@@ -321,21 +329,22 @@ const (
 	maxFailuresPerIP   = 20
 )
 
-// loginLimiter tracks recent failures per username and per source IP.
-type loginLimiter struct {
+// failureLimiter counts recent failures per key within a sliding window.
+type failureLimiter struct {
 	mu    sync.Mutex
 	now   func() time.Time
 	fails map[string][]time.Time
 }
 
-func newLoginLimiter(now func() time.Time) *loginLimiter {
-	return &loginLimiter{now: now, fails: map[string][]time.Time{}}
+func newFailureLimiter(now func() time.Time) *failureLimiter {
+	return &failureLimiter{now: now, fails: map[string][]time.Time{}}
 }
 
-func userKey(u string) string { return "u:" + strings.ToLower(u) }
-func ipKey(ip string) string  { return "ip:" + ip }
+func userKey(u string) string { return "login:u:" + strings.ToLower(u) }
+func ipKey(ip string) string  { return "login:ip:" + ip }
 
-func (l *loginLimiter) recent(key string) int {
+// count returns recent failures for key, pruning old entries. Caller holds mu.
+func (l *failureLimiter) count(key string) int {
 	cutoff := l.now().Add(-limiterWindow)
 	ts := l.fails[key]
 	i := 0
@@ -351,22 +360,29 @@ func (l *loginLimiter) recent(key string) int {
 	return len(ts)
 }
 
-func (l *loginLimiter) allow(username, ip string) bool {
+// under reports whether every key is below its limit.
+func (l *failureLimiter) under(limits map[string]int) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.recent(userKey(username)) < maxFailuresPerUser && l.recent(ipKey(ip)) < maxFailuresPerIP
+	for k, max := range limits {
+		if l.count(k) >= max {
+			return false
+		}
+	}
+	return true
 }
 
-func (l *loginLimiter) fail(username, ip string) {
+func (l *failureLimiter) record(keys ...string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
-	l.fails[userKey(username)] = append(l.fails[userKey(username)], now)
-	l.fails[ipKey(ip)] = append(l.fails[ipKey(ip)], now)
+	for _, k := range keys {
+		l.fails[k] = append(l.fails[k], now)
+	}
 }
 
-func (l *loginLimiter) succeed(username string) {
+func (l *failureLimiter) reset(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	delete(l.fails, userKey(username))
+	delete(l.fails, key)
 }

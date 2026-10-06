@@ -17,6 +17,42 @@ security:
   - bearer: []
 
 paths:
+  /setup/status:
+    get:
+      operationId: getSetupStatus
+      tags: [setup]
+      security: []
+      description: Whether the controller still needs its first administrator.
+      responses:
+        '200':
+          description: Setup status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SetupStatus' }
+  /setup/claim:
+    post:
+      operationId: claimSetup
+      tags: [setup]
+      security: []
+      description: |
+        Create the first administrator using the one-time setup code shown in the controller's
+        console output (or an operator-provided setup secret). Succeeds at most once; on success
+        the new administrator is logged in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetupClaimRequest' }
+      responses:
+        '201':
+          description: Administrator created and logged in; sets the session cookie.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
   /auth/login:
     post:
       operationId: login
@@ -244,6 +280,22 @@ components:
         retryable: { type: boolean }
         request_id: { type: string }
         fields: { type: object, additionalProperties: { type: string } }
+
+    SetupStatus:
+      type: object
+      required: [setup_required, code_available]
+      properties:
+        setup_required: { type: boolean }
+        code_available: { type: boolean, description: An unexpired setup code exists. }
+
+    SetupClaimRequest:
+      type: object
+      required: [code, username, password]
+      additionalProperties: false
+      properties:
+        code: { type: string }
+        username: { type: string, pattern: '^[A-Za-z0-9._@-]{1,64}$' }
+        password: { type: string, format: password, minLength: 12 }
 
     Role:
       type: string

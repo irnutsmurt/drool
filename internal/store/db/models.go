@@ -52,6 +52,14 @@ type Setting struct {
 	UpdatedAt int64
 }
 
+type SetupCode struct {
+	ID        string
+	Kind      string
+	CodeHash  []byte
+	CreatedAt int64
+	ExpiresAt sql.NullInt64
+}
+
 type User struct {
 	ID                string
 	Username          string

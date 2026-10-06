@@ -4,6 +4,44 @@
  */
 
 export interface paths {
+    "/setup/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Whether the controller still needs its first administrator. */
+        get: operations["getSetupStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/setup/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Create the first administrator using the one-time setup code shown in the controller's
+         *     console output (or an operator-provided setup secret). Succeeds at most once; on success
+         *     the new administrator is logged in.
+         */
+        post: operations["claimSetup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -192,6 +230,17 @@ export interface components {
                 [key: string]: string;
             };
         };
+        SetupStatus: {
+            setup_required: boolean;
+            /** @description An unexpired setup code exists. */
+            code_available: boolean;
+        };
+        SetupClaimRequest: {
+            code: string;
+            username: string;
+            /** Format: password */
+            password: string;
+        };
         /** @enum {string} */
         Role: "admin" | "operator" | "auditor" | "viewer";
         User: {
@@ -316,6 +365,54 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getSetupStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Setup status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    claimSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Administrator created and logged in; sets the session cookie. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+        };
+    };
     login: {
         parameters: {
             query?: never;

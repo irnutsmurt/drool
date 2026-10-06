@@ -399,6 +399,66 @@ func TestClientIPTrustedProxies(t *testing.T) {
 	}
 }
 
+func TestSetupClaimFlow(t *testing.T) {
+	h := newHarness(t)
+	anon := &client{h: h}
+	var st setupStatusResponse
+	anon.do("GET", "/api/v1/setup/status", nil).json(t, &st)
+	if !st.SetupRequired || st.CodeAvailable {
+		t.Fatalf("fresh status %+v", st)
+	}
+	code, _, err := h.auth.IssueSetupCode(context.Background(), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := anon.do("POST", "/api/v1/setup/claim", map[string]string{"code": "not-it", "username": "admin", "password": pw})
+	if r.status != 403 || r.problemCode(t) != "invalid_setup_code" {
+		t.Fatalf("wrong code: %d %s", r.status, r.body)
+	}
+	r = anon.do("POST", "/api/v1/setup/claim", map[string]string{"code": code, "username": "admin", "password": pw})
+	if r.status != 201 {
+		t.Fatalf("claim: %d %s", r.status, r.body)
+	}
+	var me meResponse
+	r.json(t, &me)
+	if me.User.Role != "admin" || me.CSRFToken == "" {
+		t.Fatalf("claim response %+v", me)
+	}
+	var cookie string
+	for _, sc := range (&http.Response{Header: r.header}).Cookies() {
+		if sc.Name == sessionCookie {
+			cookie = sc.Value
+		}
+	}
+	c := &client{h: h, cookie: cookie, csrf: me.CSRFToken}
+	if r := c.do("GET", "/api/v1/auth/me", nil); r.status != 200 {
+		t.Fatalf("claimed session not usable: %d", r.status)
+	}
+	if r := anon.do("POST", "/api/v1/setup/claim", map[string]string{"code": code, "username": "evil", "password": pw}); r.status != 409 {
+		t.Fatalf("re-claim: %d %s", r.status, r.body)
+	}
+	anon.do("GET", "/api/v1/setup/status", nil).json(t, &st)
+	if st.SetupRequired {
+		t.Fatal("setup still required after claim")
+	}
+
+	// Attempts are audited, and the code never appears in the audit trail.
+	r = c.do("GET", "/api/v1/audit?action=setup.", nil)
+	if strings.Contains(string(r.body), code) {
+		t.Fatal("setup code leaked into audit log")
+	}
+	var list listResponse[auditJSON]
+	r.json(t, &list)
+	results := map[string]int{}
+	for _, e := range list.Items {
+		results[e.Result]++
+	}
+	if results["success"] != 1 || results["failure"] != 2 {
+		t.Fatalf("setup audit results %v", results)
+	}
+}
+
 // TestOpenAPIConformance checks that every route in the route table is
 // documented in api/openapi.yaml and vice versa.
 func TestOpenAPIConformance(t *testing.T) {

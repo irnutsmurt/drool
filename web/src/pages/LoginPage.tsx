@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router";
-import { useAuth } from "@/auth/AuthContext";
+import { useAuth, useSetupStatus } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
@@ -15,8 +15,10 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const setup = useSetupStatus();
 
   if (me) return <Navigate to={from} replace />;
+  if (setup.data?.setup_required) return <Navigate to="/setup" replace />;
 
   async function submit(e: FormEvent) {
     e.preventDefault();

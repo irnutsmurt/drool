@@ -1,0 +1,25 @@
+# Quick start:
+#   docker compose up -d
+#   docker compose logs fleetmgr     # shows the URL and one-time setup code
+services:
+  fleetmgr:
+    build: .
+    image: fleetmgr:local
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - fleetmgr-data:/data
+    # Optional: provide your own setup code for automated deployments
+    # instead of reading the generated one from the logs.
+    # environment:
+    #   FLEETMGR_SETUP_SECRET_FILE: /run/secrets/fleetmgr_setup
+    # secrets:
+    #   - fleetmgr_setup
+
+volumes:
+  fleetmgr-data:
+
+# secrets:
+#   fleetmgr_setup:
+#     file: ./setup-secret.txt

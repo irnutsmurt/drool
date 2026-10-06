@@ -68,6 +68,9 @@ const APIPrefix = "/api/v1"
 
 func (s *Server) routes() []route {
 	return []route{
+		{method: "GET", path: APIPrefix + "/setup/status", auth: public, h: s.handleSetupStatus},
+		{method: "POST", path: APIPrefix + "/setup/claim", auth: public, h: s.handleSetupClaim},
+
 		{method: "POST", path: APIPrefix + "/auth/login", auth: public, h: s.handleLogin},
 		{method: "POST", path: APIPrefix + "/auth/logout", auth: authed, h: s.handleLogout},
 		{method: "GET", path: APIPrefix + "/auth/me", auth: authed, h: s.handleMe},

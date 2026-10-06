@@ -98,6 +98,31 @@ func NewWriter(st *store.Store, log *slog.Logger) *Writer {
 // Record writes the event. A failure to write an audit record is returned to
 // the caller: privileged actions should not silently proceed unaudited.
 func (w *Writer) Record(ctx context.Context, e Event) error {
+	row, err := w.build(ctx, e)
+	if err != nil {
+		return err
+	}
+	err = w.st.W.InsertAuditEvent(ctx, row)
+	w.emit(ctx, row, err)
+	return err
+}
+
+// RecordTx writes the event using q, normally a transaction, so the audit
+// record commits or rolls back together with the change it describes. Call
+// the returned function after the transaction commits to mirror the event to
+// the audit log stream.
+func (w *Writer) RecordTx(ctx context.Context, q *db.Queries, e Event) (emit func(), err error) {
+	row, err := w.build(ctx, e)
+	if err != nil {
+		return func() {}, err
+	}
+	if err := q.InsertAuditEvent(ctx, row); err != nil {
+		return func() {}, err
+	}
+	return func() { w.emit(ctx, row, nil) }, nil
+}
+
+func (w *Writer) build(ctx context.Context, e Event) (db.InsertAuditEventParams, error) {
 	actor := ActorFrom(ctx)
 	if e.Actor != nil {
 		actor = *e.Actor
@@ -117,30 +142,30 @@ func (w *Writer) Record(ctx context.Context, e Event) error {
 		}
 		b, err := json.Marshal(clean)
 		if err != nil {
-			return err
+			return db.InsertAuditEventParams{}, err
 		}
 		details = string(b)
 	}
-	id := ids.New(ids.Audit)
-	ts := store.Now()
-	err := w.st.W.InsertAuditEvent(ctx, db.InsertAuditEventParams{
-		ID: id, Ts: ts,
+	return db.InsertAuditEventParams{
+		ID: ids.New(ids.Audit), Ts: store.Now(),
 		ActorType: actor.Type, ActorID: actor.ID, ActorName: actor.Name,
 		Action: e.Action, TargetType: e.TargetType, TargetID: e.TargetID,
 		Result: string(e.Result), SourceIp: req.SourceIP, RequestID: req.ID,
 		DetailsJson: details,
-	})
+	}, nil
+}
+
+func (w *Writer) emit(ctx context.Context, r db.InsertAuditEventParams, persistErr error) {
 	level := slog.LevelInfo
-	if err != nil {
+	if persistErr != nil {
 		level = slog.LevelError
 	}
 	w.log.Log(ctx, level, "audit",
-		"audit_id", id, "action", e.Action, "result", string(e.Result),
-		"actor_type", actor.Type, "actor_id", actor.ID, "actor_name", actor.Name,
-		"target_type", e.TargetType, "target_id", e.TargetID,
-		"request_id", req.ID, "source_ip", req.SourceIP, "details", json.RawMessage(details),
-		"persist_error", errString(err))
-	return err
+		"audit_id", r.ID, "action", r.Action, "result", r.Result,
+		"actor_type", r.ActorType, "actor_id", r.ActorID, "actor_name", r.ActorName,
+		"target_type", r.TargetType, "target_id", r.TargetID,
+		"request_id", r.RequestID, "source_ip", r.SourceIp, "details", json.RawMessage(r.DetailsJson),
+		"persist_error", errString(persistErr))
 }
 
 func errString(err error) string {

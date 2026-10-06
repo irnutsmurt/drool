@@ -666,6 +666,20 @@ Checks are written against permissions, not role names, so custom roles later ar
 - **Decision D7:** with `tls.mode: off`, the server refuses to start unless bound to a loopback address. Configuring `trusted_proxies` does **not** make a non-loopback plaintext listener acceptable. Running one requires an explicit `server.allow_insecure_plaintext: true`, which logs a security warning at startup and shows a persistent banner in the UI.
 - `trusted_proxies` only controls whether `X-Forwarded-For`/`X-Forwarded-Proto` are honored.
 
+### 12.5 First-admin bootstrap (setup claim)
+
+Goal: `docker compose up -d` → `docker compose logs fleetmgr` → open `/setup` → dashboard, with no CLI step (DESIGN §2.5).
+
+- **While no administrator exists**, each startup issues a fresh **6-digit code** (crypto RNG) valid for `setup.code_ttl` (default 60 min). The code replaces any earlier generated code. It's printed once in the startup banner on stderr (which `docker compose logs` shows) and is **never written to logs, audit or the database**. Only its SHA-256 hash is stored (`setup_codes`).
+- **Operator-provided secret** (automation, Docker secrets): `FLEETMGR_SETUP_SECRET` or, preferably, `FLEETMGR_SETUP_SECRET_FILE`. At least 12 characters (shorter refuses to start), no expiry, hash-only storage, never displayed. When set, no code is generated.
+- **`/setup` page** asks for setup code, admin username, password and confirmation. `POST /api/v1/setup/claim` creates the admin, **deletes every setup code**, writes the `setup.claim` audit record, and creates a session **in one transaction**, so concurrent claims yield exactly one admin. The new admin lands on the dashboard already signed in.
+- **Closed for good** once any admin exists: claims return `409 setup_closed`; startup and `fleetmgr user create --role admin` delete leftover codes.
+- **Rate limits** (failed codes only; field validation errors don't count): 5 per source IP and 20 globally per 15 min. With a 60-minute code that's at most ~80 guesses, about a 0.008% chance of guessing a 6-digit code. Codes don't regenerate on their own, so an abandoned, unclaimed controller becomes unclaimable after the TTL.
+- **New code:** restart, or `fleetmgr setup code` (works while running, including `docker compose exec fleetmgr fleetmgr setup code`). It invalidates the previous generated code.
+- **Audit:** every attempt is recorded as `setup.claim` with result and reason (`invalid_code`, `rate_limited`, `closed`, `validation`), never the code. Issuing a code via CLI records `setup.code_issue`.
+- **Recovery:** `fleetmgr user create` remains available.
+- Known limitation: inside a container the banner can't know the host's address and prints `https://<this-host's-address>:8080`.
+
 ---
 
 ## 13. REST API
@@ -673,6 +687,10 @@ Checks are written against permissions, not role names, so custom roles later ar
 Conventions: JSON; `/api/v1`; cursor pagination (`?limit=50&cursor=…`); errors as RFC 9457 `application/problem+json`, extended with `error_class`, `retryable` and `request_id`; `Idempotency-Key` header accepted on `POST /jobs`. Every response carries `X-Request-Id`.
 
 ```
+Setup (public; only while no admin exists)
+  GET    /setup/status
+  POST   /setup/claim               {code, username, password} → admin created + session
+
 Auth
   POST   /auth/login                 {username, password} → session cookie
   POST   /auth/logout
@@ -735,6 +753,7 @@ GET /health  GET /ready  GET /metrics   (unversioned)
 
 | Page | Contents |
 |---|---|
+| Setup | One-time first-admin claim: setup code, username, password, confirm (§12.5) |
 | Login | — |
 | Dashboard | Host counts by status; updates pending / security; reboot required; failed units; running and recent jobs; event feed |
 | Hosts | Filterable table (name, status, OS, address, updates, reboot, last seen, tags); multi-select → *Run command / Update / Service / Reboot* |
@@ -761,6 +780,9 @@ server:
   tls: { mode: self_signed }        # self_signed | provided | off
   trusted_proxies: []
 data_dir: /var/lib/fleetmgr
+setup:
+  code_ttl: 60m
+  # secret_file: /run/secrets/fleetmgr_setup   # optional operator-provided setup code
 engine:
   global_concurrency: 20
   per_jump_host_concurrency: 10
@@ -860,7 +882,7 @@ Meaningful choices made during implementation, newest last.
 |---|---|---|
 | M0 | Go module path is `fleetmgr` | It's an application, not a library. Rename once hosting is decided |
 | M0 | Standard-library `net/http.ServeMux` with method patterns; no router dependency | Enough for our routing; fewer dependencies |
-| M0 | The first administrator is created with `fleetmgr user create` (CLI), not a web setup page | A setup page on a fresh controller is a race: whoever reaches it first on the network becomes admin |
+| M0 | ~~The first administrator is created with `fleetmgr user create` (CLI), not a web setup page~~ **Superseded** by the setup claim below | — |
 | M0 | `POST /tokens` requires an interactive session | A leaked API token must not be able to mint more long-lived tokens |
 | M0 | Self-service password change at `POST /auth/password` (requires the current password); admins reset via `PATCH /users/{id}`. Password changes revoke the user's other sessions | Standard account hygiene |
 | M0 | CSRF token stored per session (`sessions.csrf_token`), returned by login and `/auth/me`, required in `X-FM-CSRF` on session-authenticated state-changing requests | Implements §12.1; bearer-token requests are exempt |
@@ -876,3 +898,9 @@ Meaningful choices made during implementation, newest last.
 | M0 | Migration `0001` contains only M0 tables; hosts, secrets and jobs come in later migrations. Until the `v0.1.0-alpha` tag, existing migrations may still be amended; after it they are strictly forward-only | Nothing is deployed yet |
 | M0 | Frontend TypeScript pinned to 5.x | `openapi-typescript` needs the TypeScript JS compiler API, which TypeScript 7 (native port) doesn't ship |
 | M0 | Frontend: React 19, React Router 8, TanStack Query 5, Tailwind 4, `openapi-fetch` with generated types. Visuals deliberately minimal: semantic CSS tokens + a few primitives | Easy to restyle after the planned UI review |
+| M0.1 | **First-admin bootstrap is a one-time setup claim at `/setup`** with a code from the startup logs (or an operator-provided secret); `fleetmgr user create` stays as recovery. Details in §12.5 | DESIGN §2.5: setup must not need a CLI step. The race concern from the original decision is handled by requiring the console code, single use, expiry and rate limits |
+| M0.1 | Setup codes are 6 digits, hashed with SHA-256 (not a slow hash) | Short codes can't be protected by any hash against an attacker holding the database; their protection is the short lifetime, single use and online rate limits. A DB reader before setup could equally just wait for the claim |
+| M0.1 | Audit records can now be written inside the caller's transaction (`audit.Writer.RecordTx`); the setup claim uses it | Start of fixing the M0 known gap; remaining mutations are converted at the start of M1 |
+| M0.1 | CLI subcommands persist audit records to the database only, without mirroring to the log stream | With `logging.output=stdout` (containers), mirrored JSON polluted command output such as `fleetmgr setup code` |
+| M0.1 | Added `Dockerfile` (distroless, non-root, `/data` volume, logs to stdout) and `compose.yaml` | Makes the documented `docker compose up -d` flow real; minimal, no healthcheck yet |
+| M0.1 | Config keys ending in `.secret` are shown as `«redacted»` in `/system/info` | `setup.secret` must not be displayed |

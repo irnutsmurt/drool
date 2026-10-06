@@ -39,6 +39,7 @@ type Config struct {
 	Server    Server    `yaml:"server"`
 	DataDir   string    `yaml:"data_dir"`
 	Auth      Auth      `yaml:"auth"`
+	Setup     Setup     `yaml:"setup"`
 	Engine    Engine    `yaml:"engine"`
 	Poller    Poller    `yaml:"poller"`
 	Retention Retention `yaml:"retention"`
@@ -62,6 +63,16 @@ type TLS struct {
 type Auth struct {
 	SessionIdleTimeout     time.Duration `yaml:"session_idle_timeout"`
 	SessionAbsoluteTimeout time.Duration `yaml:"session_absolute_timeout"`
+}
+
+// Setup controls first-admin bootstrap (ARCHITECTURE-ALPHA §12.5).
+type Setup struct {
+	// CodeTTL is the lifetime of generated setup codes.
+	CodeTTL time.Duration `yaml:"code_ttl"`
+	// Secret is an operator-provided setup code for automated deployments.
+	// Prefer SecretFile (e.g. a Docker secret) over putting it in the environment.
+	Secret     string `yaml:"secret"`
+	SecretFile string `yaml:"secret_file"`
 }
 
 type Engine struct {
@@ -107,6 +118,7 @@ func Defaults() Config {
 			SessionIdleTimeout:     12 * time.Hour,
 			SessionAbsoluteTimeout: 7 * 24 * time.Hour,
 		},
+		Setup: Setup{CodeTTL: time.Hour},
 		Engine: Engine{
 			GlobalConcurrency:      20,
 			PerJumpHostConcurrency: 10,
@@ -329,9 +341,34 @@ func (l *Loaded) Values() []Value {
 		if d, ok := val.(time.Duration); ok {
 			val = d.String()
 		}
+		if s, ok := val.(string); ok && s != "" && isSecretKey(key) {
+			val = "«redacted»"
+		}
 		out = append(out, Value{Key: key, Value: val, Source: l.Sources[key], EnvVar: EnvName(key)})
 	}
 	return out
+}
+
+// isSecretKey reports whether a config key holds a credential that must not
+// be displayed.
+func isSecretKey(key string) bool {
+	return strings.HasSuffix(key, ".secret") || strings.HasSuffix(key, "_password")
+}
+
+// ProvidedSetupSecret returns the operator-provided setup secret from
+// setup.secret or setup.secret_file ("" if neither is set).
+func (c Config) ProvidedSetupSecret() (string, error) {
+	if c.Setup.Secret != "" {
+		return strings.TrimSpace(c.Setup.Secret), nil
+	}
+	if c.Setup.SecretFile == "" {
+		return "", nil
+	}
+	b, err := os.ReadFile(c.Setup.SecretFile)
+	if err != nil {
+		return "", fmt.Errorf("setup.secret_file: %w", err)
+	}
+	return strings.TrimSpace(string(b)), nil
 }
 
 // Validate checks semantic constraints, including the plaintext listener
@@ -380,6 +417,12 @@ func (c Config) Validate() error {
 	case "file", "stdout":
 	default:
 		errs = append(errs, fmt.Errorf("logging.output must be file or stdout (got %q)", c.Logging.Output))
+	}
+	if c.Setup.CodeTTL < time.Minute || c.Setup.CodeTTL > 24*time.Hour {
+		errs = append(errs, fmt.Errorf("setup.code_ttl must be between 1m and 24h (got %s)", c.Setup.CodeTTL))
+	}
+	if c.Setup.Secret != "" && c.Setup.SecretFile != "" {
+		errs = append(errs, errors.New("set only one of setup.secret and setup.secret_file"))
 	}
 	if c.Auth.SessionIdleTimeout <= 0 || c.Auth.SessionAbsoluteTimeout < c.Auth.SessionIdleTimeout {
 		errs = append(errs, errors.New("auth: session timeouts must be positive and absolute >= idle"))

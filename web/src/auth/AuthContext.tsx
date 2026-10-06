@@ -9,11 +9,23 @@ interface AuthState {
   loading: boolean;
   can: (permission: string) => boolean;
   login: (username: string, password: string) => Promise<void>;
+  /** First-admin setup: creates the admin and signs them in. */
+  claim: (code: string, username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
 export const meQueryKey = ["auth", "me"] as const;
+export const setupStatusQueryKey = ["auth", "setup"] as const;
+
+/** Whether the controller still needs its first administrator. */
+export function useSetupStatus() {
+  return useQuery({
+    queryKey: setupStatusQueryKey,
+    queryFn: () => unwrap(api.GET("/setup/status")),
+    staleTime: 30_000,
+  });
+}
 
 async function fetchMe(): Promise<Me | null> {
   try {
@@ -50,6 +62,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  const claimMut = useMutation({
+    mutationFn: (v: { code: string; username: string; password: string }) =>
+      unwrap(api.POST("/setup/claim", { body: v })),
+    onSuccess: (data) => {
+      setCsrfToken(data.csrf_token);
+      qc.setQueryData(meQueryKey, data);
+      qc.setQueryData(setupStatusQueryKey, { setup_required: false, code_available: false });
+    },
+  });
+
   const logoutMut = useMutation({
     mutationFn: () => unwrap(api.POST("/auth/logout")),
     onSettled: () => {
@@ -65,6 +87,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     can: (p) => !!me?.permissions.includes(p),
     login: async (username, password) => {
       await loginMut.mutateAsync({ username, password });
+    },
+    claim: async (code, username, password) => {
+      await claimMut.mutateAsync({ code, username, password });
     },
     logout: async () => {
       await logoutMut.mutateAsync().catch(() => undefined);

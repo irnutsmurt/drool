@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from "react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { RequireAuth, RequirePermission } from "@/auth/RequireAuth";
 import { LoginPage } from "@/pages/LoginPage";
+import { SetupPage } from "@/pages/SetupPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { AuditPage } from "@/pages/AuditPage";
 import { PlaceholderPage } from "@/pages/PlaceholderPage";
@@ -14,6 +15,7 @@ import { SystemPage } from "@/pages/settings/SystemPage";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
+  { path: "/setup", element: <SetupPage /> },
   {
     path: "/",
     element: (

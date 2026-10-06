@@ -131,3 +131,29 @@ func TestProvidedTLSRequiresFiles(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestSetupSecretRedactedAndValidated(t *testing.T) {
+	l, err := Load("", false, []string{"FLEETMGR_SETUP_SECRET=super-secret-value"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range l.Values() {
+		if v.Key == "setup.secret" && v.Value != "«redacted»" {
+			t.Fatalf("setup.secret displayed: %v", v.Value)
+		}
+	}
+	if s, _ := l.ProvidedSetupSecret(); s != "super-secret-value" {
+		t.Fatalf("ProvidedSetupSecret = %q", s)
+	}
+	p := writeFile(t, "  from-file-secret-123\n")
+	l, err = Load("", false, []string{"FLEETMGR_SETUP_SECRET_FILE=" + p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := l.ProvidedSetupSecret(); s != "from-file-secret-123" {
+		t.Fatalf("secret file = %q", s)
+	}
+	if _, err := Load("", false, []string{"FLEETMGR_SETUP_SECRET=a", "FLEETMGR_SETUP_SECRET_FILE=" + p}); err == nil {
+		t.Fatal("both secret and secret_file accepted")
+	}
+}
