@@ -58,7 +58,7 @@ func (x *Executor) Execute(ctx context.Context, t *sshx.Target, b Become, op mod
 	case model.OpCommand:
 		interp, body, become = "sh", op.Command.Command+"\n", op.Command.Become
 	case model.OpScript:
-		interp, body, become = op.Script.Interpreter, op.Script.Body, op.Script.Become
+		interp, body, become = op.Script.Interpreter, op.Script.Body.Text, op.Script.Become
 		if !strings.HasSuffix(body, "\n") {
 			body += "\n"
 		}

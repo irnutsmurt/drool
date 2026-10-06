@@ -29,26 +29,28 @@ func toHostKeyJSON(k db.SshHostKey) hostKeyJSON {
 }
 
 type hostJSON struct {
-	ID                 string       `json:"id"`
-	Name               string       `json:"name"`
-	Description        string       `json:"description"`
-	Address            string       `json:"address"`
-	Port               int64        `json:"port"`
-	User               string       `json:"user"`
-	CredentialID       string       `json:"credential_id"`
-	BecomeMethod       string       `json:"become_method"`
-	BecomeCredentialID *string      `json:"become_credential_id"`
-	NeedsPTY           bool         `json:"needs_pty"`
-	JumpOnly           bool         `json:"jump_only"`
-	ViaHostID          *string      `json:"via_host_id"`
-	Status             string       `json:"status"`
-	StatusDetail       string       `json:"status_detail"`
-	LastProbeAt        *string      `json:"last_probe_at"`
-	Tags               []string     `json:"tags"`
-	GroupIDs           []string     `json:"group_ids"`
-	PinnedKey          *hostKeyJSON `json:"pinned_key"`
-	CreatedAt          string       `json:"created_at"`
-	UpdatedAt          string       `json:"updated_at"`
+	ID                 string            `json:"id"`
+	Name               string            `json:"name"`
+	Description        string            `json:"description"`
+	Address            string            `json:"address"`
+	Port               int64             `json:"port"`
+	User               string            `json:"user"`
+	CredentialID       string            `json:"credential_id"`
+	BecomeMethod       string            `json:"become_method"`
+	BecomeCredentialID *string           `json:"become_credential_id"`
+	NeedsPTY           bool              `json:"needs_pty"`
+	JumpOnly           bool              `json:"jump_only"`
+	ViaHostID          *string           `json:"via_host_id"`
+	Status             string            `json:"status"`
+	StatusDetail       string            `json:"status_detail"`
+	LastProbeAt        *string           `json:"last_probe_at"`
+	Tags               []string          `json:"tags"`
+	GroupIDs           []string          `json:"group_ids"`
+	PinnedKey          *hostKeyJSON      `json:"pinned_key"`
+	Facts              *factsSummaryJSON `json:"facts"`
+	Health             *healthJSON       `json:"health"`
+	CreatedAt          string            `json:"created_at"`
+	UpdatedAt          string            `json:"updated_at"`
 }
 
 func strPtr(s string) *string {
@@ -58,7 +60,7 @@ func strPtr(s string) *string {
 	return &s
 }
 
-func toHostJSON(v inventory.HostView) hostJSON {
+func (s *Server) toHostJSON(v inventory.HostView) hostJSON {
 	out := hostJSON{
 		ID: v.ID, Name: v.Name, Description: v.Description, Address: v.ConnectAddress, Port: v.SshPort,
 		User: v.SshUser, CredentialID: v.SshCredentialID.String, BecomeMethod: v.BecomeMethod,
@@ -77,6 +79,7 @@ func toHostJSON(v inventory.HostView) hostJSON {
 		k := toHostKeyJSON(*v.PinnedKey)
 		out.PinnedKey = &k
 	}
+	out.Facts, out.Health = toFactsSummary(v.Facts), s.toHealth(v.Health)
 	return out
 }
 
@@ -121,7 +124,7 @@ func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
 	}
 	out := listResponse[hostJSON]{Items: make([]hostJSON, 0, len(hosts))}
 	for _, h := range hosts {
-		out.Items = append(out.Items, toHostJSON(h))
+		out.Items = append(out.Items, s.toHostJSON(h))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -132,7 +135,7 @@ func (s *Server) handleGetHost(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, s.inventoryError(err))
 		return
 	}
-	writeJSON(w, http.StatusOK, toHostJSON(*v))
+	writeJSON(w, http.StatusOK, s.toHostJSON(*v))
 }
 
 type hostRequest struct {
@@ -216,7 +219,7 @@ func (s *Server) handleCreateHost(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, s.inventoryError(err))
 		return
 	}
-	writeJSON(w, http.StatusCreated, toHostJSON(*view))
+	writeJSON(w, http.StatusCreated, s.toHostJSON(*view))
 }
 
 func (s *Server) handleUpdateHost(w http.ResponseWriter, r *http.Request) {
@@ -247,7 +250,7 @@ func (s *Server) handleUpdateHost(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, s.inventoryError(err))
 		return
 	}
-	writeJSON(w, http.StatusOK, toHostJSON(*view))
+	writeJSON(w, http.StatusOK, s.toHostJSON(*view))
 }
 
 func (s *Server) handleDeleteHost(w http.ResponseWriter, r *http.Request) {
@@ -385,6 +388,9 @@ func (s *Server) handleProbeHost(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, s.inventoryError(err))
 		return
 	}
+	if out.Result.OK && s.d.Poller != nil {
+		s.d.Poller.RunNow(id) // collect facts and status right away
+	}
 	if out.Status == inventory.StatusHostKeyChanged {
 		s.secLog.Warn("host key changed", "host_id", id, "detail", out.Detail, "request_id", requestIDFrom(ctx))
 	}
@@ -393,7 +399,7 @@ func (s *Server) handleProbeHost(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, s.inventoryError(err))
 		return
 	}
-	writeJSON(w, http.StatusOK, probeResponse{ProbeResult: *out.Result, Host: toHostJSON(*v)})
+	writeJSON(w, http.StatusOK, probeResponse{ProbeResult: *out.Result, Host: s.toHostJSON(*v)})
 }
 
 // ---- Groups ----

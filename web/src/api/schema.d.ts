@@ -388,6 +388,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/hosts/{id}/facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Full discovered facts and known addresses. `facts` is null before the first discovery. */
+        get: operations["getHostFacts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Run discovery, a status check and an update check now (from the package cache; no metadata
+         *     refresh). Returns 409 if a job holds the host. Requires `jobs.execute`.
+         */
+        post: operations["refreshHost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/groups": {
         parameters: {
             query?: never;
@@ -830,6 +871,9 @@ export interface components {
             tags: string[];
             group_ids: string[];
             pinned_key: components["schemas"]["HostKey"] | null;
+            facts: components["schemas"]["FactsSummary"] | null;
+            /** @description Latest polled status (null before the first check). */
+            health: components["schemas"]["Health"] | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -897,6 +941,7 @@ export interface components {
             read_only?: boolean;
             /** @default 300 */
             timeout_s?: number;
+            when?: components["schemas"]["When"];
         };
         ScriptOp: {
             /**
@@ -909,7 +954,11 @@ export interface components {
              * @enum {string}
              */
             interpreter?: "sh" | "bash";
-            body: string;
+            /** @description One script, or per-OS variants keyed by OS family or distro id, with optional `default`. */
+            body: string | {
+                [key: string]: string;
+            };
+            when?: components["schemas"]["When"];
             become?: boolean;
             read_only?: boolean;
             /** @default 600 */
@@ -941,6 +990,7 @@ export interface components {
             name: string;
             status: components["schemas"]["HostStatus"];
             warning?: string;
+            skip?: boolean;
         };
         JobPreview: {
             hosts: components["schemas"]["TargetHost"][];
@@ -1011,6 +1061,71 @@ export interface components {
             }[];
             next_seq: number;
             more: boolean;
+        };
+        /** @description Run the step only on hosts whose discovered facts match. Unknown facts never match. */
+        When: {
+            os_family?: ("debian" | "redhat" | "suse" | "arch")[];
+            /** @description os-release ID, e.g. ubuntu, rocky */
+            distro?: string[];
+        };
+        FactsSummary: {
+            /** Format: date-time */
+            collected_at: string;
+            os_family: string;
+            distro: string;
+            distro_version: string;
+            distro_name: string;
+            kernel: string;
+            arch: string;
+            hostname: string;
+            cpu_count: number | null;
+            mem_bytes: number | null;
+            pkg_manager: string;
+            init_system: string;
+            container_runtimes: string[];
+        };
+        /** @description Unknown values are null, never zero. */
+        Health: {
+            /** Format: date-time */
+            checked_at: string;
+            /** @description The last check is older than three status intervals */
+            stale: boolean;
+            reachable: boolean;
+            uptime_s: number | null;
+            load1: number | null;
+            mem_used_pct: number | null;
+            max_fs_used_pct: number | null;
+            max_fs_mount: string;
+            /** @description Null when systemd isn't running */
+            failed_units: number | null;
+            failed_unit_names: string[];
+            reboot_required: boolean | null;
+            reboot_reason: string;
+            updates_available: number | null;
+            security_updates: number | null;
+            /** Format: date-time */
+            updates_checked_at: string | null;
+            last_error: string;
+            last_error_class: string;
+        };
+        HostFacts: {
+            /** Format: date-time */
+            collected_at: string | null;
+            /** @description Full discovery result (filesystems, interfaces, services, ports, warnings, ...). */
+            facts: {
+                [key: string]: unknown;
+            } | null;
+            addresses: {
+                address: string;
+                family: number;
+                interface: string;
+                /** @enum {string} */
+                source: "configured" | "discovered" | "dns";
+                /** Format: date-time */
+                first_seen_at: string;
+                /** Format: date-time */
+                last_seen_at: string;
+            }[];
         };
     };
     responses: {
@@ -1790,6 +1905,56 @@ export interface operations {
             404: components["responses"]["Problem"];
         };
     };
+    getHostFacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Facts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostFacts"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    refreshHost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated host and discovery warnings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        host: components["schemas"]["Host"];
+                        warnings: string[];
+                    };
+                };
+            };
+            409: components["responses"]["Problem"];
+            502: components["responses"]["Problem"];
+        };
+    };
     listGroups: {
         parameters: {
             query?: never;
@@ -1922,6 +2087,8 @@ export interface operations {
             content: {
                 "application/json": {
                     targets: components["schemas"]["TargetSpec"];
+                    /** @description Optional; hosts on which no step would run are marked `skip` with a reason. */
+                    steps?: components["schemas"]["Operation"][];
                 };
             };
         };

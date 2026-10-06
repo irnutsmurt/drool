@@ -19,6 +19,7 @@ import (
 	"drool/internal/engine"
 	"drool/internal/inventory"
 	"drool/internal/logging"
+	"drool/internal/poller"
 	"drool/internal/secrets"
 	"drool/internal/sshx"
 	"drool/internal/store"
@@ -40,6 +41,9 @@ type Deps struct {
 	Inventory *inventory.Service
 	Pool      *sshx.Pool
 	Engine    *engine.Engine
+	Poller    *poller.Poller // may be nil (tests)
+	// StaleAfter is how old a status check may be before it is shown as stale.
+	StaleAfter time.Duration
 }
 
 // Server is the HTTP API server.
@@ -116,6 +120,8 @@ func (s *Server) routes() []route {
 		{method: "POST", path: APIPrefix + "/hosts/{id}/hostkeys/scan", auth: authed, perm: auth.PermHostsWrite, h: s.handleScanHostKeys},
 		{method: "POST", path: APIPrefix + "/hosts/{id}/hostkeys/approve", auth: authed, perm: auth.PermHostKeysApprove, h: s.handleApproveHostKey},
 		{method: "POST", path: APIPrefix + "/hosts/{id}/probe", auth: authed, perm: auth.PermJobsExecute, h: s.handleProbeHost},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/refresh", auth: authed, perm: auth.PermJobsExecute, h: s.handleRefreshHost},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/facts", auth: authed, perm: auth.PermHostsRead, h: s.handleHostFacts},
 
 		{method: "GET", path: APIPrefix + "/groups", auth: authed, perm: auth.PermHostsRead, h: s.handleListGroups},
 		{method: "POST", path: APIPrefix + "/groups", auth: authed, perm: auth.PermHostsWrite, h: s.handleCreateGroup},
@@ -139,6 +145,9 @@ func (s *Server) routes() []route {
 
 // New builds the server.
 func New(d Deps) (*Server, error) {
+	if d.StaleAfter <= 0 {
+		d.StaleAfter = 15 * time.Minute
+	}
 	s := &Server{
 		d:            d,
 		log:          d.Logs.App,

@@ -20,6 +20,8 @@ type HostView struct {
 	Tags      []string
 	GroupIDs  []string
 	PinnedKey *db.SshHostKey
+	Facts     *db.HostFact
+	Health    *db.HostStatus
 }
 
 // HostFilter narrows ListHosts. Empty fields match everything.
@@ -53,6 +55,14 @@ func (s *Service) ListHosts(ctx context.Context, f HostFilter) ([]HostView, erro
 	if err != nil {
 		return nil, err
 	}
+	facts, err := q.ListHostFacts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	health, err := q.ListHostStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
 	byID := map[string]*HostView{}
 	views := make([]HostView, len(hosts))
 	for i, h := range hosts {
@@ -77,6 +87,16 @@ func (s *Service) ListHosts(ctx context.Context, f HostFilter) ([]HostView, erro
 	for i := range pinned {
 		if v := byID[pinned[i].HostID]; v != nil {
 			v.PinnedKey = &pinned[i]
+		}
+	}
+	for i := range facts {
+		if v := byID[facts[i].HostID]; v != nil {
+			v.Facts = &facts[i]
+		}
+	}
+	for i := range health {
+		if v := byID[health[i].HostID]; v != nil {
+			v.Health = &health[i]
 		}
 	}
 	out := views[:0]
@@ -125,6 +145,16 @@ func (s *Service) hostView(ctx context.Context, q *db.Queries, id string) (*Host
 	}
 	if k, err := q.GetPinnedHostKey(ctx, id); err == nil {
 		v.PinnedKey = &k
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if f, err := q.GetHostFacts(ctx, id); err == nil {
+		v.Facts = &f
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if h, err := q.GetHostStatus(ctx, id); err == nil {
+		v.Health = &h
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}

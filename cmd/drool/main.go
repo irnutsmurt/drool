@@ -30,6 +30,7 @@ import (
 	"drool/internal/engine"
 	"drool/internal/inventory"
 	"drool/internal/logging"
+	"drool/internal/poller"
 	"drool/internal/secrets"
 	"drool/internal/sshx"
 	"drool/internal/store"
@@ -306,10 +307,19 @@ func cmdServe(path string, explicit bool) error {
 	}
 	defer eng.Stop()
 
+	pollCfg := poller.Config{
+		StatusInterval:  cfg.Poller.StatusInterval,
+		UpdatesInterval: cfg.Poller.UpdatesInterval,
+		Workers:         cfg.Poller.Workers,
+	}
+	poll := poller.New(st, inv, eng.Locks(), eng.Saturated, logs.App, pollCfg)
+	go poll.Run(ctx)
+
 	srv, err := api.New(api.Deps{
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
 		UI: web.Dist(), Registry: reg, TLSMode: tlsRes.Mode,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
+		Poller: poll, StaleAfter: pollCfg.StaleAfter(),
 	})
 	if err != nil {
 		return err

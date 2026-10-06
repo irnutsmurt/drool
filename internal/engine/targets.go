@@ -18,6 +18,7 @@ type TargetHost struct {
 	Name    string `json:"name"`
 	Status  string `json:"status"`
 	Warning string `json:"warning,omitempty"`
+	Skip    bool   `json:"skip,omitempty"` // no step applies to this host
 }
 
 // ValidationError is a user-correctable problem with a job spec.
@@ -112,4 +113,36 @@ func ResolveTargets(ctx context.Context, q *db.Queries, t model.TargetSpec) ([]T
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, warnings, nil
+}
+
+// AnnotateSkips marks hosts on which no step would run, using stored facts.
+func AnnotateSkips(ctx context.Context, q *db.Queries, hosts []TargetHost, steps []model.Operation) error {
+	spec := model.JobSpec{Steps: steps}
+	if !spec.NeedsFacts() {
+		return nil
+	}
+	facts, err := q.ListHostFacts(ctx)
+	if err != nil {
+		return err
+	}
+	byHost := map[string]model.HostOS{}
+	for _, f := range facts {
+		byHost[f.HostID] = model.HostOS{Family: f.OsFamily, Distro: f.Distro, Known: f.OsFamily != "" && f.OsFamily != "unknown"}
+	}
+	for i := range hosts {
+		var reasons []string
+		runs := false
+		for n, s := range steps {
+			if _, ok, why := s.ForHost(byHost[hosts[i].ID]); ok {
+				runs = true
+			} else {
+				reasons = append(reasons, fmt.Sprintf("step %d: %s", n+1, why))
+			}
+		}
+		if !runs {
+			hosts[i].Warning = "will be skipped: " + reasons[0]
+			hosts[i].Skip = true
+		}
+	}
+	return nil
 }

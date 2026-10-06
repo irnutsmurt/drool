@@ -14,9 +14,6 @@ SELECT * FROM host_facts WHERE host_id = ?;
 -- name: ListHostFacts :many
 SELECT * FROM host_facts;
 
--- name: DeleteDiscoveredAddresses :exec
-DELETE FROM host_addresses WHERE host_id = ? AND source = 'discovered';
-
 -- name: GetHostStatus :one
 SELECT * FROM host_status WHERE host_id = ?;
 
@@ -44,3 +41,12 @@ UPDATE host_status SET updates_available = ?, security_updates = ?, updates_chec
 
 -- name: UpdateStatusRefreshed :exec
 UPDATE host_status SET metadata_refreshed_at = ? WHERE host_id = ?;
+
+-- name: UpsertDiscoveredAddress :exec
+-- Never changes the source of an existing (e.g. configured) address.
+INSERT INTO host_addresses (host_id, address, family, interface, source, first_seen_at, last_seen_at)
+VALUES (?, ?, ?, ?, 'discovered', ?, ?)
+ON CONFLICT (host_id, address) DO UPDATE SET last_seen_at = excluded.last_seen_at, interface = excluded.interface;
+
+-- name: DeleteStaleDiscoveredAddresses :exec
+DELETE FROM host_addresses WHERE host_id = ? AND source = 'discovered' AND last_seen_at < ?;

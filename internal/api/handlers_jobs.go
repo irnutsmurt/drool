@@ -86,7 +86,8 @@ func (s *Server) jobError(err error) *Problem {
 }
 
 type previewRequest struct {
-	Targets model.TargetSpec `json:"targets"`
+	Targets model.TargetSpec  `json:"targets"`
+	Steps   []model.Operation `json:"steps"` // optional: annotate hosts that would be skipped
 }
 
 type previewResponse struct {
@@ -104,6 +105,18 @@ func (s *Server) handlePreviewJob(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeProblem(w, r, s.jobError(err))
 		return
+	}
+	if len(req.Steps) > 0 {
+		for i := range req.Steps {
+			if err := req.Steps[i].Normalize(); err != nil {
+				writeProblem(w, r, errValidation(fmt.Sprintf("step %d: %v", i+1, err)))
+				return
+			}
+		}
+		if err := engine.AnnotateSkips(r.Context(), s.d.Store.R, hosts, req.Steps); err != nil {
+			writeProblem(w, r, errInternal)
+			return
+		}
 	}
 	if hosts == nil {
 		hosts = []engine.TargetHost{}

@@ -24,6 +24,16 @@ import (
 // fakeResolver resolves any host to a target with a known sudo password.
 type fakeResolver struct{}
 
+func (fakeResolver) HostOS(_ context.Context, id string) (model.HostOS, error) {
+	switch {
+	case strings.HasPrefix(id, "deb"):
+		return model.HostOS{Family: "debian", Distro: "ubuntu", Known: true}, nil
+	case strings.HasPrefix(id, "rh"):
+		return model.HostOS{Family: "redhat", Distro: "rocky", Known: true}, nil
+	}
+	return model.HostOS{}, nil
+}
+
 func (fakeResolver) Resolve(_ context.Context, id string, _ bool) (*inventory.Conn, error) {
 	return &inventory.Conn{Target: &sshx.Target{HostID: id, Name: id},
 		Become: sshdriver.Become{Method: "sudo", Password: "s3cret-sudo-pw"}}, nil
@@ -467,4 +477,55 @@ func TestTargetResolution(t *testing.T) {
 	if _, _, err := ResolveTargets(ctx, v.st.R, model.TargetSpec{Hosts: []string{"nope"}}); err == nil {
 		t.Fatal("unknown host accepted")
 	}
+}
+
+func TestWhenAndPerOSScripts(t *testing.T) {
+	v := newEnv(t, Config{}, "deb1", "rh1", "unk1")
+	var mu sync.Mutex
+	ran := map[string][]string{}
+	v.exec.do = nil
+	exec := &recordingExec{fakeExec: v.exec, record: func(host, what string) {
+		mu.Lock()
+		ran[host] = append(ran[host], what)
+		mu.Unlock()
+	}}
+	v.e.exec = exec
+	spec := model.JobSpec{
+		Steps: []model.Operation{
+			{Type: model.OpScript, Script: &model.ScriptOp{Body: model.ScriptBody{ByOS: map[string]string{
+				"debian": "echo debian", "redhat": "echo redhat"}}}},
+			{Type: model.OpCommand, Command: &model.CommandOp{Command: "apt-get -v", When: &model.When{OSFamily: []string{"debian"}}}},
+		},
+		Targets: model.TargetSpec{Hosts: []string{"deb1", "rh1", "unk1"}},
+	}
+	job := v.run(spec)
+	v.wait(job)
+	hs := v.hosts(job)
+	if got := strings.Join(ran["deb1"], "|"); got != "echo debian|apt-get -v" {
+		t.Fatalf("deb1 ran %q", got)
+	}
+	if got := strings.Join(ran["rh1"], "|"); got != "echo redhat" || hs["rh1"].State != HostSucceeded ||
+		!strings.Contains(hs["rh1"].ErrorMessage, "step 2") {
+		t.Fatalf("rh1 ran %q state %s msg %q", got, hs["rh1"].State, hs["rh1"].ErrorMessage)
+	}
+	if len(ran["unk1"]) != 0 || hs["unk1"].State != HostSkipped || !strings.Contains(hs["unk1"].ErrorMessage, "facts unknown") {
+		t.Fatalf("unk1 ran %v state %s msg %q", ran["unk1"], hs["unk1"].State, hs["unk1"].ErrorMessage)
+	}
+}
+
+// recordingExec records which body or command each host executed.
+type recordingExec struct {
+	*fakeExec
+	record func(host, what string)
+}
+
+func (r *recordingExec) Execute(ctx context.Context, t *sshx.Target, _ sshdriver.Become, op model.Operation,
+	_ driver.OutputSink, started func()) (*driver.OpResult, error) {
+	started()
+	if op.Type == model.OpScript {
+		r.record(t.HostID, op.Script.Body.Text)
+	} else {
+		r.record(t.HostID, op.Command.Command)
+	}
+	return ok()
 }

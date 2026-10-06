@@ -10,12 +10,17 @@ import (
 	"database/sql"
 )
 
-const deleteDiscoveredAddresses = `-- name: DeleteDiscoveredAddresses :exec
-DELETE FROM host_addresses WHERE host_id = ? AND source = 'discovered'
+const deleteStaleDiscoveredAddresses = `-- name: DeleteStaleDiscoveredAddresses :exec
+DELETE FROM host_addresses WHERE host_id = ? AND source = 'discovered' AND last_seen_at < ?
 `
 
-func (q *Queries) DeleteDiscoveredAddresses(ctx context.Context, hostID string) error {
-	_, err := q.db.ExecContext(ctx, deleteDiscoveredAddresses, hostID)
+type DeleteStaleDiscoveredAddressesParams struct {
+	HostID     string
+	LastSeenAt int64
+}
+
+func (q *Queries) DeleteStaleDiscoveredAddresses(ctx context.Context, arg DeleteStaleDiscoveredAddressesParams) error {
+	_, err := q.db.ExecContext(ctx, deleteStaleDiscoveredAddresses, arg.HostID, arg.LastSeenAt)
 	return err
 }
 
@@ -204,6 +209,34 @@ func (q *Queries) UpdateStatusUpdates(ctx context.Context, arg UpdateStatusUpdat
 		arg.RebootRequired,
 		arg.RebootReason,
 		arg.HostID,
+	)
+	return err
+}
+
+const upsertDiscoveredAddress = `-- name: UpsertDiscoveredAddress :exec
+INSERT INTO host_addresses (host_id, address, family, interface, source, first_seen_at, last_seen_at)
+VALUES (?, ?, ?, ?, 'discovered', ?, ?)
+ON CONFLICT (host_id, address) DO UPDATE SET last_seen_at = excluded.last_seen_at, interface = excluded.interface
+`
+
+type UpsertDiscoveredAddressParams struct {
+	HostID      string
+	Address     string
+	Family      int64
+	Interface   string
+	FirstSeenAt int64
+	LastSeenAt  int64
+}
+
+// Never changes the source of an existing (e.g. configured) address.
+func (q *Queries) UpsertDiscoveredAddress(ctx context.Context, arg UpsertDiscoveredAddressParams) error {
+	_, err := q.db.ExecContext(ctx, upsertDiscoveredAddress,
+		arg.HostID,
+		arg.Address,
+		arg.Family,
+		arg.Interface,
+		arg.FirstSeenAt,
+		arg.LastSeenAt,
 	)
 	return err
 }

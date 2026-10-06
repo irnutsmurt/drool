@@ -491,6 +491,43 @@ paths:
               schema: { $ref: '#/components/schemas/ProbeResult' }
         '404': { $ref: '#/components/responses/Problem' }
 
+  /hosts/{id}/facts:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getHostFacts
+      tags: [hosts]
+      description: Full discovered facts and known addresses. `facts` is null before the first discovery.
+      responses:
+        '200':
+          description: Facts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HostFacts' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/refresh:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: refreshHost
+      tags: [hosts]
+      description: |
+        Run discovery, a status check and an update check now (from the package cache; no metadata
+        refresh). Returns 409 if a job holds the host. Requires `jobs.execute`.
+      responses:
+        '200':
+          description: Updated host and discovery warnings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [host, warnings]
+                properties:
+                  host: { $ref: '#/components/schemas/Host' }
+                  warnings: { type: array, items: { type: string } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '502': { $ref: '#/components/responses/Problem' }
+
   /groups:
     get:
       operationId: listGroups
@@ -573,6 +610,10 @@ paths:
               required: [targets]
               properties:
                 targets: { $ref: '#/components/schemas/TargetSpec' }
+                steps:
+                  type: array
+                  description: Optional; hosts on which no step would run are marked `skip` with a reason.
+                  items: { $ref: '#/components/schemas/Operation' }
       responses:
         '200':
           description: Resolved hosts.
@@ -998,7 +1039,7 @@ components:
       type: object
       required: [id, name, description, address, port, user, credential_id, become_method, become_credential_id,
                  needs_pty, jump_only, via_host_id, status, status_detail, last_probe_at, tags, group_ids,
-                 pinned_key, created_at, updated_at]
+                 pinned_key, facts, health, created_at, updated_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -1020,6 +1061,15 @@ components:
         pinned_key:
           oneOf:
             - $ref: '#/components/schemas/HostKey'
+            - type: 'null'
+        facts:
+          oneOf:
+            - $ref: '#/components/schemas/FactsSummary'
+            - type: 'null'
+        health:
+          description: Latest polled status (null before the first check).
+          oneOf:
+            - $ref: '#/components/schemas/Health'
             - type: 'null'
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
@@ -1101,6 +1151,7 @@ components:
         become: { type: boolean, description: Run with sudo }
         read_only: { type: boolean, description: Allows running alongside other jobs on the same host }
         timeout_s: { type: integer, minimum: 1, maximum: 86400, default: 300 }
+        when: { $ref: '#/components/schemas/When' }
 
     ScriptOp:
       type: object
@@ -1109,7 +1160,13 @@ components:
       properties:
         type: { type: string, enum: [script] }
         interpreter: { type: string, enum: [sh, bash], default: sh }
-        body: { type: string }
+        body:
+          description: One script, or per-OS variants keyed by OS family or distro id, with optional `default`.
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: { type: string }
+        when: { $ref: '#/components/schemas/When' }
         become: { type: boolean }
         read_only: { type: boolean }
         timeout_s: { type: integer, minimum: 1, maximum: 86400, default: 600 }
@@ -1155,6 +1212,7 @@ components:
         name: { type: string }
         status: { $ref: '#/components/schemas/HostStatus' }
         warning: { type: string }
+        skip: { type: boolean }
 
     JobPreview:
       type: object
@@ -1235,3 +1293,77 @@ components:
               ts: { type: string, format: date-time }
         next_seq: { type: integer }
         more: { type: boolean }
+
+    When:
+      type: object
+      description: Run the step only on hosts whose discovered facts match. Unknown facts never match.
+      additionalProperties: false
+      properties:
+        os_family: { type: array, items: { type: string, enum: [debian, redhat, suse, arch] } }
+        distro: { type: array, items: { type: string }, description: 'os-release ID, e.g. ubuntu, rocky' }
+
+    FactsSummary:
+      type: object
+      required: [collected_at, os_family, distro, distro_version, distro_name, kernel, arch, hostname,
+                 cpu_count, mem_bytes, pkg_manager, init_system, container_runtimes]
+      properties:
+        collected_at: { type: string, format: date-time }
+        os_family: { type: string }
+        distro: { type: string }
+        distro_version: { type: string }
+        distro_name: { type: string }
+        kernel: { type: string }
+        arch: { type: string }
+        hostname: { type: string }
+        cpu_count: { type: [integer, 'null'] }
+        mem_bytes: { type: [integer, 'null'] }
+        pkg_manager: { type: string }
+        init_system: { type: string }
+        container_runtimes: { type: array, items: { type: string } }
+
+    Health:
+      type: object
+      description: Unknown values are null, never zero.
+      required: [checked_at, stale, reachable, uptime_s, load1, mem_used_pct, max_fs_used_pct, max_fs_mount,
+                 failed_units, failed_unit_names, reboot_required, reboot_reason, updates_available,
+                 security_updates, updates_checked_at, last_error, last_error_class]
+      properties:
+        checked_at: { type: string, format: date-time }
+        stale: { type: boolean, description: The last check is older than three status intervals }
+        reachable: { type: boolean }
+        uptime_s: { type: [integer, 'null'] }
+        load1: { type: [number, 'null'] }
+        mem_used_pct: { type: [number, 'null'] }
+        max_fs_used_pct: { type: [number, 'null'] }
+        max_fs_mount: { type: string }
+        failed_units: { type: [integer, 'null'], description: Null when systemd isn't running }
+        failed_unit_names: { type: array, items: { type: string } }
+        reboot_required: { type: [boolean, 'null'] }
+        reboot_reason: { type: string }
+        updates_available: { type: [integer, 'null'] }
+        security_updates: { type: [integer, 'null'] }
+        updates_checked_at: { type: [string, 'null'], format: date-time }
+        last_error: { type: string }
+        last_error_class: { type: string }
+
+    HostFacts:
+      type: object
+      required: [collected_at, facts, addresses]
+      properties:
+        collected_at: { type: [string, 'null'], format: date-time }
+        facts:
+          description: Full discovery result (filesystems, interfaces, services, ports, warnings, ...).
+          type: [object, 'null']
+          additionalProperties: true
+        addresses:
+          type: array
+          items:
+            type: object
+            required: [address, family, interface, source, first_seen_at, last_seen_at]
+            properties:
+              address: { type: string }
+              family: { type: integer }
+              interface: { type: string }
+              source: { type: string, enum: [configured, discovered, dns] }
+              first_seen_at: { type: string, format: date-time }
+              last_seen_at: { type: string, format: date-time }

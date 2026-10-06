@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"strings"
 	"sync"
 	"time"
 
@@ -65,6 +66,7 @@ type Executor interface {
 // Resolver turns a host id into connection details.
 type Resolver interface {
 	Resolve(ctx context.Context, hostID string, requirePinned bool) (*inventory.Conn, error)
+	HostOS(ctx context.Context, hostID string) (model.HostOS, error)
 }
 
 // Config tunes the engine.
@@ -141,6 +143,10 @@ func New(st *store.Store, inv Resolver, exec Executor, aw *audit.Writer, log *sl
 
 // Hub exposes job events for SSE.
 func (e *Engine) Hub() *Hub { return e.hub }
+
+// Saturated reports whether every global job worker is busy; background
+// polling yields while it is (decision D6).
+func (e *Engine) Saturated() bool { return len(e.global) >= cap(e.global) }
 
 // Locks exposes the host lock manager (shared with the status poller later).
 func (e *Engine) Locks() *lock.Manager { return e.locks }
@@ -548,7 +554,22 @@ func (e *Engine) runHost(jr *jobRun, h db.JobHost) {
 	secrets := []string{conn.Target.Password, conn.Become.Password}
 	var last *driver.OpResult
 
-	for i, step := range jr.spec.Steps {
+	var hostOS model.HostOS
+	if jr.spec.NeedsFacts() {
+		if hostOS, err = e.inv.HostOS(ctx, h.HostID); err != nil {
+			e.hostFailed(jr, h, nil, err)
+			return
+		}
+	}
+	ran := 0
+	var skipped []string
+	for i, spec := range jr.spec.Steps {
+		step, applies, why := spec.ForHost(hostOS)
+		if !applies {
+			skipped = append(skipped, fmt.Sprintf("step %d: %s", i+1, why))
+			continue
+		}
+		ran++
 		meta := step.Meta()
 		for attempt := 1; ; attempt++ {
 			e.setState(jr.id, h, HostConnecting, i, attempt, nil)
@@ -586,7 +607,17 @@ func (e *Engine) runHost(jr *jobRun, h db.JobHost) {
 			return
 		}
 	}
-	e.finishHost(jr.id, h, HostSucceeded, last, nil)
+	if ran == 0 {
+		e.finishHost(jr.id, h, HostSkipped, nil, &model.OpError{Class: model.ClassValidation,
+			Message: "skipped: " + strings.Join(skipped, "; "),
+			Hint:    "Conditions are evaluated against discovered facts; refresh the host's inventory if they look wrong."})
+		return
+	}
+	var note error
+	if len(skipped) > 0 {
+		note = &model.OpError{Class: "", Message: "some steps were skipped: " + strings.Join(skipped, "; ")}
+	}
+	e.finishHost(jr.id, h, HostSucceeded, last, note)
 	jr.mu.Lock()
 	jr.breakerCount, jr.breakerClass = 0, ""
 	jr.mu.Unlock()

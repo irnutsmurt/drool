@@ -40,15 +40,17 @@ type CommandOp struct {
 	Become   bool   `json:"become"`
 	ReadOnly bool   `json:"read_only"`
 	TimeoutS int    `json:"timeout_s"`
+	When     *When  `json:"when,omitempty"`
 }
 
 // ScriptOp runs a script body with an interpreter.
 type ScriptOp struct {
-	Interpreter string `json:"interpreter"` // sh | bash
-	Body        string `json:"body"`
-	Become      bool   `json:"become"`
-	ReadOnly    bool   `json:"read_only"`
-	TimeoutS    int    `json:"timeout_s"`
+	Interpreter string     `json:"interpreter"` // sh | bash
+	Body        ScriptBody `json:"body"`
+	Become      bool       `json:"become"`
+	ReadOnly    bool       `json:"read_only"`
+	TimeoutS    int        `json:"timeout_s"`
+	When        *When      `json:"when,omitempty"`
 }
 
 // Limits.
@@ -125,6 +127,9 @@ func (o *Operation) Normalize() error {
 		if len(c.Command) > MaxCommandBytes {
 			return fmt.Errorf("command is longer than %d bytes", MaxCommandBytes)
 		}
+		if err := c.When.normalize(); err != nil {
+			return err
+		}
 		return normTimeout(&c.TimeoutS, 300)
 	case OpScript:
 		s := o.Script
@@ -134,11 +139,11 @@ func (o *Operation) Normalize() error {
 		if s.Interpreter != "sh" && s.Interpreter != "bash" {
 			return errors.New("interpreter must be sh or bash")
 		}
-		if strings.TrimSpace(s.Body) == "" {
-			return errors.New("script body must not be empty")
+		if err := s.Body.normalize(); err != nil {
+			return err
 		}
-		if len(s.Body) > MaxScriptBytes {
-			return fmt.Errorf("script is longer than %d bytes", MaxScriptBytes)
+		if err := s.When.normalize(); err != nil {
+			return err
 		}
 		return normTimeout(&s.TimeoutS, 600)
 	}
@@ -188,7 +193,10 @@ func (o Operation) Summary() string {
 	case OpCommand:
 		return o.Command.Command
 	case OpScript:
-		first, _, _ := strings.Cut(strings.TrimSpace(o.Script.Body), "\n")
+		if o.Script.Body.ByOS != nil {
+			return o.Script.Interpreter + " script (" + strings.Join(o.Script.Body.Keys(), "/") + ")"
+		}
+		first, _, _ := strings.Cut(strings.TrimSpace(o.Script.Body.Text), "\n")
 		return o.Script.Interpreter + " script: " + first
 	}
 	return o.Type
