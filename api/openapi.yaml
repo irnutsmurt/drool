@@ -254,6 +254,311 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SystemInfo' }
 
+  /secrets:
+    get:
+      operationId: listSecrets
+      tags: [credentials]
+      description: 'Credential metadata (values are never returned). Requires `credentials.use`.'
+      responses:
+        '200':
+          description: Credentials.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Credential' } }
+    post:
+      operationId: createSecret
+      tags: [credentials]
+      description: |
+        Requires `credentials.manage`. For `ssh_private_key`, either paste a key in `value`
+        (with `passphrase` if it is encrypted; the passphrase is not stored) or set `generate`
+        to create a new ed25519 key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCredentialRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Credential' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /secrets/controller-ssh-key:
+    get:
+      operationId: getControllerKey
+      tags: [credentials]
+      description: The controller's default SSH public key and a command to install it on a host.
+      responses:
+        '200':
+          description: Controller key.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ControllerKey' }
+  /secrets/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getSecret
+      tags: [credentials]
+      responses:
+        '200':
+          description: Credential.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Credential' }
+        '404': { $ref: '#/components/responses/Problem' }
+    patch:
+      operationId: updateSecret
+      tags: [credentials]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateCredentialRequest' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Credential' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: deleteSecret
+      tags: [credentials]
+      responses:
+        '204': { description: Deleted. }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /hosts:
+    get:
+      operationId: listHosts
+      tags: [hosts]
+      parameters:
+        - { name: q, in: query, description: Substring of name, address or description, schema: { type: string } }
+        - { name: tag, in: query, schema: { type: string } }
+        - { name: group, in: query, description: Group id, schema: { type: string } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/HostStatus' } }
+      responses:
+        '200':
+          description: Hosts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Host' } }
+    post:
+      operationId: createHost
+      tags: [hosts]
+      description: |
+        New hosts start in `pending_hostkey`. Scan and approve the host key, then run a
+        connection test. `credential_id` defaults to the controller key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HostRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Host' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getHost
+      tags: [hosts]
+      responses:
+        '200':
+          description: Host.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Host' }
+        '404': { $ref: '#/components/responses/Problem' }
+    patch:
+      operationId: updateHost
+      tags: [hosts]
+      description: Changing the address or port retires the pinned host key; it must be approved again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HostRequest' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Host' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: deleteHost
+      tags: [hosts]
+      responses:
+        '204': { description: Deleted. }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/hostkeys:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: listHostKeys
+      tags: [hosts]
+      responses:
+        '200':
+          description: Pinned, offered and retired keys.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/HostKey' } }
+  /hosts/{id}/hostkeys/scan:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: scanHostKeys
+      tags: [hosts]
+      description: Connects without authenticating and records the offered host keys for review.
+      responses:
+        '200':
+          description: All keys for the host after the scan.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/HostKey' } }
+        '502': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/hostkeys/approve:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: approveHostKey
+      tags: [hosts]
+      description: 'Pin an offered key by id, or by an expected fingerprint obtained out of band. Requires `hostkeys.approve`.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                key_id: { type: string }
+                fingerprint: { type: string, example: 'SHA256:...' }
+      responses:
+        '200':
+          description: Pinned key.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HostKey' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/probe:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: probeHost
+      tags: [hosts]
+      description: |
+        Connection test over a fresh connection: reachability, host key, authentication,
+        privilege escalation, Linux and systemd. Changes nothing on the host; updates the
+        host's status. Requires `jobs.execute`.
+      responses:
+        '200':
+          description: Probe result (also returned when checks fail).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProbeResult' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /groups:
+    get:
+      operationId: listGroups
+      tags: [groups]
+      responses:
+        '200':
+          description: Groups.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Group' } }
+    post:
+      operationId: createGroup
+      tags: [groups]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GroupRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Group' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /groups/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getGroup
+      tags: [groups]
+      responses:
+        '200':
+          description: Group.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Group' }
+        '404': { $ref: '#/components/responses/Problem' }
+    patch:
+      operationId: updateGroup
+      tags: [groups]
+      description: '`host_ids`, when present, replaces the members.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GroupRequest' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Group' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: deleteGroup
+      tags: [groups]
+      responses:
+        '204': { description: Deleted. }
+        '404': { $ref: '#/components/responses/Problem' }
+
 components:
   securitySchemes:
     session: { type: apiKey, in: cookie, name: fm_session }
@@ -428,3 +733,159 @@ components:
         insecure_plaintext: { type: boolean }
         config_file: { type: string }
         config: { type: array, items: { $ref: '#/components/schemas/ConfigValue' } }
+
+    CredentialKind:
+      type: string
+      enum: [ssh_private_key, password, sudo_password]
+
+    HostRef:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+
+    Credential:
+      type: object
+      required: [id, name, kind, description, used_by, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        kind: { $ref: '#/components/schemas/CredentialKind' }
+        description: { type: string }
+        public_key: { type: string, description: authorized_keys line for SSH keys }
+        used_by: { type: array, items: { $ref: '#/components/schemas/HostRef' } }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateCredentialRequest:
+      type: object
+      required: [name, kind]
+      additionalProperties: false
+      properties:
+        name: { type: string, pattern: '^[A-Za-z0-9._-]{1,64}$' }
+        kind: { $ref: '#/components/schemas/CredentialKind' }
+        description: { type: string }
+        value: { type: string, format: password }
+        passphrase: { type: string, format: password }
+        generate: { type: boolean }
+
+    UpdateCredentialRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string }
+        description: { type: string }
+        value: { type: string, format: password }
+        passphrase: { type: string, format: password }
+        generate: { type: boolean }
+
+    ControllerKey:
+      type: object
+      required: [credential_id, public_key, install_command]
+      properties:
+        credential_id: { type: string }
+        public_key: { type: string }
+        install_command: { type: string }
+
+    HostStatus:
+      type: string
+      enum: [pending_hostkey, untested, ready, unreachable, hostkey_mismatch, auth_failed, unsupported, disabled]
+
+    HostKey:
+      type: object
+      required: [id, type, fingerprint, status, first_seen_at, last_seen_at, decided_at]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        fingerprint: { type: string }
+        status: { type: string, enum: [offered, pinned, retired] }
+        first_seen_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        decided_at: { type: [string, 'null'], format: date-time }
+
+    Host:
+      type: object
+      required: [id, name, description, address, port, user, credential_id, become_method, become_credential_id,
+                 needs_pty, jump_only, via_host_id, status, status_detail, last_probe_at, tags, group_ids,
+                 pinned_key, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        address: { type: string }
+        port: { type: integer }
+        user: { type: string }
+        credential_id: { type: string }
+        become_method: { type: string, enum: [sudo, none] }
+        become_credential_id: { type: [string, 'null'] }
+        needs_pty: { type: boolean }
+        jump_only: { type: boolean }
+        via_host_id: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/HostStatus' }
+        status_detail: { type: string }
+        last_probe_at: { type: [string, 'null'], format: date-time }
+        tags: { type: array, items: { type: string } }
+        group_ids: { type: array, items: { type: string } }
+        pinned_key:
+          oneOf:
+            - $ref: '#/components/schemas/HostKey'
+            - type: 'null'
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    HostRequest:
+      type: object
+      additionalProperties: false
+      description: For create, name, address and user are required. For PATCH, omitted fields are unchanged.
+      properties:
+        name: { type: string }
+        description: { type: string }
+        address: { type: string }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        user: { type: string }
+        credential_id: { type: string }
+        become_method: { type: string, enum: [sudo, none] }
+        become_credential_id: { type: [string, 'null'], description: Empty or null means passwordless sudo }
+        needs_pty: { type: boolean }
+        jump_only: { type: boolean }
+        via_host_id: { type: [string, 'null'], description: Jump host id; empty or null for direct }
+        tags: { type: array, items: { type: string } }
+        group_ids: { type: array, items: { type: string } }
+
+    ProbeStep:
+      type: object
+      required: [name, status]
+      properties:
+        name: { type: string }
+        status: { type: string, enum: [ok, failed, skipped] }
+        detail: { type: string }
+        error_class: { type: string }
+        hint: { type: string }
+
+    ProbeResult:
+      type: object
+      required: [ok, steps, host]
+      properties:
+        ok: { type: boolean }
+        steps: { type: array, items: { $ref: '#/components/schemas/ProbeStep' } }
+        host: { $ref: '#/components/schemas/Host' }
+
+    Group:
+      type: object
+      required: [id, name, description, host_ids, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        host_ids: { type: array, items: { type: string } }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    GroupRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string }
+        description: { type: string }
+        host_ids: { type: array, items: { type: string } }

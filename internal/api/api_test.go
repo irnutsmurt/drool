@@ -21,8 +21,12 @@ import (
 	"fleetmgr/internal/audit"
 	"fleetmgr/internal/auth"
 	"fleetmgr/internal/config"
+	"fleetmgr/internal/inventory"
 	"fleetmgr/internal/logging"
+	"fleetmgr/internal/secrets"
+	"fleetmgr/internal/sshx"
 	"fleetmgr/internal/store"
+	"fleetmgr/internal/store/db"
 )
 
 const pw = "correct horse battery"
@@ -51,8 +55,17 @@ func newHarness(t *testing.T) *harness {
 	}
 	logs := logging.Discard()
 	authSvc := auth.NewService(st, auth.Options{IdleTimeout: time.Hour, AbsoluteTimeout: 24 * time.Hour})
+	auditW := audit.NewWriter(st, logs.Audit)
+	secretSvc := secrets.NewService(st, secrets.NewBoxForTest())
+	if _, _, err := secretSvc.EnsureControllerKey(context.Background(), func(*db.Queries, db.Secret) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	dialer := &sshx.Dialer{DialTimeout: 3 * time.Second}
+	pool := sshx.NewPool(dialer)
+	t.Cleanup(pool.Close)
 	srv, err := New(Deps{
-		Config: cfg, Store: st, Auth: authSvc, Audit: audit.NewWriter(st, logs.Audit), Logs: logs,
+		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
+		Secrets: secretSvc, Inventory: inventory.NewService(st, secretSvc, dialer, pool), Pool: pool,
 		UI: fstest.MapFS{
 			"index.html":    {Data: []byte("<!doctype html><title>ui</title>")},
 			"assets/app.js": {Data: []byte("console.log(1)")},

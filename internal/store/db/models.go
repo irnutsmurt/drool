@@ -34,6 +34,74 @@ type AuditEvent struct {
 	PrevHash    []byte
 }
 
+type Group struct {
+	ID          string
+	Name        string
+	Description string
+	CreatedAt   int64
+	UpdatedAt   int64
+}
+
+type GroupMember struct {
+	GroupID string
+	HostID  string
+}
+
+type Host struct {
+	ID                 string
+	Name               string
+	Description        string
+	ConnectAddress     string
+	ManagementMethod   string
+	SshPort            int64
+	SshUser            string
+	SshCredentialID    sql.NullString
+	BecomeMethod       string
+	BecomeCredentialID sql.NullString
+	SshNeedsPty        int64
+	JumpOnly           int64
+	Status             string
+	StatusDetail       string
+	LastProbeAt        sql.NullInt64
+	CreatedAt          int64
+	UpdatedAt          int64
+}
+
+type HostAddress struct {
+	HostID      string
+	Address     string
+	Family      int64
+	Interface   string
+	Source      string
+	FirstSeenAt int64
+	LastSeenAt  int64
+}
+
+type HostHop struct {
+	HostID    string
+	HopIndex  int64
+	ViaHostID string
+}
+
+type HostTag struct {
+	HostID string
+	Tag    string
+}
+
+type Secret struct {
+	ID          string
+	Name        string
+	Kind        string
+	Ciphertext  []byte
+	Nonce       []byte
+	KeyVersion  int64
+	PublicPart  string
+	Description string
+	CreatedBy   sql.NullString
+	CreatedAt   int64
+	UpdatedAt   int64
+}
+
 type Session struct {
 	TokenHash  []byte
 	UserID     string
@@ -58,6 +126,19 @@ type SetupCode struct {
 	CodeHash  []byte
 	CreatedAt int64
 	ExpiresAt sql.NullInt64
+}
+
+type SshHostKey struct {
+	ID                string
+	HostID            string
+	KeyType           string
+	PublicKey         []byte
+	FingerprintSha256 string
+	Status            string
+	FirstSeenAt       int64
+	LastSeenAt        int64
+	DecidedBy         sql.NullString
+	DecidedAt         sql.NullInt64
 }
 
 type User struct {

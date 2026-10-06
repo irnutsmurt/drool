@@ -8,10 +8,8 @@ import (
 	"regexp"
 	"strings"
 
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
-
 	"fleetmgr/internal/ids"
+	"fleetmgr/internal/store"
 	"fleetmgr/internal/store/db"
 )
 
@@ -239,10 +237,4 @@ func boolToInt(b bool) int64 {
 	return 0
 }
 
-func isUniqueViolation(err error) bool {
-	var se *sqlite.Error
-	if errors.As(err, &se) {
-		return se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE || se.Code() == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY
-	}
-	return false
-}
+func isUniqueViolation(err error) bool { return store.IsUniqueViolation(err) }

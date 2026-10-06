@@ -26,8 +26,12 @@ import (
 	"fleetmgr/internal/audit"
 	"fleetmgr/internal/auth"
 	"fleetmgr/internal/config"
+	"fleetmgr/internal/inventory"
 	"fleetmgr/internal/logging"
+	"fleetmgr/internal/secrets"
+	"fleetmgr/internal/sshx"
 	"fleetmgr/internal/store"
+	"fleetmgr/internal/store/db"
 	"fleetmgr/internal/tlsutil"
 	"fleetmgr/internal/version"
 	"fleetmgr/web"
@@ -263,9 +267,37 @@ func cmdServe(path string, explicit bool) error {
 	}
 	auditW := audit.NewWriter(st, logs.Audit)
 
+	box, created, insecureKey, err := secrets.LoadOrCreateBox(cfg.MasterKeyPath())
+	if err != nil {
+		return err
+	}
+	if created {
+		log.Info("generated credential master key", "file", cfg.MasterKeyPath())
+	}
+	if insecureKey {
+		logs.Security.Warn("master key file is readable by group or others; restrict it to the fleetmgr user (chmod 600)",
+			"file", cfg.MasterKeyPath())
+	}
+	secretSvc := secrets.NewService(st, box)
+	if _, created, err := secretSvc.EnsureControllerKey(ctx, func(q *db.Queries, row db.Secret) error {
+		_, err := auditW.RecordTx(ctx, q, audit.Event{Action: "credential.create", Actor: &audit.System,
+			TargetType: "credential", TargetID: row.ID,
+			Details: map[string]any{"name": row.Name, "kind": row.Kind, "generated": true}})
+		return err
+	}); err != nil {
+		return fmt.Errorf("controller SSH key: %w", err)
+	} else if created {
+		log.Info("generated controller SSH key", "credential", secrets.ControllerKeyName)
+	}
+	dialer := &sshx.Dialer{}
+	pool := sshx.NewPool(dialer)
+	defer pool.Close()
+	inv := inventory.NewService(st, secretSvc, dialer, pool)
+
 	srv, err := api.New(api.Deps{
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
 		UI: web.Dist(), Registry: reg, TLSMode: tlsRes.Mode,
+		Secrets: secretSvc, Inventory: inv, Pool: pool,
 	})
 	if err != nil {
 		return err

@@ -40,6 +40,7 @@ type Config struct {
 	DataDir   string    `yaml:"data_dir"`
 	Auth      Auth      `yaml:"auth"`
 	Setup     Setup     `yaml:"setup"`
+	Secrets   Secrets   `yaml:"secrets"`
 	Engine    Engine    `yaml:"engine"`
 	Poller    Poller    `yaml:"poller"`
 	Retention Retention `yaml:"retention"`
@@ -73,6 +74,20 @@ type Setup struct {
 	// Prefer SecretFile (e.g. a Docker secret) over putting it in the environment.
 	Secret     string `yaml:"secret"`
 	SecretFile string `yaml:"secret_file"`
+}
+
+// Secrets controls encryption of stored credentials.
+type Secrets struct {
+	// MasterKeyFile defaults to <data_dir>/master.key and is created on first start.
+	MasterKeyFile string `yaml:"master_key_file"`
+}
+
+// MasterKeyPath returns the effective master key file path.
+func (c Config) MasterKeyPath() string {
+	if c.Secrets.MasterKeyFile != "" {
+		return c.Secrets.MasterKeyFile
+	}
+	return filepath.Join(c.DataDir, "master.key")
 }
 
 type Engine struct {

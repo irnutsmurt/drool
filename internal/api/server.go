@@ -16,7 +16,10 @@ import (
 	"fleetmgr/internal/audit"
 	"fleetmgr/internal/auth"
 	"fleetmgr/internal/config"
+	"fleetmgr/internal/inventory"
 	"fleetmgr/internal/logging"
+	"fleetmgr/internal/secrets"
+	"fleetmgr/internal/sshx"
 	"fleetmgr/internal/store"
 	"fleetmgr/internal/store/db"
 )
@@ -31,6 +34,10 @@ type Deps struct {
 	UI       fs.FS // contents of web/dist; may lack index.html
 	Registry *prometheus.Registry
 	TLSMode  string
+
+	Secrets   *secrets.Service
+	Inventory *inventory.Service
+	Pool      *sshx.Pool
 }
 
 // Server is the HTTP API server.
@@ -90,6 +97,29 @@ func (s *Server) routes() []route {
 		{method: "GET", path: APIPrefix + "/audit", auth: authed, perm: auth.PermAuditRead, h: s.handleListAudit},
 
 		{method: "GET", path: APIPrefix + "/system/info", auth: authed, h: s.handleSystemInfo},
+
+		{method: "GET", path: APIPrefix + "/secrets", auth: authed, perm: auth.PermCredentialsUse, h: s.handleListSecrets},
+		{method: "POST", path: APIPrefix + "/secrets", auth: authed, perm: auth.PermCredentialsManage, h: s.handleCreateSecret},
+		{method: "GET", path: APIPrefix + "/secrets/controller-ssh-key", auth: authed, perm: auth.PermHostsRead, h: s.handleControllerKey},
+		{method: "GET", path: APIPrefix + "/secrets/{id}", auth: authed, perm: auth.PermCredentialsUse, h: s.handleGetSecret},
+		{method: "PATCH", path: APIPrefix + "/secrets/{id}", auth: authed, perm: auth.PermCredentialsManage, h: s.handleUpdateSecret},
+		{method: "DELETE", path: APIPrefix + "/secrets/{id}", auth: authed, perm: auth.PermCredentialsManage, h: s.handleDeleteSecret},
+
+		{method: "GET", path: APIPrefix + "/hosts", auth: authed, perm: auth.PermHostsRead, h: s.handleListHosts},
+		{method: "POST", path: APIPrefix + "/hosts", auth: authed, perm: auth.PermHostsWrite, h: s.handleCreateHost},
+		{method: "GET", path: APIPrefix + "/hosts/{id}", auth: authed, perm: auth.PermHostsRead, h: s.handleGetHost},
+		{method: "PATCH", path: APIPrefix + "/hosts/{id}", auth: authed, perm: auth.PermHostsWrite, h: s.handleUpdateHost},
+		{method: "DELETE", path: APIPrefix + "/hosts/{id}", auth: authed, perm: auth.PermHostsWrite, h: s.handleDeleteHost},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/hostkeys", auth: authed, perm: auth.PermHostsRead, h: s.handleListHostKeys},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/hostkeys/scan", auth: authed, perm: auth.PermHostsWrite, h: s.handleScanHostKeys},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/hostkeys/approve", auth: authed, perm: auth.PermHostKeysApprove, h: s.handleApproveHostKey},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/probe", auth: authed, perm: auth.PermJobsExecute, h: s.handleProbeHost},
+
+		{method: "GET", path: APIPrefix + "/groups", auth: authed, perm: auth.PermHostsRead, h: s.handleListGroups},
+		{method: "POST", path: APIPrefix + "/groups", auth: authed, perm: auth.PermHostsWrite, h: s.handleCreateGroup},
+		{method: "GET", path: APIPrefix + "/groups/{id}", auth: authed, perm: auth.PermHostsRead, h: s.handleGetGroup},
+		{method: "PATCH", path: APIPrefix + "/groups/{id}", auth: authed, perm: auth.PermHostsWrite, h: s.handleUpdateGroup},
+		{method: "DELETE", path: APIPrefix + "/groups/{id}", auth: authed, perm: auth.PermHostsWrite, h: s.handleDeleteGroup},
 	}
 }
 
