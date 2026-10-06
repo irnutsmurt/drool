@@ -6,8 +6,9 @@ and (later) intent-based network segmentation.
 - **Design:** [`DESIGN.md`](DESIGN.md) (product and trust architecture)
 - **Current implementation plan:** [`ARCHITECTURE-ALPHA.md`](ARCHITECTURE-ALPHA.md) (SSH-only Technical Alpha)
 
-Status: **M0 (skeleton)**. First-run setup, users, sessions, API tokens, audit log, config,
-health endpoints and the web UI shell work. Hosts and jobs arrive in M1–M2.
+Status: **M1 (SSH core)**. First-run setup, users, API tokens, audit log, encrypted
+credentials, hosts and groups, SSH host-key pinning, jump hosts and connection tests work.
+Jobs (running commands, updates) arrive in M2.
 
 ## Requirements
 

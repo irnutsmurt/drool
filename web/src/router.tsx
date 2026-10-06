@@ -7,6 +7,11 @@ import { DashboardPage } from "@/pages/DashboardPage";
 import { AuditPage } from "@/pages/AuditPage";
 import { PlaceholderPage } from "@/pages/PlaceholderPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
+import { HostsPage } from "@/pages/hosts/HostsPage";
+import { AddHostPage } from "@/pages/hosts/AddHostPage";
+import { HostDetailPage } from "@/pages/hosts/HostDetailPage";
+import { GroupsPage } from "@/pages/GroupsPage";
+import { CredentialsPage } from "@/pages/CredentialsPage";
 import { SettingsLayout } from "@/pages/settings/SettingsLayout";
 import { AccountPage } from "@/pages/settings/AccountPage";
 import { TokensPage } from "@/pages/settings/TokensPage";
@@ -25,10 +30,12 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <DashboardPage /> },
-      { path: "hosts", element: <PlaceholderPage title="Hosts" milestone="M1" /> },
-      { path: "groups", element: <PlaceholderPage title="Groups" milestone="M1" /> },
+      { path: "hosts", element: <RequirePermission permission="hosts.read"><HostsPage /></RequirePermission> },
+      { path: "hosts/new", element: <RequirePermission permission="hosts.write"><AddHostPage /></RequirePermission> },
+      { path: "hosts/:id", element: <RequirePermission permission="hosts.read"><HostDetailPage /></RequirePermission> },
+      { path: "groups", element: <RequirePermission permission="hosts.read"><GroupsPage /></RequirePermission> },
       { path: "jobs", element: <PlaceholderPage title="Jobs" milestone="M2" /> },
-      { path: "credentials", element: <PlaceholderPage title="Credentials" milestone="M1" /> },
+      { path: "credentials", element: <RequirePermission permission="credentials.use"><CredentialsPage /></RequirePermission> },
       { path: "audit", element: <RequirePermission permission="audit.read"><AuditPage /></RequirePermission> },
       {
         path: "settings",

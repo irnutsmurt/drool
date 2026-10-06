@@ -710,8 +710,8 @@ Secrets (metadata only)
 Hosts
   GET|POST          /hosts                             ?q= &tag= &group= &status= &os_family=
   GET|PATCH|DELETE  /hosts/{id}
-  POST              /hosts/{id}/hostkey/scan           → offered keys + fingerprints
-  POST              /hosts/{id}/hostkey/approve        {key_id}
+  POST              /hosts/{id}/hostkeys/scan          → offered keys + fingerprints
+  POST              /hosts/{id}/hostkeys/approve       {key_id} or {fingerprint}
   GET               /hosts/{id}/hostkeys
   POST              /hosts/{id}/probe                  → ProbeResult (step-by-step)
   GET               /hosts/{id}/facts
@@ -720,8 +720,7 @@ Hosts
 
 Groups
   GET|POST          /groups
-  GET|PATCH|DELETE  /groups/{id}
-  PUT               /groups/{id}/members               {host_ids: [...]}
+  GET|PATCH|DELETE  /groups/{id}                       PATCH {host_ids} replaces members
 
 Jobs
   POST   /jobs/preview               spec → resolved targets, skips (when), validation errors
@@ -905,3 +904,15 @@ Meaningful choices made during implementation, newest last.
 | M0.1 | Added `Dockerfile` (distroless, non-root, `/data` volume, logs to stdout) and `compose.yaml` | Makes the documented `docker compose up -d` flow real; minimal, no healthcheck yet |
 | M0.1 | Config keys ending in `.secret` are shown as `«redacted»` in `/system/info` | `setup.secret` must not be displayed |
 | M1 | Every successful mutation commits together with its audit record (`api.Server.inTxAudited`); services expose `XxxTx(ctx, q, ...)` variants. Expensive work (password hashing) happens before the transaction. Failed attempts are audited separately. Logout and the login session/audit pair stay as before (login fails closed if its audit write fails) | Closes the M0 gap; covered by a rollback test |
+| M1 | Host statuses `untested` (key approved, no test yet) and `unsupported` (reachable but not Linux/systemd) added | The original set had no state between approval and a successful test, and no way to express "reachable but unusable" |
+| M1 | Changing a host's address or port retires its pinned key and returns it to `pending_hostkey`. Other settings changes set `untested` | A new endpoint may be a different machine; the old key proves nothing about it |
+| M1 | Host key endpoints are `/hosts/{id}/hostkeys/scan` and `/approve`; approve accepts `key_id` or an expected `fingerprint` | Fingerprint approval supports "verify out of band, paste, done" without a second step |
+| M1 | A probe that sees a changed key records the presented key as `offered` (never pinned) and logs to the security stream; a jump host's changed key is reported on the jump host, not on hosts behind it | Admin decides; no silent trust |
+| M1 | New hosts default to the `controller-default` credential, and to `become: none` when the user is root | Simplest path: paste one public key; DESIGN §2.5 |
+| M1 | Group membership is replaced via `PATCH /groups/{id}` with `host_ids` (no separate `PUT /members`) | One endpoint, same semantics |
+| M1 | Imported encrypted private keys are decrypted once with the supplied passphrase and stored unencrypted inside the AES-GCM box; the passphrase is not stored | Encryption at rest is the box's job; storing passphrases would add a second secret with no benefit |
+| M1 | `POST /hosts/{id}/probe` requires `jobs.execute`; credential metadata requires `credentials.use`; the controller public key requires only `hosts.read` | Operators can test connectivity and pick credentials; the public key isn't secret |
+| M1 | Replacing a credential's value evicts pooled connections of every host using it | Otherwise pooled connections keep using the old credential until idle |
+| M1 | Password authentication also answers keyboard-interactive prompts with the stored password | Many distros' sshd only offer keyboard-interactive for passwords |
+| M1 | Pool: concurrent first requests share one dial (single-flight); a tunnelled connection holds a reference on its jump connection for its lifetime | Found in testing: bursts opened one connection per request, and an idle jump connection could be reaped under active tunnels |
+| M1 | Verified against real OpenSSH (Debian 12 containers): scan/approve through a jump host, passwordless sudo, host key rotation → `hostkey_mismatch`, unauthorized key → `auth_failed`, no systemd → `unsupported`; UI pages rendered in headless Chromium without runtime errors | The in-process test server can't catch OpenSSH-specific behavior. Note: Debian images bake host keys at build time, so containers from one image share keys, like cloned VMs |

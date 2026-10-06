@@ -1,0 +1,83 @@
+import { useMemo, useState } from "react";
+import { Link } from "react-router";
+import { useGroups, useHosts, type Host } from "@/api/queries";
+import { useAuth } from "@/auth/AuthContext";
+import { HostStatusBadge } from "@/components/hosts/HostStatusBadge";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Input, Select } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Table } from "@/components/ui/Table";
+import { errorMessage, formatDateTime } from "@/lib/format";
+
+export function HostsPage() {
+  const { can } = useAuth();
+  const hosts = useHosts();
+  const groups = useGroups();
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState("");
+  const [group, setGroup] = useState("");
+
+  const byId = useMemo(() => new Map((hosts.data?.items ?? []).map((h) => [h.id, h])), [hosts.data]);
+  const rows = (hosts.data?.items ?? []).filter((h) => {
+    const text = `${h.name} ${h.address} ${h.description} ${h.tags.join(" ")}`.toLowerCase();
+    return (!q || text.includes(q.toLowerCase())) && (!status || h.status === status) && (!group || h.group_ids.includes(group));
+  });
+
+  const addButton = can("hosts.write") && (
+    <Link to="/hosts/new" className="inline-flex h-9 items-center rounded-fm bg-accent px-3.5 text-sm font-medium text-accent-fg hover:opacity-90">
+      Add host
+    </Link>
+  );
+
+  if (hosts.data && hosts.data.items.length === 0) {
+    return (
+      <>
+        <PageHeader title="Hosts" />
+        <EmptyState title="No hosts yet" body="Add your first Linux host to manage it over SSH." action={addButton} />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <PageHeader title="Hosts" actions={addButton} />
+      <div className="mb-4 flex flex-wrap gap-3">
+        <Input className="max-w-xs" placeholder="Search name, address, tag…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Select className="max-w-[12rem]" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="">All statuses</option>
+          <option value="ready">Ready</option>
+          <option value="pending_hostkey">Needs host key</option>
+          <option value="untested">Untested</option>
+          <option value="unreachable">Unreachable</option>
+          <option value="hostkey_mismatch">Host key changed</option>
+          <option value="auth_failed">Access denied</option>
+          <option value="unsupported">Unsupported</option>
+        </Select>
+        <Select className="max-w-[12rem]" value={group} onChange={(e) => setGroup(e.target.value)}>
+          <option value="">All groups</option>
+          {(groups.data?.items ?? []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </Select>
+      </div>
+      {hosts.error && <Alert>{errorMessage(hosts.error)}</Alert>}
+      <Card>
+        <Table<Host>
+          rows={rows}
+          rowKey={(h) => h.id}
+          empty={hosts.isPending ? "Loading…" : "No hosts match."}
+          columns={[
+            { header: "Name", cell: (h) => <Link className="font-medium text-accent" to={`/hosts/${h.id}`}>{h.name}</Link> },
+            { header: "Address", cell: (h) => <span className="font-mono text-xs">{h.address}{h.port !== 22 && `:${h.port}`}</span> },
+            { header: "User", cell: (h) => h.user },
+            { header: "Via", cell: (h) => (h.via_host_id ? byId.get(h.via_host_id)?.name ?? "—" : "—") },
+            { header: "Status", cell: (h) => <HostStatusBadge status={h.status} /> },
+            { header: "Tags", cell: (h) => <div className="flex flex-wrap gap-1">{h.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div> },
+            { header: "Last test", cell: (h) => <span className="whitespace-nowrap text-muted">{formatDateTime(h.last_probe_at)}</span> },
+          ]}
+        />
+      </Card>
+    </>
+  );
+}
