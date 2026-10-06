@@ -1,0 +1,17 @@
+Dependencies resolved.
+================================================================================
+ Package                    Arch      Version               Repository     Size
+================================================================================
+Removing:
+ libpsl                     x86_64    0.21.1-5.el9          @baseos        77 k
+Removing dependent packages:
+ wget                       x86_64    1.21.1-11.el9_8       @appstream    3.1 M
+Removing unused dependencies:
+ publicsuffix-list-dafsa    noarch    20210518-3.el9        @baseos        67 k
+
+Transaction Summary
+================================================================================
+Remove  3 Packages
+
+Freed space: 3.2 M
+Operation aborted.

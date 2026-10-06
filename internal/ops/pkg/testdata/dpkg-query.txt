@@ -1,0 +1,3 @@
+dpkg-query: no packages found matching htop
+dpkg-query: no packages found matching no-such-pkg
+curl	ii 	7.88.1-10+deb12u15

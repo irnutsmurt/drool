@@ -1,0 +1,11 @@
+Failed to resolve the transaction:
+Problem: installed package librepo-1.20.0-1.fc41.x86_64 requires libcurl.so.4()(64bit), but none of the providers can be installed
+  - installed package librepo-1.20.0-1.fc41.x86_64 requires libcurl(x86-64) >= 7.52.0, but none of the providers can be installed
+  - installed package libdnf5-5.2.17.0-1.fc41.x86_64 requires librepo.so.0()(64bit), but none of the providers can be installed
+  - installed package libdnf5-5.2.17.0-1.fc41.x86_64 requires librepo(x86-64) >= 1.20.0, but none of the providers can be installed
+  - installed package libcurl-8.9.1-4.fc41.x86_64 requires libpsl.so.5()(64bit), but none of the providers can be installed
+  - installed package libcurl-8.9.1-4.fc41.x86_64 requires libpsl(x86-64) >= 0.21.5, but none of the providers can be installed
+  - installed package dnf5-5.2.17.0-1.fc41.x86_64 requires libdnf5.so.2()(64bit), but none of the providers can be installed
+  - installed package dnf5-5.2.17.0-1.fc41.x86_64 requires libdnf5(x86-64) = 5.2.17.0-1.fc41, but none of the providers can be installed
+  - conflicting requests
+  - problem with installed package

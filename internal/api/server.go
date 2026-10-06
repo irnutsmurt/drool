@@ -16,6 +16,7 @@ import (
 	"drool/internal/audit"
 	"drool/internal/auth"
 	"drool/internal/config"
+	"drool/internal/driver/sshdriver"
 	"drool/internal/engine"
 	"drool/internal/inventory"
 	"drool/internal/logging"
@@ -42,6 +43,7 @@ type Deps struct {
 	Pool      *sshx.Pool
 	Engine    *engine.Engine
 	Poller    *poller.Poller // may be nil (tests)
+	Simulator *sshdriver.Executor
 	// StaleAfter is how old a status check may be before it is shown as stale.
 	StaleAfter time.Duration
 }
@@ -131,6 +133,7 @@ func (s *Server) routes() []route {
 
 		{method: "POST", path: APIPrefix + "/jobs/preview", auth: authed, perm: auth.PermJobsRead, h: s.handlePreviewJob},
 		{method: "POST", path: APIPrefix + "/jobs", auth: authed, perm: auth.PermJobsExecute, h: s.handleCreateJob},
+		{method: "POST", path: APIPrefix + "/jobs/simulate", auth: authed, perm: auth.PermJobsExecute, h: s.handleSimulateJob},
 		{method: "GET", path: APIPrefix + "/jobs", auth: authed, perm: auth.PermJobsRead, h: s.handleListJobs},
 		{method: "GET", path: APIPrefix + "/jobs/{id}", auth: authed, perm: auth.PermJobsRead, h: s.handleGetJob},
 		{method: "GET", path: APIPrefix + "/jobs/{id}/hosts", auth: authed, perm: auth.PermJobsRead, h: s.handleListJobHosts},

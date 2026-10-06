@@ -29,9 +29,13 @@ const (
 // Operation is one typed step. Exactly one of the typed fields is set,
 // matching Type.
 type Operation struct {
-	Type    string
-	Command *CommandOp
-	Script  *ScriptOp
+	Type         string
+	Command      *CommandOp
+	Script       *ScriptOp
+	Package      *PackageOp
+	SystemUpdate *SystemUpdateOp
+	Service      *ServiceOp
+	Reboot       *RebootOp
 }
 
 // CommandOp runs a single shell command line.
@@ -75,6 +79,26 @@ func (o Operation) MarshalJSON() ([]byte, error) {
 			Type string `json:"type"`
 			*ScriptOp
 		}{o.Type, o.Script}
+	case OpPackage:
+		body = struct {
+			Type string `json:"type"`
+			*PackageOp
+		}{o.Type, o.Package}
+	case OpSystemUpdate:
+		body = struct {
+			Type string `json:"type"`
+			*SystemUpdateOp
+		}{o.Type, o.SystemUpdate}
+	case OpService:
+		body = struct {
+			Type string `json:"type"`
+			*ServiceOp
+		}{o.Type, o.Service}
+	case OpReboot:
+		body = struct {
+			Type string `json:"type"`
+			*RebootOp
+		}{o.Type, o.Reboot}
 	default:
 		return nil, fmt.Errorf("unknown operation type %q", o.Type)
 	}
@@ -108,10 +132,22 @@ func (o *Operation) UnmarshalJSON(data []byte) error {
 	case OpScript:
 		o.Script = &ScriptOp{}
 		return strict(o.Script)
+	case OpPackage:
+		o.Package = &PackageOp{}
+		return strict(o.Package)
+	case OpSystemUpdate:
+		o.SystemUpdate = &SystemUpdateOp{}
+		return strict(o.SystemUpdate)
+	case OpService:
+		o.Service = &ServiceOp{}
+		return strict(o.Service)
+	case OpReboot:
+		o.Reboot = &RebootOp{}
+		return strict(o.Reboot)
 	case "":
 		return errors.New("operation type is required")
 	default:
-		return fmt.Errorf("unknown operation type %q (supported: command, script)", head.Type)
+		return fmt.Errorf("unknown operation type %q (supported: command, script, package, system_update, service, reboot)", head.Type)
 	}
 }
 
@@ -146,6 +182,14 @@ func (o *Operation) Normalize() error {
 			return err
 		}
 		return normTimeout(&s.TimeoutS, 600)
+	case OpPackage:
+		return o.Package.normalize()
+	case OpSystemUpdate:
+		return o.SystemUpdate.normalize()
+	case OpService:
+		return o.Service.normalize()
+	case OpReboot:
+		return o.Reboot.normalize()
 	}
 	return fmt.Errorf("unknown operation type %q", o.Type)
 }
@@ -183,6 +227,15 @@ func (o Operation) Meta() Meta {
 			m.Lock = LockShared
 		}
 		return m
+	case OpPackage:
+		return Meta{Lock: LockExclusive, Idempotent: true, Become: true, TimeoutS: o.Package.TimeoutS}
+	case OpSystemUpdate:
+		return Meta{Lock: LockExclusive, Idempotent: o.SystemUpdate.Reboot == "never", Become: true, TimeoutS: o.SystemUpdate.TimeoutS}
+	case OpService:
+		idem := o.Service.State != "restarted" && o.Service.State != "reloaded"
+		return Meta{Lock: LockExclusive, Idempotent: idem, Become: true, TimeoutS: o.Service.TimeoutS}
+	case OpReboot:
+		return Meta{Lock: LockExclusive, Become: true, TimeoutS: o.Reboot.TimeoutS}
 	}
 	return Meta{Lock: LockExclusive}
 }
@@ -198,6 +251,25 @@ func (o Operation) Summary() string {
 		}
 		first, _, _ := strings.Cut(strings.TrimSpace(o.Script.Body.Text), "\n")
 		return o.Script.Interpreter + " script: " + first
+	case OpPackage:
+		return o.Package.Action + " " + strings.Join(o.Package.Names, " ")
+	case OpSystemUpdate:
+		s := map[string]string{"upgrade": "System update", "full_upgrade": "Full system upgrade", "security": "Security updates"}[o.SystemUpdate.Mode]
+		if o.SystemUpdate.Reboot != "never" {
+			s += map[string]string{"if_required": " (reboot if required)", "always": " and reboot"}[o.SystemUpdate.Reboot]
+		}
+		return s
+	case OpService:
+		var parts []string
+		if o.Service.State != "" {
+			parts = append(parts, map[string]string{"running": "start", "stopped": "stop", "restarted": "restart", "reloaded": "reload"}[o.Service.State])
+		}
+		if o.Service.Enabled != nil {
+			parts = append(parts, map[bool]string{true: "enable", false: "disable"}[*o.Service.Enabled])
+		}
+		return strings.Join(parts, " + ") + " " + o.Service.Name
+	case OpReboot:
+		return "Reboot"
 	}
 	return o.Type
 }

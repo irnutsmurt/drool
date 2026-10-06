@@ -1,0 +1,16 @@
+Updating and loading repositories:
+Repositories loaded.
+Package              Arch   Version        Repository                            Size
+Upgrading:
+ xz                  x86_64 1:5.8.1-4.fc41 updates                            1.3 MiB
+   replacing xz      x86_64 1:5.8.1-2.fc41 41adaccd76f948bbb2cf005b0fa39984   1.3 MiB
+ xz-libs             x86_64 1:5.8.1-4.fc41 updates                          217.9 KiB
+   replacing xz-libs x86_64 1:5.8.1-2.fc41 41adaccd76f948bbb2cf005b0fa39984 217.9 KiB
+
+Transaction Summary:
+ Upgrading:          2 packages
+ Replacing:          2 packages
+
+Total size of inbound packages is 685 KiB. Need to download 685 KiB.
+After this operation, 4 KiB extra will be used (install 2 MiB, remove 2 MiB).
+Operation aborted by the user.

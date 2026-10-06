@@ -621,6 +621,31 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/JobPreview' }
         '422': { $ref: '#/components/responses/Problem' }
+  /jobs/simulate:
+    post:
+      operationId: simulateJob
+      tags: [jobs]
+      description: |
+        Dry-run a package or system_update step on each target from the hosts' current package
+        metadata. Nothing changes. Removals that would need `allow_removals` are listed in
+        `extra_removals`. Requires `jobs.execute` (dnf simulation needs root).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targets, step]
+              properties:
+                targets: { $ref: '#/components/schemas/TargetSpec' }
+                step: { $ref: '#/components/schemas/Operation' }
+      responses:
+        '200':
+          description: Per-host plans.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SimulateResult' }
+        '422': { $ref: '#/components/responses/Problem' }
   /jobs:
     get:
       operationId: listJobs
@@ -1135,11 +1160,19 @@ components:
       oneOf:
         - $ref: '#/components/schemas/CommandOp'
         - $ref: '#/components/schemas/ScriptOp'
+        - $ref: '#/components/schemas/PackageOp'
+        - $ref: '#/components/schemas/SystemUpdateOp'
+        - $ref: '#/components/schemas/ServiceOp'
+        - $ref: '#/components/schemas/RebootOp'
       discriminator:
         propertyName: type
         mapping:
           command: '#/components/schemas/CommandOp'
           script: '#/components/schemas/ScriptOp'
+          package: '#/components/schemas/PackageOp'
+          system_update: '#/components/schemas/SystemUpdateOp'
+          service: '#/components/schemas/ServiceOp'
+          reboot: '#/components/schemas/RebootOp'
 
     CommandOp:
       type: object
@@ -1268,6 +1301,11 @@ components:
         truncated: { type: boolean }
         started_at: { type: string, format: date-time }
         finished_at: { type: [string, 'null'], format: date-time }
+        changed: { type: [boolean, 'null'] }
+        result:
+          type: object
+          additionalProperties: true
+          description: Operation-specific result (package plan and version changes, service state before/after, reboot boot ids).
 
     JobHostDetail:
       allOf:
@@ -1367,3 +1405,95 @@ components:
               source: { type: string, enum: [configured, discovered, dns] }
               first_seen_at: { type: string, format: date-time }
               last_seen_at: { type: string, format: date-time }
+
+    PackageOp:
+      type: object
+      required: [type, action, names]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [package] }
+        action: { type: string, enum: [install, remove, upgrade] }
+        names: { type: array, items: { type: string }, minItems: 1, maxItems: 200 }
+        allow_removals: { type: boolean, description: Allow removing packages other than the named ones }
+        timeout_s: { type: integer, minimum: 1, maximum: 86400, default: 1800 }
+        when: { $ref: '#/components/schemas/When' }
+
+    SystemUpdateOp:
+      type: object
+      required: [type]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [system_update] }
+        mode:
+          type: string
+          enum: [upgrade, full_upgrade, security]
+          default: upgrade
+          description: '`upgrade` never removes packages on APT; `full_upgrade` may; `security` is DNF only.'
+        allow_removals: { type: boolean, description: Required to proceed when the simulation shows removals }
+        refresh: { type: boolean, default: true, description: Refresh package metadata first }
+        reboot: { type: string, enum: [never, if_required, always], default: never }
+        timeout_s: { type: integer, minimum: 1, maximum: 86400, default: 3600 }
+        when: { $ref: '#/components/schemas/When' }
+
+    ServiceOp:
+      type: object
+      required: [type, name]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [service] }
+        name: { type: string, description: 'systemd unit; ".service" is added when no suffix is given' }
+        state: { type: string, enum: [running, stopped, restarted, reloaded] }
+        enabled: { type: [boolean, 'null'] }
+        timeout_s: { type: integer, minimum: 1, maximum: 86400, default: 120 }
+        when: { $ref: '#/components/schemas/When' }
+
+    RebootOp:
+      type: object
+      required: [type]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [reboot] }
+        wait: { type: boolean, default: true, description: Wait until the host is back with a new boot id }
+        timeout_s: { type: integer, minimum: 1, maximum: 86400, default: 900 }
+        when: { $ref: '#/components/schemas/When' }
+
+    PackageChange:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        from: { type: string }
+        to: { type: string }
+
+    PackagePlan:
+      type: object
+      required: [install, upgrade, remove, downgrade]
+      properties:
+        install: { type: array, items: { $ref: '#/components/schemas/PackageChange' } }
+        upgrade: { type: array, items: { $ref: '#/components/schemas/PackageChange' } }
+        remove: { type: array, items: { $ref: '#/components/schemas/PackageChange' } }
+        downgrade: { type: array, items: { $ref: '#/components/schemas/PackageChange' } }
+
+    SimulateResult:
+      type: object
+      required: [hosts]
+      properties:
+        hosts:
+          type: array
+          items:
+            type: object
+            required: [host_id, host_name, extra_removals]
+            properties:
+              host_id: { type: string }
+              host_name: { type: string }
+              skipped: { type: string }
+              error:
+                type: object
+                required: [class, message]
+                properties:
+                  class: { type: string }
+                  message: { type: string }
+                  hint: { type: string }
+              package_manager: { type: string }
+              plan: { $ref: '#/components/schemas/PackagePlan' }
+              extra_removals: { type: array, items: { $ref: '#/components/schemas/PackageChange' } }

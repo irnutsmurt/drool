@@ -14,6 +14,7 @@ import { Table } from "@/components/ui/Table";
 import { cx } from "@/components/ui/cx";
 import { errorMessage, formatDateTime } from "@/lib/format";
 import { OutputPanel } from "./OutputPanel";
+import { StepResult, describeStep } from "./StepResult";
 import { summarizeCounts } from "./summary";
 
 const activeStates = new Set(["queued", "waiting_lock", "connecting", "running", "rebooting", "waiting_host", "verifying"]);
@@ -101,10 +102,12 @@ export function JobDetailPage() {
                 </div>
               ))}
             </div>
+          ) : step?.type === "script" ? (
+            <pre className="whitespace-pre-wrap break-all font-mono text-xs">{typeof step.body === "string" ? step.body : ""}</pre>
+          ) : step?.type === "command" ? (
+            <pre className="whitespace-pre-wrap break-all font-mono text-xs">{step.command}</pre>
           ) : (
-            <pre className="whitespace-pre-wrap break-all font-mono text-xs">
-              {step?.type === "command" ? step.command : step?.type === "script" && typeof step.body === "string" ? step.body : ""}
-            </pre>
+            step && <p className="text-sm">{describeStep(step)}</p>
           )}
           {step && step.when && (step.when.os_family?.length || step.when.distro?.length) ? (
             <p className="mt-2 text-xs text-muted">
@@ -112,7 +115,7 @@ export function JobDetailPage() {
             </p>
           ) : null}
           <p className="mt-2 text-xs text-muted">
-            {step && "become" in step && step.become ? "As root via sudo" : "As the SSH user"} · {j.spec.strategy?.concurrency ?? 10} hosts at a time
+            {step && (step.type === "command" || step.type === "script") ? (step.become ? "As root via sudo" : "As the SSH user") : "As root"} · {j.spec.strategy?.concurrency ?? 10} hosts at a time
           </p>
         </Card>
 
@@ -168,6 +171,7 @@ function HostOutput({ jobId, host, live, onOutput }: {
           </Alert>
         </div>
       )}
+      {steps.map((s) => <StepResult key={`r${s.index}`} step={s} />)}
       {(steps.length > 0 ? steps : [{ index: 0, truncated: false }]).map((s) => (
         <OutputPanel key={s.index} jobId={jobId} hostId={host.host_id} step={s.index} live={live}
           onOutput={onOutput} truncated={s.truncated} />

@@ -67,3 +67,16 @@ func IsNotStarted(err error) bool {
 	var ns *NotStartedError
 	return errors.As(err, &ns)
 }
+
+// PhaseSink is implemented by output sinks that can show progress phases
+// (rebooting, waiting_host, verifying) on the job's host row.
+type PhaseSink interface {
+	Phase(state string)
+}
+
+// SetPhase reports a phase if the sink supports it.
+func SetPhase(out OutputSink, state string) {
+	if p, ok := out.(PhaseSink); ok {
+		p.Phase(state)
+	}
+}

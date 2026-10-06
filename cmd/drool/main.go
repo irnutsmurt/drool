@@ -296,7 +296,8 @@ func cmdServe(path string, explicit bool) error {
 	pool := sshx.NewPool(dialer)
 	defer pool.Close()
 	inv := inventory.NewService(st, secretSvc, dialer, pool)
-	eng := engine.New(st, inv, &sshdriver.Executor{Pool: pool}, auditW, logs.Job, engine.Config{
+	executor := &sshdriver.Executor{Pool: pool}
+	eng := engine.New(st, inv, executor, auditW, logs.Job, engine.Config{
 		GlobalConcurrency:  cfg.Engine.GlobalConcurrency,
 		PerJumpConcurrency: cfg.Engine.PerJumpHostConcurrency,
 		OutputCap:          cfg.Engine.OutputCapBytes,
@@ -313,13 +314,14 @@ func cmdServe(path string, explicit bool) error {
 		Workers:         cfg.Poller.Workers,
 	}
 	poll := poller.New(st, inv, eng.Locks(), eng.Saturated, logs.App, pollCfg)
+	eng.OnHostChanged(poll.RunNow)
 	go poll.Run(ctx)
 
 	srv, err := api.New(api.Deps{
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
 		UI: web.Dist(), Registry: reg, TLSMode: tlsRes.Mode,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
-		Poller: poll, StaleAfter: pollCfg.StaleAfter(),
+		Poller: poll, StaleAfter: pollCfg.StaleAfter(), Simulator: executor,
 	})
 	if err != nil {
 		return err

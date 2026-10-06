@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Link } from "react-router";
+import { useAuth } from "@/auth/AuthContext";
 import { useHostFacts, type DiscoveredFacts, type Host } from "@/api/queries";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
@@ -140,7 +142,9 @@ export function ServicesCard({ host }: { host: Host }) {
   const q = useHostFacts(host.id);
   const full = q.data?.facts as DiscoveredFacts | null | undefined;
   const [filter, setFilter] = useState("");
+  const { can } = useAuth();
   if (!full) return null;
+  const manage = can("jobs.execute") && full.systemd_running;
   const services = full.services.filter((s) => !filter || `${s.name} ${s.description ?? ""}`.toLowerCase().includes(filter.toLowerCase()));
   return (
     <Card title="Services and listening ports">
@@ -155,15 +159,31 @@ export function ServicesCard({ host }: { host: Host }) {
           ) : (
             <ul className="max-h-80 space-y-1 overflow-y-auto text-sm">
               {services.map((s) => (
-                <li key={s.name}>
-                  <span className="font-mono text-xs">{s.name}</span>
-                  {s.description && <span className="text-muted"> — {s.description}</span>}
+                <li key={s.name} className="group flex items-baseline gap-1">
+                  <span className="min-w-0">
+                    <span className="font-mono text-xs">{s.name}</span>
+                    {s.description && <span className="text-muted"> — {s.description}</span>}
+                  </span>
+                  {manage && (
+                    <Link className="ml-auto shrink-0 text-xs text-accent opacity-60 group-hover:opacity-100"
+                      to={`/jobs/new?hosts=${host.id}&op=service&service=${encodeURIComponent(s.name)}&action=restart`}>
+                      Restart…
+                    </Link>
+                  )}
                 </li>
               ))}
             </ul>
           )}
           {full.failed_units.length > 0 && (
-            <p className="text-sm text-danger">Failed: {full.failed_units.join(", ")}</p>
+            <p className="text-sm text-danger">
+              Failed:{" "}
+              {full.failed_units.map((u, i) => (
+                <span key={u}>
+                  {i > 0 && ", "}
+                  {manage ? <Link className="underline" to={`/jobs/new?hosts=${host.id}&op=service&service=${encodeURIComponent(u)}&action=restart`}>{u}</Link> : u}
+                </span>
+              ))}
+            </p>
           )}
         </div>
         <div className="space-y-2">

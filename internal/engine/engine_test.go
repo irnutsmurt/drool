@@ -529,3 +529,53 @@ func (r *recordingExec) Execute(ctx context.Context, t *sshx.Target, _ sshdriver
 	}
 	return ok()
 }
+
+func TestHostChangedAfterTypedOps(t *testing.T) {
+	v := newEnv(t, Config{}, "h1")
+	type call struct {
+		host     string
+		lockFree bool
+	}
+	calls := make(chan call, 4)
+	v.e.OnHostChanged(func(id string) {
+		release, free := v.e.Locks().TryAcquire(id, "probe", model.LockExclusive)
+		if free {
+			release()
+		}
+		calls <- call{id, free}
+	})
+	v.wait(v.run(cmdSpec("h1")))
+	pkgSpec := model.JobSpec{
+		Steps:   []model.Operation{{Type: model.OpPackage, Package: &model.PackageOp{Action: "install", Names: []string{"curl"}}}},
+		Targets: model.TargetSpec{Hosts: []string{"h1"}},
+	}
+	v.wait(v.run(pkgSpec))
+	select {
+	case c := <-calls:
+		if c.host != "h1" || !c.lockFree {
+			t.Fatalf("hook called with %+v; want h1 after the host lock is released", c)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("hook not called after a package job")
+	}
+	select {
+	case c := <-calls:
+		t.Fatalf("unexpected extra hook call %+v (command jobs must not trigger it)", c)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestRedactHoldsBackOnlyPossibleSecretStart(t *testing.T) {
+	w := &outputWriter{secrets: [][]byte{[]byte("s3cret-sudo-pw")}, maxSec: 14}
+	for _, c := range []struct{ in, out, rest string }{
+		{"[drool] dnf -y install 'tree'\n", "[drool] dnf -y install 'tree'\n", ""}, // nothing held back
+		{"password is s3cr", "password is ", "s3cr"},                               // possible split secret
+		{"ends with s", "ends with ", "s"},
+		{"has s3cret-sudo-pw inside", "has «redacted» inside", ""},
+	} {
+		out, rest := w.redactCut([]byte(c.in), false)
+		if string(out) != c.out || string(rest) != c.rest {
+			t.Errorf("redactCut(%q) = %q, %q; want %q, %q", c.in, out, rest, c.out, c.rest)
+		}
+	}
+}

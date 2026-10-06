@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -34,8 +35,9 @@ type Server struct {
 	allowForward bool
 	commands     []string
 
-	conns atomic.Int64
-	ln    net.Listener
+	conns  atomic.Int64
+	ln     net.Listener
+	active map[net.Conn]bool
 }
 
 // NewEd25519Signer returns a fresh ed25519 signer.
@@ -77,11 +79,11 @@ func Start(t testing.TB, hostKeys ...ssh.Signer) *Server {
 	}
 	s := &Server{
 		Addr: ln.Addr().String(), HostKeys: hostKeys, ln: ln,
-		authorized: map[string]bool{}, passwords: map[string]string{},
+		authorized: map[string]bool{}, passwords: map[string]string{}, active: map[net.Conn]bool{},
 		exec: func(cmd string, _ []byte) (string, string, int) { return "", "unknown command: " + cmd, 127 },
 	}
 	go s.serve()
-	t.Cleanup(func() { ln.Close() })
+	t.Cleanup(s.Close)
 	return s
 }
 
@@ -106,9 +108,19 @@ func (s *Server) Commands() []string {
 	defer s.mu.Unlock()
 	return append([]string(nil), s.commands...)
 }
-func (s *Server) Close() { s.ln.Close() }
+func (s *Server) Close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ln.Close()
+}
+
+// SetHostKeys replaces the host keys used for new connections.
+func (s *Server) SetHostKeys(keys ...ssh.Signer) { s.mu.Lock(); s.HostKeys = keys; s.mu.Unlock() }
 
 func (s *Server) config() *ssh.ServerConfig {
+	s.mu.Lock()
+	keys := append([]ssh.Signer(nil), s.HostKeys...)
+	s.mu.Unlock()
 	cfg := &ssh.ServerConfig{
 		PublicKeyCallback: func(_ ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 			s.mu.Lock()
@@ -127,20 +139,57 @@ func (s *Server) config() *ssh.ServerConfig {
 			return nil, fmt.Errorf("bad password")
 		},
 	}
-	for _, k := range s.HostKeys {
+	for _, k := range keys {
 		cfg.AddHostKey(k)
 	}
 	return cfg
 }
 
 func (s *Server) serve() {
+	s.mu.Lock()
+	ln := s.ln
+	s.mu.Unlock()
 	for {
-		c, err := s.ln.Accept()
+		c, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		go s.handle(c)
+		s.mu.Lock()
+		s.active[c] = true
+		s.mu.Unlock()
+		go func() {
+			s.handle(c)
+			s.mu.Lock()
+			delete(s.active, c)
+			s.mu.Unlock()
+		}()
 	}
+}
+
+// Restart simulates a reboot: drop every connection, stay unreachable for
+// down, then listen again on the same address (optionally with new host
+// keys). before runs while the server is down.
+func (s *Server) Restart(down time.Duration, before func()) {
+	s.mu.Lock()
+	s.ln.Close()
+	for c := range s.active {
+		c.Close()
+	}
+	s.mu.Unlock()
+	go func() {
+		time.Sleep(down)
+		if before != nil {
+			before()
+		}
+		ln, err := net.Listen("tcp", s.Addr)
+		if err != nil {
+			return
+		}
+		s.mu.Lock()
+		s.ln = ln
+		s.mu.Unlock()
+		s.serve()
+	}()
 }
 
 func (s *Server) handle(nc net.Conn) {

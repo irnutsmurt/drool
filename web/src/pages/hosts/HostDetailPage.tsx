@@ -88,7 +88,11 @@ export function HostDetailPage() {
               </Button>
             )}
             {can("jobs.execute") && !h.jump_only && (
-              <Button onClick={() => navigate(`/jobs/new?hosts=${h.id}`)}>Run command</Button>
+              <>
+                <Button onClick={() => navigate(`/jobs/new?hosts=${h.id}`)}>Run command</Button>
+                <Button onClick={() => navigate(`/jobs/new?hosts=${h.id}&op=system_update`)}>Install updates</Button>
+                <Button onClick={() => navigate(`/jobs/new?hosts=${h.id}&op=reboot`)}>Reboot</Button>
+              </>
             )}
             {can("hosts.write") && !editing && <Button onClick={() => setEditing(true)}>Edit</Button>}
           </>

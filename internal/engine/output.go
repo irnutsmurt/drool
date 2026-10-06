@@ -43,6 +43,14 @@ type outputWriter struct {
 	truncated bool
 	timer     *time.Timer
 	closed    bool
+	phase     func(state string) // reports progress phases on the host row
+}
+
+// Phase implements driver.PhaseSink.
+func (w *outputWriter) Phase(state string) {
+	if w.phase != nil {
+		w.phase(state)
+	}
 }
 
 func (e *Engine) newOutput(job, host string, step int, secrets []string) *outputWriter {
@@ -120,7 +128,17 @@ func (w *outputWriter) redactCut(buf []byte, final bool) (out, rest []byte) {
 	}
 	cut := len(buf)
 	if !final && w.maxSec > 1 {
-		cut = max(0, len(buf)-(w.maxSec-1))
+		// Hold back only a tail that could be the start of a secret; holding
+		// back a fixed length delays unrelated text until the stream's next
+		// write, which can be minutes later and out of order.
+		for _, s := range w.secrets {
+			for n := min(len(s)-1, len(buf)); n > 0; n-- {
+				if bytes.HasSuffix(buf, s[:n]) {
+					cut = min(cut, len(buf)-n)
+					break
+				}
+			}
+		}
 		// Never cut through a complete match.
 		for _, s := range w.secrets {
 			for i := 0; ; {

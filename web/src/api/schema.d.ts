@@ -481,6 +481,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/jobs/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Dry-run a package or system_update step on each target from the hosts' current package
+         *     metadata. Nothing changes. Removals that would need `allow_removals` are listed in
+         *     `extra_removals`. Requires `jobs.execute` (dnf simulation needs root).
+         */
+        post: operations["simulateJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/jobs": {
         parameters: {
             query?: never;
@@ -927,7 +948,7 @@ export interface components {
             host_ids?: string[];
         };
         /** @description One typed step. Discriminated by `type`. */
-        Operation: components["schemas"]["CommandOp"] | components["schemas"]["ScriptOp"];
+        Operation: components["schemas"]["CommandOp"] | components["schemas"]["ScriptOp"] | components["schemas"]["PackageOp"] | components["schemas"]["SystemUpdateOp"] | components["schemas"]["ServiceOp"] | components["schemas"]["RebootOp"];
         CommandOp: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1046,6 +1067,11 @@ export interface components {
             started_at: string;
             /** Format: date-time */
             finished_at: string | null;
+            changed?: boolean | null;
+            /** @description Operation-specific result (package plan and version changes, service state before/after, reboot boot ids). */
+            result?: {
+                [key: string]: unknown;
+            };
         };
         JobHostDetail: components["schemas"]["JobHost"] & {
             steps: components["schemas"]["JobStep"][];
@@ -1125,6 +1151,105 @@ export interface components {
                 first_seen_at: string;
                 /** Format: date-time */
                 last_seen_at: string;
+            }[];
+        };
+        PackageOp: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "package";
+            /** @enum {string} */
+            action: "install" | "remove" | "upgrade";
+            names: string[];
+            /** @description Allow removing packages other than the named ones */
+            allow_removals?: boolean;
+            /** @default 1800 */
+            timeout_s?: number;
+            when?: components["schemas"]["When"];
+        };
+        SystemUpdateOp: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "system_update";
+            /**
+             * @description `upgrade` never removes packages on APT; `full_upgrade` may; `security` is DNF only.
+             * @default upgrade
+             * @enum {string}
+             */
+            mode?: "upgrade" | "full_upgrade" | "security";
+            /** @description Required to proceed when the simulation shows removals */
+            allow_removals?: boolean;
+            /**
+             * @description Refresh package metadata first
+             * @default true
+             */
+            refresh?: boolean;
+            /**
+             * @default never
+             * @enum {string}
+             */
+            reboot?: "never" | "if_required" | "always";
+            /** @default 3600 */
+            timeout_s?: number;
+            when?: components["schemas"]["When"];
+        };
+        ServiceOp: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "service";
+            /** @description systemd unit; ".service" is added when no suffix is given */
+            name: string;
+            /** @enum {string} */
+            state?: "running" | "stopped" | "restarted" | "reloaded";
+            enabled?: boolean | null;
+            /** @default 120 */
+            timeout_s?: number;
+            when?: components["schemas"]["When"];
+        };
+        RebootOp: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "reboot";
+            /**
+             * @description Wait until the host is back with a new boot id
+             * @default true
+             */
+            wait?: boolean;
+            /** @default 900 */
+            timeout_s?: number;
+            when?: components["schemas"]["When"];
+        };
+        PackageChange: {
+            name: string;
+            from?: string;
+            to?: string;
+        };
+        PackagePlan: {
+            install: components["schemas"]["PackageChange"][];
+            upgrade: components["schemas"]["PackageChange"][];
+            remove: components["schemas"]["PackageChange"][];
+            downgrade: components["schemas"]["PackageChange"][];
+        };
+        SimulateResult: {
+            hosts: {
+                host_id: string;
+                host_name: string;
+                skipped?: string;
+                error?: {
+                    class: string;
+                    message: string;
+                    hint?: string;
+                };
+                package_manager?: string;
+                plan?: components["schemas"]["PackagePlan"];
+                extra_removals: components["schemas"]["PackageChange"][];
             }[];
         };
     };
@@ -2100,6 +2225,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobPreview"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    simulateJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    targets: components["schemas"]["TargetSpec"];
+                    step: components["schemas"]["Operation"];
+                };
+            };
+        };
+        responses: {
+            /** @description Per-host plans. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulateResult"];
                 };
             };
             422: components["responses"]["Problem"];

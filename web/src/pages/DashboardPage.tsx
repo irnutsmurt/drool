@@ -61,7 +61,8 @@ export function DashboardPage() {
   const online = checked.filter((h) => h.health!.reachable).length;
   const offline = checked.filter((h) => !h.health!.reachable).length;
   const stale = managed.filter((h) => !h.health || h.health.stale).length;
-  const withUpdates = managed.filter((h) => (h.health?.updates_available ?? 0) > 0).length;
+  const updatable = managed.filter((h) => (h.health?.updates_available ?? 0) > 0);
+  const withUpdates = updatable.length;
   const updates = total(managed, (h) => h.health?.updates_available);
   const security = total(managed, (h) => h.health?.security_updates);
   const reboot = managed.filter((h) => h.health?.reboot_required).length;
@@ -82,7 +83,8 @@ export function DashboardPage() {
         <Stat label="Hosts" value={managed.length} detail={`${online} online · ${offline} offline`} to="/hosts" />
         <Stat label="Offline" value={offline} tone={offline ? "danger" : undefined} detail="last check failed" />
         <Stat label="Stale" value={stale} tone={stale ? "warn" : undefined} detail="no recent status" />
-        <Stat label="Updates" value={updates ?? "—"} detail={updates ? `on ${withUpdates} host${withUpdates === 1 ? "" : "s"}` : "pending packages"} />
+        <Stat label="Updates" value={updates ?? "—"} detail={updates ? `on ${withUpdates} host${withUpdates === 1 ? "" : "s"}` : "pending packages"}
+          to={withUpdates && can("jobs.execute") ? `/jobs/new?op=system_update&hosts=${updatable.map((h) => h.id).join(",")}` : undefined} />
         <Stat label="Security updates" value={security ?? "—"} tone={security ? "warn" : undefined}
           detail={security == null ? "not detectable yet" : "pending"} />
         <Stat label="Reboot required" value={reboot} tone={reboot ? "warn" : undefined}

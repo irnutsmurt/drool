@@ -52,6 +52,10 @@ func shQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) 
 func (x *Executor) Execute(ctx context.Context, t *sshx.Target, b Become, op model.Operation,
 	out driver.OutputSink, started func()) (*driver.OpResult, error) {
 
+	switch op.Type {
+	case model.OpPackage, model.OpSystemUpdate, model.OpService, model.OpReboot:
+		return x.executeTyped(ctx, t, b, op, out, started)
+	}
 	var interp, body string
 	var become bool
 	switch op.Type {
@@ -78,30 +82,82 @@ func (x *Executor) Execute(ctx context.Context, t *sshx.Target, b Become, op mod
 		return nil, &driver.NotStartedError{Err: err}
 	}
 	defer sess.Release()
+	r, err := runStreamed(ctx, sess.Client, b, interp, body, out, started)
+	if err != nil {
+		return nil, err
+	}
+	res := &driver.OpResult{ExitCode: &r.exit}
+	if r.exit == 0 {
+		return res, nil
+	}
+	if b.Method == "sudo" && r.exit == 1 && looksLikeSudoFailure(r.head) {
+		detail, hint := classifySudo(r.head)
+		return res, &model.OpError{Class: model.ClassAuthorization, Message: detail, Hint: hint}
+	}
+	return res, &model.OpError{Class: model.ClassExecution, Message: fmt.Sprintf("exited with status %d", r.exit)}
+}
 
-	dir, err := prepare(ctx, sess.Client, body)
+// executeTyped runs package, system-update, service and reboot operations,
+// which always need root.
+func (x *Executor) executeTyped(ctx context.Context, t *sshx.Target, b Become, op model.Operation,
+	out driver.OutputSink, started func()) (*driver.OpResult, error) {
+	b, err := rootBecome(t, b)
+	if err != nil {
+		return nil, err
+	}
+	sess, err := x.Pool.Get(ctx, t)
+	if err != nil {
+		return nil, &driver.NotStartedError{Err: err}
+	}
+	defer sess.Release()
+	switch op.Type {
+	case model.OpPackage:
+		return x.executePackage(ctx, sess.Client, t, b, op.Package, out, started)
+	case model.OpSystemUpdate:
+		return x.executeSystemUpdate(ctx, sess.Client, t, b, op.SystemUpdate, out, started)
+	case model.OpService:
+		return x.executeService(ctx, sess.Client, b, op.Service, out, started)
+	default:
+		return x.executeReboot(ctx, sess.Client, t, b, op.Reboot, out, started)
+	}
+}
+
+// streamResult is the outcome of runStreamed.
+type streamResult struct {
+	exit int
+	head string // first 4 KiB of stderr
+	tail string // last 16 KiB of stdout+stderr
+}
+
+// runStreamed runs body under the D5 run-directory protocol, streaming
+// output to out. Failures before the command starts are NotStartedErrors;
+// cancellation and timeouts terminate the remote process group.
+func runStreamed(ctx context.Context, c *sshx.Client, b Become, interp, body string, out driver.OutputSink, started func()) (*streamResult, error) {
+	dir, err := prepare(ctx, c, body)
 	if err != nil {
 		return nil, &driver.NotStartedError{Err: err}
 	}
 	defer func() {
 		cctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		sess.Run(cctx, "rm -rf -- "+shQuote(dir), sshx.RunOptions{})
+		c.Run(cctx, "rm -rf -- "+shQuote(dir), sshx.RunOptions{})
 	}()
 
 	run := fmt.Sprintf(`setsid -w sh -c 'echo $$ > "$1/pid"; exec %s "$1/script"' drool-run %s`, interp, shQuote(dir))
 	cmd, stdin := b.Wrap(run)
-	errCapture := &headCapture{max: 4096}
-	r, err := sess.Start(cmd, stdin, out.Stdout(), io.MultiWriter(out.Stderr(), errCapture), b.PTY)
+	head := &headCapture{max: 4096}
+	tail := &tailCapture{max: 16 << 10}
+	r, err := c.Start(cmd, stdin, io.MultiWriter(out.Stdout(), tail), io.MultiWriter(out.Stderr(), head, tail), b.PTY)
 	if err != nil {
 		return nil, &driver.NotStartedError{Err: err}
 	}
-	started()
-
+	if started != nil {
+		started()
+	}
 	select {
 	case <-r.Done():
 	case <-ctx.Done():
-		kill(sess.Client, b, dir)
+		kill(c, b, dir)
 		select {
 		case <-r.Done():
 		case <-time.After(15 * time.Second):
@@ -116,15 +172,7 @@ func (x *Executor) Execute(ctx context.Context, t *sshx.Target, b Become, op mod
 	if err != nil {
 		return nil, err
 	}
-	res := &driver.OpResult{ExitCode: &code}
-	if code == 0 {
-		return res, nil
-	}
-	if b.Method == "sudo" && code == 1 && looksLikeSudoFailure(errCapture.String()) {
-		detail, hint := classifySudo(errCapture.String())
-		return res, &model.OpError{Class: model.ClassAuthorization, Message: detail, Hint: hint}
-	}
-	return res, &model.OpError{Class: model.ClassExecution, Message: fmt.Sprintf("exited with status %d", code)}
+	return &streamResult{exit: code, head: head.String(), tail: tail.String()}, nil
 }
 
 func prepare(ctx context.Context, c *sshx.Client, body string) (string, error) {
@@ -164,6 +212,29 @@ func kill(c *sshx.Client, b Become, dir string) {
 func looksLikeSudoFailure(stderr string) bool {
 	s := strings.ToLower(stderr)
 	return strings.HasPrefix(strings.TrimSpace(s), "sudo:") || strings.Contains(s, "\nsudo:")
+}
+
+// tailCapture keeps the last max bytes written.
+type tailCapture struct {
+	mu  sync.Mutex
+	buf []byte
+	max int
+}
+
+func (t *tailCapture) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.buf = append(t.buf, p...)
+	if len(t.buf) > t.max {
+		t.buf = append([]byte(nil), t.buf[len(t.buf)-t.max:]...)
+	}
+	return len(p), nil
+}
+
+func (t *tailCapture) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return string(t.buf)
 }
 
 // headCapture keeps the first max bytes written.

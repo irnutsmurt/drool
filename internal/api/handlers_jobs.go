@@ -234,16 +234,18 @@ func (s *Server) handleListJobHosts(w http.ResponseWriter, r *http.Request) {
 }
 
 type jobStepJSON struct {
-	Index       int64   `json:"index"`
-	Type        string  `json:"type"`
-	State       string  `json:"state"`
-	Attempt     int64   `json:"attempt"`
-	ExitCode    *int64  `json:"exit_code"`
-	StdoutBytes int64   `json:"stdout_bytes"`
-	StderrBytes int64   `json:"stderr_bytes"`
-	Truncated   bool    `json:"truncated"`
-	StartedAt   string  `json:"started_at"`
-	FinishedAt  *string `json:"finished_at"`
+	Index       int64           `json:"index"`
+	Type        string          `json:"type"`
+	State       string          `json:"state"`
+	Attempt     int64           `json:"attempt"`
+	ExitCode    *int64          `json:"exit_code"`
+	StdoutBytes int64           `json:"stdout_bytes"`
+	StderrBytes int64           `json:"stderr_bytes"`
+	Truncated   bool            `json:"truncated"`
+	StartedAt   string          `json:"started_at"`
+	FinishedAt  *string         `json:"finished_at"`
+	Changed     *bool           `json:"changed"`
+	Result      json.RawMessage `json:"result"`
 }
 
 type jobHostDetailJSON struct {
@@ -274,6 +276,11 @@ func (s *Server) handleGetJobHost(w http.ResponseWriter, r *http.Request) {
 		if st.ExitCode.Valid {
 			js.ExitCode = &st.ExitCode.Int64
 		}
+		if st.Changed.Valid {
+			c := st.Changed.Int64 != 0
+			js.Changed = &c
+		}
+		js.Result = json.RawMessage(st.ResultJson)
 		out.Steps = append(out.Steps, js)
 	}
 	writeJSON(w, http.StatusOK, out)

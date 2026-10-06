@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type Schemas } from "@/api/client";
@@ -11,9 +11,15 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { errorMessage } from "@/lib/format";
+import {
+  PackageForm, RebootForm, ServiceForm, SimulatePanel, SystemUpdateForm, defaultTimeouts, opKinds, packageNames, serviceActions,
+  type OpKind, type PackageState, type RebootState, type ServiceAction, type ServiceState, type SystemUpdateState,
+} from "./OperationForms";
+import { describeStep } from "./StepResult";
 
-type Kind = "command" | "script";
 type TargetSpec = Schemas["TargetSpec"];
+
+const isKind = (k: string | null): k is OpKind => opKinds.some((o) => o.kind === k);
 
 export function NewJobPage() {
   const qc = useQueryClient();
@@ -22,7 +28,7 @@ export function NewJobPage() {
   const hosts = useHosts();
   const groups = useGroups();
 
-  const [kind, setKind] = useState<Kind>("command");
+  const [kind, setKind] = useState<OpKind>(() => { const op = params.get("op"); return isKind(op) ? op : "command"; });
   const [command, setCommand] = useState("");
   const [script, setScript] = useState("#!/bin/sh\nset -e\n\n");
   const [interpreter, setInterpreter] = useState<"sh" | "bash">("sh");
@@ -38,6 +44,15 @@ export function NewJobPage() {
   const [filter, setFilter] = useState("");
   const [onlyOn, setOnlyOn] = useState<("debian" | "redhat")[]>([]);
   const [perOS, setPerOS] = useState(false);
+  const [pkg, setPkg] = useState<PackageState>({ action: "install", names: params.get("packages") ?? "", allowRemovals: false });
+  const [sys, setSys] = useState<SystemUpdateState>({ mode: "upgrade", refresh: true, reboot: "never", allowRemovals: false });
+  const [svc, setSvc] = useState<ServiceState>(() => ({
+    name: params.get("service") ?? "",
+    action: serviceActions.some((a) => a.value === params.get("action")) ? params.get("action") as ServiceAction : "restart",
+  }));
+  const [rb, setRb] = useState<RebootState>({ wait: true });
+  const setPkgAllow = useCallback((allowRemovals: boolean) => setPkg((v) => ({ ...v, allowRemovals })), []);
+  const setSysAllow = useCallback((allowRemovals: boolean) => setSys((v) => ({ ...v, allowRemovals })), []);
   const [variants, setVariants] = useState<Record<"debian" | "redhat" | "default", string>>({ debian: "", redhat: "", default: "" });
 
   const targets: TargetSpec = useMemo(() => ({
@@ -48,14 +63,34 @@ export function NewJobPage() {
   const step = useMemo((): Schemas["Operation"] => {
     const timeout_s = timeout ? Number(timeout) : undefined;
     const when = onlyOn.length ? { os_family: onlyOn } : undefined;
-    if (kind === "command") return { type: "command", command, become, read_only: readOnly, timeout_s, when };
+    switch (kind) {
+      case "command":
+        return { type: "command", command, become, read_only: readOnly, timeout_s, when };
+      case "package":
+        return { type: "package", action: pkg.action, names: packageNames(pkg.names), allow_removals: pkg.allowRemovals, timeout_s, when };
+      case "system_update":
+        return { type: "system_update", mode: sys.mode, refresh: sys.refresh, reboot: sys.reboot, allow_removals: sys.allowRemovals, timeout_s, when };
+      case "service": {
+        const a = serviceActions.find((x) => x.value === svc.action)!;
+        return { type: "service", name: svc.name.trim(), state: a.state, enabled: a.enabled, timeout_s, when };
+      }
+      case "reboot":
+        return { type: "reboot", wait: rb.wait, timeout_s, when };
+    }
     const body = perOS
       ? Object.fromEntries(Object.entries(variants).filter(([, v]) => v.trim() !== ""))
       : script;
     return { type: "script", body, interpreter, become, read_only: readOnly, timeout_s, when };
-  }, [kind, command, script, interpreter, become, readOnly, timeout, onlyOn, perOS, variants]);
+  }, [kind, command, script, interpreter, become, readOnly, timeout, onlyOn, perOS, variants, pkg, sys, svc, rb]);
   const conditional = onlyOn.length > 0 || (kind === "script" && perOS);
-  const stepReady = kind === "command" ? command.trim() !== "" : perOS ? Object.values(variants).some((v) => v.trim()) : script.trim() !== "";
+  const stepReady = {
+    command: command.trim() !== "",
+    script: perOS ? Object.values(variants).some((v) => v.trim()) : script.trim() !== "",
+    package: packageNames(pkg.names).length > 0,
+    system_update: true,
+    service: svc.name.trim() !== "",
+    reboot: true,
+  }[kind];
 
   const preview = useQuery({
     queryKey: ["jobs", "preview", targets, conditional && stepReady ? step : null],
@@ -85,9 +120,29 @@ export function NewJobPage() {
   const skipCount = preview.data?.hosts.filter((h) => h.skip).length ?? 0;
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!count) return;
-    const what = kind === "command" ? `"${command}"` : perOS ? "these scripts" : "this script";
-    if (confirm(`Run ${what} on ${count} host${count === 1 ? "" : "s"}${become ? " with sudo" : ""}?`)) submit.mutate();
+    if (!count || !stepReady) return;
+    const n = `${count} host${count === 1 ? "" : "s"}`;
+    let question: string;
+    switch (kind) {
+      case "command":
+      case "script": {
+        const what = kind === "command" ? `"${command}"` : perOS ? "these scripts" : "this script";
+        question = `Run ${what} on ${n}${become ? " with sudo" : ""}?`;
+        break;
+      }
+      case "reboot":
+        question = `Reboot ${n}? Everything running on ${count === 1 ? "it" : "them"} stops until ${count === 1 ? "it comes" : "they come"} back.`;
+        break;
+      case "system_update":
+        question = `${describeStep(step)}\n\nRun on ${n}?` +
+          (sys.allowRemovals ? "\nPackages may be removed where an upgrade needs it." : "") +
+          (sys.reboot === "always" ? "\nEvery host reboots afterwards." : sys.reboot === "if_required" ? "\nHosts that need it reboot afterwards." : "");
+        break;
+      default:
+        question = `${describeStep(step)}\n\nRun on ${n}?` +
+          (kind === "package" && pkg.allowRemovals ? "\nOther packages may be removed as well." : "");
+    }
+    if (confirm(question)) submit.mutate();
   }
 
   const visibleHosts = (hosts.data?.items ?? []).filter(
@@ -98,19 +153,23 @@ export function NewJobPage() {
 
   return (
     <>
-      <PageHeader title="Run command" />
+      <PageHeader title="New job" />
       <form onSubmit={onSubmit} className="grid gap-4 xl:grid-cols-[1fr_24rem]">
         <div className="space-y-4">
-          <Card title="What to run">
+          <Card title="What to do">
             <div className="space-y-4">
-              <div className="flex gap-2">
-                {(["command", "script"] as const).map((k) => (
+              <div className="flex flex-wrap gap-2">
+                {opKinds.map(({ kind: k, label }) => (
                   <Button key={k} type="button" size="sm" variant={kind === k ? "primary" : "secondary"} onClick={() => setKind(k)}>
-                    {k === "command" ? "Command" : "Script"}
+                    {label}
                   </Button>
                 ))}
               </div>
-              {kind === "command" ? (
+              {kind === "package" ? <PackageForm v={pkg} set={setPkg} />
+              : kind === "system_update" ? <SystemUpdateForm v={sys} set={setSys} />
+              : kind === "service" ? <ServiceForm v={svc} set={setSvc} />
+              : kind === "reboot" ? <RebootForm v={rb} set={setRb} />
+              : kind === "command" ? (
                 <Field label="Command">
                   <Input className="font-mono" value={command} required autoFocus placeholder="df -h"
                     onChange={(e) => setCommand(e.target.value)} />
@@ -150,15 +209,26 @@ export function NewJobPage() {
                   ))}
                   {onlyOn.length === 0 && <span className="text-xs text-muted">(all hosts)</span>}
                 </div>
-                <Checkbox checked={become} onChange={setBecome} label="Run as root (sudo)" />
-                <Checkbox checked={readOnly} onChange={setReadOnly} label="Read-only"
-                  hint="Doesn't change the host, so it may run alongside other jobs on the same host." />
+                {(kind === "command" || kind === "script") ? (
+                  <>
+                    <Checkbox checked={become} onChange={setBecome} label="Run as root (sudo)" />
+                    <Checkbox checked={readOnly} onChange={setReadOnly} label="Read-only"
+                      hint="Doesn't change the host, so it may run alongside other jobs on the same host." />
+                  </>
+                ) : (
+                  <p className="text-xs text-muted">Runs as root (directly or via the host's sudo setting).</p>
+                )}
               </div>
+              {(kind === "package" || kind === "system_update") && stepReady && (
+                <SimulatePanel targets={targets} step={step} hasTargets={hasTargets}
+                  allow={kind === "package" ? pkg.allowRemovals : sys.allowRemovals}
+                  setAllow={kind === "package" ? setPkgAllow : setSysAllow} />
+              )}
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Job name" hint="Optional.">
                   <Input value={name} onChange={(e) => setName(e.target.value)} />
                 </Field>
-                <Field label="Timeout (seconds)" hint={kind === "command" ? "Default 300." : "Default 600."}>
+                <Field label="Timeout (seconds)" hint={`Default ${defaultTimeouts[kind]}.`}>
                   <Input type="number" min={1} max={86400} value={timeout} onChange={(e) => setTimeoutS(e.target.value)} />
                 </Field>
               </div>
@@ -176,8 +246,8 @@ export function NewJobPage() {
             </div>
           </Card>
           {submit.error && <Alert>{errorMessage(submit.error)}</Alert>}
-          <Button type="submit" variant="primary" disabled={!count || submit.isPending}>
-            {count ? `Run on ${count} host${count === 1 ? "" : "s"}` : "Select targets"}
+          <Button type="submit" variant={kind === "reboot" ? "danger" : "primary"} disabled={!count || !stepReady || submit.isPending}>
+            {!count ? "Select targets" : `${kind === "reboot" ? "Reboot" : "Run on"} ${count} host${count === 1 ? "" : "s"}`}
           </Button>
         </div>
 

@@ -121,8 +121,9 @@ type Engine struct {
 	jumpMu  sync.Mutex
 	jumpSem map[string]chan struct{}
 
-	mu   sync.Mutex
-	runs map[string]*jobRun
+	mu          sync.Mutex
+	runs        map[string]*jobRun
+	hostChanged func(hostID string)
 
 	base      context.Context // never cancelled: jobs are not aborted on shutdown
 	pruneStop context.CancelFunc
@@ -512,6 +513,25 @@ func (e *Engine) jumpSlot(via string) chan struct{} {
 }
 
 // runHost executes all steps on one host.
+// OnHostChanged registers fn to be called after a job with typed package,
+// service or reboot steps releases a host, so inventory can be re-checked
+// instead of showing pre-job update counts until the next poll.
+func (e *Engine) OnHostChanged(fn func(hostID string)) {
+	e.mu.Lock()
+	e.hostChanged = fn
+	e.mu.Unlock()
+}
+
+func changesInventory(spec model.JobSpec) bool {
+	for _, op := range spec.Steps {
+		switch op.Type {
+		case model.OpPackage, model.OpSystemUpdate, model.OpService, model.OpReboot:
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Engine) runHost(jr *jobRun, h db.JobHost) {
 	ctx := jr.ctx
 	mode := jr.spec.LockMode()
@@ -533,7 +553,15 @@ func (e *Engine) runHost(jr *jobRun, h db.JobHost) {
 			return
 		}
 	}
-	defer release()
+	defer func() {
+		release()
+		e.mu.Lock()
+		fn := e.hostChanged
+		e.mu.Unlock()
+		if fn != nil && changesInventory(jr.spec) {
+			fn(h.HostID)
+		}
+	}()
 
 	e.setState(jr.id, h, HostConnecting, 0, 1, nil)
 	conn, err := e.inv.Resolve(ctx, h.HostID, true)
@@ -578,6 +606,8 @@ func (e *Engine) runHost(jr *jobRun, h db.JobHost) {
 				e.log.Error("insert job step", "err", err)
 			}
 			out := e.newOutput(jr.id, h.HostID, i, secrets)
+			stepIdx, att := i, attempt
+			out.phase = func(state string) { e.setState(jr.id, h, state, stepIdx, att, nil) }
 			if attempt > 1 {
 				out.Note(fmt.Sprintf("attempt %d of %d", attempt, e.cfg.RetryAttempts))
 			}
@@ -734,11 +764,22 @@ func (e *Engine) finishStep(jobID, hostID string, step int, res *driver.OpResult
 			state = "failed"
 		}
 	}
-	var exit sql.NullInt64
-	if res != nil && res.ExitCode != nil {
-		exit = sql.NullInt64{Int64: int64(*res.ExitCode), Valid: true}
+	var exit, changed sql.NullInt64
+	result := "{}"
+	if res != nil {
+		if res.ExitCode != nil {
+			exit = sql.NullInt64{Int64: int64(*res.ExitCode), Valid: true}
+		}
+		if res.Changed != nil {
+			changed = sql.NullInt64{Int64: boolInt(*res.Changed), Valid: true}
+		}
+		if res.Data != nil {
+			if b, err := json.Marshal(res.Data); err == nil {
+				result = string(b)
+			}
+		}
 	}
-	if err := e.st.W.FinishJobStep(e.base, db.FinishJobStepParams{State: state, ExitCode: exit, ResultJson: "{}",
+	if err := e.st.W.FinishJobStep(e.base, db.FinishJobStepParams{State: state, ExitCode: exit, Changed: changed, ResultJson: result,
 		StdoutBytes: stdout, StderrBytes: stderr, Truncated: boolInt(truncated), FinishedAt: e.nowNull(),
 		JobID: jobID, HostID: hostID, StepIndex: int64(step)}); err != nil {
 		e.log.Error("finish job step", "err", err)

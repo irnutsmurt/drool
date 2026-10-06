@@ -67,13 +67,14 @@ func newHarness(t *testing.T) *harness {
 	pool := sshx.NewPool(dialer)
 	t.Cleanup(pool.Close)
 	inv := inventory.NewService(st, secretSvc, dialer, pool)
-	eng := engine.New(st, inv, &sshdriver.Executor{Pool: pool}, auditW, logs.Job, engine.Config{RetryDelay: 10 * time.Millisecond})
+	executor := &sshdriver.Executor{Pool: pool}
+	eng := engine.New(st, inv, executor, auditW, logs.Job, engine.Config{RetryDelay: 10 * time.Millisecond})
 	if err := eng.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	srv, err := New(Deps{
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
-		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
+		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng, Simulator: executor,
 		UI: fstest.MapFS{
 			"index.html":    {Data: []byte("<!doctype html><title>ui</title>")},
 			"assets/app.js": {Data: []byte("console.log(1)")},

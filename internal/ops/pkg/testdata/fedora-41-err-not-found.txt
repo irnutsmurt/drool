@@ -1,0 +1,6 @@
+Updating and loading repositories:
+Repositories loaded.
+Failed to resolve the transaction:
+No match for argument: no-such-package-xyz
+You can try to add to command line:
+  --skip-unavailable to skip unavailable packages

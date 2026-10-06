@@ -1,0 +1,3 @@
+package wget is not installed
+package htop is not installed
+package no-such-pkg is not installed

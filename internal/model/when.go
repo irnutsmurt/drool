@@ -173,7 +173,24 @@ func (o Operation) ForHost(os HostOS) (Operation, bool, string) {
 		s.Body = ScriptBody{Text: body}
 		return Operation{Type: OpScript, Script: &s}, true, ""
 	}
+	if ok, why := o.when().match(os); !ok {
+		return o, false, why
+	}
 	return o, true, ""
+}
+
+func (o Operation) when() *When {
+	switch o.Type {
+	case OpPackage:
+		return o.Package.When
+	case OpSystemUpdate:
+		return o.SystemUpdate.When
+	case OpService:
+		return o.Service.When
+	case OpReboot:
+		return o.Reboot.When
+	}
+	return nil
 }
 
 // NeedsFacts reports whether any step depends on discovered facts.
@@ -186,6 +203,10 @@ func (j JobSpec) NeedsFacts() bool {
 			}
 		case OpScript:
 			if !s.Script.When.empty() || s.Script.Body.ByOS != nil {
+				return true
+			}
+		default:
+			if !s.when().empty() {
 				return true
 			}
 		}

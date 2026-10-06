@@ -15,7 +15,7 @@ export function JobsPage() {
   const jobs = useJobs();
   const newButton = can("jobs.execute") && (
     <Link to="/jobs/new" className="inline-flex h-9 items-center rounded-ui bg-accent px-3.5 text-sm font-medium text-accent-fg hover:opacity-90">
-      Run command
+      New job
     </Link>
   );
   if (jobs.data && jobs.data.items.length === 0) {
