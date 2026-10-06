@@ -36,45 +36,57 @@ export function NewJobPage() {
   const [concurrency, setConcurrency] = useState("10");
   const [threshold, setThreshold] = useState("");
   const [filter, setFilter] = useState("");
+  const [onlyOn, setOnlyOn] = useState<("debian" | "redhat")[]>([]);
+  const [perOS, setPerOS] = useState(false);
+  const [variants, setVariants] = useState<Record<"debian" | "redhat" | "default", string>>({ debian: "", redhat: "", default: "" });
 
   const targets: TargetSpec = useMemo(() => ({
     hosts: hostIds, groups: groupIds, tags: tags.split(/[,\s]+/).filter(Boolean),
   }), [hostIds, groupIds, tags]);
   const hasTargets = hostIds.length + groupIds.length + (targets.tags?.length ?? 0) > 0;
 
+  const step = useMemo((): Schemas["Operation"] => {
+    const timeout_s = timeout ? Number(timeout) : undefined;
+    const when = onlyOn.length ? { os_family: onlyOn } : undefined;
+    if (kind === "command") return { type: "command", command, become, read_only: readOnly, timeout_s, when };
+    const body = perOS
+      ? Object.fromEntries(Object.entries(variants).filter(([, v]) => v.trim() !== ""))
+      : script;
+    return { type: "script", body, interpreter, become, read_only: readOnly, timeout_s, when };
+  }, [kind, command, script, interpreter, become, readOnly, timeout, onlyOn, perOS, variants]);
+  const conditional = onlyOn.length > 0 || (kind === "script" && perOS);
+  const stepReady = kind === "command" ? command.trim() !== "" : perOS ? Object.values(variants).some((v) => v.trim()) : script.trim() !== "";
+
   const preview = useQuery({
-    queryKey: ["jobs", "preview", targets],
-    queryFn: () => unwrap(api.POST("/jobs/preview", { body: { targets } })),
+    queryKey: ["jobs", "preview", targets, conditional && stepReady ? step : null],
+    queryFn: () => unwrap(api.POST("/jobs/preview", {
+      body: { targets, steps: conditional && stepReady ? [step] : undefined },
+    })),
     enabled: hasTargets,
   });
 
   // Idempotency key per form instance: a double submit can't create two jobs.
   const [idemKey] = useState(() => crypto.randomUUID());
   const submit = useMutation({
-    mutationFn: () => {
-      const timeout_s = timeout ? Number(timeout) : undefined;
-      const step: Schemas["Operation"] = kind === "command"
-        ? { type: "command", command, become, read_only: readOnly, timeout_s }
-        : { type: "script", body: script, interpreter, become, read_only: readOnly, timeout_s };
-      return unwrap(api.POST("/jobs", {
-        params: { header: { "Idempotency-Key": idemKey } },
-        body: {
-          name: name || undefined, steps: [step], targets,
-          strategy: { concurrency: Number(concurrency) || 10, failure_threshold: threshold ? Number(threshold) : null },
-        },
-      }));
-    },
+    mutationFn: () => unwrap(api.POST("/jobs", {
+      params: { header: { "Idempotency-Key": idemKey } },
+      body: {
+        name: name || undefined, steps: [step], targets,
+        strategy: { concurrency: Number(concurrency) || 10, failure_threshold: threshold ? Number(threshold) : null },
+      },
+    })),
     onSuccess: (j) => {
       void qc.invalidateQueries({ queryKey: jk.jobs });
       navigate(`/jobs/${j.id}`);
     },
   });
 
-  const count = preview.data?.hosts.length ?? 0;
+  const count = preview.data?.hosts.filter((h) => !h.skip).length ?? 0;
+  const skipCount = preview.data?.hosts.filter((h) => h.skip).length ?? 0;
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!count) return;
-    const what = kind === "command" ? `"${command}"` : "this script";
+    const what = kind === "command" ? `"${command}"` : perOS ? "these scripts" : "this script";
     if (confirm(`Run ${what} on ${count} host${count === 1 ? "" : "s"}${become ? " with sudo" : ""}?`)) submit.mutate();
   }
 
@@ -105,10 +117,21 @@ export function NewJobPage() {
                 </Field>
               ) : (
                 <>
-                  <Field label="Script">
-                    <textarea className="h-56 w-full rounded-ui border border-line bg-surface p-3 font-mono text-xs"
-                      value={script} required onChange={(e) => setScript(e.target.value)} />
-                  </Field>
+                  <Checkbox checked={perOS} onChange={setPerOS} label="Different script per OS family"
+                    hint="Each host runs the variant for its discovered OS; hosts without a matching variant use the default or are skipped." />
+                  {perOS ? (
+                    (["debian", "redhat", "default"] as const).map((k) => (
+                      <Field key={k} label={k === "debian" ? "Debian / Ubuntu" : k === "redhat" ? "RHEL / Rocky / Alma / Fedora" : "Default (any other OS, optional)"}>
+                        <textarea className="h-32 w-full rounded-ui border border-line bg-surface p-3 font-mono text-xs"
+                          value={variants[k]} onChange={(e) => setVariants((v) => ({ ...v, [k]: e.target.value }))} />
+                      </Field>
+                    ))
+                  ) : (
+                    <Field label="Script">
+                      <textarea className="h-56 w-full rounded-ui border border-line bg-surface p-3 font-mono text-xs"
+                        value={script} required onChange={(e) => setScript(e.target.value)} />
+                    </Field>
+                  )}
                   <Field label="Interpreter">
                     <Select className="max-w-[10rem]" value={interpreter} onChange={(e) => setInterpreter(e.target.value as "sh" | "bash")}>
                       <option value="sh">sh</option>
@@ -118,6 +141,15 @@ export function NewJobPage() {
                 </>
               )}
               <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-4 text-sm">
+                  <span className="text-muted">Only run on:</span>
+                  {(["debian", "redhat"] as const).map((f) => (
+                    <Checkbox key={f} checked={onlyOn.includes(f)}
+                      onChange={(on) => setOnlyOn((cur) => (on ? [...cur, f] : cur.filter((x) => x !== f)))}
+                      label={f === "debian" ? "Debian / Ubuntu" : "RHEL family / Fedora"} />
+                  ))}
+                  {onlyOn.length === 0 && <span className="text-xs text-muted">(all hosts)</span>}
+                </div>
                 <Checkbox checked={become} onChange={setBecome} label="Run as root (sudo)" />
                 <Checkbox checked={readOnly} onChange={setReadOnly} label="Read-only"
                   hint="Doesn't change the host, so it may run alongside other jobs on the same host." />
@@ -175,13 +207,13 @@ export function NewJobPage() {
             </div>
           </Card>
           {hasTargets && (
-            <Card title={`Will run on ${count} host${count === 1 ? "" : "s"}`}>
+            <Card title={`Will run on ${count} host${count === 1 ? "" : "s"}${skipCount ? `, skip ${skipCount}` : ""}`}>
               {preview.error && <Alert>{errorMessage(preview.error)}</Alert>}
               <ul className="space-y-1 text-sm">
                 {preview.data?.hosts.map((h) => (
-                  <li key={h.id}>
+                  <li key={h.id} className={h.skip ? "text-muted line-through" : undefined}>
                     {h.name}
-                    {h.warning && <span className="block text-xs text-warn">{h.warning}</span>}
+                    {h.warning && <span className={h.skip ? "block text-xs text-muted no-underline" : "block text-xs text-warn"}>{h.warning}</span>}
                   </li>
                 ))}
               </ul>

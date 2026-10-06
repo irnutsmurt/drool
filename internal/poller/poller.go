@@ -140,6 +140,10 @@ func (p *Poller) seed(ctx context.Context, hostID string) map[string]time.Time {
 	d[taskStatus] = next(st.CheckedAt, serr == nil, taskStatus, soon(time.Minute))
 	d[taskUpdates] = next(st.UpdatesCheckedAt.Int64, serr == nil && st.UpdatesCheckedAt.Valid, taskUpdates, soon(5*time.Minute))
 	d[taskRefresh] = next(st.MetadataRefreshedAt.Int64, serr == nil && st.MetadataRefreshedAt.Valid, taskRefresh, soon(30*time.Minute))
+	if serr == nil && st.UpdatesCheckedAt.Valid && !st.UpdatesAvailable.Valid {
+		// Update count unknown (no package cache): refresh metadata soon.
+		d[taskRefresh] = soon(2 * time.Minute)
+	}
 	return d
 }
 
@@ -226,6 +230,12 @@ func (p *Poller) reschedule(hostID, task string, after time.Duration) {
 	}
 }
 
+// RefreshSoon schedules a package metadata refresh within a minute (used
+// when an update check found no package cache).
+func (p *Poller) RefreshSoon(hostID string) {
+	p.reschedule(hostID, taskRefresh, time.Minute)
+}
+
 // RunNow makes a host's facts, status and update checks due immediately
 // (e.g. after a successful connection test).
 func (p *Poller) RunNow(hostID string) {
@@ -294,6 +304,11 @@ func (p *Poller) run(ctx context.Context, h db.Host, task string) {
 			log.Error("poller: store updates", "err", err)
 		}
 		p.reschedule(h.ID, task, jitter(p.cfg.UpdatesInterval))
+		if u.Available == nil && inventory.CanBecomeRoot(h) && p.refreshedLongAgo(ctx, h.ID) {
+			// No package cache yet (typical for a new host): refresh metadata
+			// soon instead of waiting for the daily refresh.
+			p.reschedule(h.ID, taskRefresh, time.Minute)
+		}
 	case taskRefresh:
 		f, err := p.st.R.GetHostFacts(ctx, h.ID)
 		if err != nil || !inventory.CanBecomeRoot(h) || (f.PkgManager != "apt" && f.PkgManager != "dnf" && f.PkgManager != "yum") {
@@ -308,6 +323,16 @@ func (p *Poller) run(ctx context.Context, h db.Host, task string) {
 		p.reschedule(h.ID, task, jitter(p.cfg.RefreshInterval))
 		p.reschedule(h.ID, taskUpdates, 0) // count updates against fresh metadata
 	}
+}
+
+// refreshedLongAgo reports whether package metadata wasn't refreshed by
+// DROOL within the last hour (avoids refresh loops when a cache can't be built).
+func (p *Poller) refreshedLongAgo(ctx context.Context, hostID string) bool {
+	st, err := p.st.R.GetHostStatus(ctx, hostID)
+	if err != nil || !st.MetadataRefreshedAt.Valid {
+		return true
+	}
+	return p.now().Sub(time.UnixMilli(st.MetadataRefreshedAt.Int64)) > time.Hour
 }
 
 // recordStatusFailure records a failed connection from any task as a

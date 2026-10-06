@@ -190,6 +190,9 @@ func (s *Server) handleRefreshHost(w http.ResponseWriter, r *http.Request) {
 	if derr == nil && (facts.PkgManager == "apt" || facts.PkgManager == "dnf" || facts.PkgManager == "yum") {
 		if u, err := s.d.Inventory.CheckUpdates(ctx, id, facts.PkgManager); err == nil {
 			_ = s.d.Store.InTx(ctx, func(q *db.Queries) error { return s.d.Inventory.RecordUpdatesTx(ctx, q, id, u) })
+			if u.Available == nil && s.d.Poller != nil {
+				s.d.Poller.RefreshSoon(id) // no package cache yet
+			}
 		}
 	}
 	if derr != nil && serr != nil {

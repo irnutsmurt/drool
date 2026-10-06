@@ -22,10 +22,10 @@ Linux is the product scope.
 - **Design:** [`DESIGN.md`](DESIGN.md) (product and trust architecture)
 - **Current implementation plan:** [`ARCHITECTURE-ALPHA.md`](ARCHITECTURE-ALPHA.md) (SSH-only Technical Alpha)
 
-Status: **M2 (jobs)**. First-run setup, users, API tokens, audit log, encrypted credentials,
-hosts and groups, SSH host-key pinning, jump hosts, connection tests, and running commands and
-scripts on many hosts (live output, cancellation, retries, re-runs) work. Inventory discovery and
-package/service operations arrive in M3–M4.
+Status: **M3 (inventory)**. First-run setup, users, API tokens, audit log, encrypted credentials,
+hosts and groups, SSH host-key pinning, jump hosts, connection tests, jobs (live output,
+cancellation, retries, per-OS scripts and conditions), automatic inventory discovery, background
+status and update polling, and a dashboard work. Package and service operations arrive in M4.
 
 ## Requirements
 

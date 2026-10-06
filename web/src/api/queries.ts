@@ -60,3 +60,21 @@ export const useJobHost = (id: string, host: string) =>
     queryKey: jk.jobHost(id, host),
     queryFn: () => unwrap(api.GET("/jobs/{id}/hosts/{hostId}", { params: { path: { id, hostId: host } } })),
   });
+
+export type HostFacts = Schemas["HostFacts"];
+export const useHostFacts = (id: string) =>
+  useQuery({ queryKey: [...qk.host(id), "facts"], queryFn: () => unwrap(api.GET("/hosts/{id}/facts", { params: { path: { id } } })) });
+
+/** Shape of facts_json (internal/discovery.Facts). */
+export interface DiscoveredFacts {
+  cpu_model?: string;
+  swap_bytes?: number;
+  virtualization?: string;
+  systemd_running: boolean;
+  filesystems: { mount: string; device: string; type?: string; size_bytes: number; used_bytes: number; avail_bytes: number; used_pct: number }[];
+  interfaces: { name: string; mac?: string; state?: string; mtu?: number; addresses: { address: string; prefix: number; family: number; scope?: string }[] }[];
+  services: { name: string; description?: string }[];
+  failed_units: string[];
+  ports: { proto: string; address: string; port: number; process?: string }[];
+  warnings: string[];
+}

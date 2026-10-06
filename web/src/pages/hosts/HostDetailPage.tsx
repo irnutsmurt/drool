@@ -8,6 +8,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { HostForm, type HostRequest } from "@/components/hosts/HostForm";
 import { HostKeyPanel } from "@/components/hosts/HostKeyPanel";
 import { HostStatusBadge } from "@/components/hosts/HostStatusBadge";
+import { FactsCard, HealthCard, NetworkCard, ServicesCard } from "@/components/hosts/InventoryCards";
 import { ProbeSteps } from "@/components/hosts/ProbeSteps";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
@@ -29,7 +30,7 @@ export function HostDetailPage() {
   const [editing, setEditing] = useState(false);
   const [probe, setProbe] = useState<ProbeResult>();
 
-  const refresh = () => {
+  const refreshQueries = () => {
     void qc.invalidateQueries({ queryKey: qk.host(id) });
     void qc.invalidateQueries({ queryKey: qk.hosts });
     void qc.invalidateQueries({ queryKey: qk.hostKeys(id) });
@@ -38,15 +39,19 @@ export function HostDetailPage() {
     mutationFn: (body: HostRequest) => unwrap(api.PATCH("/hosts/{id}", { params: { path: { id } }, body })),
     onSuccess: () => {
       setEditing(false);
-      refresh();
+      refreshQueries();
     },
   });
   const test = useMutation({
     mutationFn: () => unwrap(api.POST("/hosts/{id}/probe", { params: { path: { id } } })),
     onSuccess: (r) => {
       setProbe(r);
-      refresh();
+      refreshQueries();
     },
+  });
+  const refresh = useMutation({
+    mutationFn: () => unwrap(api.POST("/hosts/{id}/refresh", { params: { path: { id } } })),
+    onSuccess: () => refreshQueries(),
   });
   const remove = useMutation({
     mutationFn: () => unwrap(api.DELETE("/hosts/{id}", { params: { path: { id } } })),
@@ -75,6 +80,11 @@ export function HostDetailPage() {
             {can("jobs.execute") && (
               <Button variant="primary" onClick={() => test.mutate()} disabled={test.isPending || needsKey}>
                 {test.isPending ? "Testing…" : "Test connection"}
+              </Button>
+            )}
+            {can("jobs.execute") && !h.jump_only && h.pinned_key && (
+              <Button onClick={() => refresh.mutate()} disabled={refresh.isPending}>
+                {refresh.isPending ? "Refreshing…" : "Refresh"}
               </Button>
             )}
             {can("jobs.execute") && !h.jump_only && (
@@ -131,8 +141,19 @@ export function HostDetailPage() {
           </Card>
         )}
 
+        {refresh.error && <div className="lg:col-span-2"><Alert>{errorMessage(refresh.error)}</Alert></div>}
+
         {!h.jump_only && (
-          <Card title="Recent jobs" className="lg:col-span-2">
+          <>
+            <FactsCard host={h} />
+            <HealthCard host={h} />
+            <div className="lg:col-span-2"><NetworkCard host={h} /></div>
+            <div className="lg:col-span-2"><ServicesCard host={h} /></div>
+          </>
+        )}
+
+        {!h.jump_only && (
+          <Card title="Job history" className="lg:col-span-2">
             {(recentJobs.data?.items ?? []).length === 0 ? (
               <p className="text-sm text-muted">No jobs have run on this host yet.</p>
             ) : (

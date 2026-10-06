@@ -245,14 +245,23 @@ func ParseUpdatesDNF(out string) Updates {
 		}
 	}
 	if secKnown {
-		u.Security = intPtr(len(secPkgs))
+		// Advisories list package NEVRAs, often several versions of one
+		// package; count pending packages that have a security fix.
+		names := map[string]bool{}
+		for nevra := range secPkgs {
+			names[nevraName(nevra)] = true
+		}
+		n := 0
 		for i := range u.Packages {
-			for p := range secPkgs {
-				if strings.HasPrefix(p, u.Packages[i].Name+"-") {
-					u.Packages[i].Security = true
-				}
+			if names[u.Packages[i].Name] {
+				u.Packages[i].Security = true
+				n++
 			}
 		}
+		if u.Packages == nil {
+			n = len(names) // pending list unknown: best available count
+		}
+		u.Security = intPtr(n)
 	}
 	if _, c, ok := rc(sec["needs-restarting"]); ok {
 		switch c {
@@ -265,4 +274,17 @@ func ParseUpdatesDNF(out string) Updates {
 		}
 	}
 	return u
+}
+
+// nevraName extracts the package name from "name-[epoch:]version-release.arch".
+func nevraName(nevra string) string {
+	if i := strings.LastIndexByte(nevra, '.'); i > 0 {
+		nevra = nevra[:i] // drop arch
+	}
+	for k := 0; k < 2; k++ { // drop release, then version
+		if i := strings.LastIndexByte(nevra, '-'); i > 0 {
+			nevra = nevra[:i]
+		}
+	}
+	return nevra
 }

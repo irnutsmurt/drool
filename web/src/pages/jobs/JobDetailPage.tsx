@@ -92,9 +92,25 @@ export function JobDetailPage() {
 
       <div className="grid gap-4">
         <Card title="What ran">
-          <pre className="whitespace-pre-wrap break-all font-mono text-xs">
-            {step?.type === "command" ? step.command : step?.type === "script" ? step.body : ""}
-          </pre>
+          {step?.type === "script" && typeof step.body === "object" ? (
+            <div className="space-y-3">
+              {Object.entries(step.body).map(([os, body]) => (
+                <div key={os}>
+                  <div className="mb-1 text-xs font-medium uppercase text-muted">{os}</div>
+                  <pre className="whitespace-pre-wrap break-all font-mono text-xs">{body}</pre>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <pre className="whitespace-pre-wrap break-all font-mono text-xs">
+              {step?.type === "command" ? step.command : step?.type === "script" && typeof step.body === "string" ? step.body : ""}
+            </pre>
+          )}
+          {step && step.when && (step.when.os_family?.length || step.when.distro?.length) ? (
+            <p className="mt-2 text-xs text-muted">
+              Only on: {[...(step.when.os_family ?? []), ...(step.when.distro ?? [])].join(", ")}
+            </p>
+          ) : null}
           <p className="mt-2 text-xs text-muted">
             {step && "become" in step && step.become ? "As root via sudo" : "As the SSH user"} · {j.spec.strategy?.concurrency ?? 10} hosts at a time
           </p>

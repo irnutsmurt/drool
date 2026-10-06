@@ -181,8 +181,16 @@ func TestParseUpdates(t *testing.T) {
 		t.Fatalf("ubuntu: %+v", u)
 	}
 	u = ParseUpdatesDNF(fixture(t, "rockylinux-9.updates.txt"))
-	if u.Available == nil || *u.Available < 10 || u.Security == nil || *u.Security == 0 {
-		t.Fatalf("rocky: available=%v security=%v", u.Available, u.Security)
+	if u.Available == nil || *u.Available < 10 || u.Security == nil || *u.Security == 0 || *u.Security > *u.Available {
+		t.Fatalf("rocky: available=%v security=%v", *u.Available, *u.Security)
+	}
+	for _, p := range u.Packages {
+		if p.Name == "binutils-gold" && !p.Security {
+			t.Fatal("binutils-gold should be a security update")
+		}
+		if p.Name == "basesystem" && p.Security {
+			t.Fatal("basesystem is not a security update")
+		}
 	}
 	if u.RebootRequired == nil || *u.RebootRequired {
 		t.Fatalf("rocky needs-restarting: %v", u.RebootRequired)
@@ -195,6 +203,20 @@ func TestParseUpdates(t *testing.T) {
 	u = ParseUpdatesDNF("@@DROOL:dnf-check@@\n@@rc=1\n@@DROOL:end@@\n")
 	if u.Available != nil {
 		t.Fatal("failed check reported a count")
+	}
+}
+
+func TestNEVRAName(t *testing.T) {
+	cases := map[string]string{
+		"binutils-gold-2.35.2-67.el9_7.1.x86_64": "binutils-gold",
+		"openssl-1:3.0.7-28.el9_4.x86_64":        "openssl",
+		"bash-5.1.8-9.el9.x86_64":                "bash",
+		"python3-libs-3.9.18-3.el9.noarch":       "python3-libs",
+	}
+	for in, want := range cases {
+		if got := nevraName(in); got != want {
+			t.Errorf("nevraName(%s) = %s, want %s", in, got, want)
+		}
 	}
 }
 

@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useGroups, useHosts, type Host } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { HostStatusBadge } from "@/components/hosts/HostStatusBadge";
+import { ReachabilityBadge, osLabel } from "@/components/hosts/health";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -11,7 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Table } from "@/components/ui/Table";
-import { errorMessage, formatDateTime } from "@/lib/format";
+import { errorMessage } from "@/lib/format";
 
 export function HostsPage() {
   const { can } = useAuth();
@@ -27,9 +28,8 @@ export function HostsPage() {
     if (n.has(id)) n.delete(id); else n.add(id);
     return n;
   });
-  const byId = useMemo(() => new Map((hosts.data?.items ?? []).map((h) => [h.id, h])), [hosts.data]);
   const rows = (hosts.data?.items ?? []).filter((h) => {
-    const text = `${h.name} ${h.address} ${h.description} ${h.tags.join(" ")}`.toLowerCase();
+    const text = `${h.name} ${h.address} ${h.description} ${h.tags.join(" ")} ${osLabel(h)}`.toLowerCase();
     return (!q || text.includes(q.toLowerCase())) && (!status || h.status === status) && (!group || h.group_ids.includes(group));
   });
 
@@ -94,11 +94,20 @@ export function HostsPage() {
             }] : []),
             { header: "Name", cell: (h) => <Link className="font-medium text-accent" to={`/hosts/${h.id}`}>{h.name}</Link> },
             { header: "Address", cell: (h) => <span className="font-mono text-xs">{h.address}{h.port !== 22 && `:${h.port}`}</span> },
-            { header: "User", cell: (h) => h.user },
-            { header: "Via", cell: (h) => (h.via_host_id ? byId.get(h.via_host_id)?.name ?? "—" : "—") },
-            { header: "Status", cell: (h) => <HostStatusBadge status={h.status} /> },
+            { header: "OS", cell: (h) => <span className="text-muted">{osLabel(h)}</span> },
+            { header: "Health", cell: (h) => (h.jump_only ? <Badge>jump host</Badge> : <ReachabilityBadge host={h} />) },
+            { header: "Connection", cell: (h) => <HostStatusBadge status={h.status} /> },
+            {
+              header: "Updates",
+              cell: (h) => {
+                const u = h.health?.updates_available;
+                if (u == null) return <span className="text-muted">—</span>;
+                const sec = h.health?.security_updates;
+                return <span>{u}{sec ? <span className="text-warn"> ({sec} security)</span> : null}</span>;
+              },
+            },
+            { header: "Reboot", cell: (h) => (h.health?.reboot_required ? <Badge tone="warn">required</Badge> : "") },
             { header: "Tags", cell: (h) => <div className="flex flex-wrap gap-1">{h.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div> },
-            { header: "Last test", cell: (h) => <span className="whitespace-nowrap text-muted">{formatDateTime(h.last_probe_at)}</span> },
           ]}
         />
       </Card>
