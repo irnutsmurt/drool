@@ -74,17 +74,16 @@ func cmdBackup(path string, explicit bool, args []string) error {
 	}
 	m := res.Manifest
 
-	if logs, err := logging.New(cfg.Logging, cfg.DataDir); err == nil {
-		// Record without migrating: a running controller owns the schema.
-		if st, err := store.Open(filepath.Join(cfg.DataDir, store.FileName)); err == nil {
-			actor := audit.Actor{Type: audit.ActorSystem, Name: "cli:" + currentOSUser()}
-			_ = audit.NewWriter(st, logs.Audit).Record(ctx, audit.Event{Action: "backup.create", Actor: &actor,
-				TargetType: "controller", Details: map[string]any{
-					"file": map[bool]string{true: "(stdout)", false: dest}[toStdout], "includes_master_key": m.IncludesMasterKey,
-					"schema": m.SchemaVersion}})
-			st.Close()
-		}
-		logs.Close()
+	// Record without migrating (a running controller owns the schema), and to
+	// the database only, like the other CLI commands: a log line on stdout
+	// would end up inside "backup -o -" archives in container deployments.
+	if st, err := store.Open(filepath.Join(cfg.DataDir, store.FileName)); err == nil {
+		actor := audit.Actor{Type: audit.ActorSystem, Name: "cli:" + currentOSUser()}
+		_ = audit.NewWriter(st, logging.Discard().Audit).Record(ctx, audit.Event{Action: "backup.create", Actor: &actor,
+			TargetType: "controller", Details: map[string]any{
+				"file": map[bool]string{true: "(stdout)", false: dest}[toStdout], "includes_master_key": m.IncludesMasterKey,
+				"schema": m.SchemaVersion}})
+		st.Close()
 	}
 
 	if !toStdout {
