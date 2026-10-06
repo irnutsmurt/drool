@@ -1,5 +1,6 @@
 import { Link } from "react-router";
-import { useHosts } from "@/api/queries";
+import { useHosts, useJobs } from "@/api/queries";
+import { JobStatusBadge } from "@/components/jobs/badges";
 import { useAuth } from "@/auth/AuthContext";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -7,6 +8,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 export function DashboardPage() {
   const { me, can } = useAuth();
   const hosts = useHosts();
+  const jobs = useJobs();
+  const recent = (jobs.data?.items ?? []).slice(0, 5);
   const items = hosts.data?.items ?? [];
   const ready = items.filter((h) => h.status === "ready").length;
   const attention = items.filter((h) => h.status !== "ready" && !h.jump_only).length;
@@ -36,8 +39,19 @@ export function DashboardPage() {
             </p>
           )}
         </Card>
-        <Card title="Updates and jobs">
-          <p className="text-sm text-muted">Available once jobs and inventory polling are implemented (M2–M3).</p>
+        <Card title="Recent jobs">
+          {recent.length === 0 ? (
+            <p className="text-sm text-muted">No jobs yet.</p>
+          ) : (
+            <ul className="space-y-1.5 text-sm">
+              {recent.map((j) => (
+                <li key={j.id} className="flex items-center gap-2">
+                  <JobStatusBadge job={j} />
+                  <Link className="truncate text-accent" to={`/jobs/${j.id}`}>{j.name}</Link>
+                </li>
+              ))}
+            </ul>
+          )}
         </Card>
       </div>
     </>

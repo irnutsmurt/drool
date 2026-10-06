@@ -1085,7 +1085,11 @@ components:
       oneOf:
         - $ref: '#/components/schemas/CommandOp'
         - $ref: '#/components/schemas/ScriptOp'
-      discriminator: { propertyName: type }
+      discriminator:
+        propertyName: type
+        mapping:
+          command: '#/components/schemas/CommandOp'
+          script: '#/components/schemas/ScriptOp'
 
     CommandOp:
       type: object

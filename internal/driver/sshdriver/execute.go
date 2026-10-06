@@ -143,12 +143,14 @@ func prepare(ctx context.Context, c *sshx.Client, body string) (string, error) {
 	return dir, nil
 }
 
+// killScript must work in dash (Debian/Ubuntu /bin/sh): its kill builtin
+// rejects "--" before a negative process group id, so use "kill -SIG -pgid".
 const killScript = `p=$(cat "$1/pid" 2>/dev/null) || exit 0
 case $p in ''|*[!0-9]*) exit 0;; esac
-kill -TERM -- "-$p" 2>/dev/null || exit 0
+kill -TERM "-$p" 2>/dev/null || exit 0
 i=0
-while kill -0 -- "-$p" 2>/dev/null && [ $i -lt 10 ]; do sleep 1; i=$((i+1)); done
-kill -KILL -- "-$p" 2>/dev/null
+while kill -0 "-$p" 2>/dev/null && [ $i -lt 10 ]; do sleep 1; i=$((i+1)); done
+kill -KILL "-$p" 2>/dev/null
 exit 0`
 
 // kill terminates the run's process group from a separate session.

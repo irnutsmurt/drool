@@ -729,7 +729,7 @@ Jobs
   GET    /jobs/{id}                  job + summary counts per state
   GET    /jobs/{id}/hosts            per-host state
   GET    /jobs/{id}/hosts/{hid}      steps + results
-  GET    /jobs/{id}/hosts/{hid}/output?step=&stream=     (text/plain, ranged)
+  GET    /jobs/{id}/hosts/{hid}/output?step=&after=&stream=  JSON segments; ?format=text downloads raw
   GET    /jobs/{id}/events           SSE
   POST   /jobs/{id}/cancel
   POST   /jobs/{id}/resume
@@ -917,3 +917,18 @@ Meaningful choices made during implementation, newest last.
 | M1 | Pool: concurrent first requests share one dial (single-flight); a tunnelled connection holds a reference on its jump connection for its lifetime | Found in testing: bursts opened one connection per request, and an idle jump connection could be reaped under active tunnels |
 | M1 | Verified against real OpenSSH (Debian 12 containers): scan/approve through a jump host, passwordless sudo, host key rotation → `hostkey_mismatch`, unauthorized key → `auth_failed`, no systemd → `unsupported`; UI pages rendered in headless Chromium without runtime errors | The in-process test server can't catch OpenSSH-specific behavior. Note: Debian images bake host keys at build time, so containers from one image share keys, like cloned VMs |
 | pre-M2 | **Renamed to DROOL.** Binary `drool`, Go module `drool`, `/etc/drool/`, `/var/lib/drool/`, `DROOL_*` environment variables, `drool.service`, container image and compose service `drool`, token format `drool_tok_…`, cookie `drool_session`, CSRF header `X-DROOL-CSRF`, metrics `drool_*`, problem type URNs `urn:drool:problem:*`. CSS design tokens became brand-neutral (`--ui-*`, `rounded-ui`). API paths unchanged. No migration was needed: the schema contained no product-specific names | Pre-alpha; nothing deployed, so no compatibility shims or migration baggage |
+| M2 | `when` conditions and OS-specific script bodies deferred to M3 | Both need discovered facts (`os_family`), which arrive with the discover operation in M3. Shipping them earlier would mean every `when` skips |
+| M2 | Remote execution exactly per D5: a prepare session writes the script into a private `mktemp -d` directory, a run session executes it under `setsid -w` (pidfile = process group), cancel/timeout kills the group from a separate session (TERM, then KILL after 10 s), cleanup removes the directory | Stdin carries only the sudo password; scripts get an empty stdin |
+| M2 | Remote scripts must be dash-compatible: dash's `kill` rejects `--` before a negative group id. Found on real Debian, where cancelled password-sudo jobs survived; fixed and guarded by a test. The M5 integration matrix must run remote scripts under dash | Local tests ran under bash and couldn't catch it |
+| M2 | A controller shutdown does **not** cancel running jobs: remote commands keep running and in-progress hosts become `interrupted` on the next start (verified with a real job). Their run directories stay behind (usually tmpfs) | Matches §11.6 "outcome unknown"; killing on shutdown would turn an unknown outcome into a deliberate one |
+| M2 | Retries: only connection failures *before* the command started are retried for command/script (3 tries total, 5 s doubling backoff, ±20% jitter). Auth, host key, sudo and execution failures are never retried | §11.4; non-idempotent operations must not run twice |
+| M2 | Output API returns JSON segments by default (paged by `after`), raw bytes with `?format=text`. Within one flush window (≤250 ms) the relative order of stdout and stderr isn't preserved; each stream's own order is exact | The UI needs stream-tagged segments; per-stream buffering keeps redaction and batching simple |
+| M2 | Redaction applies to the host's own credential values (login password, sudo password) and catches values split across writes | A value only needs hiding where it's actually a secret for that host |
+| M2 | Circuit breaker: 5 consecutive host failures of the same class among Authentication/HostKey/Authorization pause the job (no new hosts start; running ones finish). Resume resets the counter. Failure threshold counts failed + timed-out hosts and skips the rest | §11.5 |
+| M2 | SSE replay buffer is bounded per job (2000 events / 2 MiB); slow subscribers are dropped and clients receive `reset` and refetch over REST. Streams linger 5 minutes after a job ends | Bounded memory regardless of output volume |
+| M2 | Jump-only hosts cannot be targeted: explicit selection is a validation error, group/tag matches are left out with a warning | They're not managed hosts |
+| M2 | Idempotency keys are scoped per user; re-runs are new jobs linked by `rerun_of`, and `"failed"` selects failed, timed-out, cancelled, skipped and interrupted hosts | |
+| M2 | New error classes: `CancelledError`, `LockTimeoutError`, and `InterruptedError` (stored on hosts after a restart) | |
+| M2 | sqlc pitfall: mixing `?` with `sqlc.narg()` misnumbers parameters in SQLite and silently matches nothing; queries use positional parameters only | Found by engine tests |
+| M2 | UI: the CSRF token is now set inside the `/auth/me` fetch rather than in an effect, because child components' first requests ran before the provider's effect on a fresh page load (found in headless-browser testing) | |
+| M2 | Verified against Debian 12 OpenSSH containers behind a jump host: passwordless and password sudo, stderr/exit classification, cancellation of root process groups via both sudo modes (~1 s), interrupted-on-restart and re-run, live output in the browser | |

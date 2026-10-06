@@ -29,7 +29,11 @@ export function useSetupStatus() {
 
 async function fetchMe(): Promise<Me | null> {
   try {
-    return await unwrap(api.GET("/auth/me"));
+    const me = await unwrap(api.GET("/auth/me"));
+    // Set the CSRF token before any page renders: child components' effects
+    // (and their first requests) run before this provider's effects would.
+    setCsrfToken(me.csrf_token);
+    return me;
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) return null;
     throw e;

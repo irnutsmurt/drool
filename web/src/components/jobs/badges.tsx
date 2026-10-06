@@ -1,0 +1,43 @@
+import { Badge } from "@/components/ui/Badge";
+import type { Job, JobHost } from "@/api/queries";
+
+type Tone = "ok" | "warn" | "danger" | "neutral" | "accent";
+
+const jobTones: Record<Job["status"], Tone> = {
+  pending: "neutral", running: "accent", paused: "warn", completed: "ok", cancelled: "neutral", interrupted: "warn",
+};
+
+/** Completed jobs with failures are shown as such, not as plain "completed". */
+export function JobStatusBadge({ job }: { job: Pick<Job, "status" | "counts"> }) {
+  const failed = (job.counts.failed ?? 0) + (job.counts.timed_out ?? 0);
+  if (job.status === "completed" && failed > 0) return <Badge tone="danger">completed with failures</Badge>;
+  return <Badge tone={jobTones[job.status]}>{job.status}</Badge>;
+}
+
+const hostTones: Record<JobHost["state"], Tone> = {
+  queued: "neutral", waiting_lock: "warn", connecting: "accent", running: "accent", rebooting: "accent",
+  waiting_host: "accent", verifying: "accent", succeeded: "ok", failed: "danger", timed_out: "danger",
+  cancelled: "neutral", skipped: "neutral", interrupted: "warn",
+};
+
+const hostLabels: Partial<Record<JobHost["state"], string>> = {
+  waiting_lock: "waiting for host", timed_out: "timed out", waiting_host: "waiting for host",
+};
+
+export function HostStateBadge({ state }: { state: JobHost["state"] }) {
+  return <Badge tone={hostTones[state]}>{hostLabels[state] ?? state}</Badge>;
+}
+
+/** Plain-language explanations for error classes (ARCHITECTURE-ALPHA §14). */
+export const errorExplanations: Record<string, string> = {
+  ConnectionError: "DROOL could not reach the host.",
+  AuthenticationError: "The host rejected DROOL's credential.",
+  HostKeyError: "The host's SSH key does not match the trusted key.",
+  AuthorizationError: "Logged in, but privilege escalation (sudo) was refused.",
+  TimeoutError: "The operation took longer than its timeout and was stopped.",
+  ExecutionError: "The command ran but exited with an error.",
+  ConfigurationError: "The host is missing something DROOL needs.",
+  CancelledError: "The job was cancelled.",
+  LockTimeoutError: "Another job kept this host busy for too long.",
+  InterruptedError: "The controller restarted while this host was running; the outcome is unknown.",
+};

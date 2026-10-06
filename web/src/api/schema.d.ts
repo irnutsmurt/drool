@@ -889,31 +889,31 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "CommandOp";
+            type: "command";
             command: string;
             /** @description Run with sudo */
             become?: boolean;
             /** @description Allows running alongside other jobs on the same host */
             read_only?: boolean;
             /** @default 300 */
-            timeout_s: number;
+            timeout_s?: number;
         };
         ScriptOp: {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "ScriptOp";
+            type: "script";
             /**
              * @default sh
              * @enum {string}
              */
-            interpreter: "sh" | "bash";
+            interpreter?: "sh" | "bash";
             body: string;
             become?: boolean;
             read_only?: boolean;
             /** @default 600 */
-            timeout_s: number;
+            timeout_s?: number;
         };
         TargetSpec: {
             hosts?: string[];
@@ -927,7 +927,7 @@ export interface components {
             targets: components["schemas"]["TargetSpec"];
             strategy?: {
                 /** @default 10 */
-                concurrency: number;
+                concurrency?: number;
                 /** @description Stop starting hosts after this many failures */
                 failure_threshold?: number | null;
             };

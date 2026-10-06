@@ -29,3 +29,34 @@ export const useCredentials = (enabled = true) =>
   useQuery({ queryKey: qk.credentials, queryFn: () => unwrap(api.GET("/secrets")), enabled });
 export const useControllerKey = () =>
   useQuery({ queryKey: qk.controllerKey, queryFn: () => unwrap(api.GET("/secrets/controller-ssh-key")) });
+
+export type Job = Schemas["Job"];
+export type JobHost = Schemas["JobHost"];
+export type JobHostDetail = Schemas["JobHostDetail"];
+export type JobSpec = Schemas["JobSpec"];
+
+export const jk = {
+  jobs: ["jobs"] as const,
+  job: (id: string) => ["jobs", id] as const,
+  jobHosts: (id: string) => ["jobs", id, "hosts"] as const,
+  jobHost: (id: string, host: string) => ["jobs", id, "hosts", host] as const,
+};
+
+const active = (status?: string) => status === "pending" || status === "running" || status === "paused";
+
+export const useJobs = (host?: string) =>
+  useQuery({
+    queryKey: host ? [...jk.jobs, { host }] : jk.jobs,
+    queryFn: () => unwrap(api.GET("/jobs", { params: { query: { host, limit: host ? 10 : 100 } } })),
+    // Keep the list fresh while anything is running; SSE drives the detail page.
+    refetchInterval: (q) => (q.state.data?.items.some((j) => active(j.status)) ? 3000 : false),
+  });
+export const useJob = (id: string) =>
+  useQuery({ queryKey: jk.job(id), queryFn: () => unwrap(api.GET("/jobs/{id}", { params: { path: { id } } })) });
+export const useJobHosts = (id: string) =>
+  useQuery({ queryKey: jk.jobHosts(id), queryFn: () => unwrap(api.GET("/jobs/{id}/hosts", { params: { path: { id } } })) });
+export const useJobHost = (id: string, host: string) =>
+  useQuery({
+    queryKey: jk.jobHost(id, host),
+    queryFn: () => unwrap(api.GET("/jobs/{id}/hosts/{hostId}", { params: { path: { id, hostId: host } } })),
+  });

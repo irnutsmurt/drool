@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build && touch dist/.gitkeep",
     "typecheck": "tsc -b --noEmit",
-    "gen:api": "openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts"
+    "gen:api": "openapi-typescript ../api/openapi.yaml --default-non-nullable false -o src/api/schema.d.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.1",

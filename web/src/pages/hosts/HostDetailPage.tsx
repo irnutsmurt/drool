@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
-import { qk, useCredentials, useGroups, useHost, useHosts, type ProbeResult } from "@/api/queries";
+import { qk, useCredentials, useGroups, useHost, useHosts, useJobs, type ProbeResult } from "@/api/queries";
+import { JobStatusBadge } from "@/components/jobs/badges";
 import { useAuth } from "@/auth/AuthContext";
 import { HostForm, type HostRequest } from "@/components/hosts/HostForm";
 import { HostKeyPanel } from "@/components/hosts/HostKeyPanel";
@@ -24,6 +25,7 @@ export function HostDetailPage() {
   const hosts = useHosts();
   const groups = useGroups();
   const creds = useCredentials(can("credentials.use"));
+  const recentJobs = useJobs(id);
   const [editing, setEditing] = useState(false);
   const [probe, setProbe] = useState<ProbeResult>();
 
@@ -75,6 +77,9 @@ export function HostDetailPage() {
                 {test.isPending ? "Testing…" : "Test connection"}
               </Button>
             )}
+            {can("jobs.execute") && !h.jump_only && (
+              <Button onClick={() => navigate(`/jobs/new?hosts=${h.id}`)}>Run command</Button>
+            )}
             {can("hosts.write") && !editing && <Button onClick={() => setEditing(true)}>Edit</Button>}
           </>
         }
@@ -123,6 +128,24 @@ export function HostDetailPage() {
         {(probe || test.error) && (
           <Card title="Connection test" className="lg:col-span-2">
             {test.error ? <Alert>{errorMessage(test.error)}</Alert> : probe && <ProbeSteps result={probe} />}
+          </Card>
+        )}
+
+        {!h.jump_only && (
+          <Card title="Recent jobs" className="lg:col-span-2">
+            {(recentJobs.data?.items ?? []).length === 0 ? (
+              <p className="text-sm text-muted">No jobs have run on this host yet.</p>
+            ) : (
+              <ul className="space-y-1.5 text-sm">
+                {recentJobs.data!.items.map((j) => (
+                  <li key={j.id} className="flex items-center gap-3">
+                    <JobStatusBadge job={j} />
+                    <Link className="text-accent" to={`/jobs/${j.id}`}>{j.name}</Link>
+                    <span className="ml-auto text-muted">{formatDateTime(j.created_at)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
         )}
 

@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useGroups, useHosts, type Host } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { HostStatusBadge } from "@/components/hosts/HostStatusBadge";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Select } from "@/components/ui/Field";
@@ -19,7 +20,13 @@ export function HostsPage() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const [group, setGroup] = useState("");
-
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const navigate = useNavigate();
+  const togglePick = (id: string) => setPicked((p) => {
+    const n = new Set(p);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
   const byId = useMemo(() => new Map((hosts.data?.items ?? []).map((h) => [h.id, h])), [hosts.data]);
   const rows = (hosts.data?.items ?? []).filter((h) => {
     const text = `${h.name} ${h.address} ${h.description} ${h.tags.join(" ")}`.toLowerCase();
@@ -62,12 +69,29 @@ export function HostsPage() {
         </Select>
       </div>
       {hosts.error && <Alert>{errorMessage(hosts.error)}</Alert>}
+      {can("jobs.execute") && picked.size > 0 && (
+        <div className="mb-3 flex items-center gap-3 text-sm">
+          <span>{picked.size} selected</span>
+          <Button size="sm" variant="primary" onClick={() => navigate(`/jobs/new?hosts=${[...picked].join(",")}`)}>
+            Run command on selected
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setPicked(new Set())}>Clear</Button>
+        </div>
+      )}
       <Card>
         <Table<Host>
           rows={rows}
           rowKey={(h) => h.id}
           empty={hosts.isPending ? "Loading…" : "No hosts match."}
           columns={[
+            ...(can("jobs.execute") ? [{
+              header: "",
+              className: "w-8 px-3 py-2",
+              cell: (h: Host) => !h.jump_only && (
+                <input type="checkbox" aria-label={`Select ${h.name}`} className="accent-[var(--ui-accent)]"
+                  checked={picked.has(h.id)} onChange={() => togglePick(h.id)} />
+              ),
+            }] : []),
             { header: "Name", cell: (h) => <Link className="font-medium text-accent" to={`/hosts/${h.id}`}>{h.name}</Link> },
             { header: "Address", cell: (h) => <span className="font-mono text-xs">{h.address}{h.port !== 22 && `:${h.port}`}</span> },
             { header: "User", cell: (h) => h.user },
