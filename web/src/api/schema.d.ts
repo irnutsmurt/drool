@@ -423,6 +423,201 @@ export interface paths {
         patch: operations["updateGroup"];
         trace?: never;
     };
+    "/jobs/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Resolve targets without running anything. */
+        post: operations["previewJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listJobs"];
+        put?: never;
+        /** @description Requires `jobs.execute`. Repeating a request with the same `Idempotency-Key` returns the original job (200). */
+        post: operations["createJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{id}/hosts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["listJobHosts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{id}/hosts/{hostId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                hostId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getJobHost"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{id}/hosts/{hostId}/output": {
+        parameters: {
+            query?: {
+                step?: number;
+                /** @description Return segments after this sequence number */
+                after?: number;
+                stream?: "stdout" | "stderr";
+                /** @description `text` downloads raw output */
+                format?: "json" | "text";
+            };
+            header?: never;
+            path: {
+                id: string;
+                hostId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getJobOutput"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * @description Server-sent events: `job` (status and counts), `host` (state changes), `output`
+         *     (new output segments), `end` (job finished), and `reset` (events were missed; refetch
+         *     state over REST). Send `Last-Event-ID` to resume after reconnecting.
+         */
+        get: operations["jobEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Running hosts' remote process groups are terminated; queued hosts are cancelled. */
+        post: operations["cancelJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Continue a job paused by the circuit breaker. */
+        post: operations["resumeJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{id}/rerun": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Create a new job with the same steps for some of this job's hosts. */
+        post: operations["rerunJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -686,6 +881,136 @@ export interface components {
             name?: string;
             description?: string;
             host_ids?: string[];
+        };
+        /** @description One typed step. Discriminated by `type`. */
+        Operation: components["schemas"]["CommandOp"] | components["schemas"]["ScriptOp"];
+        CommandOp: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "CommandOp";
+            command: string;
+            /** @description Run with sudo */
+            become?: boolean;
+            /** @description Allows running alongside other jobs on the same host */
+            read_only?: boolean;
+            /** @default 300 */
+            timeout_s: number;
+        };
+        ScriptOp: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "ScriptOp";
+            /**
+             * @default sh
+             * @enum {string}
+             */
+            interpreter: "sh" | "bash";
+            body: string;
+            become?: boolean;
+            read_only?: boolean;
+            /** @default 600 */
+            timeout_s: number;
+        };
+        TargetSpec: {
+            hosts?: string[];
+            groups?: string[];
+            tags?: string[];
+            exclude_hosts?: string[];
+        };
+        JobSpec: {
+            name?: string;
+            steps: components["schemas"]["Operation"][];
+            targets: components["schemas"]["TargetSpec"];
+            strategy?: {
+                /** @default 10 */
+                concurrency: number;
+                /** @description Stop starting hosts after this many failures */
+                failure_threshold?: number | null;
+            };
+        };
+        /** @enum {string} */
+        JobStatus: "pending" | "running" | "paused" | "completed" | "cancelled" | "interrupted";
+        /** @enum {string} */
+        JobHostState: "queued" | "waiting_lock" | "connecting" | "running" | "rebooting" | "waiting_host" | "verifying" | "succeeded" | "failed" | "timed_out" | "cancelled" | "skipped" | "interrupted";
+        TargetHost: {
+            id: string;
+            name: string;
+            status: components["schemas"]["HostStatus"];
+            warning?: string;
+        };
+        JobPreview: {
+            hosts: components["schemas"]["TargetHost"][];
+            warnings: string[];
+        };
+        Job: {
+            id: string;
+            name: string;
+            status: components["schemas"]["JobStatus"];
+            pause_reason: string;
+            spec: components["schemas"]["JobSpec"];
+            rerun_of: string | null;
+            /** @description Username */
+            created_by: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            started_at: string | null;
+            /** Format: date-time */
+            finished_at: string | null;
+            /** @description Hosts per state */
+            counts: {
+                [key: string]: number;
+            };
+            host_count: number;
+        };
+        JobHost: {
+            host_id: string;
+            host_name: string;
+            state: components["schemas"]["JobHostState"];
+            current_step: number;
+            attempt: number;
+            exit_code: number | null;
+            error_class: string;
+            error_message: string;
+            error_hint: string;
+            /** Format: date-time */
+            started_at: string | null;
+            /** Format: date-time */
+            finished_at: string | null;
+        };
+        JobStep: {
+            index: number;
+            type: string;
+            /** @enum {string} */
+            state: "running" | "succeeded" | "failed" | "timed_out" | "cancelled" | "interrupted";
+            attempt: number;
+            exit_code: number | null;
+            stdout_bytes: number;
+            stderr_bytes: number;
+            truncated: boolean;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            finished_at: string | null;
+        };
+        JobHostDetail: components["schemas"]["JobHost"] & {
+            steps: components["schemas"]["JobStep"][];
+        };
+        JobOutput: {
+            segments: {
+                seq: number;
+                /** @enum {string} */
+                stream: "stdout" | "stderr";
+                text: string;
+                /** Format: date-time */
+                ts: string;
+            }[];
+            next_seq: number;
+            more: boolean;
         };
     };
     responses: {
@@ -1583,6 +1908,294 @@ export interface operations {
             };
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    previewJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    targets: components["schemas"]["TargetSpec"];
+                };
+            };
+        };
+        responses: {
+            /** @description Resolved hosts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobPreview"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    listJobs: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["JobStatus"];
+                /** @description Host id */
+                host?: string;
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Jobs, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Job"][];
+                        next_cursor?: string;
+                    };
+                };
+            };
+        };
+    };
+    createJob: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSpec"];
+            };
+        };
+        responses: {
+            /** @description Existing job for this idempotency key. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Created and started. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    getJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Job with per-state host counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    listJobHosts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Per-host state, in execution order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["JobHost"][];
+                    };
+                };
+            };
+        };
+    };
+    getJobHost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                hostId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Host state with steps. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobHostDetail"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    getJobOutput: {
+        parameters: {
+            query?: {
+                step?: number;
+                /** @description Return segments after this sequence number */
+                after?: number;
+                stream?: "stdout" | "stderr";
+                /** @description `text` downloads raw output */
+                format?: "json" | "text";
+            };
+            header?: never;
+            path: {
+                id: string;
+                hostId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Output segments (up to 500 per page). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOutput"];
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    jobEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Event stream. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+        };
+    };
+    cancelJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancellation requested. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    resumeJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resumed. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    rerunJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    hosts: ("failed" | "interrupted" | "all") | string[];
+                };
+            };
+        };
+        responses: {
+            /** @description New job. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
             422: components["responses"]["Problem"];
         };
     };

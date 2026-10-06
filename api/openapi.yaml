@@ -559,6 +559,196 @@ paths:
         '204': { description: Deleted. }
         '404': { $ref: '#/components/responses/Problem' }
 
+  /jobs/preview:
+    post:
+      operationId: previewJob
+      tags: [jobs]
+      description: Resolve targets without running anything.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targets]
+              properties:
+                targets: { $ref: '#/components/schemas/TargetSpec' }
+      responses:
+        '200':
+          description: Resolved hosts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobPreview' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /jobs:
+    get:
+      operationId: listJobs
+      tags: [jobs]
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/JobStatus' } }
+        - { name: host, in: query, description: Host id, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Jobs, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Job' } }
+                  next_cursor: { type: string }
+    post:
+      operationId: createJob
+      tags: [jobs]
+      description: 'Requires `jobs.execute`. Repeating a request with the same `Idempotency-Key` returns the original job (200).'
+      parameters:
+        - { name: Idempotency-Key, in: header, schema: { type: string, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobSpec' }
+      responses:
+        '200':
+          description: Existing job for this idempotency key.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '201':
+          description: Created and started.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /jobs/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getJob
+      tags: [jobs]
+      responses:
+        '200':
+          description: Job with per-state host counts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /jobs/{id}/hosts:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: listJobHosts
+      tags: [jobs]
+      responses:
+        '200':
+          description: Per-host state, in execution order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/JobHost' } }
+  /jobs/{id}/hosts/{hostId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: hostId, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getJobHost
+      tags: [jobs]
+      responses:
+        '200':
+          description: Host state with steps.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobHostDetail' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /jobs/{id}/hosts/{hostId}/output:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: hostId, in: path, required: true, schema: { type: string } }
+      - { name: step, in: query, schema: { type: integer, default: 0 } }
+      - { name: after, in: query, description: Return segments after this sequence number, schema: { type: integer, default: 0 } }
+      - { name: stream, in: query, schema: { type: string, enum: [stdout, stderr] } }
+      - { name: format, in: query, description: '`text` downloads raw output', schema: { type: string, enum: [json, text] } }
+    get:
+      operationId: getJobOutput
+      tags: [jobs]
+      responses:
+        '200':
+          description: Output segments (up to 500 per page).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobOutput' }
+            text/plain:
+              schema: { type: string }
+  /jobs/{id}/events:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: jobEvents
+      tags: [jobs]
+      description: |
+        Server-sent events: `job` (status and counts), `host` (state changes), `output`
+        (new output segments), `end` (job finished), and `reset` (events were missed; refetch
+        state over REST). Send `Last-Event-ID` to resume after reconnecting.
+      responses:
+        '200':
+          description: Event stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+  /jobs/{id}/cancel:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: cancelJob
+      tags: [jobs]
+      description: Running hosts' remote process groups are terminated; queued hosts are cancelled.
+      responses:
+        '202': { description: Cancellation requested. }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /jobs/{id}/resume:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: resumeJob
+      tags: [jobs]
+      description: Continue a job paused by the circuit breaker.
+      responses:
+        '202': { description: Resumed. }
+        '409': { $ref: '#/components/responses/Problem' }
+  /jobs/{id}/rerun:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: rerunJob
+      tags: [jobs]
+      description: Create a new job with the same steps for some of this job's hosts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hosts]
+              properties:
+                hosts:
+                  oneOf:
+                    - { type: string, enum: [failed, interrupted, all] }
+                    - { type: array, items: { type: string } }
+      responses:
+        '201':
+          description: New job.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '422': { $ref: '#/components/responses/Problem' }
+
 components:
   securitySchemes:
     session: { type: apiKey, in: cookie, name: drool_session }
@@ -889,3 +1079,155 @@ components:
         name: { type: string }
         description: { type: string }
         host_ids: { type: array, items: { type: string } }
+
+    Operation:
+      description: One typed step. Discriminated by `type`.
+      oneOf:
+        - $ref: '#/components/schemas/CommandOp'
+        - $ref: '#/components/schemas/ScriptOp'
+      discriminator: { propertyName: type }
+
+    CommandOp:
+      type: object
+      required: [type, command]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [command] }
+        command: { type: string, maxLength: 65536 }
+        become: { type: boolean, description: Run with sudo }
+        read_only: { type: boolean, description: Allows running alongside other jobs on the same host }
+        timeout_s: { type: integer, minimum: 1, maximum: 86400, default: 300 }
+
+    ScriptOp:
+      type: object
+      required: [type, body]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [script] }
+        interpreter: { type: string, enum: [sh, bash], default: sh }
+        body: { type: string }
+        become: { type: boolean }
+        read_only: { type: boolean }
+        timeout_s: { type: integer, minimum: 1, maximum: 86400, default: 600 }
+
+    TargetSpec:
+      type: object
+      additionalProperties: false
+      properties:
+        hosts: { type: array, items: { type: string } }
+        groups: { type: array, items: { type: string } }
+        tags: { type: array, items: { type: string } }
+        exclude_hosts: { type: array, items: { type: string } }
+
+    JobSpec:
+      type: object
+      required: [steps, targets]
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 120 }
+        steps: { type: array, minItems: 1, maxItems: 10, items: { $ref: '#/components/schemas/Operation' } }
+        targets: { $ref: '#/components/schemas/TargetSpec' }
+        strategy:
+          type: object
+          additionalProperties: false
+          properties:
+            concurrency: { type: integer, minimum: 1, maximum: 100, default: 10 }
+            failure_threshold: { type: [integer, 'null'], minimum: 1, description: Stop starting hosts after this many failures }
+
+    JobStatus:
+      type: string
+      enum: [pending, running, paused, completed, cancelled, interrupted]
+
+    JobHostState:
+      type: string
+      enum: [queued, waiting_lock, connecting, running, rebooting, waiting_host, verifying,
+             succeeded, failed, timed_out, cancelled, skipped, interrupted]
+
+    TargetHost:
+      type: object
+      required: [id, name, status]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        status: { $ref: '#/components/schemas/HostStatus' }
+        warning: { type: string }
+
+    JobPreview:
+      type: object
+      required: [hosts, warnings]
+      properties:
+        hosts: { type: array, items: { $ref: '#/components/schemas/TargetHost' } }
+        warnings: { type: array, items: { type: string } }
+
+    Job:
+      type: object
+      required: [id, name, status, pause_reason, spec, rerun_of, created_by, created_at, started_at, finished_at, counts, host_count]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        status: { $ref: '#/components/schemas/JobStatus' }
+        pause_reason: { type: string }
+        spec: { $ref: '#/components/schemas/JobSpec' }
+        rerun_of: { type: [string, 'null'] }
+        created_by: { type: string, description: Username }
+        created_at: { type: string, format: date-time }
+        started_at: { type: [string, 'null'], format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }
+        counts: { type: object, additionalProperties: { type: integer }, description: Hosts per state }
+        host_count: { type: integer }
+
+    JobHost:
+      type: object
+      required: [host_id, host_name, state, current_step, attempt, exit_code, error_class, error_message, error_hint, started_at, finished_at]
+      properties:
+        host_id: { type: string }
+        host_name: { type: string }
+        state: { $ref: '#/components/schemas/JobHostState' }
+        current_step: { type: integer }
+        attempt: { type: integer }
+        exit_code: { type: [integer, 'null'] }
+        error_class: { type: string }
+        error_message: { type: string }
+        error_hint: { type: string }
+        started_at: { type: [string, 'null'], format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }
+
+    JobStep:
+      type: object
+      required: [index, type, state, attempt, exit_code, stdout_bytes, stderr_bytes, truncated, started_at, finished_at]
+      properties:
+        index: { type: integer }
+        type: { type: string }
+        state: { type: string, enum: [running, succeeded, failed, timed_out, cancelled, interrupted] }
+        attempt: { type: integer }
+        exit_code: { type: [integer, 'null'] }
+        stdout_bytes: { type: integer }
+        stderr_bytes: { type: integer }
+        truncated: { type: boolean }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }
+
+    JobHostDetail:
+      allOf:
+        - $ref: '#/components/schemas/JobHost'
+        - type: object
+          required: [steps]
+          properties:
+            steps: { type: array, items: { $ref: '#/components/schemas/JobStep' } }
+
+    JobOutput:
+      type: object
+      required: [segments, next_seq, more]
+      properties:
+        segments:
+          type: array
+          items:
+            type: object
+            required: [seq, stream, text, ts]
+            properties:
+              seq: { type: integer }
+              stream: { type: string, enum: [stdout, stderr] }
+              text: { type: string }
+              ts: { type: string, format: date-time }
+        next_seq: { type: integer }
+        more: { type: boolean }

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os/exec"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -235,4 +236,24 @@ func forward(nch ssh.NewChannel) {
 	go func() { io.Copy(ch, target); ch.Close() }()
 	io.Copy(target, ch)
 	target.Close()
+}
+
+// ExecLocal runs commands with the local /bin/sh, so tests exercise real
+// remote-execution scripts (mktemp, setsid, kill) on the test machine.
+func ExecLocal(cmd string, stdin []byte) (string, string, int) {
+	c := exec.Command("/bin/sh", "-c", cmd)
+	c.Stdin = bytes.NewReader(stdin)
+	var out, errOut bytes.Buffer
+	c.Stdout, c.Stderr = &out, &errOut
+	err := c.Run()
+	code := 0
+	if ee, ok := err.(*exec.ExitError); ok {
+		code = ee.ExitCode()
+		if code < 0 {
+			code = 128 + 15
+		}
+	} else if err != nil {
+		return "", err.Error(), 127
+	}
+	return out.String(), errOut.String(), code
 }

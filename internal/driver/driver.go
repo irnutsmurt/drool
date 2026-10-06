@@ -3,6 +3,11 @@
 // in the alpha; the agent driver arrives in Alpha 2.
 package driver
 
+import (
+	"errors"
+	"io"
+)
+
 // Probe step statuses.
 const (
 	StepOK      = "ok"
@@ -34,4 +39,31 @@ func (r *ProbeResult) FirstFailure() *ProbeStep {
 		}
 	}
 	return nil
+}
+
+// OpResult is the outcome of an operation that ran to completion (whatever
+// its exit status).
+type OpResult struct {
+	ExitCode *int
+	Changed  *bool
+	Data     map[string]any
+}
+
+// OutputSink receives an operation's output streams.
+type OutputSink interface {
+	Stdout() io.Writer
+	Stderr() io.Writer
+}
+
+// NotStartedError marks a failure that happened before anything ran on the
+// host, so even non-idempotent operations may be retried.
+type NotStartedError struct{ Err error }
+
+func (e *NotStartedError) Error() string { return e.Err.Error() }
+func (e *NotStartedError) Unwrap() error { return e.Err }
+
+// IsNotStarted reports whether err happened before the operation started.
+func IsNotStarted(err error) bool {
+	var ns *NotStartedError
+	return errors.As(err, &ns)
 }

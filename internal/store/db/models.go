@@ -88,6 +88,65 @@ type HostTag struct {
 	Tag    string
 }
 
+type Job struct {
+	ID             string
+	Name           string
+	SpecJson       string
+	SpecVersion    int64
+	IdempotencyKey sql.NullString
+	Status         string
+	PauseReason    string
+	RerunOf        sql.NullString
+	CreatedBy      string
+	CreatedAt      int64
+	StartedAt      sql.NullInt64
+	FinishedAt     sql.NullInt64
+}
+
+type JobHost struct {
+	JobID        string
+	HostID       string
+	HostName     string
+	Position     int64
+	State        string
+	CurrentStep  int64
+	Attempt      int64
+	ExitCode     sql.NullInt64
+	ErrorClass   string
+	ErrorMessage string
+	ErrorHint    string
+	Retryable    int64
+	StartedAt    sql.NullInt64
+	FinishedAt   sql.NullInt64
+}
+
+type JobOutput struct {
+	JobID     string
+	HostID    string
+	StepIndex int64
+	Seq       int64
+	Stream    int64
+	Ts        int64
+	Chunk     []byte
+}
+
+type JobStep struct {
+	JobID       string
+	HostID      string
+	StepIndex   int64
+	OpType      string
+	State       string
+	Attempt     int64
+	ExitCode    sql.NullInt64
+	Changed     sql.NullInt64
+	ResultJson  string
+	StdoutBytes int64
+	StderrBytes int64
+	Truncated   int64
+	StartedAt   int64
+	FinishedAt  sql.NullInt64
+}
+
 type Secret struct {
 	ID          string
 	Name        string

@@ -26,6 +26,8 @@ import (
 	"drool/internal/audit"
 	"drool/internal/auth"
 	"drool/internal/config"
+	"drool/internal/driver/sshdriver"
+	"drool/internal/engine"
 	"drool/internal/inventory"
 	"drool/internal/logging"
 	"drool/internal/secrets"
@@ -293,11 +295,21 @@ func cmdServe(path string, explicit bool) error {
 	pool := sshx.NewPool(dialer)
 	defer pool.Close()
 	inv := inventory.NewService(st, secretSvc, dialer, pool)
+	eng := engine.New(st, inv, &sshdriver.Executor{Pool: pool}, auditW, logs.Job, engine.Config{
+		GlobalConcurrency:  cfg.Engine.GlobalConcurrency,
+		PerJumpConcurrency: cfg.Engine.PerJumpHostConcurrency,
+		OutputCap:          cfg.Engine.OutputCapBytes,
+		RetentionDays:      cfg.Retention.JobsDays,
+	})
+	if err := eng.Start(ctx); err != nil {
+		return fmt.Errorf("job engine: %w", err)
+	}
+	defer eng.Stop()
 
 	srv, err := api.New(api.Deps{
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
 		UI: web.Dist(), Registry: reg, TLSMode: tlsRes.Mode,
-		Secrets: secretSvc, Inventory: inv, Pool: pool,
+		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
 	})
 	if err != nil {
 		return err

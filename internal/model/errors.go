@@ -21,6 +21,8 @@ const (
 	ClassValidation     ErrorClass = "ValidationError"
 	ClassPackageManager ErrorClass = "PackageManagerError"
 	ClassService        ErrorClass = "ServiceError"
+	ClassCancelled      ErrorClass = "CancelledError"
+	ClassLock           ErrorClass = "LockTimeoutError"
 	ClassInternal       ErrorClass = "InternalError"
 )
 

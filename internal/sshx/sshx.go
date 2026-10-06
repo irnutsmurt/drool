@@ -435,3 +435,66 @@ func (w *capWriter) Write(p []byte) (int, error) {
 	}
 	return len(p), nil
 }
+
+// Running is a command started with Start.
+type Running struct {
+	sess *ssh.Session
+	done chan struct{}
+	err  error
+}
+
+// Start runs cmd in a new session, streaming output to stdout and stderr.
+// It returns once the command has started. With pty, both streams arrive on
+// stdout.
+func (c *Client) Start(cmd string, stdin []byte, stdout, stderr io.Writer, pty bool) (*Running, error) {
+	sess, err := c.NewSession()
+	if err != nil {
+		return nil, &model.OpError{Class: model.ClassConnection, Retryable: true, Err: err, Message: "open session: " + err.Error()}
+	}
+	sess.Stdout, sess.Stderr = stdout, stderr
+	sess.Stdin = bytes.NewReader(stdin) // empty stdin still sends EOF
+	if pty {
+		if err := sess.RequestPty("xterm", 40, 200, ssh.TerminalModes{ssh.ECHO: 0}); err != nil {
+			sess.Close()
+			return nil, &model.OpError{Class: model.ClassConnection, Err: err, Message: "request pty: " + err.Error()}
+		}
+	}
+	if err := sess.Start(cmd); err != nil {
+		sess.Close()
+		return nil, &model.OpError{Class: model.ClassConnection, Retryable: true, Err: err, Message: "start command: " + err.Error()}
+	}
+	r := &Running{sess: sess, done: make(chan struct{})}
+	go func() {
+		r.err = sess.Wait()
+		close(r.done)
+	}()
+	return r, nil
+}
+
+// Done is closed when the command finishes.
+func (r *Running) Done() <-chan struct{} { return r.done }
+
+// ExitCode returns the exit status after Done. A connection failure is
+// returned as an error; -1 means the command ended without an exit status
+// (e.g. killed by a signal).
+func (r *Running) ExitCode() (int, error) {
+	<-r.done
+	var exitErr *ssh.ExitError
+	switch {
+	case r.err == nil:
+		return 0, nil
+	case errors.As(r.err, &exitErr):
+		if exitErr.ExitStatus() == 0 && exitErr.Signal() != "" {
+			return -1, nil
+		}
+		return exitErr.ExitStatus(), nil
+	case errors.Is(r.err, io.EOF), strings.Contains(r.err.Error(), "exited without exit status"):
+		return -1, nil
+	}
+	return -1, &model.OpError{Class: model.ClassConnection, Retryable: true, Err: r.err,
+		Message: "connection lost while the command was running: " + r.err.Error()}
+}
+
+// Close closes the session (the remote process may keep running; see the
+// driver's cancellation).
+func (r *Running) Close() { r.sess.Close() }

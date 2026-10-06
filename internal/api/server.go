@@ -16,6 +16,7 @@ import (
 	"drool/internal/audit"
 	"drool/internal/auth"
 	"drool/internal/config"
+	"drool/internal/engine"
 	"drool/internal/inventory"
 	"drool/internal/logging"
 	"drool/internal/secrets"
@@ -38,6 +39,7 @@ type Deps struct {
 	Secrets   *secrets.Service
 	Inventory *inventory.Service
 	Pool      *sshx.Pool
+	Engine    *engine.Engine
 }
 
 // Server is the HTTP API server.
@@ -120,6 +122,18 @@ func (s *Server) routes() []route {
 		{method: "GET", path: APIPrefix + "/groups/{id}", auth: authed, perm: auth.PermHostsRead, h: s.handleGetGroup},
 		{method: "PATCH", path: APIPrefix + "/groups/{id}", auth: authed, perm: auth.PermHostsWrite, h: s.handleUpdateGroup},
 		{method: "DELETE", path: APIPrefix + "/groups/{id}", auth: authed, perm: auth.PermHostsWrite, h: s.handleDeleteGroup},
+
+		{method: "POST", path: APIPrefix + "/jobs/preview", auth: authed, perm: auth.PermJobsRead, h: s.handlePreviewJob},
+		{method: "POST", path: APIPrefix + "/jobs", auth: authed, perm: auth.PermJobsExecute, h: s.handleCreateJob},
+		{method: "GET", path: APIPrefix + "/jobs", auth: authed, perm: auth.PermJobsRead, h: s.handleListJobs},
+		{method: "GET", path: APIPrefix + "/jobs/{id}", auth: authed, perm: auth.PermJobsRead, h: s.handleGetJob},
+		{method: "GET", path: APIPrefix + "/jobs/{id}/hosts", auth: authed, perm: auth.PermJobsRead, h: s.handleListJobHosts},
+		{method: "GET", path: APIPrefix + "/jobs/{id}/hosts/{hostId}", auth: authed, perm: auth.PermJobsRead, h: s.handleGetJobHost},
+		{method: "GET", path: APIPrefix + "/jobs/{id}/hosts/{hostId}/output", auth: authed, perm: auth.PermJobsRead, h: s.handleJobOutput},
+		{method: "GET", path: APIPrefix + "/jobs/{id}/events", auth: authed, perm: auth.PermJobsRead, h: s.handleJobEvents},
+		{method: "POST", path: APIPrefix + "/jobs/{id}/cancel", auth: authed, perm: auth.PermJobsExecute, h: s.handleCancelJob},
+		{method: "POST", path: APIPrefix + "/jobs/{id}/resume", auth: authed, perm: auth.PermJobsExecute, h: s.handleResumeJob},
+		{method: "POST", path: APIPrefix + "/jobs/{id}/rerun", auth: authed, perm: auth.PermJobsExecute, h: s.handleRerunJob},
 	}
 }
 

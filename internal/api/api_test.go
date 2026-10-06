@@ -21,6 +21,8 @@ import (
 	"drool/internal/audit"
 	"drool/internal/auth"
 	"drool/internal/config"
+	"drool/internal/driver/sshdriver"
+	"drool/internal/engine"
 	"drool/internal/inventory"
 	"drool/internal/logging"
 	"drool/internal/secrets"
@@ -33,6 +35,7 @@ const pw = "correct horse battery"
 
 type harness struct {
 	t    *testing.T
+	eng  *engine.Engine
 	srv  *Server
 	ts   *httptest.Server
 	auth *auth.Service
@@ -63,9 +66,14 @@ func newHarness(t *testing.T) *harness {
 	dialer := &sshx.Dialer{DialTimeout: 3 * time.Second}
 	pool := sshx.NewPool(dialer)
 	t.Cleanup(pool.Close)
+	inv := inventory.NewService(st, secretSvc, dialer, pool)
+	eng := engine.New(st, inv, &sshdriver.Executor{Pool: pool}, auditW, logs.Job, engine.Config{RetryDelay: 10 * time.Millisecond})
+	if err := eng.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	srv, err := New(Deps{
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
-		Secrets: secretSvc, Inventory: inventory.NewService(st, secretSvc, dialer, pool), Pool: pool,
+		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
 		UI: fstest.MapFS{
 			"index.html":    {Data: []byte("<!doctype html><title>ui</title>")},
 			"assets/app.js": {Data: []byte("console.log(1)")},
@@ -78,7 +86,7 @@ func newHarness(t *testing.T) *harness {
 	srv.SetReady(true)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
-	return &harness{t: t, srv: srv, ts: ts, auth: authSvc, st: st}
+	return &harness{t: t, srv: srv, ts: ts, auth: authSvc, st: st, eng: eng}
 }
 
 func (h *harness) mkUser(name, role string) {
@@ -94,6 +102,7 @@ type client struct {
 	cookie string
 	csrf   string
 	bearer string
+	extra  map[string]string
 }
 
 type resp struct {
@@ -136,6 +145,9 @@ func (c *client) do(method, path string, body any) resp {
 	if c.bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+c.bearer)
 	}
+	for k, v := range c.extra {
+		req.Header.Set(k, v)
+	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		c.h.t.Fatal(err)
@@ -143,6 +155,15 @@ func (c *client) do(method, path string, body any) resp {
 	defer res.Body.Close()
 	b, _ := io.ReadAll(res.Body)
 	return resp{status: res.StatusCode, header: res.Header, body: b}
+}
+
+// doHeader is do with one extra request header.
+func (c *client) doHeader(method, path string, body any, key, value string) resp {
+	c.h.t.Helper()
+	saved := c.extra
+	c.extra = map[string]string{key: value}
+	defer func() { c.extra = saved }()
+	return c.do(method, path, body)
 }
 
 func (h *harness) login(name string) *client {
