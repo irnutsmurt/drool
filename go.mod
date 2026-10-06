@@ -1,4 +1,4 @@
-module fleetmgr
+module drool
 
 go 1.27.1
 

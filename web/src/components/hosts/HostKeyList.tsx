@@ -12,7 +12,7 @@ export function HostKeyList({ keys, onApprove, busy, expected }: {
 }) {
   if (keys.length === 0) return <p className="text-sm text-muted">No keys recorded yet.</p>;
   return (
-    <ul className="divide-y divide-line rounded-fm border border-line">
+    <ul className="divide-y divide-line rounded-ui border border-line">
       {keys.map((k) => {
         const matches = expected && expected.trim() === k.fingerprint;
         return (

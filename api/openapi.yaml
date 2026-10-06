@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
-  title: Fleet Manager API
+  title: DROOL API
   version: 0.1.0
   description: |
     Public REST API. The web UI uses this same API.
 
-    Authentication: a browser session cookie (`fm_session`) or `Authorization: Bearer fm_tok_...`.
-    State-changing requests made with a session cookie must send the `X-FM-CSRF` header,
+    Authentication: a browser session cookie (`drool_session`) or `Authorization: Bearer drool_tok_...`.
+    State-changing requests made with a session cookie must send the `X-DROOL-CSRF` header,
     using the value of `csrf_token` from `/auth/me` or the login response.
 
     Errors use RFC 9457 `application/problem+json`.
@@ -561,7 +561,7 @@ paths:
 
 components:
   securitySchemes:
-    session: { type: apiKey, in: cookie, name: fm_session }
+    session: { type: apiKey, in: cookie, name: drool_session }
     bearer: { type: http, scheme: bearer }
 
   responses:

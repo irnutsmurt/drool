@@ -17,7 +17,7 @@ import (
 
 	"gopkg.in/natefinch/lumberjack.v2"
 
-	"fleetmgr/internal/config"
+	"drool/internal/config"
 )
 
 type Stream string

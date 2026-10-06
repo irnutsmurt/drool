@@ -8,13 +8,13 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"fleetmgr/internal/driver"
-	"fleetmgr/internal/driver/sshdriver"
-	"fleetmgr/internal/ids"
-	"fleetmgr/internal/model"
-	"fleetmgr/internal/secrets"
-	"fleetmgr/internal/sshx"
-	"fleetmgr/internal/store/db"
+	"drool/internal/driver"
+	"drool/internal/driver/sshdriver"
+	"drool/internal/ids"
+	"drool/internal/model"
+	"drool/internal/secrets"
+	"drool/internal/sshx"
+	"drool/internal/store/db"
 )
 
 var ErrHostKeyNotFound = errors.New("host key not found")

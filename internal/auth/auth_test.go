@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"fleetmgr/internal/store"
+	"drool/internal/store"
 )
 
 type clock struct{ t time.Time }
@@ -216,7 +216,7 @@ func TestAPITokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(res.Token, "fm_tok_") {
+	if !strings.HasPrefix(res.Token, "drool_tok_") {
 		t.Fatalf("token format %q", res.Token)
 	}
 	p, err := svc.AuthenticateToken(ctx, res.Token)
@@ -227,8 +227,8 @@ func TestAPITokens(t *testing.T) {
 		t.Fatal("bearer tokens should not need CSRF")
 	}
 	bad := []string{
-		"", "fm_", "fm_nounderscore", res.Token + "x", strings.Replace(res.Token, "fm_", "xx_", 1),
-		"fm_" + res.Row.ID + "_" + strings.Repeat("0", 64),
+		"", "drool_", "drool_nounderscore", res.Token + "x", strings.Replace(res.Token, "drool_", "xx_", 1),
+		"drool_" + res.Row.ID + "_" + strings.Repeat("0", 64),
 	}
 	for _, b := range bad {
 		if _, err := svc.AuthenticateToken(ctx, b); !errors.Is(err, ErrUnauthenticated) {

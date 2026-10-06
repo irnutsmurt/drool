@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"fleetmgr/internal/ids"
-	"fleetmgr/internal/store/db"
+	"drool/internal/ids"
+	"drool/internal/store/db"
 )
 
 // First-admin bootstrap ("claim"), ARCHITECTURE-ALPHA §12.5.

@@ -13,15 +13,15 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"fleetmgr/internal/audit"
-	"fleetmgr/internal/auth"
-	"fleetmgr/internal/config"
-	"fleetmgr/internal/inventory"
-	"fleetmgr/internal/logging"
-	"fleetmgr/internal/secrets"
-	"fleetmgr/internal/sshx"
-	"fleetmgr/internal/store"
-	"fleetmgr/internal/store/db"
+	"drool/internal/audit"
+	"drool/internal/auth"
+	"drool/internal/config"
+	"drool/internal/inventory"
+	"drool/internal/logging"
+	"drool/internal/secrets"
+	"drool/internal/sshx"
+	"drool/internal/store"
+	"drool/internal/store/db"
 )
 
 // Deps are the server's dependencies.
@@ -201,8 +201,8 @@ func (s *Server) wrapRoute(rt route) http.Handler {
 }
 
 const (
-	sessionCookie = "fm_session"
-	csrfHeader    = "X-FM-CSRF"
+	sessionCookie = "drool_session"
+	csrfHeader    = "X-DROOL-CSRF"
 )
 
 func isStateChanging(method string) bool {

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"fleetmgr/internal/ids"
-	"fleetmgr/internal/store"
-	"fleetmgr/internal/store/db"
+	"drool/internal/ids"
+	"drool/internal/store"
+	"drool/internal/store/db"
 )
 
 // HostView is a host with its relations, for API responses.

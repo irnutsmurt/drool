@@ -1,12 +1,20 @@
-# Linux Fleet Management Platform
+# DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.1**
+**Design Document v0.3.2**
 Status: Draft · 2026-10-06 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
-Working name: *Fleet Manager* (placeholder). Binary/path placeholder: `fleetmgr`.
+Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
+
+> DROOL is a web-first platform for managing, automating, monitoring, and eventually segmenting Linux systems through SSH or an agent.
+>
+> The broader name is intentional, but **Linux is the product scope**. The name is not a mandate to add Windows or other platforms (see §34).
 
 ---
 
 ## 0. Changes
+
+### v0.3.1 → v0.3.2
+
+- Product named **DROOL** (Distributed Remote Operations & Observability Layer); placeholders replaced. Scope unchanged: Linux.
 
 ### v0.3 → v0.3.1
 
@@ -114,7 +122,7 @@ New defaults must be placed in one of these categories deliberately. When in dou
 ## 3. Core Product Areas
 
 ```
-Fleet Manager
+DROOL
 ├── Inventory & Identity
 ├── Monitoring
 ├── Automation (Operation Engine)
@@ -406,7 +414,7 @@ Effective capabilities
 ```
 
 ```yaml
-# /etc/fleetmgr/agent.yaml  (root:root 0600)
+# /etc/drool/agent.yaml  (root:root 0600)
 capabilities:
   shell: false
 
@@ -498,7 +506,7 @@ issued_at: 2026-10-06T14:00:00Z
 expires_at: 2026-10-06T14:10:00Z
 ```
 
-Rules enforced by the agent (and by the SSH executor, using a state file on the host at `/var/lib/fleetmgr/state.json`):
+Rules enforced by the agent (and by the SSH executor, using a state file on the host at `/var/lib/drool/state.json`):
 
 - Reject any operation past `expires_at`.
 - Reject any operation whose `operation_id` was already executed (replay or duplicate).
@@ -774,7 +782,7 @@ Detect host networking environment
         ↓
 Select enforcement strategy
         ↓
-Create fleetmgr-owned tables / base chains
+Create drool-owned tables / base chains
         ↓
 Attach at appropriate hooks and priorities
 ```
@@ -829,8 +837,8 @@ The **managed host owns the transaction**, because the controller is exactly the
 ### 17.0 On-host state
 
 ```
-/var/lib/fleetmgr/firewall/
-  committed.nft               # last committed fleetmgr-owned ruleset
+/var/lib/drool/firewall/
+  committed.nft               # last committed drool-owned ruleset
   candidate.nft               # pending candidate (only during a transaction)
   transaction.json            # durable journal
 ```
@@ -848,7 +856,7 @@ The **managed host owns the transaction**, because the controller is exactly the
 
 Files are written with write-temp → fsync → rename → fsync directory.
 
-**Boot loader:** a small `fleetmgr-firewall.service` unit, ordered before `network-pre.target`, loads policy at boot:
+**Boot loader:** a small `drool-firewall.service` unit, ordered before `network-pre.target`, loads policy at boot:
 
 - If no journal exists, or the journal is `committed`: load `committed.nft`.
 - If the journal is `pending`: load `committed.nft` (never the candidate), mark the journal `rolled_back`, and report it on the next connection.
@@ -862,7 +870,7 @@ Agent receives candidate policy (with state_version)
         ↓
 Validate (schema, version, capability, nft -c -f candidate.nft)
         ↓
-Ensure committed.nft reflects the current live fleetmgr rules
+Ensure committed.nft reflects the current live drool rules
         ↓
 Write journal: state=pending (durable)          ← BEFORE touching live rules
         ↓
@@ -896,11 +904,11 @@ No COMMIT before the deadline (for any reason: rules block the path, controller 
 ```
 Preflight: fresh-path connectivity test (see 17.4)
         ↓
-Upload candidate.nft; verify committed.nft matches live fleetmgr rules
+Upload candidate.nft; verify committed.nft matches live drool rules
         ↓
 Write journal: state=pending (durable)
         ↓
-Arm local rollback: systemd-run --on-active=120s fleetmgr-fw-rollback
+Arm local rollback: systemd-run --on-active=120s drool-fw-rollback
         ↓
 Apply candidate atomically
         ↓
@@ -911,7 +919,7 @@ Success → promote candidate, journal=committed, cancel timer
 Failure → do nothing; the timer (or boot loader) restores committed.nft
 ```
 
-`fleetmgr-fw-rollback` is a small root-owned script installed with the boot unit. Hosts without systemd are not supported for firewall enforcement in the Beta.
+`drool-fw-rollback` is a small root-owned script installed with the boot unit. Hosts without systemd are not supported for firewall enforcement in the Beta.
 
 ### 17.3 Locking and reboots
 
@@ -992,7 +1000,7 @@ Native Docker API, Dockhand (optional, where its API supports it; never required
 
 ### 20.5 Resource ownership
 
-Each resource records its owner (e.g. Compose stack: Dockhand; firewall policy: Fleet Manager). Changes to resources owned by another tool are shown as proposals and never applied silently.
+Each resource records its owner (e.g. Compose stack: Dockhand; firewall policy: DROOL). Changes to resources owned by another tool are shown as proposals and never applied silently.
 
 ---
 
@@ -1237,7 +1245,7 @@ Not "Ansible with a web UI." Instead:
 | Dead-man timer | 120 s default, configurable, no auto-adjust, preflight rejects obviously short timers | §17.4 |
 | Agent presets | Monitor Only / Managed / Full (root-equivalent) | §6.7 |
 
-**Remaining:** product name.
+**Remaining:** none. The product name was settled as DROOL in v0.3.2.
 
 ---
 

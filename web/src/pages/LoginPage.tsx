@@ -36,8 +36,8 @@ export function LoginPage() {
 
   return (
     <div className="flex h-full items-center justify-center p-4">
-      <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-fm border border-line bg-surface p-6">
-        <h1 className="text-lg font-semibold">Sign in to Fleet Manager</h1>
+      <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-ui border border-line bg-surface p-6">
+        <h1 className="text-lg font-semibold">Sign in to DROOL</h1>
         {error && <Alert>{error}</Alert>}
         <Field label="Username">
           <Input autoFocus autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required />

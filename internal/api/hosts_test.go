@@ -6,8 +6,8 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"fleetmgr/internal/auth"
-	"fleetmgr/internal/sshx/sshtest"
+	"drool/internal/auth"
+	"drool/internal/sshx/sshtest"
 )
 
 // linuxExec answers the probe's commands like a Linux host with passwordless sudo.
@@ -212,10 +212,10 @@ func TestJumpHostAndCredentials(t *testing.T) {
 
 	ja, jp := jumpSrv.Host()
 	var jump, web hostJSON
-	c.do("POST", "/api/v1/hosts", map[string]any{"name": "jump01", "address": ja, "port": jp, "user": "fm",
+	c.do("POST", "/api/v1/hosts", map[string]any{"name": "jump01", "address": ja, "port": jp, "user": "deploy",
 		"credential_id": key.ID, "jump_only": true}).json(t, &jump)
 	ta, tp := targetSrv.Host()
-	r := c.do("POST", "/api/v1/hosts", map[string]any{"name": "web02", "address": ta, "port": tp, "user": "fm",
+	r := c.do("POST", "/api/v1/hosts", map[string]any{"name": "web02", "address": ta, "port": tp, "user": "deploy",
 		"credential_id": key.ID, "become_credential_id": sudo.ID, "via_host_id": jump.ID})
 	r.json(t, &web)
 	if r.status != 201 || web.ViaHostID == nil || *web.ViaHostID != jump.ID {

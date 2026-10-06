@@ -27,7 +27,7 @@ func (p *Problem) Error() string { return p.Code + ": " + p.Detail }
 
 func problem(status int, code, detail string) *Problem {
 	return &Problem{
-		Type:   "urn:fleetmgr:problem:" + code,
+		Type:   "urn:drool:problem:" + code,
 		Title:  http.StatusText(status),
 		Status: status,
 		Code:   code,
@@ -48,7 +48,7 @@ func errConflict(code, detail string) *Problem { return problem(http.StatusConfl
 func errForbidden(detail string) *Problem      { return problem(http.StatusForbidden, "forbidden", detail) }
 
 var errUnauthenticated = problem(http.StatusUnauthorized, "unauthenticated", "authentication required")
-var errCSRF = problem(http.StatusForbidden, "csrf", "missing or invalid X-FM-CSRF header")
+var errCSRF = problem(http.StatusForbidden, "csrf", "missing or invalid X-DROOL-CSRF header")
 var errInternal = problem(http.StatusInternalServerError, "internal", "internal server error")
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

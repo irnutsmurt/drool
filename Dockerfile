@@ -16,17 +16,17 @@ COPY --from=web /src/web/dist ./web/dist
 ARG VERSION=dev
 ARG COMMIT=unknown
 RUN CGO_ENABLED=0 go build -trimpath \
-      -ldflags "-s -w -X fleetmgr/internal/version.Version=${VERSION} -X fleetmgr/internal/version.Commit=${COMMIT}" \
-      -o /out/fleetmgr ./cmd/fleetmgr \
+      -ldflags "-s -w -X drool/internal/version.Version=${VERSION} -X drool/internal/version.Commit=${COMMIT}" \
+      -o /out/drool ./cmd/drool \
  && mkdir -p /out/data
 
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /out/fleetmgr /usr/local/bin/fleetmgr
+COPY --from=build /out/drool /usr/local/bin/drool
 COPY --from=build --chown=nonroot:nonroot /out/data /data
-ENV FLEETMGR_DATA_DIR=/data \
-    FLEETMGR_LOGGING_OUTPUT=stdout
+ENV DROOL_DATA_DIR=/data \
+    DROOL_LOGGING_OUTPUT=stdout
 VOLUME /data
 EXPOSE 8080
 USER nonroot
-ENTRYPOINT ["/usr/local/bin/fleetmgr"]
+ENTRYPOINT ["/usr/local/bin/drool"]
 CMD ["serve"]

@@ -1,12 +1,12 @@
-# Fleet Manager build. Requires Go 1.27+ and Node 22+.
+# DROOL build. Requires Go 1.27+ and Node 22+.
 GO      ?= go
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w \
-	-X fleetmgr/internal/version.Version=$(VERSION) \
-	-X fleetmgr/internal/version.Commit=$(COMMIT) \
-	-X fleetmgr/internal/version.Date=$(DATE)
+	-X drool/internal/version.Version=$(VERSION) \
+	-X drool/internal/version.Commit=$(COMMIT) \
+	-X drool/internal/version.Date=$(DATE)
 
 .PHONY: all build web web-deps go test test-go test-web vet fmt-check generate check-generated run dev clean
 
@@ -22,7 +22,7 @@ web: web-deps
 
 # Static binary (pure-Go SQLite, no cgo).
 go:
-	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o bin/fleetmgr ./cmd/fleetmgr
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o bin/drool ./cmd/drool
 
 test: test-go test-web
 
@@ -49,8 +49,8 @@ check-generated: generate
 
 # Run the controller locally with a throwaway data dir, bound to loopback.
 run: go
-	FLEETMGR_DATA_DIR=$(CURDIR)/data FLEETMGR_SERVER_BIND=127.0.0.1 FLEETMGR_LOGGING_OUTPUT=stdout \
-		FLEETMGR_LOGGING_FORMAT=text ./bin/fleetmgr serve
+	DROOL_DATA_DIR=$(CURDIR)/data DROOL_SERVER_BIND=127.0.0.1 DROOL_LOGGING_OUTPUT=stdout \
+		DROOL_LOGGING_FORMAT=text ./bin/drool serve
 
 # Frontend dev server with hot reload; proxies /api to `make run`.
 dev:

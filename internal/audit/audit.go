@@ -9,10 +9,10 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	"fleetmgr/internal/ids"
-	"fleetmgr/internal/logging"
-	"fleetmgr/internal/store"
-	"fleetmgr/internal/store/db"
+	"drool/internal/ids"
+	"drool/internal/logging"
+	"drool/internal/store"
+	"drool/internal/store/db"
 )
 
 type Result string

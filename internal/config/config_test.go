@@ -48,9 +48,9 @@ poller:
   status_interval: 10m
 `)
 	env := []string{
-		"FLEETMGR_SERVER_WEB_PORT=9443",
-		"FLEETMGR_SERVER_TRUSTED_PROXIES=10.0.0.1, 192.168.0.0/16",
-		"FLEETMGR_LOGGING_COMPRESS=bogus-ignored-unknown-key",
+		"DROOL_SERVER_WEB_PORT=9443",
+		"DROOL_SERVER_TRUSTED_PROXIES=10.0.0.1, 192.168.0.0/16",
+		"DROOL_LOGGING_COMPRESS=bogus-ignored-unknown-key",
 		"UNRELATED=1",
 	}
 	l, err := Load(p, true, env)
@@ -76,7 +76,7 @@ poller:
 	for _, v := range l.Values() {
 		if v.Key == "server.web_port" {
 			found = true
-			if v.EnvVar != "FLEETMGR_SERVER_WEB_PORT" || v.Source != SourceEnv {
+			if v.EnvVar != "DROOL_SERVER_WEB_PORT" || v.Source != SourceEnv {
 				t.Fatalf("value = %+v", v)
 			}
 		}
@@ -94,7 +94,7 @@ func TestUnknownFileKeyRejected(t *testing.T) {
 }
 
 func TestBadEnvValue(t *testing.T) {
-	if _, err := Load("", false, []string{"FLEETMGR_SERVER_WEB_PORT=abc"}); err == nil {
+	if _, err := Load("", false, []string{"DROOL_SERVER_WEB_PORT=abc"}); err == nil {
 		t.Fatal("expected parse error")
 	}
 }
@@ -105,13 +105,13 @@ func TestPlaintextRequiresLoopback(t *testing.T) {
 		env     []string
 		wantErr bool
 	}{
-		{"public bind rejected", []string{"FLEETMGR_SERVER_TLS_MODE=off", "FLEETMGR_SERVER_BIND=0.0.0.0"}, true},
-		{"trusted proxies do not help", []string{"FLEETMGR_SERVER_TLS_MODE=off", "FLEETMGR_SERVER_BIND=0.0.0.0",
-			"FLEETMGR_SERVER_TRUSTED_PROXIES=10.0.0.0/8"}, true},
-		{"ipv4 loopback ok", []string{"FLEETMGR_SERVER_TLS_MODE=off", "FLEETMGR_SERVER_BIND=127.0.0.1"}, false},
-		{"ipv6 loopback ok", []string{"FLEETMGR_SERVER_TLS_MODE=off", "FLEETMGR_SERVER_BIND=::1"}, false},
-		{"explicit opt-in", []string{"FLEETMGR_SERVER_TLS_MODE=off", "FLEETMGR_SERVER_BIND=0.0.0.0",
-			"FLEETMGR_SERVER_ALLOW_INSECURE_PLAINTEXT=true"}, false},
+		{"public bind rejected", []string{"DROOL_SERVER_TLS_MODE=off", "DROOL_SERVER_BIND=0.0.0.0"}, true},
+		{"trusted proxies do not help", []string{"DROOL_SERVER_TLS_MODE=off", "DROOL_SERVER_BIND=0.0.0.0",
+			"DROOL_SERVER_TRUSTED_PROXIES=10.0.0.0/8"}, true},
+		{"ipv4 loopback ok", []string{"DROOL_SERVER_TLS_MODE=off", "DROOL_SERVER_BIND=127.0.0.1"}, false},
+		{"ipv6 loopback ok", []string{"DROOL_SERVER_TLS_MODE=off", "DROOL_SERVER_BIND=::1"}, false},
+		{"explicit opt-in", []string{"DROOL_SERVER_TLS_MODE=off", "DROOL_SERVER_BIND=0.0.0.0",
+			"DROOL_SERVER_ALLOW_INSECURE_PLAINTEXT=true"}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -127,13 +127,13 @@ func TestPlaintextRequiresLoopback(t *testing.T) {
 }
 
 func TestProvidedTLSRequiresFiles(t *testing.T) {
-	if _, err := Load("", false, []string{"FLEETMGR_SERVER_TLS_MODE=provided"}); err == nil {
+	if _, err := Load("", false, []string{"DROOL_SERVER_TLS_MODE=provided"}); err == nil {
 		t.Fatal("expected error")
 	}
 }
 
 func TestSetupSecretRedactedAndValidated(t *testing.T) {
-	l, err := Load("", false, []string{"FLEETMGR_SETUP_SECRET=super-secret-value"})
+	l, err := Load("", false, []string{"DROOL_SETUP_SECRET=super-secret-value"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,14 +146,14 @@ func TestSetupSecretRedactedAndValidated(t *testing.T) {
 		t.Fatalf("ProvidedSetupSecret = %q", s)
 	}
 	p := writeFile(t, "  from-file-secret-123\n")
-	l, err = Load("", false, []string{"FLEETMGR_SETUP_SECRET_FILE=" + p})
+	l, err = Load("", false, []string{"DROOL_SETUP_SECRET_FILE=" + p})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if s, _ := l.ProvidedSetupSecret(); s != "from-file-secret-123" {
 		t.Fatalf("secret file = %q", s)
 	}
-	if _, err := Load("", false, []string{"FLEETMGR_SETUP_SECRET=a", "FLEETMGR_SETUP_SECRET_FILE=" + p}); err == nil {
+	if _, err := Load("", false, []string{"DROOL_SETUP_SECRET=a", "DROOL_SETUP_SECRET_FILE=" + p}); err == nil {
 		t.Fatal("both secret and secret_file accepted")
 	}
 }

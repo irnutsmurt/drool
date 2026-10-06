@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"fleetmgr/internal/audit"
-	"fleetmgr/internal/auth"
-	"fleetmgr/internal/store/db"
+	"drool/internal/audit"
+	"drool/internal/auth"
+	"drool/internal/store/db"
 )
 
 type userJSON struct {

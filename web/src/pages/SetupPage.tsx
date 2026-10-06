@@ -42,16 +42,16 @@ export function SetupPage() {
 
   return (
     <div className="flex h-full items-center justify-center p-4">
-      <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-fm border border-line bg-surface p-6">
+      <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-ui border border-line bg-surface p-6">
         <div>
-          <h1 className="text-lg font-semibold">Set up Fleet Manager</h1>
+          <h1 className="text-lg font-semibold">Set up DROOL</h1>
           <p className="mt-1 text-sm text-muted">
             Enter the setup code from the controller's logs and create the administrator account.
           </p>
         </div>
         {status.data && !status.data.code_available && (
           <Alert tone="warn">
-            No valid setup code. Restart the controller or run <code>fleetmgr setup code</code> to get a new one.
+            No valid setup code. Restart the controller or run <code>drool setup code</code> to get a new one.
           </Alert>
         )}
         {error && <Alert>{error}</Alert>}

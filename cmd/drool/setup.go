@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"fleetmgr/internal/audit"
-	"fleetmgr/internal/auth"
-	"fleetmgr/internal/config"
-	"fleetmgr/internal/logging"
+	"drool/internal/audit"
+	"drool/internal/auth"
+	"drool/internal/config"
+	"drool/internal/logging"
 )
 
 // setupState is what the startup banner needs to show.
@@ -66,7 +66,7 @@ func printBanner(w io.Writer, cfg *config.Loaded, scheme, fingerprint string, st
 	urls := displayURLs(cfg, scheme)
 	line := strings.Repeat("=", 64)
 	fmt.Fprintln(w, line)
-	fmt.Fprintln(w, " Fleet Manager is ready.")
+	fmt.Fprintln(w, " DROOL is ready.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, " Open:")
 	path := ""
@@ -85,10 +85,10 @@ func printBanner(w io.Writer, cfg *config.Loaded, scheme, fingerprint string, st
 			fmt.Fprintln(w)
 			fmt.Fprintf(w, " Single use. Expires %s (in %s).\n",
 				st.expires.Local().Format("15:04 MST"), roundDuration(time.Until(st.expires)))
-			fmt.Fprintln(w, " New code: restart, or run `fleetmgr setup code`.")
+			fmt.Fprintln(w, " New code: restart, or run `drool setup code`.")
 		case st.provided:
 			fmt.Fprintln(w, " Setup code: the setup secret you provided")
-			fmt.Fprintln(w, " (FLEETMGR_SETUP_SECRET or FLEETMGR_SETUP_SECRET_FILE).")
+			fmt.Fprintln(w, " (DROOL_SETUP_SECRET or DROOL_SETUP_SECRET_FILE).")
 		}
 	}
 	if scheme == "https" && cfg.Server.TLS.Mode == "self_signed" {
@@ -164,7 +164,7 @@ func cmdSetupCode(path string, explicit bool, args []string) error {
 	svc := newAuthService(cfg, st)
 	code, expires, err := svc.IssueSetupCode(ctx, cfg.Setup.CodeTTL)
 	if errors.Is(err, auth.ErrSetupClosed) {
-		return errors.New("setup is already complete (an administrator exists); use `fleetmgr user create` to add users")
+		return errors.New("setup is already complete (an administrator exists); use `drool user create` to add users")
 	}
 	if err != nil {
 		return err

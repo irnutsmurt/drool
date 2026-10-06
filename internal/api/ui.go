@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const uiNotBuilt = `<!doctype html><meta charset="utf-8"><title>fleetmgr</title>
+const uiNotBuilt = `<!doctype html><meta charset="utf-8"><title>drool</title>
 <p>The web UI has not been built into this binary. Run <code>make web</code> and rebuild.
 The API is available under <code>/api/v1</code>.</p>`
 

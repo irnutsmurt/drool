@@ -6,11 +6,11 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"fleetmgr/internal/audit"
-	"fleetmgr/internal/driver"
-	"fleetmgr/internal/inventory"
-	"fleetmgr/internal/model"
-	"fleetmgr/internal/store/db"
+	"drool/internal/audit"
+	"drool/internal/driver"
+	"drool/internal/inventory"
+	"drool/internal/model"
+	"drool/internal/store/db"
 )
 
 type hostKeyJSON struct {

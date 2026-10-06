@@ -8,7 +8,7 @@ export function Card({ title, actions, children, className }: {
   className?: string;
 }) {
   return (
-    <section className={cx("rounded-fm border border-line bg-surface", className)}>
+    <section className={cx("rounded-ui border border-line bg-surface", className)}>
       {(title || actions) && (
         <header className="flex items-center justify-between border-b border-line px-4 py-3">
           {title && <h2 className="text-sm font-semibold">{title}</h2>}

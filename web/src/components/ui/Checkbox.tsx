@@ -8,7 +8,7 @@ export function Checkbox({ checked, onChange, label, hint }: {
 }) {
   return (
     <label className="flex items-start gap-2 text-sm">
-      <input type="checkbox" className="mt-0.5 accent-[var(--fm-accent)]" checked={checked}
+      <input type="checkbox" className="mt-0.5 accent-[var(--ui-accent)]" checked={checked}
         onChange={(e) => onChange(e.target.checked)} />
       <span>
         {label}

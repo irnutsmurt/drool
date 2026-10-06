@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	"fleetmgr/internal/audit"
-	"fleetmgr/internal/secrets"
-	"fleetmgr/internal/store/db"
+	"drool/internal/audit"
+	"drool/internal/secrets"
+	"drool/internal/store/db"
 )
 
 type secretJSON struct {

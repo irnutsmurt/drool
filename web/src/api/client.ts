@@ -22,7 +22,7 @@ const SAFE = new Set(["GET", "HEAD", "OPTIONS"]);
 const middleware: Middleware = {
   onRequest({ request }) {
     if (csrfToken && !SAFE.has(request.method)) {
-      request.headers.set("X-FM-CSRF", csrfToken);
+      request.headers.set("X-DROOL-CSRF", csrfToken);
     }
     return request;
   },

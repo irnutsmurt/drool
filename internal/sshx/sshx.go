@@ -19,7 +19,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"fleetmgr/internal/model"
+	"drool/internal/model"
 )
 
 // Target is everything needed to reach one host.
@@ -150,7 +150,7 @@ func clientConfig(t *Target, hostKeyCB ssh.HostKeyCallback, algos []string, time
 		HostKeyCallback:   hostKeyCB,
 		HostKeyAlgorithms: algos,
 		Timeout:           timeout,
-		ClientVersion:     "SSH-2.0-fleetmgr",
+		ClientVersion:     "SSH-2.0-drool",
 	}
 }
 
@@ -284,14 +284,14 @@ func (d *Dialer) Scan(ctx context.Context, t *Target) ([]ssh.PublicKey, error) {
 			return nil, classify(t, err) // the host isn't reachable at all
 		}
 		cfg := &ssh.ClientConfig{
-			User: "fleetmgr-scan",
+			User: "drool-scan",
 			HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error {
 				got = key
 				return errScanDone
 			},
 			HostKeyAlgorithms: algos,
 			Timeout:           d.handshakeTimeout(),
-			ClientVersion:     "SSH-2.0-fleetmgr",
+			ClientVersion:     "SSH-2.0-drool",
 		}
 		_, err = d.handshake(conn, t, cfg)
 		if got != nil {

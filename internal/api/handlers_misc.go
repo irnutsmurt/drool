@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"fleetmgr/internal/audit"
-	"fleetmgr/internal/auth"
-	"fleetmgr/internal/config"
-	"fleetmgr/internal/store/db"
-	"fleetmgr/internal/version"
+	"drool/internal/audit"
+	"drool/internal/auth"
+	"drool/internal/config"
+	"drool/internal/store/db"
+	"drool/internal/version"
 )
 
 // ---- API tokens ----

@@ -1,4 +1,4 @@
-# Technical Alpha: Internal Architecture
+# DROOL Technical Alpha: Internal Architecture
 
 **v0.2 · 2026-10-06** · Implements the *Technical Alpha* slice of `DESIGN.md` v0.3 (§33).
 
@@ -32,7 +32,7 @@ Requirements on the host: `sshd`, POSIX `sh`, coreutils, systemd, and `sudo` if 
 ## 2. Process and Deployment
 
 ```
-┌───────────────────────── fleetmgr (single Go binary) ─────────────────────────┐
+┌───────────────────────── drool (single Go binary) ─────────────────────────┐
 │                                                                               │
 │  HTTP server ── REST /api/v1 ── embedded UI (go:embed) ── /health /ready      │
 │       │                                                     /metrics          │
@@ -51,8 +51,8 @@ Requirements on the host: `sshd`, POSIX `sh`, coreutils, systemd, and `sudo` if 
 ```
 
 - **One process, one binary.** Subcommands: `serve`, `migrate`, `user create`, `backup`, `restore`, `version`.
-- Runs as an unprivileged `fleetmgr` user. It never needs local root.
-- Data directory: `/var/lib/fleetmgr/` (`fleetmgr.db`, `master.key`, `ssh/`, `tls/`, `logs/`).
+- Runs as an unprivileged `drool` user. It never needs local root.
+- Data directory: `/var/lib/drool/` (`drool.db`, `master.key`, `ssh/`, `tls/`, `logs/`).
 - Packaging: static binary with a systemd unit, plus a container image (distroless; data on a volume).
 - Single controller instance only. The lock manager and worker pool are in memory, and the alpha does not support HA.
 
@@ -61,7 +61,7 @@ Requirements on the host: `sshd`, POSIX `sh`, coreutils, systemd, and `sudo` if 
 ## 3. Repository Layout
 
 ```
-cmd/fleetmgr/                 main, subcommands
+cmd/drool/                 main, subcommands
 internal/
   config/                     defaults → file → env; records where each value came from
   logging/                    slog setup, streams, rotation (lumberjack), redaction
@@ -424,7 +424,7 @@ Retention (by setting): `job_output` and finished jobs are pruned after 30 days 
 ## 7. Secrets
 
 - **Secret Box:** AES-256-GCM, a random 96-bit nonce per encryption, and **AAD = secret ID + kind**, so ciphertexts can't be swapped between rows.
-- **Master key:** 32 random bytes in `/var/lib/fleetmgr/master.key` (0600, created on first start), or from `FLEETMGR_MASTER_KEY_FILE`. `key_version` allows rotation (`fleetmgr secrets rotate-key` re-encrypts all rows).
+- **Master key:** 32 random bytes in `/var/lib/drool/master.key` (0600, created on first start), or from `DROOL_MASTER_KEY_FILE`. `key_version` allows rotation (`drool secrets rotate-key` re-encrypts all rows).
 - No API ever returns plaintext. Responses include metadata and `public_part` only.
 - Decrypted values live only as long as one operation, and are **registered with the redactor** for its lifetime (§12.3).
 - **Controller SSH key:** on first start, generate an ed25519 key as secret `controller-default`. The UI shows the public key with an `authorized_keys` one-liner. This is the default credential for new hosts.
@@ -487,8 +487,8 @@ exec(host, script, {become, stdin, timeout, env})
 
 - Scripts are sent on **stdin** to `sh -s` (or `bash -s`), wrapped with `set -eu` where the op owns the script. User scripts run as written.
 - Locale fixed: `LC_ALL=C` for parsed output. `DEBIAN_FRONTEND=noninteractive` for apt.
-- **Structured output from built-in ops:** built-in op scripts print delimited sections (`@@FM:section@@`) that the controller parses, so we don't need `jq` or Python on hosts.
-- **Cancellation and timeouts (decision D5):** every execution first creates a private run directory: `mktemp -d "$base/fm.XXXXXXXXXX"` (mode 0700), where `$base` is `$XDG_RUNTIME_DIR`, then `/run/user/$(id -u)` if it exists and is owned by the user, then `${TMPDIR:-/tmp}`. Nothing uses predictable names. The wrapper prints the created path on a marker line so the controller learns it, then runs `setsid sh -c '...' & echo $! > "$dir/pid"; wait`, and removes the directory on exit. Cancel = a separate session reads `"$dir/pid"` (after checking the directory is owned by the login user and not a symlink) and sends `kill -TERM -<pgid>`, then KILL after 10 s. The state becomes `cancelled`, the result is "may be partial", and this is documented. (OpenSSH's handling of `session.Signal` is unreliable, so we don't depend on it.)
+- **Structured output from built-in ops:** built-in op scripts print delimited sections (`@@DROOL:section@@`) that the controller parses, so we don't need `jq` or Python on hosts.
+- **Cancellation and timeouts (decision D5):** every execution first creates a private run directory: `mktemp -d "$base/drool.XXXXXXXXXX"` (mode 0700), where `$base` is `$XDG_RUNTIME_DIR`, then `/run/user/$(id -u)` if it exists and is owned by the user, then `${TMPDIR:-/tmp}`. Nothing uses predictable names. The wrapper prints the created path on a marker line so the controller learns it, then runs `setsid sh -c '...' & echo $! > "$dir/pid"; wait`, and removes the directory on exit. Cancel = a separate session reads `"$dir/pid"` (after checking the directory is owned by the login user and not a symlink) and sends `kill -TERM -<pgid>`, then KILL after 10 s. The state becomes `cancelled`, the result is "may be partial", and this is documented. (OpenSSH's handling of `session.Signal` is unreliable, so we don't depend on it.)
 - **Exit codes:** for built-in ops, the parser decides success, not just the exit code (e.g. `dnf check-update` exits with 100 when updates exist).
 
 ---
@@ -637,8 +637,8 @@ On startup, every job in `running`/`pending` and every host in a non-terminal st
 ### 12.1 Auth
 - Passwords: argon2id (m=64 MiB, t=3, p=2), with a minimum length of 12.
 - Session cookie: random 256-bit value, `HttpOnly; Secure; SameSite=Strict`. Idle timeout 12 h, absolute 7 d.
-- CSRF: SameSite=Strict **plus** a required `X-FM-CSRF` header carrying a token from `/auth/me` on state-changing requests.
-- API tokens: `Authorization: Bearer fm_<id>_<secret>`. Only the hash is stored. Shown once.
+- CSRF: SameSite=Strict **plus** a required `X-DROOL-CSRF` header carrying a token from `/auth/me` on state-changing requests.
+- API tokens: `Authorization: Bearer drool_<id>_<secret>`. Only the hash is stored. Shown once.
 - Login rate limit: 5 failures per username per 15 min, plus per IP. All attempts audited.
 
 ### 12.2 RBAC (alpha roles)
@@ -668,16 +668,16 @@ Checks are written against permissions, not role names, so custom roles later ar
 
 ### 12.5 First-admin bootstrap (setup claim)
 
-Goal: `docker compose up -d` → `docker compose logs fleetmgr` → open `/setup` → dashboard, with no CLI step (DESIGN §2.5).
+Goal: `docker compose up -d` → `docker compose logs drool` → open `/setup` → dashboard, with no CLI step (DESIGN §2.5).
 
 - **While no administrator exists**, each startup issues a fresh **6-digit code** (crypto RNG) valid for `setup.code_ttl` (default 60 min). The code replaces any earlier generated code. It's printed once in the startup banner on stderr (which `docker compose logs` shows) and is **never written to logs, audit or the database**. Only its SHA-256 hash is stored (`setup_codes`).
-- **Operator-provided secret** (automation, Docker secrets): `FLEETMGR_SETUP_SECRET` or, preferably, `FLEETMGR_SETUP_SECRET_FILE`. At least 12 characters (shorter refuses to start), no expiry, hash-only storage, never displayed. When set, no code is generated.
+- **Operator-provided secret** (automation, Docker secrets): `DROOL_SETUP_SECRET` or, preferably, `DROOL_SETUP_SECRET_FILE`. At least 12 characters (shorter refuses to start), no expiry, hash-only storage, never displayed. When set, no code is generated.
 - **`/setup` page** asks for setup code, admin username, password and confirmation. `POST /api/v1/setup/claim` creates the admin, **deletes every setup code**, writes the `setup.claim` audit record, and creates a session **in one transaction**, so concurrent claims yield exactly one admin. The new admin lands on the dashboard already signed in.
-- **Closed for good** once any admin exists: claims return `409 setup_closed`; startup and `fleetmgr user create --role admin` delete leftover codes.
+- **Closed for good** once any admin exists: claims return `409 setup_closed`; startup and `drool user create --role admin` delete leftover codes.
 - **Rate limits** (failed codes only; field validation errors don't count): 5 per source IP and 20 globally per 15 min. With a 60-minute code that's at most ~80 guesses, about a 0.008% chance of guessing a 6-digit code. Codes don't regenerate on their own, so an abandoned, unclaimed controller becomes unclaimable after the TTL.
-- **New code:** restart, or `fleetmgr setup code` (works while running, including `docker compose exec fleetmgr fleetmgr setup code`). It invalidates the previous generated code.
+- **New code:** restart, or `drool setup code` (works while running, including `docker compose exec drool drool setup code`). It invalidates the previous generated code.
 - **Audit:** every attempt is recorded as `setup.claim` with result and reason (`invalid_code`, `rate_limited`, `closed`, `validation`), never the code. Issuing a code via CLI records `setup.code_issue`.
-- **Recovery:** `fleetmgr user create` remains available.
+- **Recovery:** `drool user create` remains available.
 - Known limitation: inside a container the banner can't know the host's address and prints `https://<this-host's-address>:8080`.
 
 ---
@@ -772,16 +772,16 @@ Error explanations are a frontend table keyed by `error_class` plus server `deta
 ## 15. Configuration
 
 ```yaml
-# /etc/fleetmgr/config.yaml
+# /etc/drool/config.yaml
 server:
   bind: 0.0.0.0
   web_port: 8080
   tls: { mode: self_signed }        # self_signed | provided | off
   trusted_proxies: []
-data_dir: /var/lib/fleetmgr
+data_dir: /var/lib/drool
 setup:
   code_ttl: 60m
-  # secret_file: /run/secrets/fleetmgr_setup   # optional operator-provided setup code
+  # secret_file: /run/secrets/drool_setup   # optional operator-provided setup code
 engine:
   global_concurrency: 20
   per_jump_host_concurrency: 10
@@ -798,7 +798,7 @@ logging:
   rotation: { max_size_mb: 25, retain_files: 10, compress: true, retain_days: 30 }
 ```
 
-Environment overrides: `FLEETMGR_SERVER_WEB_PORT`, and so on (path → upper snake case). `/system/info` reports where each effective value came from.
+Environment overrides: `DROOL_SERVER_WEB_PORT`, and so on (path → upper snake case). `/system/info` reports where each effective value came from.
 
 ---
 
@@ -812,8 +812,8 @@ Environment overrides: `FLEETMGR_SERVER_WEB_PORT`, and so on (path → upper sna
 
 ## 17. Backup and Restore
 
-- `fleetmgr backup -o file.tar.zst`: `VACUUM INTO` a consistent snapshot, plus config and TLS material, plus a manifest (version, schema version, timestamp). The master key is included only with `--include-master-key`.
-- `fleetmgr restore file.tar.zst`: stop the service → verify the manifest → run migrations forward if needed.
+- `drool backup -o file.tar.zst`: `VACUUM INTO` a consistent snapshot, plus config and TLS material, plus a manifest (version, schema version, timestamp). The master key is included only with `--include-master-key`.
+- `drool restore file.tar.zst`: stop the service → verify the manifest → run migrations forward if needed.
 - In the alpha, restore has no reconciliation concerns (no managed state domains yet), but the manifest records schema and epoch fields for the Beta.
 
 ---
@@ -879,12 +879,12 @@ Meaningful choices made during implementation, newest last.
 
 | Milestone | Decision | Rationale |
 |---|---|---|
-| M0 | Go module path is `fleetmgr` | It's an application, not a library. Rename once hosting is decided |
+| M0 | Go module path is `drool` | It's an application, not a library. Rename once hosting is decided |
 | M0 | Standard-library `net/http.ServeMux` with method patterns; no router dependency | Enough for our routing; fewer dependencies |
-| M0 | ~~The first administrator is created with `fleetmgr user create` (CLI), not a web setup page~~ **Superseded** by the setup claim below | — |
+| M0 | ~~The first administrator is created with `drool user create` (CLI), not a web setup page~~ **Superseded** by the setup claim below | — |
 | M0 | `POST /tokens` requires an interactive session | A leaked API token must not be able to mint more long-lived tokens |
 | M0 | Self-service password change at `POST /auth/password` (requires the current password); admins reset via `PATCH /users/{id}`. Password changes revoke the user's other sessions | Standard account hygiene |
-| M0 | CSRF token stored per session (`sessions.csrf_token`), returned by login and `/auth/me`, required in `X-FM-CSRF` on session-authenticated state-changing requests | Implements §12.1; bearer-token requests are exempt |
+| M0 | CSRF token stored per session (`sessions.csrf_token`), returned by login and `/auth/me`, required in `X-DROOL-CSRF` on session-authenticated state-changing requests | Implements §12.1; bearer-token requests are exempt |
 | M0 | Login rate limiter is in memory (reset on restart). Locking out a known username is possible (5 failures → 15 min) | Acceptable for a single-instance alpha; revisit alongside MFA in 1.0 |
 | M0 | A disabled user's login returns the same error as a bad password; audit records `disabled` | Don't reveal account state to unauthenticated clients |
 | M0 | New permission `settings.read` (admin, auditor) gates config values and sources in `/system/info` | Config can reveal topology; viewers don't need it. Extends the §12.2 table |
@@ -897,10 +897,10 @@ Meaningful choices made during implementation, newest last.
 | M0 | Migration `0001` contains only M0 tables; hosts, secrets and jobs come in later migrations. Until the `v0.1.0-alpha` tag, existing migrations may still be amended; after it they are strictly forward-only | Nothing is deployed yet |
 | M0 | Frontend TypeScript pinned to 5.x | `openapi-typescript` needs the TypeScript JS compiler API, which TypeScript 7 (native port) doesn't ship |
 | M0 | Frontend: React 19, React Router 8, TanStack Query 5, Tailwind 4, `openapi-fetch` with generated types. Visuals deliberately minimal: semantic CSS tokens + a few primitives | Easy to restyle after the planned UI review |
-| M0.1 | **First-admin bootstrap is a one-time setup claim at `/setup`** with a code from the startup logs (or an operator-provided secret); `fleetmgr user create` stays as recovery. Details in §12.5 | DESIGN §2.5: setup must not need a CLI step. The race concern from the original decision is handled by requiring the console code, single use, expiry and rate limits |
+| M0.1 | **First-admin bootstrap is a one-time setup claim at `/setup`** with a code from the startup logs (or an operator-provided secret); `drool user create` stays as recovery. Details in §12.5 | DESIGN §2.5: setup must not need a CLI step. The race concern from the original decision is handled by requiring the console code, single use, expiry and rate limits |
 | M0.1 | Setup codes are 6 digits, hashed with SHA-256 (not a slow hash) | Short codes can't be protected by any hash against an attacker holding the database; their protection is the short lifetime, single use and online rate limits. A DB reader before setup could equally just wait for the claim |
 | M0.1 | Audit records can now be written inside the caller's transaction (`audit.Writer.RecordTx`); the setup claim uses it | Start of fixing the M0 known gap; remaining mutations are converted at the start of M1 |
-| M0.1 | CLI subcommands persist audit records to the database only, without mirroring to the log stream | With `logging.output=stdout` (containers), mirrored JSON polluted command output such as `fleetmgr setup code` |
+| M0.1 | CLI subcommands persist audit records to the database only, without mirroring to the log stream | With `logging.output=stdout` (containers), mirrored JSON polluted command output such as `drool setup code` |
 | M0.1 | Added `Dockerfile` (distroless, non-root, `/data` volume, logs to stdout) and `compose.yaml` | Makes the documented `docker compose up -d` flow real; minimal, no healthcheck yet |
 | M0.1 | Config keys ending in `.secret` are shown as `«redacted»` in `/system/info` | `setup.secret` must not be displayed |
 | M1 | Every successful mutation commits together with its audit record (`api.Server.inTxAudited`); services expose `XxxTx(ctx, q, ...)` variants. Expensive work (password hashing) happens before the transaction. Failed attempts are audited separately. Logout and the login session/audit pair stay as before (login fails closed if its audit write fails) | Closes the M0 gap; covered by a rollback test |
@@ -916,3 +916,4 @@ Meaningful choices made during implementation, newest last.
 | M1 | Password authentication also answers keyboard-interactive prompts with the stored password | Many distros' sshd only offer keyboard-interactive for passwords |
 | M1 | Pool: concurrent first requests share one dial (single-flight); a tunnelled connection holds a reference on its jump connection for its lifetime | Found in testing: bursts opened one connection per request, and an idle jump connection could be reaped under active tunnels |
 | M1 | Verified against real OpenSSH (Debian 12 containers): scan/approve through a jump host, passwordless sudo, host key rotation → `hostkey_mismatch`, unauthorized key → `auth_failed`, no systemd → `unsupported`; UI pages rendered in headless Chromium without runtime errors | The in-process test server can't catch OpenSSH-specific behavior. Note: Debian images bake host keys at build time, so containers from one image share keys, like cloned VMs |
+| pre-M2 | **Renamed to DROOL.** Binary `drool`, Go module `drool`, `/etc/drool/`, `/var/lib/drool/`, `DROOL_*` environment variables, `drool.service`, container image and compose service `drool`, token format `drool_tok_…`, cookie `drool_session`, CSRF header `X-DROOL-CSRF`, metrics `drool_*`, problem type URNs `urn:drool:problem:*`. CSS design tokens became brand-neutral (`--ui-*`, `rounded-ui`). API paths unchanged. No migration was needed: the schema contained no product-specific names | Pre-alpha; nothing deployed, so no compatibility shims or migration baggage |

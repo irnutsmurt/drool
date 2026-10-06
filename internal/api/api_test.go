@@ -18,15 +18,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
 
-	"fleetmgr/internal/audit"
-	"fleetmgr/internal/auth"
-	"fleetmgr/internal/config"
-	"fleetmgr/internal/inventory"
-	"fleetmgr/internal/logging"
-	"fleetmgr/internal/secrets"
-	"fleetmgr/internal/sshx"
-	"fleetmgr/internal/store"
-	"fleetmgr/internal/store/db"
+	"drool/internal/audit"
+	"drool/internal/auth"
+	"drool/internal/config"
+	"drool/internal/inventory"
+	"drool/internal/logging"
+	"drool/internal/secrets"
+	"drool/internal/sshx"
+	"drool/internal/store"
+	"drool/internal/store/db"
 )
 
 const pw = "correct horse battery"
@@ -49,7 +49,7 @@ func newHarness(t *testing.T) *harness {
 	if _, err := st.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.Load("", false, []string{"FLEETMGR_DATA_DIR=" + t.TempDir()})
+	cfg, err := config.Load("", false, []string{"DROOL_DATA_DIR=" + t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +348,7 @@ func TestAPITokenFlow(t *testing.T) {
 	if r := tc.do("GET", "/api/v1/auth/me", nil); r.status != 401 {
 		t.Fatalf("revoked token works: %d", r.status)
 	}
-	if r := (&client{h: h, bearer: "fm_garbage"}).do("GET", "/api/v1/auth/me", nil); r.status != 401 {
+	if r := (&client{h: h, bearer: "drool_garbage"}).do("GET", "/api/v1/auth/me", nil); r.status != 401 {
 		t.Fatalf("garbage token: %d", r.status)
 	}
 }
@@ -381,7 +381,7 @@ func TestHealthReadyMetricsAndUI(t *testing.T) {
 	if r := anon.do("GET", "/ready", nil); r.status != 503 {
 		t.Fatalf("not-ready: %d", r.status)
 	}
-	if r := anon.do("GET", "/metrics", nil); r.status != 200 || !strings.Contains(string(r.body), "fleetmgr_http_requests_total") {
+	if r := anon.do("GET", "/metrics", nil); r.status != 200 || !strings.Contains(string(r.body), "drool_http_requests_total") {
 		t.Fatalf("metrics: %d", r.status)
 	}
 	for _, p := range []string{"/", "/hosts", "/settings/users"} {
@@ -401,7 +401,7 @@ func TestHealthReadyMetricsAndUI(t *testing.T) {
 }
 
 func TestClientIPTrustedProxies(t *testing.T) {
-	cfg, err := config.Load("", false, []string{"FLEETMGR_SERVER_TRUSTED_PROXIES=10.0.0.0/8"})
+	cfg, err := config.Load("", false, []string{"DROOL_SERVER_TRUSTED_PROXIES=10.0.0.0/8"})
 	if err != nil {
 		t.Fatal(err)
 	}

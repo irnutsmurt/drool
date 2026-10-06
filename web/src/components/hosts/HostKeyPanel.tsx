@@ -62,7 +62,7 @@ export function HostKeyPanel({ hostId, onApproved }: { hostId: string; onApprove
           <summary className="cursor-pointer text-muted">How do I verify a fingerprint?</summary>
           <div className="mt-2 space-y-2 text-muted">
             <p>On the host itself (or its console), run:</p>
-            <code className="block rounded-fm bg-surface-2 p-2 font-mono text-xs">
+            <code className="block rounded-ui bg-surface-2 p-2 font-mono text-xs">
               for f in /etc/ssh/ssh_host_*_key.pub; do ssh-keygen -lf "$f"; done
             </code>
             <Field label="Paste the expected fingerprint to highlight the matching key">

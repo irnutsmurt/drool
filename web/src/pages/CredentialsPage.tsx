@@ -76,7 +76,7 @@ export function CredentialsPage() {
             {mode === "import" && (
               <>
                 <Field label="Private key">
-                  <textarea className="h-32 w-full rounded-fm border border-line bg-surface p-3 font-mono text-xs"
+                  <textarea className="h-32 w-full rounded-ui border border-line bg-surface p-3 font-mono text-xs"
                     value={value} required placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" onChange={(e) => setValue(e.target.value)} />
                 </Field>
                 <Field label="Passphrase" hint="Only if the key is encrypted. Used once to decrypt; not stored.">

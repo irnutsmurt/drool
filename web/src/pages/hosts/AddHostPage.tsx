@@ -63,7 +63,7 @@ export function AddHostPage() {
         {step === 1 && host && (
           <div className="space-y-4">
             <p className="text-sm text-muted">
-              Fleet Manager only connects to <strong>{host.name}</strong> after you trust its SSH host key. This protects
+              DROOL only connects to <strong>{host.name}</strong> after you trust its SSH host key. This protects
               against connecting to an impostor.
             </p>
             <HostKeyPanel hostId={host.id} onApproved={() => {

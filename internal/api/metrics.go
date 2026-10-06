@@ -17,11 +17,11 @@ type httpMetrics struct {
 func newHTTPMetrics(reg *prometheus.Registry) *httpMetrics {
 	m := &httpMetrics{
 		requests: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "fleetmgr_http_requests_total",
+			Name: "drool_http_requests_total",
 			Help: "HTTP requests by method, route pattern and status code.",
 		}, []string{"method", "route", "code"}),
 		duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "fleetmgr_http_request_duration_seconds",
+			Name:    "drool_http_request_duration_seconds",
 			Help:    "HTTP request latency by route pattern.",
 			Buckets: prometheus.DefBuckets,
 		}, []string{"method", "route"}),

@@ -130,7 +130,7 @@ export function HostDetailPage() {
           <Card title="Danger zone" className="lg:col-span-2">
             {remove.error && <div className="mb-3"><Alert>{errorMessage(remove.error)}</Alert></div>}
             <Button variant="danger" disabled={remove.isPending}
-              onClick={() => { if (confirm(`Remove ${h.name} from Fleet Manager? Nothing is changed on the host.`)) remove.mutate(); }}>
+              onClick={() => { if (confirm(`Remove ${h.name} from DROOL? Nothing is changed on the host.`)) remove.mutate(); }}>
               Remove host
             </Button>
           </Card>

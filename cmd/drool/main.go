@@ -1,4 +1,4 @@
-// Command fleetmgr is the Fleet Manager controller.
+// Command drool is the DROOL controller.
 package main
 
 import (
@@ -22,22 +22,22 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"golang.org/x/term"
 
-	"fleetmgr/internal/api"
-	"fleetmgr/internal/audit"
-	"fleetmgr/internal/auth"
-	"fleetmgr/internal/config"
-	"fleetmgr/internal/inventory"
-	"fleetmgr/internal/logging"
-	"fleetmgr/internal/secrets"
-	"fleetmgr/internal/sshx"
-	"fleetmgr/internal/store"
-	"fleetmgr/internal/store/db"
-	"fleetmgr/internal/tlsutil"
-	"fleetmgr/internal/version"
-	"fleetmgr/web"
+	"drool/internal/api"
+	"drool/internal/audit"
+	"drool/internal/auth"
+	"drool/internal/config"
+	"drool/internal/inventory"
+	"drool/internal/logging"
+	"drool/internal/secrets"
+	"drool/internal/sshx"
+	"drool/internal/store"
+	"drool/internal/store/db"
+	"drool/internal/tlsutil"
+	"drool/internal/version"
+	"drool/web"
 )
 
-const usage = `Usage: fleetmgr [--config FILE] <command> [options]
+const usage = `Usage: drool [--config FILE] <command> [options]
 
 Commands:
   serve                 Run the controller
@@ -47,18 +47,18 @@ Commands:
   version               Print version information
 
 Configuration is read from built-in defaults, then the config file
-(default ` + config.DefaultPath + ` if present), then FLEETMGR_* environment variables.
+(default ` + config.DefaultPath + ` if present), then DROOL_* environment variables.
 `
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "fleetmgr:", err)
+		fmt.Fprintln(os.Stderr, "drool:", err)
 		os.Exit(1)
 	}
 }
 
 func run(args []string) error {
-	global := flag.NewFlagSet("fleetmgr", flag.ContinueOnError)
+	global := flag.NewFlagSet("drool", flag.ContinueOnError)
 	global.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	cfgPath := global.String("config", "", "path to config file")
 	if err := global.Parse(args); err != nil {
@@ -73,7 +73,7 @@ func run(args []string) error {
 
 	switch rest[0] {
 	case "version":
-		fmt.Printf("fleetmgr %s (commit %s, built %s)\n", version.Version, version.Commit, version.Date)
+		fmt.Printf("drool %s (commit %s, built %s)\n", version.Version, version.Commit, version.Date)
 		return nil
 	case "serve":
 		return cmdServe(*cfgPath, explicit)
@@ -81,12 +81,12 @@ func run(args []string) error {
 		return cmdMigrate(*cfgPath, explicit)
 	case "setup":
 		if len(rest) < 2 || rest[1] != "code" {
-			return errors.New("usage: fleetmgr setup code")
+			return errors.New("usage: drool setup code")
 		}
 		return cmdSetupCode(*cfgPath, explicit, rest[2:])
 	case "user":
 		if len(rest) < 2 || rest[1] != "create" {
-			return errors.New("usage: fleetmgr user create --username NAME [--role admin]")
+			return errors.New("usage: drool user create --username NAME [--role admin]")
 		}
 		return cmdUserCreate(*cfgPath, explicit, rest[2:])
 	default:
@@ -275,7 +275,7 @@ func cmdServe(path string, explicit bool) error {
 		log.Info("generated credential master key", "file", cfg.MasterKeyPath())
 	}
 	if insecureKey {
-		logs.Security.Warn("master key file is readable by group or others; restrict it to the fleetmgr user (chmod 600)",
+		logs.Security.Warn("master key file is readable by group or others; restrict it to the drool user (chmod 600)",
 			"file", cfg.MasterKeyPath())
 	}
 	secretSvc := secrets.NewService(st, box)
@@ -321,7 +321,7 @@ func cmdServe(path string, explicit bool) error {
 	if tlsRes.Config == nil {
 		scheme = "http"
 	}
-	log.Info("fleetmgr starting",
+	log.Info("drool starting",
 		"version", version.Version, "commit", version.Commit,
 		"listen", scheme+"://"+addr, "tls_mode", tlsRes.Mode,
 		"config_file", cfg.FilePath, "data_dir", cfg.DataDir)

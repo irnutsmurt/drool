@@ -54,7 +54,7 @@ export function TokensPage() {
         {created && (
           <div className="mt-4 space-y-2">
             <Alert tone="warn">Copy this token now. It will not be shown again.</Alert>
-            <code className="block break-all rounded-fm bg-surface-2 p-3 font-mono text-xs">{created}</code>
+            <code className="block break-all rounded-ui bg-surface-2 p-3 font-mono text-xs">{created}</code>
           </div>
         )}
       </Card>

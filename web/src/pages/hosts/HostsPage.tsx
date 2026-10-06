@@ -27,7 +27,7 @@ export function HostsPage() {
   });
 
   const addButton = can("hosts.write") && (
-    <Link to="/hosts/new" className="inline-flex h-9 items-center rounded-fm bg-accent px-3.5 text-sm font-medium text-accent-fg hover:opacity-90">
+    <Link to="/hosts/new" className="inline-flex h-9 items-center rounded-ui bg-accent px-3.5 text-sm font-medium text-accent-fg hover:opacity-90">
       Add host
     </Link>
   );

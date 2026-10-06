@@ -9,14 +9,14 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"fleetmgr/internal/model"
-	"fleetmgr/internal/sshx/sshtest"
+	"drool/internal/model"
+	"drool/internal/sshx/sshtest"
 )
 
 func target(t *testing.T, srv *sshtest.Server, id string, client ssh.Signer, pinned ssh.PublicKey) *Target {
 	t.Helper()
 	h, p := srv.Host()
-	return &Target{HostID: id, Name: id, Address: h, Port: p, User: "fm", Signer: client, PinnedKey: pinned}
+	return &Target{HostID: id, Name: id, Address: h, Port: p, User: "deploy", Signer: client, PinnedKey: pinned}
 }
 
 func echoExec(cmd string, stdin []byte) (string, string, int) {
@@ -102,7 +102,7 @@ func TestAuthFailureClassified(t *testing.T) {
 	if !errors.As(err, &oe) || oe.Class != model.ClassAuthentication || oe.Retryable {
 		t.Fatalf("auth failure: %v", err)
 	}
-	srv.SetPassword("fm", "pw-123")
+	srv.SetPassword("deploy", "pw-123")
 	tg.Signer, tg.Password = nil, "pw-123"
 	c, err := (&Dialer{}).Dial(context.Background(), tg)
 	if err != nil {
@@ -219,7 +219,7 @@ func TestPoolReuseAndEvict(t *testing.T) {
 	}
 	// Changing settings (here: the pinned key object is the same, user changes) redials.
 	tg2 := *tg
-	tg2.User = "fm2"
+	tg2.User = "deploy2"
 	srv.Authorize(client.PublicKey())
 	s, err := p.Get(ctx, &tg2)
 	if err != nil {

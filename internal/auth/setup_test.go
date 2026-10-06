@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"fleetmgr/internal/store/db"
+	"drool/internal/store/db"
 )
 
 func noAudit(*db.Queries, db.User) error { return nil }

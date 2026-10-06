@@ -1,5 +1,5 @@
 // Package config loads controller configuration from built-in defaults, an
-// optional YAML file and FLEETMGR_* environment variables, in that order of
+// optional YAML file and DROOL_* environment variables, in that order of
 // precedence, and records where every effective value came from.
 package config
 
@@ -29,11 +29,11 @@ const (
 )
 
 // EnvPrefix is prepended to the upper-snake-case key path to form the
-// environment variable name, e.g. server.web_port → FLEETMGR_SERVER_WEB_PORT.
-const EnvPrefix = "FLEETMGR_"
+// environment variable name, e.g. server.web_port → DROOL_SERVER_WEB_PORT.
+const EnvPrefix = "DROOL_"
 
 // DefaultPath is used when no --config flag is given and the file exists.
-const DefaultPath = "/etc/fleetmgr/config.yaml"
+const DefaultPath = "/etc/drool/config.yaml"
 
 type Config struct {
 	Server    Server    `yaml:"server"`
@@ -128,7 +128,7 @@ func Defaults() Config {
 			WebPort: 8080,
 			TLS:     TLS{Mode: "self_signed"},
 		},
-		DataDir: "/var/lib/fleetmgr",
+		DataDir: "/var/lib/drool",
 		Auth: Auth{
 			SessionIdleTimeout:     12 * time.Hour,
 			SessionAbsoluteTimeout: 7 * 24 * time.Hour,

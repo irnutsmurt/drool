@@ -21,14 +21,14 @@ import (
 
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
 
-	"fleetmgr/internal/store/db"
+	"drool/internal/store/db"
 )
 
 //go:embed migrations/*.sql
 var migrationFS embed.FS
 
 // FileName is the database file inside the data directory.
-const FileName = "fleetmgr.db"
+const FileName = "drool.db"
 
 // Store bundles the writer and reader pools with sqlc query sets.
 type Store struct {

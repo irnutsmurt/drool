@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"fleetmgr/internal/ids"
-	"fleetmgr/internal/store"
-	"fleetmgr/internal/store/db"
+	"drool/internal/ids"
+	"drool/internal/store"
+	"drool/internal/store/db"
 )
 
 var (
@@ -219,7 +219,7 @@ func CheckCSRF(p *Principal, header string) bool {
 }
 
 // TokenPrefix starts every API token string.
-const TokenPrefix = "fm_"
+const TokenPrefix = "drool_"
 
 // CreateTokenResult holds the one-time plaintext token.
 type CreateTokenResult struct {
@@ -264,7 +264,7 @@ func (s *Service) CreateAPITokenTx(ctx context.Context, q *db.Queries, userID, n
 	return &CreateTokenResult{Token: TokenPrefix + row.ID + "_" + secret, Row: row}, nil
 }
 
-// AuthenticateToken validates a bearer token of the form fm_<token id>_<hex secret>.
+// AuthenticateToken validates a bearer token of the form drool_<token id>_<hex secret>.
 func (s *Service) AuthenticateToken(ctx context.Context, token string) (*Principal, error) {
 	rest, ok := strings.CutPrefix(token, TokenPrefix)
 	if !ok {

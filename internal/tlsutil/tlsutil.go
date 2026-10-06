@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"fleetmgr/internal/config"
+	"drool/internal/config"
 )
 
 // Result describes the TLS setup for startup logging.
@@ -95,7 +95,7 @@ func generate(dir, certFile, keyFile, bind string) error {
 	now := time.Now()
 	tmpl := &x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "fleetmgr self-signed", Organization: []string{"fleetmgr"}},
+		Subject:               pkix.Name{CommonName: "drool self-signed", Organization: []string{"drool"}},
 		NotBefore:             now.Add(-time.Hour),
 		NotAfter:              now.AddDate(2, 0, 0),
 		KeyUsage:              x509.KeyUsageDigitalSignature,

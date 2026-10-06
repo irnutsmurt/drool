@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"fleetmgr/internal/driver"
-	"fleetmgr/internal/model"
-	"fleetmgr/internal/sshx"
+	"drool/internal/driver"
+	"drool/internal/model"
+	"drool/internal/sshx"
 )
 
 // ProbeTimeout bounds each remote check.
@@ -111,7 +111,7 @@ func Probe(ctx context.Context, d *sshx.Dialer, t *sshx.Target, opt ProbeOptions
 		failure = errors.Join(failure, err)
 	} else if out := strings.TrimSpace(string(r.Stdout)); !strings.HasPrefix(out, "Linux") {
 		e := &model.OpError{Class: model.ClassConfiguration, Message: fmt.Sprintf("not a Linux host (%q)", out),
-			Hint: "Fleet Manager manages Linux hosts only."}
+			Hint: "DROOL manages Linux hosts only."}
 		add("operating system", driver.StepFailed, "", e)
 		failure = errors.Join(failure, e)
 	} else {

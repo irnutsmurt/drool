@@ -8,9 +8,9 @@ import (
 	"regexp"
 	"strings"
 
-	"fleetmgr/internal/ids"
-	"fleetmgr/internal/store"
-	"fleetmgr/internal/store/db"
+	"drool/internal/ids"
+	"drool/internal/store"
+	"drool/internal/store/db"
 )
 
 var (

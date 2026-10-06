@@ -18,7 +18,7 @@ export function AppShell() {
   return (
     <div className="flex h-full">
       <aside className="flex w-56 shrink-0 flex-col border-r border-line bg-surface">
-        <div className="px-4 py-4 text-base font-semibold">Fleet Manager</div>
+        <div className="px-4 py-4 text-base font-semibold">DROOL</div>
         <nav className="flex flex-1 flex-col gap-0.5 px-2">
           {navItems
             .filter((i) => !i.permission || can(i.permission))
@@ -29,7 +29,7 @@ export function AppShell() {
                 end={i.to === "/"}
                 className={({ isActive }) =>
                   cx(
-                    "flex items-center justify-between rounded-fm px-3 py-2 text-sm",
+                    "flex items-center justify-between rounded-ui px-3 py-2 text-sm",
                     isActive ? "bg-surface-2 font-medium text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
                   )
                 }

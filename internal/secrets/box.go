@@ -107,7 +107,7 @@ func NewBoxForTest() *Box {
 	return &Box{keys: map[int][]byte{1: key}, current: 1}
 }
 
-func aad(id, kind string) []byte { return []byte("fleetmgr-secret\x00" + id + "\x00" + kind) }
+func aad(id, kind string) []byte { return []byte("drool-secret\x00" + id + "\x00" + kind) }
 
 func (b *Box) gcm(version int) (cipher.AEAD, error) {
 	key, ok := b.keys[version]

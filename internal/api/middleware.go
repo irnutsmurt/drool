@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"fleetmgr/internal/audit"
-	"fleetmgr/internal/auth"
-	"fleetmgr/internal/ids"
+	"drool/internal/audit"
+	"drool/internal/auth"
+	"drool/internal/ids"
 )
 
 type ctxKey int

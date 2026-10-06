@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"fleetmgr/internal/ids"
-	"fleetmgr/internal/secrets"
-	"fleetmgr/internal/sshx"
-	"fleetmgr/internal/store"
-	"fleetmgr/internal/store/db"
+	"drool/internal/ids"
+	"drool/internal/secrets"
+	"drool/internal/sshx"
+	"drool/internal/store"
+	"drool/internal/store/db"
 )
 
 // Host statuses (hosts.status).
