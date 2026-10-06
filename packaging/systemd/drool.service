@@ -16,6 +16,7 @@ StateDirectory=drool
 StateDirectoryMode=0750
 ConfigurationDirectory=drool
 Environment=DROOL_DATA_DIR=/var/lib/drool
+UMask=0077
 
 # The controller needs no local privileges.
 NoNewPrivileges=yes

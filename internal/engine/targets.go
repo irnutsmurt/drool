@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 
 	"drool/internal/model"
 	"drool/internal/store/db"
@@ -109,7 +110,11 @@ func ResolveTargets(ctx context.Context, q *db.Queries, t model.TargetSpec) ([]T
 	out := make([]TargetHost, 0, len(selected))
 	for id := range selected {
 		h := byID[id]
-		out = append(out, TargetHost{ID: id, Name: h.Name, Status: h.Status, Warning: statusWarnings[h.Status]})
+		warn := statusWarnings[h.Status]
+		if h.Status == "unsupported" && strings.Contains(h.StatusDetail, "systemd") {
+			warn = "no systemd: service operations and reboots will fail; everything else works"
+		}
+		out = append(out, TargetHost{ID: id, Name: h.Name, Status: h.Status, Warning: warn})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, warnings, nil

@@ -308,6 +308,15 @@ func (s *Service) UpdateHostTx(ctx context.Context, q *db.Queries, id string, in
 		return db.Host{}, err
 	}
 	now := s.now().UnixMilli()
+	curVia, err := q.GetHostHop(ctx, id)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return db.Host{}, err
+	}
+	// Only settings that affect how DROOL connects invalidate the last
+	// connection test; names, tags, groups and descriptions don't.
+	connChanged := cur.SshUser != in.User || cur.SshCredentialID.String != in.CredentialID ||
+		cur.BecomeMethod != in.BecomeMethod || cur.BecomeCredentialID.String != in.BecomeCredentialID ||
+		cur.SshNeedsPty != boolInt(in.NeedsPTY) || cur.JumpOnly != boolInt(in.JumpOnly) || curVia != in.ViaHostID
 	err = q.UpdateHost(ctx, db.UpdateHostParams{
 		Name: in.Name, Description: in.Description, ConnectAddress: in.Address, SshPort: int64(in.Port),
 		SshUser: in.User, SshCredentialID: nullStr(in.CredentialID), BecomeMethod: in.BecomeMethod,
@@ -330,7 +339,7 @@ func (s *Service) UpdateHostTx(ctx context.Context, q *db.Queries, id string, in
 			return db.Host{}, err
 		}
 		status, detail = StatusPendingHostKey, "address changed; approve the host key again"
-	} else if status != StatusPendingHostKey && status != StatusHostKeyChanged {
+	} else if connChanged && status != StatusPendingHostKey && status != StatusHostKeyChanged {
 		status, detail = StatusUntested, "settings changed; run a connection test"
 	}
 	if err := q.UpdateHostStatus(ctx, db.UpdateHostStatusParams{

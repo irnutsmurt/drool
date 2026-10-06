@@ -55,7 +55,10 @@ export function JobDetailPage() {
   const j = job.data;
   if (!j) return <p className="text-muted">Loading…</p>;
   const items = hosts.data?.items ?? [];
-  const current = items.find((h) => h.host_id === selected) ?? (items.length === 1 ? items[0] : undefined);
+  // Show something useful without a click: the chosen host, else the first
+  // host with a problem, else the first host.
+  const problem = (h: JobHost) => ["failed", "timed_out", "interrupted", "cancelled"].includes(h.state);
+  const current = items.find((h) => h.host_id === selected) ?? items.find(problem) ?? items[0];
   const failedCount = (j.counts.failed ?? 0) + (j.counts.timed_out ?? 0) + (j.counts.cancelled ?? 0) +
     (j.counts.skipped ?? 0) + (j.counts.interrupted ?? 0);
   const step = j.spec.steps[0];
@@ -119,7 +122,7 @@ export function JobDetailPage() {
           </p>
         </Card>
 
-        <Card title="Hosts">
+        <Card title={items.length > 1 ? "Hosts (click one to see its output)" : "Hosts"}>
           <Table<JobHost>
             rows={items}
             rowKey={(h) => h.host_id}
@@ -142,10 +145,8 @@ export function JobDetailPage() {
           />
         </Card>
 
-        {current ? (
+        {current && (
           <HostOutput jobId={id} host={current} live={active && activeStates.has(current.state)} onOutput={events.onOutput} />
-        ) : (
-          items.length > 1 && <p className="text-sm text-muted">Select a host to see its output.</p>
         )}
       </div>
     </>

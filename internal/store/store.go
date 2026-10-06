@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -43,6 +44,17 @@ type Store struct {
 // Open opens (creating if needed) the database at path. Migrations are not
 // applied; call Migrate.
 func Open(path string) (*Store, error) {
+	// The database holds password hashes, encrypted credentials and the
+	// audit log: owner-only, whatever the umask. SQLite gives the -wal and
+	// -shm files the main file's mode.
+	if f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600); err == nil {
+		f.Close()
+	}
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if fi, err := os.Stat(p); err == nil && fi.Mode().Perm()&0o077 != 0 {
+			_ = os.Chmod(p, 0o600)
+		}
+	}
 	pragmas := []string{
 		"journal_mode(WAL)",
 		"synchronous(NORMAL)",

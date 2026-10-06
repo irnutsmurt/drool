@@ -8,7 +8,7 @@ LDFLAGS := -s -w \
 	-X drool/internal/version.Commit=$(COMMIT) \
 	-X drool/internal/version.Date=$(DATE)
 
-.PHONY: all build web web-deps go test test-go test-web vet fmt-check generate check-generated run dev clean
+.PHONY: all build image web web-deps go test test-go test-web test-integration vet fmt-check generate check-generated run dev clean
 
 all: build
 
@@ -28,6 +28,16 @@ test: test-go test-web
 
 test-go:
 	$(GO) test ./...
+
+# Container image tagged with the version (drool:<version> and drool:local).
+image:
+	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) \
+		-t drool:$(VERSION) -t drool:local .
+
+# Real distributions in unprivileged containers (needs Docker and network
+# access; ~15-30 min). DISTROS=debian-12,fedora-44 limits the matrix.
+test-integration:
+	go test -tags integration -timeout 90m -count=1 ./test/integration/ -v $(if $(DISTROS),-distros $(DISTROS))
 
 test-web:
 	cd web && npm run typecheck

@@ -35,7 +35,7 @@ func classifySudo(stderr string) (detail, hint string) {
 	case strings.Contains(s, "not in the sudoers"), strings.Contains(s, "is not allowed to"):
 		return "the SSH user may not use sudo", "Add the user to sudoers or choose a different user."
 	case strings.Contains(s, "must have a tty"), strings.Contains(s, "no tty present"):
-		return "sudo requires a terminal (requiretty)", "Enable \"requires TTY\" for this host."
+		return "sudo requires a terminal (requiretty)", "Edit the host and enable \"Requires a terminal for sudo\"."
 	case strings.Contains(s, "command not found"):
 		return "sudo is not installed", "Install sudo or log in as root."
 	}

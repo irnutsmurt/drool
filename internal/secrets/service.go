@@ -31,11 +31,15 @@ const (
 const ControllerKeyName = "controller-default"
 
 var (
-	ErrNotFound    = errors.New("credential not found")
-	ErrNameTaken   = errors.New("a credential with this name already exists")
-	ErrInvalidName = errors.New("name must be 1-64 characters: letters, digits, '.', '_' or '-'")
-	ErrInvalidKind = errors.New("kind must be ssh_private_key, password or sudo_password")
-	ErrEmptyValue  = errors.New("value must not be empty")
+	ErrNotFound  = errors.New("credential not found")
+	ErrNameTaken = errors.New("a credential with this name already exists")
+	// ErrControllerKey protects DROOL's own key: the controller finds it by
+	// name, so deleting or renaming it would leave hosts with a key DROOL no
+	// longer uses (and a new one would be generated on the next start).
+	ErrControllerKey = errors.New("this is DROOL's own SSH key; it can't be deleted or renamed")
+	ErrInvalidName   = errors.New("name must be 1-64 characters: letters, digits, '.', '_' or '-'")
+	ErrInvalidKind   = errors.New("kind must be ssh_private_key, password or sudo_password")
+	ErrEmptyValue    = errors.New("value must not be empty")
 )
 
 // InUseError lists hosts that still reference a credential.
@@ -146,6 +150,9 @@ func (s *Service) UpdateTx(ctx context.Context, q *db.Queries, id string, up Upd
 		name, desc := cur.Name, cur.Description
 		if up.Name != nil {
 			name = strings.TrimSpace(*up.Name)
+			if cur.Name == ControllerKeyName && name != cur.Name {
+				return db.Secret{}, ErrControllerKey
+			}
 			if !nameRE.MatchString(name) {
 				return db.Secret{}, ErrInvalidName
 			}
@@ -194,6 +201,9 @@ func (s *Service) DeleteTx(ctx context.Context, q *db.Queries, id string) (db.Se
 	}
 	if err != nil {
 		return db.Secret{}, err
+	}
+	if cur.Name == ControllerKeyName {
+		return db.Secret{}, ErrControllerKey
 	}
 	users, err := q.ListHostsUsingSecret(ctx, id)
 	if err != nil {
@@ -308,4 +318,74 @@ func normalizeValue(in Input, name string) (value []byte, public string, err err
 // Signer parses a revealed SSH private key.
 func Signer(value []byte) (ssh.Signer, error) {
 	return ssh.ParsePrivateKey(value)
+}
+
+// KeyMismatchError means stored credentials cannot be decrypted with the
+// master key in use.
+type KeyMismatchError struct {
+	Total, Failed int
+	First         string // name of the first credential that failed
+}
+
+func (e *KeyMismatchError) Error() string {
+	return fmt.Sprintf("%d of %d stored credentials cannot be decrypted with this master key (first: %s)", e.Failed, e.Total, e.First)
+}
+
+// VerifyBox decrypts every stored credential with box and returns how many
+// there are. It never returns plaintext.
+func VerifyBox(ctx context.Context, q *db.Queries, box *Box) (int, error) {
+	rows, err := q.ListSecrets(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var bad *KeyMismatchError
+	for _, r := range rows {
+		if _, err := box.Open(r.ID, r.Kind, r.Ciphertext, r.Nonce, int(r.KeyVersion)); err != nil {
+			if bad == nil {
+				bad = &KeyMismatchError{Total: len(rows), First: r.Name}
+			}
+			bad.Failed++
+		}
+	}
+	if bad != nil {
+		return len(rows), bad
+	}
+	return len(rows), nil
+}
+
+// DiscardAllTx deletes every stored credential and detaches hosts from
+// them. It is the recovery path when the master key is lost: hosts keep
+// their pinned keys and history but need credentials assigned again. The
+// controller's default SSH key is regenerated on the next start. It returns
+// the names of hosts that had a credential.
+func DiscardAllTx(ctx context.Context, tx *sql.Tx) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT name FROM hosts
+		WHERE ssh_credential_id IS NOT NULL OR become_credential_id IS NOT NULL ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		names = append(names, n)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, stmt := range []string{
+		`UPDATE hosts SET ssh_credential_id = NULL, become_credential_id = NULL,
+			status = CASE WHEN status IN ('pending_hostkey','hostkey_mismatch','disabled') THEN status ELSE 'untested' END,
+			status_detail = CASE WHEN ssh_credential_id IS NOT NULL THEN 'credential discarded during recovery; assign a credential' ELSE status_detail END`,
+		`DELETE FROM secrets`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return nil, err
+		}
+	}
+	return names, nil
 }

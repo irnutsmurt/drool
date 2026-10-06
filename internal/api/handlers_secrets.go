@@ -47,6 +47,8 @@ func (s *Server) secretError(err error) *Problem {
 		return errConflict("name_taken", err.Error())
 	case errors.As(err, &inUse):
 		return errConflict("in_use", err.Error())
+	case errors.Is(err, secrets.ErrControllerKey):
+		return errConflict("controller_key", err.Error())
 	case errors.As(err, &keyErr), errors.Is(err, secrets.ErrInvalidName), errors.Is(err, secrets.ErrInvalidKind),
 		errors.Is(err, secrets.ErrEmptyValue):
 		return errValidation(err.Error())

@@ -15,6 +15,12 @@ import { errorMessage } from "@/lib/format";
 
 const steps = ["Connection", "Host key", "Test"] as const;
 
+/** True when the only failed check is the init system (usable without systemd). */
+function onlyNoSystemd(p: ProbeResult): boolean {
+  const failed = p.steps.filter((s) => s.status === "failed");
+  return failed.length > 0 && failed.every((s) => s.name === "init system");
+}
+
 /** Add a host: connection details → trust its host key → connection test. */
 export function AddHostPage() {
   const qc = useQueryClient();
@@ -80,13 +86,15 @@ export function AddHostPage() {
               <>
                 {probe.ok
                   ? <Alert tone="ok">{host.name} is ready.</Alert>
-                  : <Alert tone="warn">Some checks failed. Fix the issue on the host or adjust the settings, then test again.</Alert>}
+                  : onlyNoSystemd(probe)
+                    ? <Alert tone="warn">Connected. {host.name} has no systemd, so service management and reboots won't work; commands, scripts and package operations will.</Alert>
+                    : <Alert tone="warn">Some checks failed. Fix the issue on the host or adjust the settings, then test again.</Alert>}
                 <ProbeSteps result={probe} />
               </>
             )}
             <div className="flex gap-2">
               <Button variant="primary" onClick={() => navigate(`/hosts/${host.id}`)}>
-                {probe?.ok ? "Done" : "Go to host"}
+                {probe?.ok || (probe && onlyNoSystemd(probe)) ? "Done" : "Go to host"}
               </Button>
               <Button onClick={() => test.mutate(host.id)} disabled={test.isPending}>Test again</Button>
             </div>

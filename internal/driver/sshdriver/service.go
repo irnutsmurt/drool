@@ -58,7 +58,8 @@ func (u UnitState) transitional() bool {
 
 // classifySystemctl explains systemctl failures that aren't about the unit.
 func classifySystemctl(out string) *model.OpError {
-	if strings.Contains(out, "System has not been booted with systemd") || strings.Contains(out, "Failed to connect to bus") {
+	if strings.Contains(out, "System has not been booted with systemd") || strings.Contains(out, "Failed to connect to bus") ||
+		strings.Contains(out, "systemctl: command not found") || strings.Contains(out, "systemctl: not found") {
 		return &model.OpError{Class: model.ClassConfiguration, Message: "systemd is not running on this host",
 			Hint: "Service operations need systemd as the init system."}
 	}
@@ -267,20 +268,22 @@ func (x *Executor) reboot(ctx context.Context, c *sshx.Client, t *sshx.Target, b
 		return res, nil
 	}
 	driver.SetPhase(out, "waiting_host")
-	var wentAway time.Time
+	var wentAway, lastOld time.Time // first failed poll; last answer with the old boot id
 	delay := rebootPollStart
 	lastErr := ""
 	for {
 		select {
 		case <-ctx.Done():
-			if wentAway.IsZero() {
+			// Judge by the latest contact: a slow handshake in between is not a reboot.
+			if wentAway.IsZero() || lastOld.After(wentAway) {
 				res.notRebooted = true
 				return res, &model.OpError{Class: model.ClassTimeout,
-					Message: "the host never went away; it still reports the old boot id (the reboot did not happen)"}
+					Message: "the host never went away; it still reports the old boot id (the reboot did not happen)",
+					Hint:    "The reboot was requested but the host kept running. Something may be blocking shutdown (a hung service or an inhibitor lock); check the host, or reboot it from its console."}
 			}
 			return res, &model.OpError{Class: model.ClassTimeout,
 				Message: fmt.Sprintf("the host went down but did not come back within the timeout (last error: %s)", lastErr),
-				Hint:    "Check the host's console; DROOL keeps showing it as waiting until the poller reaches it."}
+				Hint:    "Check the host's console or power state. Its status on the host page updates by itself once it answers again."}
 		case <-time.After(delay):
 		}
 		delay = min(delay*2, rebootPollMax)
@@ -303,6 +306,7 @@ func (x *Executor) reboot(ctx context.Context, c *sshx.Client, t *sshx.Target, b
 			continue
 		}
 		if id == before {
+			lastOld = time.Now()
 			continue // not rebooted yet
 		}
 		driver.SetPhase(out, "verifying")

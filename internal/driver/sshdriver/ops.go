@@ -77,6 +77,34 @@ func simulate(ctx context.Context, c *sshx.Client, b Become, be pkg.Backend, act
 	return be.ParsePlan(string(r.Stdout)+string(r.Stderr), r.ExitCode)
 }
 
+// simulateNamed simulates a named-package change. When the package isn't in
+// the host's metadata cache (or there is no cache yet, as on a freshly
+// installed host), it refreshes the metadata once and simulates again.
+func simulateNamed(ctx context.Context, c *sshx.Client, b Become, be pkg.Backend, action string, names []string, out driver.OutputSink) (pkg.Plan, error) {
+	plan, err := simulate(ctx, c, b, be, action, names)
+	if err == nil || !staleCache(err) {
+		return plan, err
+	}
+	if out != nil {
+		note(out, "not in the local package metadata; refreshing it and trying again")
+	}
+	r, rerr := run(ctx, c, b, true, "sh -c "+shQuote(be.Refresh()), 5*time.Minute)
+	if rerr != nil {
+		return pkg.Plan{}, rerr
+	}
+	if r.ExitCode != 0 {
+		return pkg.Plan{}, be.Classify(string(r.Stdout)+string(r.Stderr), r.ExitCode)
+	}
+	return simulate(ctx, c, b, be, action, names)
+}
+
+// staleCache reports errors a metadata refresh may fix.
+func staleCache(err error) bool {
+	oe := model.AsOpError(err)
+	return (oe.Class == model.ClassValidation && strings.HasPrefix(oe.Message, "package not found")) ||
+		(oe.Class == model.ClassPackageManager && strings.HasPrefix(oe.Message, "no package metadata cache"))
+}
+
 func rebootRequired(ctx context.Context, c *sshx.Client, be pkg.Backend) (*bool, string) {
 	r, err := run(ctx, c, Become{}, false, "sh -c "+shQuote(be.RebootRequired()), time.Minute)
 	if err != nil {
@@ -109,7 +137,12 @@ func (x *Executor) Simulate(ctx context.Context, t *sshx.Target, b Become, op mo
 		return nil, err
 	}
 	action, names := planAction(op)
-	plan, err := simulate(ctx, sess.Client, b, be, action, names)
+	var plan pkg.Plan
+	if op.Type == model.OpPackage {
+		plan, err = simulateNamed(ctx, sess.Client, b, be, action, names, nil)
+	} else {
+		plan, err = simulate(ctx, sess.Client, b, be, action, names)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +184,7 @@ func (x *Executor) executePackage(ctx context.Context, c *sshx.Client, t *sshx.T
 			return nil, model.Errorf(model.ClassValidation, false, "not installed, so it cannot be upgraded: %s", strings.Join(missing, ", "))
 		}
 	}
-	plan, err := simulate(ctx, c, b, be, op.Action, op.Names)
+	plan, err := simulateNamed(ctx, c, b, be, op.Action, op.Names, out)
 	if err != nil {
 		return nil, err
 	}
@@ -169,6 +202,9 @@ func (x *Executor) executePackage(ctx context.Context, c *sshx.Client, t *sshx.T
 		started()
 		zero := 0
 		f := false
+		if req, why := rebootRequired(ctx, c, be); req != nil {
+			data["reboot_required"], data["reboot_reason"] = *req, why
+		}
 		return &driver.OpResult{ExitCode: &zero, Changed: &f, Data: data}, nil
 	}
 	cmd, err := be.Exec(op.Action, op.Names)

@@ -69,10 +69,14 @@ if sd; then echo systemd-running; systemctl list-units --state=failed --no-legen
 s reboot-file
 if [ -f /var/run/reboot-required ]; then echo required; head -n 5 /var/run/reboot-required.pkgs 2>/dev/null; fi
 s kernels
-uname -r 2>/dev/null
-ls -1 /lib/modules 2>/dev/null
+` + InstalledKernelsCommand + `
 s end
 `
+
+// InstalledKernelsCommand prints the running kernel release, then every
+// installed one. /boot is authoritative; /lib/modules can keep directories of
+// removed kernels, so it is only a fallback.
+const InstalledKernelsCommand = `uname -r 2>/dev/null; k=$(ls -1 /boot 2>/dev/null | sed -n 's/^vmlinuz-//p'); if [ -n "$k" ]; then echo "$k"; else ls -1 /lib/modules 2>/dev/null; fi`
 
 // UpdatesAPTScript lists pending updates from the local package cache
 // (no refresh, no root).

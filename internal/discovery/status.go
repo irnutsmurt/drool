@@ -75,22 +75,33 @@ func ParseStatus(out string) Status {
 	}
 	// Elsewhere: a newer installed kernel than the running one.
 	if k := sec["kernels"]; len(k) > 1 {
-		running := k[0]
-		newest := ""
-		for _, v := range k[1:] {
-			if newest == "" || CompareVersions(v, newest) > 0 {
-				newest = v
-			}
-		}
-		if newest != "" && CompareVersions(newest, running) > 0 {
+		if newer, why := NewerKernel(k); newer {
 			yes := true
-			st.RebootRequired, st.RebootReason = &yes, "kernel "+newest+" installed, "+running+" running"
+			st.RebootRequired, st.RebootReason = &yes, why
 		} else if _, ok := sec["reboot-file"]; ok {
 			no := false
 			st.RebootRequired = &no
 		}
 	}
 	return st
+}
+
+// NewerKernel reports whether a kernel newer than the running one (first
+// entry) is installed (remaining entries).
+func NewerKernel(k []string) (bool, string) {
+	if len(k) < 2 {
+		return false, ""
+	}
+	running, newest := k[0], ""
+	for _, v := range k[1:] {
+		if newest == "" || CompareVersions(v, newest) > 0 {
+			newest = v
+		}
+	}
+	if newest != "" && CompareVersions(newest, running) > 0 {
+		return true, "kernel " + newest + " installed, " + running + " running"
+	}
+	return false, ""
 }
 
 // CompareVersions compares version strings segment by segment, numbers

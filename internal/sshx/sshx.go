@@ -330,7 +330,7 @@ func classify(t *Target, err error) error {
 	var mm *HostKeyMismatchError
 	if errors.As(err, &mm) {
 		return &model.OpError{Class: model.ClassHostKey, Err: err, Message: mm.Error(),
-			Hint: "If the host was reinstalled or its keys rotated, review and approve the new key. Otherwise treat this as a possible attack."}
+			Hint: "If the host was reinstalled or its keys were rotated, check the new fingerprint on the host itself (ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub) and approve it on the host page. Otherwise treat this as a possible attack: DROOL will not connect until a key is approved."}
 	}
 	msg := err.Error()
 	var ne net.Error
@@ -338,22 +338,29 @@ func classify(t *Target, err error) error {
 	case strings.Contains(msg, "unable to authenticate"):
 		return &model.OpError{Class: model.ClassAuthentication, Err: err,
 			Message: fmt.Sprintf("authentication as %q failed on %s", t.User, t.label()),
-			Hint:    "Check the SSH user and that the credential's public key is in ~/.ssh/authorized_keys."}
+			Hint:    "Check the SSH user, and that the credential's public key is in that user's ~/.ssh/authorized_keys on the host (Credentials shows a one-line install command for DROOL's own key)."}
 	case errors.As(err, &ne) && ne.Timeout(), strings.Contains(msg, "timeout"):
 		return &model.OpError{Class: model.ClassConnection, Retryable: true, Err: err,
-			Message: fmt.Sprintf("connection to %s timed out", t.addr())}
+			Message: fmt.Sprintf("connection to %s timed out", t.addr()),
+			Hint:    "Check that the host is up, the address and port are right, and no firewall drops SSH from the controller."}
 	case strings.Contains(msg, "connection refused"):
 		return &model.OpError{Class: model.ClassConnection, Retryable: true, Err: err,
 			Message: fmt.Sprintf("connection to %s refused", t.addr()), Hint: "Is sshd running and listening on this port?"}
+	case strings.Contains(msg, "no route to host"), strings.Contains(msg, "network is unreachable"), strings.Contains(msg, "host is unreachable"):
+		return &model.OpError{Class: model.ClassConnection, Retryable: true, Err: err,
+			Message: fmt.Sprintf("no network route to %s", t.addr()),
+			Hint:    "The host is down or not reachable from the controller's network; check the address and that the host is up."}
 	case strings.Contains(msg, "no such host"):
 		return &model.OpError{Class: model.ClassConnection, Retryable: true, Err: err,
-			Message: fmt.Sprintf("cannot resolve %s", t.Address)}
+			Message: fmt.Sprintf("cannot resolve %s", t.Address),
+			Hint:    "Check the host name, or use an IP address."}
 	case strings.Contains(msg, "administratively prohibited"):
 		return &model.OpError{Class: model.ClassConnection, Err: err,
 			Message: "the jump host refused to forward the connection", Hint: "The jump host's sshd may have AllowTcpForwarding disabled."}
 	}
 	return &model.OpError{Class: model.ClassConnection, Retryable: true, Err: err,
-		Message: fmt.Sprintf("connection to %s failed: %v", t.addr(), err)}
+		Message: fmt.Sprintf("connection to %s failed: %v", t.addr(), err),
+		Hint:    "Check that the host is up and that SSH is reachable from the controller."}
 }
 
 // RunResult is the outcome of a command.
@@ -373,8 +380,38 @@ type RunOptions struct {
 
 // Run executes cmd in a new session and waits for it. Cancelling ctx closes
 // the session. A non-zero exit status is reported in ExitCode, not as an error.
+// unresponsiveGrace is how long a connection may take to acknowledge a
+// closed session after a timeout before it is treated as dead.
+var unresponsiveGrace = 5 * time.Second
+
+// newSession opens a session, giving up when ctx ends. A host that vanished
+// without closing TCP (power loss, a VM's network gone) never answers, and
+// fresh connections have no keepalive to notice; closing the connection is
+// the only way to unblock.
+func (c *Client) newSession(ctx context.Context) (*ssh.Session, error) {
+	type res struct {
+		s   *ssh.Session
+		err error
+	}
+	ch := make(chan res, 1)
+	go func() { s, err := c.NewSession(); ch <- res{s, err} }()
+	select {
+	case r := <-ch:
+		return r.s, r.err
+	case <-ctx.Done():
+		c.Close()
+		if r := <-ch; r.s != nil {
+			r.s.Close()
+		}
+		return nil, ctx.Err()
+	}
+}
+
 func (c *Client) Run(ctx context.Context, cmd string, opt RunOptions) (*RunResult, error) {
-	sess, err := c.NewSession()
+	sess, err := c.newSession(ctx)
+	if ctx.Err() != nil {
+		return nil, &model.OpError{Class: model.ClassTimeout, Retryable: true, Err: ctx.Err(), Message: "command timed out or was cancelled"}
+	}
 	if err != nil {
 		return nil, &model.OpError{Class: model.ClassConnection, Retryable: true, Err: err, Message: "open session: " + err.Error()}
 	}
@@ -399,7 +436,13 @@ func (c *Client) Run(ctx context.Context, cmd string, opt RunOptions) (*RunResul
 	case err = <-done:
 	case <-ctx.Done():
 		sess.Close()
-		<-done
+		select {
+		case <-done:
+		case <-time.After(unresponsiveGrace):
+			// The host doesn't even acknowledge the close: the connection is dead.
+			c.Close()
+			<-done
+		}
 		return nil, &model.OpError{Class: model.ClassTimeout, Retryable: true, Err: ctx.Err(), Message: "command timed out or was cancelled"}
 	}
 	res := &RunResult{Stdout: stdout.buf.Bytes(), Stderr: stderr.buf.Bytes(), Truncated: stdout.truncated || stderr.truncated}
@@ -409,7 +452,7 @@ func (c *Client) Run(ctx context.Context, cmd string, opt RunOptions) (*RunResul
 	case errors.As(err, &exitErr):
 		res.ExitCode = exitErr.ExitStatus()
 	case errors.Is(err, io.EOF), strings.Contains(err.Error(), "exited without exit status"):
-		res.ExitCode = -1
+		return nil, ErrLostDuringCommand(err)
 	default:
 		return nil, &model.OpError{Class: model.ClassConnection, Retryable: true, Err: err, Message: "command failed: " + err.Error()}
 	}
@@ -485,14 +528,22 @@ func (r *Running) ExitCode() (int, error) {
 		return 0, nil
 	case errors.As(r.err, &exitErr):
 		if exitErr.ExitStatus() == 0 && exitErr.Signal() != "" {
-			return -1, nil
+			return -1, &model.OpError{Class: model.ClassExecution, Err: r.err,
+				Message: "the command was killed by signal " + exitErr.Signal()}
 		}
 		return exitErr.ExitStatus(), nil
-	case errors.Is(r.err, io.EOF), strings.Contains(r.err.Error(), "exited without exit status"):
-		return -1, nil
 	}
-	return -1, &model.OpError{Class: model.ClassConnection, Retryable: true, Err: r.err,
-		Message: "connection lost while the command was running: " + r.err.Error()}
+	// No exit status: the session or connection went away mid-command.
+	return -1, ErrLostDuringCommand(r.err)
+}
+
+// ErrLostDuringCommand reports a connection that dropped after a command
+// started. The outcome is unknown: the engine retries only idempotent
+// operations (ARCHITECTURE-ALPHA §11.4).
+func ErrLostDuringCommand(err error) error {
+	return &model.OpError{Class: model.ClassConnection, Err: err,
+		Message: "the connection to the host was lost while the command was running; it may have finished, failed, or still be running",
+		Hint:    "The outcome is unknown. Check the host (for example with a read-only command) before running this again."}
 }
 
 // Close closes the session (the remote process may keep running; see the

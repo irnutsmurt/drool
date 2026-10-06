@@ -76,6 +76,8 @@ type Poller struct {
 	now   func() time.Time
 
 	slots chan struct{}
+	wake  chan struct{} // a worker finished: dispatch again without waiting for the tick
+	exec  func(ctx context.Context, h db.Host, task string)
 	mu    sync.Mutex
 	due   map[string]map[string]time.Time // host -> task -> next run
 	inFly map[string]bool                 // host -> a task is running
@@ -83,8 +85,10 @@ type Poller struct {
 
 func New(st *store.Store, inv *inventory.Service, locks *lock.Manager, busy func() bool, log *slog.Logger, cfg Config) *Poller {
 	cfg.defaults()
-	return &Poller{st: st, inv: inv, locks: locks, busy: busy, log: log, cfg: cfg, now: time.Now,
-		slots: make(chan struct{}, cfg.Workers), due: map[string]map[string]time.Time{}, inFly: map[string]bool{}}
+	p := &Poller{st: st, inv: inv, locks: locks, busy: busy, log: log, cfg: cfg, now: time.Now,
+		slots: make(chan struct{}, cfg.Workers), wake: make(chan struct{}, 1), due: map[string]map[string]time.Time{}, inFly: map[string]bool{}}
+	p.exec = p.run
+	return p
 }
 
 // Run schedules checks until ctx ends.
@@ -97,6 +101,7 @@ func (p *Poller) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+		case <-p.wake:
 		}
 	}
 }
@@ -120,8 +125,7 @@ func (p *Poller) interval(task string) time.Duration {
 
 // seed derives a host's first schedule from stored timestamps, so a
 // controller restart doesn't re-poll everything at once.
-func (p *Poller) seed(ctx context.Context, hostID string) map[string]time.Time {
-	now := p.now()
+func (p *Poller) seed(ctx context.Context, hostID string, now time.Time) map[string]time.Time {
 	soon := func(within time.Duration) time.Time { return now.Add(time.Duration(rand.Int64N(int64(within)))) }
 	next := func(lastMs int64, valid bool, task string, missing time.Time) time.Time {
 		if !valid || lastMs == 0 {
@@ -137,7 +141,7 @@ func (p *Poller) seed(ctx context.Context, hostID string) map[string]time.Time {
 	f, ferr := p.st.R.GetHostFacts(ctx, hostID)
 	d[taskFacts] = next(f.CollectedAt, ferr == nil, taskFacts, now) // missing facts: now
 	st, serr := p.st.R.GetHostStatus(ctx, hostID)
-	d[taskStatus] = next(st.CheckedAt, serr == nil, taskStatus, soon(time.Minute))
+	d[taskStatus] = next(st.CheckedAt, serr == nil, taskStatus, now) // never checked (new host): now
 	d[taskUpdates] = next(st.UpdatesCheckedAt.Int64, serr == nil && st.UpdatesCheckedAt.Valid, taskUpdates, soon(5*time.Minute))
 	d[taskRefresh] = next(st.MetadataRefreshedAt.Int64, serr == nil && st.MetadataRefreshedAt.Valid, taskRefresh, soon(30*time.Minute))
 	if serr == nil && st.UpdatesCheckedAt.Valid && !st.UpdatesAvailable.Valid {
@@ -179,7 +183,7 @@ func (p *Poller) tick(ctx context.Context) {
 		d, ok := p.due[h.ID]
 		if !ok {
 			p.mu.Unlock()
-			d = p.seed(ctx, h.ID)
+			d = p.seed(ctx, h.ID, now)
 			p.mu.Lock()
 			p.due[h.ID] = d
 		}
@@ -208,8 +212,12 @@ func (p *Poller) tick(ctx context.Context) {
 				p.mu.Lock()
 				delete(p.inFly, h.ID)
 				p.mu.Unlock()
+				select {
+				case p.wake <- struct{}{}:
+				default:
+				}
 			}()
-			p.run(ctx, h, task)
+			p.exec(ctx, h, task)
 		}(h, task)
 	}
 	// Forget deleted hosts.
@@ -266,6 +274,8 @@ func (p *Poller) run(ctx context.Context, h db.Host, task string) {
 		}
 		if err := p.st.InTx(ctx, func(q *db.Queries) error { return p.inv.StoreFactsTx(ctx, q, h.ID, f) }); err != nil {
 			log.Error("poller: store facts", "err", err)
+			p.reschedule(h.ID, task, time.Minute)
+			return
 		}
 		p.reschedule(h.ID, task, jitter(p.cfg.FactsInterval))
 	case taskStatus:
@@ -289,6 +299,12 @@ func (p *Poller) run(ctx context.Context, h db.Host, task string) {
 		}
 		p.reschedule(h.ID, task, jitter(p.cfg.StatusInterval))
 	case taskUpdates:
+		if _, err := p.st.R.GetHostStatus(ctx, h.ID); err != nil {
+			// Update counts are stored with the host's status: check that first.
+			p.reschedule(h.ID, taskStatus, 0)
+			p.reschedule(h.ID, task, 30*time.Second)
+			return
+		}
 		f, err := p.st.R.GetHostFacts(ctx, h.ID)
 		if err != nil || (f.PkgManager != "apt" && f.PkgManager != "dnf" && f.PkgManager != "yum") {
 			p.reschedule(h.ID, task, jitter(p.cfg.UpdatesInterval))
@@ -302,6 +318,8 @@ func (p *Poller) run(ctx context.Context, h db.Host, task string) {
 		}
 		if err := p.st.InTx(ctx, func(q *db.Queries) error { return p.inv.RecordUpdatesTx(ctx, q, h.ID, u) }); err != nil {
 			log.Error("poller: store updates", "err", err)
+			p.reschedule(h.ID, task, time.Minute)
+			return
 		}
 		p.reschedule(h.ID, task, jitter(p.cfg.UpdatesInterval))
 		if u.Available == nil && inventory.CanBecomeRoot(h) && p.refreshedLongAgo(ctx, h.ID) {

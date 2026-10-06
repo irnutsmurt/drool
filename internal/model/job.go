@@ -249,7 +249,18 @@ func (o Operation) Summary() string {
 		if o.Script.Body.ByOS != nil {
 			return o.Script.Interpreter + " script (" + strings.Join(o.Script.Body.Keys(), "/") + ")"
 		}
-		first, _, _ := strings.Cut(strings.TrimSpace(o.Script.Body.Text), "\n")
+		// The first line that says something: not a shebang, comment or "set -e".
+		first := ""
+		for _, l := range strings.Split(o.Script.Body.Text, "\n") {
+			l = strings.TrimSpace(l)
+			if l != "" && !strings.HasPrefix(l, "#") && !strings.HasPrefix(l, "set -") {
+				first = l
+				break
+			}
+		}
+		if first == "" {
+			return o.Script.Interpreter + " script"
+		}
 		return o.Script.Interpreter + " script: " + first
 	case OpPackage:
 		return o.Package.Action + " " + strings.Join(o.Package.Names, " ")

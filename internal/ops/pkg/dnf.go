@@ -195,7 +195,8 @@ func (dnf) Classify(out string, exit int) *model.OpError {
 	case strings.Contains(out, "transaction lock"), strings.Contains(out, "Waiting for process with pid"),
 		strings.Contains(out, "is locked"):
 		return &model.OpError{Class: model.ClassPackageManager, Retryable: true,
-			Message: "the package manager is locked by another process", Hint: "DROOL retries automatically."}
+			Message: "the package manager is locked by another process",
+			Hint:    "Another dnf run is in progress. DROOL waits and retries; if this is the final result, run the job again once it has finished."}
 	case strings.Contains(out, "Failed to resolve the transaction"), strings.Contains(out, "Problem:"):
 		return &model.OpError{Class: model.ClassPackageManager,
 			Message: "dnf cannot resolve this change: " + firstLines(afterLine(out, "Problem"), 3),

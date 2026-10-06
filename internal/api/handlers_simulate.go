@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"drool/internal/audit"
 	"net/http"
 	"sync"
 	"time"
@@ -61,6 +62,16 @@ func (s *Server) handleSimulateJob(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(targets) > 100 {
 		writeProblem(w, r, errValidation("simulate at most 100 hosts at once"))
+		return
+	}
+	// A dry run still executes commands on the hosts (as root for dnf).
+	ids := make([]string, len(targets))
+	for i, t := range targets {
+		ids[i] = t.ID
+	}
+	if err := s.d.Audit.Record(ctx, audit.Event{Action: "job.simulate", TargetType: "job",
+		Details: map[string]any{"operation": req.Step.Summary(), "hosts": ids}}); err != nil {
+		writeProblem(w, r, errInternal)
 		return
 	}
 	out := make([]simHostJSON, len(targets))

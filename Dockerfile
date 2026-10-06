@@ -15,8 +15,9 @@ COPY . .
 COPY --from=web /src/web/dist ./web/dist
 ARG VERSION=dev
 ARG COMMIT=unknown
+ARG DATE=unknown
 RUN CGO_ENABLED=0 go build -trimpath \
-      -ldflags "-s -w -X drool/internal/version.Version=${VERSION} -X drool/internal/version.Commit=${COMMIT}" \
+      -ldflags "-s -w -X drool/internal/version.Version=${VERSION} -X drool/internal/version.Commit=${COMMIT} -X drool/internal/version.Date=${DATE}" \
       -o /out/drool ./cmd/drool \
  && mkdir -p /out/data
 

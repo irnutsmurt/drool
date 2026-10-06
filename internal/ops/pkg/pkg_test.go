@@ -77,6 +77,13 @@ func TestAPTVersionsAndReboot(t *testing.T) {
 	if r == nil || !*r || !strings.Contains(why, "linux-image") {
 		t.Fatalf("reboot %v %q", r, why)
 	}
+	// Plain Debian has no reboot-required file: compare kernels.
+	if r, why := (apt{}).ParseRebootRequired("not-required\n@@kernels\n6.1.0-40-cloud-amd64\n6.1.0-40-cloud-amd64\n6.12.48+deb12-cloud-amd64\n"); r == nil || !*r || !strings.Contains(why, "6.12.48") {
+		t.Fatalf("newer kernel: %v %q", r, why)
+	}
+	if r, _ := (apt{}).ParseRebootRequired("not-required\n@@kernels\n6.1.0-40-cloud-amd64\n6.1.0-40-cloud-amd64\n6.1.0-40-amd64\n"); r == nil || *r {
+		t.Fatal("another flavor of the same kernel is not a pending update")
+	}
 	if r, _ := (apt{}).ParseRebootRequired("not-required\n"); r == nil || *r {
 		t.Fatal("not-required misparsed")
 	}

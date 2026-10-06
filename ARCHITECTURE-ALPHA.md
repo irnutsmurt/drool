@@ -1,6 +1,8 @@
 # DROOL Technical Alpha: Internal Architecture
 
-**v0.2 · 2026-10-06** · Implements the *Technical Alpha* slice of `DESIGN.md` v0.3 (§33).
+**v0.3 · 2026-10-06 (v0.1.0-alpha)** · Implements the *Technical Alpha* slice of `DESIGN.md` v0.3 (§33).
+
+Sections 1–21 describe the implementation as built. Where an implementation decision superseded the original plan, the prose was updated and the decision and its reason are in §22.
 
 This document is where we argue about concrete things: schema, operation semantics, SSH handling, job execution, package abstractions and API contracts. New product features go in `DESIGN.md`, not here.
 
@@ -24,8 +26,8 @@ This document is where we argue about concrete things: schema, operation semanti
 Agent, firewall, batch/canary rollouts, scheduling, file deployment, desired state, YAML editing, MFA, plugins, multi-hop jumps.
 
 ### Supported managed hosts
-Debian 12+, Ubuntu 22.04+, RHEL/Rocky/Alma 9+, current Fedora (dnf5).
-Requirements on the host: `sshd`, POSIX `sh`, coreutils, systemd, and `sudo` if the login user isn't root. **No Python required.**
+Debian 12+, Ubuntu 22.04+, RHEL/Rocky/Alma 9+, current Fedora (dnf5). The integration matrix (§18) runs Debian 12 and 13, Ubuntu 24.04 and 26.04, Rocky 9 and 10, and Fedora 44.
+Requirements on the host: `sshd`, POSIX `sh`, coreutils, and `sudo` if the login user isn't root. **No Python required.** systemd is required for service operations and reboots; without it, commands, scripts, package operations and system updates still work, and the connection test reports the host as `unsupported` with that explanation.
 
 ---
 
@@ -52,7 +54,7 @@ Requirements on the host: `sshd`, POSIX `sh`, coreutils, systemd, and `sudo` if 
 
 - **One process, one binary.** Subcommands: `serve`, `migrate`, `user create`, `backup`, `restore`, `version`.
 - Runs as an unprivileged `drool` user. It never needs local root.
-- Data directory: `/var/lib/drool/` (`drool.db`, `master.key`, `ssh/`, `tls/`, `logs/`).
+- Data directory: `/var/lib/drool/` (`drool.db`, `master.key`, `tls/`, `logs/`, `backups/`, `drool.lock`). `serve` holds `drool.lock` (flock) for its lifetime so a restore can't replace files under a running controller. Database files are created owner-only (0600) whatever the umask.
 - Packaging: static binary with a systemd unit, plus a container image (distroless; data on a volume).
 - Single controller instance only. The lock manager and worker pool are in memory, and the alpha does not support HA.
 
@@ -86,7 +88,7 @@ internal/
   backup/
 web/                          React + TypeScript (Vite)
 api/openapi.yaml              REST contract (source of truth for UI client generation)
-test/integration/             testcontainers distro matrix, fault injection
+test/integration/             distro matrix, fault injection, VM tests (Docker CLI; see §18)
 ```
 
 **Dependency rule:** `api` → services → `engine` → `driver` → `sshx`. `model` is imported by everyone and imports nothing internal. Nothing imports `api`.
@@ -136,12 +138,13 @@ Defined as Go types in `internal/model`. JSON Schema is generated from them and 
   "when": { "os_family": ["debian"] }, "become": true, "read_only": false, "timeout_s": 600 }
 
 // package
-{ "type": "package", "action": "install" | "remove" | "upgrade", "names": ["htop"] }
+{ "type": "package", "action": "install" | "remove" | "upgrade", "names": ["htop"],
+  "allow_removals": false }      // needed when the change would remove other packages
 
 // system_update
 { "type": "system_update",
   "mode": "upgrade" | "full_upgrade" | "security",
-  "allow_removals": false,       // required true for unattended full_upgrade that removes packages
+  "allow_removals": false,       // needed when the update would remove packages
   "refresh": true,
   "reboot": "never" | "if_required" | "always" }
 
@@ -153,9 +156,9 @@ Defined as Go types in `internal/model`. JSON Schema is generated from them and 
 // reboot
 { "type": "reboot", "wait": true, "timeout_s": 900 }
 
-// discover (inventory facts)
-{ "type": "discover" }
 ```
+
+Discovery is not a job step: it is an inventory operation run by the poller and by `POST /hosts/{id}/refresh` (§22, M3).
 
 Each operation type declares static metadata used by the engine:
 
@@ -166,7 +169,7 @@ Each operation type declares static metadata used by the engine:
 | system_update | exclusive | yes | yes | 3600 s |
 | service | exclusive | yes (except restarted/reloaded) | yes | 120 s |
 | reboot | exclusive | no | yes | 900 s |
-| discover | shared | yes | no (some facts better with) | 120 s |
+| discover (inventory, not a job step) | shared, never waits | yes | no | 120 s |
 
 ### 5.2 Targets and strategy
 
@@ -503,54 +506,56 @@ One POSIX script collects: `/etc/os-release`, `uname -srm`, hostname, `nproc`, `
 
 ### 10.2 Package backends
 
-```go
-type PackageBackend interface {
-    Refresh() Script
-    Install(names []string) Script
-    Remove(names []string) Script
-    Upgrade(names []string) Script
-    UpgradeAll(scope Scope) (Script, error)   // scope: all | security
-    ListUpdates() Script                      // → parsed []Update{name, from, to, security}
-    RebootRequired() Script
-    ParseError(stderr string, exit int) *model.OpError
-}
-```
+`internal/ops/pkg` has one backend per package manager (APT; DNF covering dnf4 and dnf5). A backend only builds command lines and parses output; the SSH driver orchestrates each operation as separate steps:
+
+1. detect the package manager (`apt-get`, `dnf`/`yum`)
+2. read installed versions of the named packages (`dpkg-query` / `rpm -q`, as the login user)
+3. refresh metadata (system updates only, `refresh: true` by default; root)
+4. **simulate** the transaction (`apt-get -s …` as the login user; `dnf -C --assumeno …` as root, since dnf4 needs it)
+5. apply the removal rule (below); stop with `ValidationError` before changing anything
+6. run the real transaction through the cancellable run-directory runner (§9), streaming output
+7. read versions again, verify the end state, check whether a reboot is required
 
 | | APT (Debian/Ubuntu) | DNF (RHEL 9+/Fedora, dnf4 & dnf5) |
 |---|---|---|
+| Environment | `DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 LC_ALL=C`, `--force-confdef --force-confold`, `DPkg::Lock::Timeout=120`. needrestart is suspended: services are not restarted during the update | `LC_ALL=C` |
 | Refresh | `apt-get update` | `dnf makecache` |
-| Install | `apt-get install -y --no-install-recommends?` (setting) | `dnf install -y` |
-| Remove | `apt-get remove -y` | `dnf remove -y` |
+| Install / remove | `apt-get install -y` / `apt-get remove -y` (APT's default recommends handling; there is no `--no-install-recommends` setting) | `dnf install -y` / `dnf remove -y` |
+| Named upgrade | `apt-get install --only-upgrade`; a package that isn't installed is a `ValidationError` | `dnf upgrade` |
 | `mode: upgrade` | `apt-get upgrade -y` (never removes; may hold back) | `dnf upgrade -y` |
-| `mode: full_upgrade` | `apt-get full-upgrade -y` (may remove/replace packages; see below) | same as `upgrade` (dnf has no distinction) |
-| `mode: security` | **Not supported in alpha** → `ValidationError` (decision D4) | `dnf upgrade --security -y` where updateinfo exists; otherwise `ValidationError` with an explanation |
-| List updates | `apt list --upgradable` (parsed; origin decides `security`) | `dnf check-update` / `dnf updateinfo list --security` |
-| Reboot required | `/var/run/reboot-required` exists | `needs-restarting -r` (dnf4) / `dnf needs-restarting -r` (dnf5); fallback: compare running kernel with newest installed |
-| Lock detection | `Could not get lock` / `dpkg frontend lock` | `Waiting for process with pid` / dnf lock messages |
+| `mode: full_upgrade` | `apt-get full-upgrade -y` (may install or remove) | same as `upgrade` |
+| `mode: security` | **Not supported** → `ValidationError` (decision D4) | `dnf upgrade --security -y` |
+| Reboot required | `/var/run/reboot-required` (Ubuntu); otherwise newest kernel in `/boot` vs. running kernel (plain Debian has no reboot-required file) | `needs-restarting -r` (dnf4) / `dnf needs-restarting -r` (dnf5) |
+| Lock | apt waits up to 120 s itself; then `PackageManagerError{retryable}` naming the holder | `PackageManagerError{retryable}` |
 
-- **APT full upgrade removals (decision D3):** before running, the backend simulates (`apt-get -s full-upgrade`) and parses `Remv` lines. If any packages would be removed and `allow_removals` is false, the host fails with `ValidationError{retryable: false}` listing them, and nothing is changed. `POST /jobs/preview` runs the same simulation so the UI can show removals and require explicit approval, which sets `allow_removals: true`.
-- **Security updates on APT are detected and displayed only:** `ListUpdates` marks packages whose candidate comes from a `*-security` origin, and these feed the `security_updates` count. We don't execute origin-based security-only patching in the alpha.
-- Lock contention → `PackageManagerError{retryable: true, detail: "locked by <process>"}`. The engine retries with backoff, up to 5 attempts over about 10 min.
-- `Changed` is computed by comparing package versions before and after for the named packages (or from the upgraded-package list).
-- dpkg interrupted state (`dpkg was interrupted`) → `PackageManagerError{retryable: false}`, with the explanation "run `dpkg --configure -a`". The alpha does **not** auto-repair.
+Pending-update counts for the dashboard come from discovery (`apt list --upgradable`, `dnf -C check-update` plus advisories), not from these backends (§22, M3).
+
+- **Removal rule (decision D3, applied to every package operation):** a removal of the named packages themselves (`remove`) is expected; any *other* removal (dependents of a removed package, conflicts of an install, removals during a system update) needs `allow_removals: true`. Without it the host fails with `ValidationError` listing the packages, before anything changes.
+- **Dry run:** `POST /jobs/simulate {targets, step}` runs steps 1–5 on each host (at most 8 at a time, 3-minute budget, shared host lock taken without waiting) from the host's current metadata. The UI's "Preview changes" uses it; the "allow removals" box appears only after a preview showed removals. A system update refreshes metadata first, so the real run can include more updates than the preview; new removals still stop it unless allowed.
+- **Security updates on APT are detected and displayed only** (the `*-security` suites feed the host's security count); security-only execution is DNF-only in the alpha.
+- **Lock contention:** apt waits up to 120 s on the dpkg lock; after that, or on a dnf lock, the error is retryable and the engine retries with its normal budget (§11.4).
+- **Interrupted dpkg** (`dpkg was interrupted`) → `PackageManagerError{retryable: false}` with the fix (`sudo dpkg --configure -a`). DROOL does **not** repair it automatically.
+- **Results:** `changed` = versions differ or the plan was non-empty (system update: plan non-empty, or a reboot happened). Results store the full plan, `changes` for the named packages, `reboot_required` and its reason.
 
 ### 10.3 service
 
-Reads `systemctl show -p LoadState,ActiveState,SubState,UnitFileState <unit>`.
+Reads `systemctl show -p LoadState,ActiveState,SubState,UnitFileState,CanReload <unit>` (`.service` is added when no suffix is given).
 
-- `LoadState=not-found` → `ServiceError`.
-- Applies only the transitions needed (start/stop/enable/disable). `restarted` and `reloaded` always act.
-- Re-reads the state afterward and returns `Changed` plus the before and after states.
+- Start, stop, enable and disable apply only the transitions needed; `restarted` and `reloaded` always act.
+- Refused with `ServiceError` before acting: unit not found, masked unit, reload on a unit without reload support, enable/disable on a `static`/`indirect` unit.
+- After acting, waits up to 10 s for transitional states to settle, then verifies the requested state. A unit that fails to start is a `ServiceError`, and `systemctl status -n 15` is attached to the output.
+- A host where systemd isn't running (or `systemctl` doesn't exist) gives `ConfigurationError`.
+- Results store the unit, the state before and after, and the `systemctl` verbs run.
 
 ### 10.4 reboot
 
 1. Record the current `boot_id`.
 2. Run `systemd-run --on-active=2 systemctl reboot` (falling back to `nohup sh -c 'sleep 2; systemctl reboot'`), so the SSH command returns cleanly.
-3. Evict the pooled connection. State becomes `rebooting`, then `waiting_host`.
-4. Poll (exponential backoff, 5 s → 30 s) until SSH works **and the host key still matches** **and `boot_id` has changed**. Only a changed `boot_id` proves the reboot actually happened.
-5. Timeout → `TimeoutError`, and the host stays in `waiting_host` until the poller sees it.
+3. Evict the pooled connection. State becomes `rebooting`, then `waiting_host`, then `verifying`.
+4. Poll with fresh connections (3 s, doubling, capped at 15 s) until SSH works **and the host key still matches** **and `boot_id` has changed**. Only a changed `boot_id` proves the reboot actually happened. A different host key fails immediately with `HostKeyError`; DROOL never trusts a new key because a reboot happened.
+5. Timeout → `TimeoutError`, worded differently for "the host never went away (old boot id, reported as not changed)" and "went down but did not come back". The job host ends `timed_out`; the host's own status is updated by the poller.
 
-`system_update` with `reboot: if_required` runs RebootRequired after the upgrade and then does the above.
+`system_update` with `reboot: if_required` checks reboot-required after the upgrade and then does the above; `always` reboots regardless.
 
 ### 10.5 command / script
 
@@ -603,14 +608,16 @@ type RetryPolicy struct {
 }
 ```
 
+As implemented: 3 attempts in total, 5 s initial delay, exponential, capped at 2 min, ±20 % jitter.
+
 | Error class | Retried? |
 |---|---|
 | ConnectionError (before op started) | yes |
-| ConnectionError (mid-op) | only if op is idempotent |
+| ConnectionError (mid-op: the connection dropped after the command started) | only if op is idempotent; reported as "outcome unknown" |
 | HostKeyError, AuthenticationError, AuthorizationError | **never** |
-| PackageManagerError (locked) | yes, longer schedule |
+| PackageManagerError marked retryable (lock, download failure, no metadata cache) | yes, same budget (apt also waits 120 s for its lock first) |
 | TimeoutError | only if op is idempotent |
-| ExecutionError, ValidationError, ServiceError | never |
+| ExecutionError, ValidationError, ServiceError, ConfigurationError | never |
 
 ### 11.5 Circuit breaker
 Per job: **5 consecutive** host failures with the same class among {Authentication, HostKey, Authorization} → the job becomes `paused` with a reason ("5 consecutive authentication failures; likely a shared credential problem"). `POST /jobs/{id}/resume` or `/cancel`.
@@ -625,7 +632,8 @@ On startup, every job in `running`/`pending` and every host in a non-terminal st
 
 ### 11.8 Status poller
 - Every **5 min** per ready host (jittered): reachable, `boot_id`, uptime, load, memory, max filesystem %, failed units count, reboot required. Takes a shared lock and is skipped if the host is exclusively locked.
-- Every **6 h** (and after any package job): update counts (ListUpdates **without** refreshing; a refresh happens once a day).
+- Every **6 h**: update counts from the local cache, **without** refreshing (a refresh happens once a day, or within minutes when the count is unknown). After any job with package, system-update, service or reboot steps, the host's facts, status and updates are re-checked immediately.
+- Work is dispatched as soon as a poll worker frees up, not only on the 15 s scheduler tick, so throughput is bounded by the workers.
 - Polls are not jobs (no job history), but status transitions emit events (e.g. reachable → unreachable).
 - **Polling yields to jobs (decision D6):** polls use a separate, small worker budget (default 4) and run only when job workers aren't saturated. They never wait on a host lock: if a host is locked, the poll is skipped. Under load, poll data goes stale rather than competing with jobs. `host_status.checked_at` drives a **"stale"** indicator in the UI (older than 3× the interval).
 - A changed `boot_id` outside our own reboots is recorded as an event ("web01 rebooted").
@@ -714,9 +722,8 @@ Hosts
   POST              /hosts/{id}/hostkeys/approve       {key_id} or {fingerprint}
   GET               /hosts/{id}/hostkeys
   POST              /hosts/{id}/probe                  → ProbeResult (step-by-step)
-  GET               /hosts/{id}/facts
-  GET               /hosts/{id}/status
-  GET               /hosts/{id}/jobs
+  POST              /hosts/{id}/refresh                collect facts and status now
+  GET               /hosts/{id}/facts                  (status is part of GET /hosts/{id}; job history is GET /jobs?host=)
 
 Groups
   GET|POST          /groups
@@ -724,6 +731,7 @@ Groups
 
 Jobs
   POST   /jobs/preview               spec → resolved targets, skips (when), validation errors
+  POST   /jobs/simulate              {targets, step} → per-host package plan, removals needing approval (dry run, §10.2)
   POST   /jobs                       spec → job
   GET    /jobs                       ?status= &host= &created_by=
   GET    /jobs/{id}                  job + summary counts per state
@@ -737,7 +745,6 @@ Jobs
 
 Audit / system
   GET    /audit                      ?actor= &action= &target= &since=
-  GET    /schema                     JSON Schema for canonical model
   GET    /system/info                version, schema version, config sources
 GET /health  GET /ready  GET /metrics   (unversioned)
 ```
@@ -748,18 +755,18 @@ GET /health  GET /ready  GET /metrics   (unversioned)
 
 ## 14. Web UI
 
-**Stack:** React + TypeScript + Vite, TanStack Query (server state), React Router, shadcn/ui + Tailwind, generated API types. Built into `web/dist` and embedded with `go:embed`.
+**Stack:** React + TypeScript + Vite, TanStack Query (server state), React Router, Tailwind with a small set of local components, generated API types. Built into `web/dist` and embedded with `go:embed`. The visual design is deliberately plain for the alpha.
 
 | Page | Contents |
 |---|---|
 | Setup | One-time first-admin claim: setup code, username, password, confirm (§12.5) |
 | Login | — |
 | Dashboard | Host counts by status; updates pending / security; reboot required; failed units; running and recent jobs; event feed |
-| Hosts | Filterable table (name, status, OS, address, updates, reboot, last seen, tags); multi-select → *Run command / Update / Service / Reboot* |
+| Hosts | Filterable table (name, status, OS, address, updates, reboot, last seen, tags) |
 | Add host (wizard) | 1) address, port, user, jump host · 2) credential (shows controller public key + copy snippet) · 3) **host key scan → compare fingerprint → approve** · 4) probe with step-by-step results · 5) discover |
 | Host detail | Facts, addresses, status, pinned key (+ rotate flow), tags and groups, job history, actions |
 | Groups | CRUD, membership |
-| New job | Operation form (per type) → targets (live preview count and list, skips shown) → strategy → **confirmation dialog listing the target count and operation** |
+| New job | Command / Script / Packages / System update / Service / Reboot forms, "Preview changes" for package operations, targets with a live preview (skips shown), rollout settings, **one confirmation stating the target count and the consequence** (removals, reboots). Host pages link here pre-filled (Install updates, Reboot, Restart a service) |
 | Job detail | Summary bar (succeeded / failed / skipped / ...), per-host table updating live, host drawer with step results, stdout/stderr tabs, truncation notice, error class explanation and retry hint; Cancel / Resume / Re-run failed |
 | Credentials | List (metadata), add SSH key / password / sudo password, controller public key |
 | Audit | Filterable event list |
@@ -812,9 +819,16 @@ Environment overrides: `DROOL_SERVER_WEB_PORT`, and so on (path → upper snake 
 
 ## 17. Backup and Restore
 
-- `drool backup -o file.tar.zst`: `VACUUM INTO` a consistent snapshot, plus config and TLS material, plus a manifest (version, schema version, timestamp). The master key is included only with `--include-master-key`.
-- `drool restore file.tar.zst`: stop the service → verify the manifest → run migrations forward if needed.
-- In the alpha, restore has no reconciliation concerns (no managed state domains yet), but the manifest records schema and epoch fields for the Beta.
+- `drool backup [-o FILE] [--include-master-key]`: safe while the controller runs. Writes a gzip-compressed tar (`.tar.gz`; readable with standard tools) containing:
+  - `manifest.json`: format and version, DROOL version and commit, schema version, creation time, source hostname, whether the master key is included, the master key id (a non-secret fingerprint), credential count, row counts, SHA-256 and size of every file, and the reserved `state_epoch`/`state_revision` fields (null in the alpha)
+  - `drool.db`: a consistent snapshot (`VACUUM INTO`)
+  - `tls/self-signed.*` when the self-signed TLS mode is used (provided certificates are the operator's files and are not copied; the manifest says so)
+  - `config/drool.yaml`: the config file in use, if any, with `setup.secret` blanked
+  - `master.key` only with `--include-master-key`
+  The default output is `<data_dir>/backups/drool-backup-<time>.tar.gz` (0600); `-o -` writes to stdout. The CLI states plainly whether the backup is self-contained: without the key it is **not** a complete disaster-recovery backup, and it says which key file must be kept with it. It also checks that the installed key actually opens the stored credentials.
+- `drool restore FILE` (`-` reads stdin) refuses to run while the controller holds the data-directory lock. It extracts into a staging directory and validates before touching anything: known member names only, regular files only, checksums and sizes against the manifest, format version, SQLite `integrity_check`, schema version (newer than the binary → refused), then runs migrations forward on the staged copy. It finds a master key that opens every stored credential (the backup's, `--master-key FILE`, or the one already installed) or refuses with an explanation; `--discard-credentials` instead restores everything else and deletes the credentials (hosts keep their keys and history and need a credential assigned again). Sessions and setup codes are cleared, the restore is recorded in the restored audit log, and only then are the live files moved to `<data_dir>/pre-restore-<time>/` and the restored ones moved in; a failure while swapping puts the previous files back.
+- `serve` refuses to start when `master.key` is missing but the database holds credentials, or when the key doesn't open them, instead of silently generating a new key. The error explains the recovery path.
+- In the alpha, restore has no reconciliation concerns (no managed state domains yet).
 
 ---
 
@@ -822,12 +836,16 @@ Environment overrides: `DROOL_SERVER_WEB_PORT`, and so on (path → upper snake 
 
 | Layer | Approach |
 |---|---|
-| Parsers (os-release, apt/dnf output, systemctl show, ss, df) | Table-driven unit tests with captured fixtures from each distro |
-| Engine | Fake Driver with scripted results/latency/errors: retries, circuit breaker, locks, cancellation, failure_threshold, restart → interrupted |
-| SSH | In-process `x/crypto/ssh` test server: host key mismatch, algorithm pinning, auth failures, jump dialing |
-| Integration | testcontainers-go matrix with systemd + sshd images: Debian 12/13, Ubuntu 24.04/26.04, Rocky 9/10, Fedora current. Topology: controller → jump → target on separate Docker networks |
-| Fault injection | Kill the connection mid-command; hold the dpkg lock; wrong sudo password; `requiretty`; change the host key; reboot timing; output flood beyond the cap |
-| API | Conformance against `openapi.yaml`; authz matrix test (every route × every role) |
+| Parsers (os-release, apt/dnf output, systemctl show, ss, df) | Table-driven unit tests with captured, sanitized fixtures from each distro |
+| Engine | Fake executor with scripted results/latency/errors: retries, circuit breaker, locks, cancellation, failure_threshold, restart → interrupted, redaction, output cap |
+| SSH | In-process `x/crypto/ssh` test server: host key mismatch, algorithm pinning, auth failures, jump dialing, simulated reboots (new boot id, no reboot, new host key) |
+| Backup/restore | Round trip with and without the master key, wrong key, discarded credentials, corrupt/truncated/incomplete/tampered archives (installation must be unchanged), newer schema, running controller, config redaction |
+| API | Conformance against `openapi.yaml`; authorization matrix (every route × anonymous and every role, CSRF on every state-changing route, session-only routes reject tokens); token ownership |
+| Integration (`make test-integration`) | The real `drool` binary driven over its REST API against unprivileged containers (sshd only): Debian 12/13, Ubuntu 24.04/26.04, Rocky 9/10, Fedora 44. Connection test, discovery, commands and scripts, passwordless/password/wrong-password sudo, package operations and their errors, dpkg lock, interrupted dpkg, system updates, jump host (key approval, operations, cancellation, changed jump key) |
+| Fault injection | Host down before the operation, connection lost during it, cancellation of root processes, output beyond the cap, controller crash mid-job, authentication failure, changed host key |
+| systemd and reboots (`-vm`) | Cloud-image VMs under qemu with software emulation (TCG) inside an unprivileged container (no `--privileged`, no `/dev/kvm`): real service operations and their errors, reboots (direct, through a jump host, onto a changed host key), reboot-required after a kernel install, needrestart, cancelling a live transaction, unattended-upgrades contention |
+
+Privileged containers are not used for testing (they interfered with the developer's desktop session; §22, M3).
 
 ---
 
@@ -962,3 +980,31 @@ Meaningful choices made during implementation, newest last.
 | M4 | UI: one New job page with Command / Script / Packages / System update / Service / Reboot. Packages and system updates have "Preview changes"; the "allow removals" box only appears after a preview has shown removals, and resets whenever the step or targets change. One confirmation per job, stating the consequence (removals, reboots). Quick actions: host page (Install updates, Reboot), per-service and failed-unit restart links, dashboard Updates tile → system update for hosts with pending updates | Simple by default; destructive effects are explicit without stacked prompts |
 | M4 | **Validation gaps (need a systemd VM / M5 matrix):** service operations against real systemd units, real reboots (boot id change, pinned key after reboot, `systemd-run` trigger, jump-host reboots), needrestart behavior on Ubuntu, kernel updates and reboot-required on real hosts, cancelling a running dpkg/dnf transaction, unattended-upgrades holding the lock at boot. Covered so far by fake `systemctl` fixtures and the in-process SSH test server (simulated restart with new boot id, no reboot, changed host key) | Unprivileged containers have no systemd and can't reboot (§22 M3 test-environment rule) |
 | M4 | Verified against Debian 12, Ubuntu 24.04, Rocky 9 and Fedora 41 containers: install, idempotent re-install, not-found, upgrade of a not-installed package, removals needing `allow_removals` (APT and DNF), protected-package refusal (dnf5), security-only refused on APT and applied on Rocky, real dpkg lock wait, interrupted dpkg with hint, simulate/full upgrade/upgrade with unchanged re-runs, update counts refreshed right after the job, passwordless and password sudo, "systemd is not running" for service ops, "never went away" reboot timeout; UI flows rendered in headless Chromium | |
+| M5 | Backups are gzip-compressed tar (`.tar.gz`), not `.tar.zst` as first planned | No new dependency, and an archive anyone can inspect or unpack by hand with standard tools in a disaster |
+| M5 | A backup records a non-secret master key id and checks that the installed key opens every stored credential; the CLI states on every run whether the backup is self-contained. Restore picks the backup's key, `--master-key`, or the installed key, and verifies it opens every credential before changing anything | A backup without the key must not pass for a complete disaster-recovery backup (DESIGN §7, §17) |
+| M5 | `restore --discard-credentials` restores everything except stored credentials (hosts are detached from them and marked untested) | The only way back after losing `master.key`; without it a lost key would make the whole backup useless |
+| M5 | `serve` refuses to start when `master.key` is missing but credentials exist, or when the key doesn't open them | Found during review: it silently generated a new key, making every stored credential undecryptable |
+| M5 | `serve` holds an flock on `<data_dir>/drool.lock`; restore requires it | Restore must never replace files under a running controller; also stops two controllers sharing a data directory |
+| M5 | Restore clears sessions and setup codes, records `backup.restore` in the restored audit log, keeps replaced files in `pre-restore-<time>/` (only when something was replaced), and saves the backup's config file as `drool.yaml.from-backup` without applying it | Config usually lives outside the data directory (`/etc/drool`, environment); overwriting it silently would be surprising |
+| M5 | Provided TLS certificates are not copied into backups (the manifest names them); self-signed material is | They are the operator's files, often renewed externally |
+| M5 | `setup.secret` is blanked in backed-up config files | It is useless after setup and shouldn't travel in backups |
+| M5 | Database files are created and kept 0600; the systemd unit sets `UMask=0077` | Found in the security pass: `drool.db` (password hashes, encrypted credentials, audit log) was created 0644 |
+| M5 | `job.simulate` is audited | A dry run executes commands on hosts, as root for dnf |
+| M5 | A connection that drops after a command started is `ConnectionError` "outcome unknown" with advice to check the host; a command killed by a signal names the signal | Found by fault injection: it was reported as `ExecutionError: exited with status -1` |
+| M5 | Named package operations refresh metadata once when a package isn't in the local cache (APT "not found", dnf "no cache") | Found on a fresh Ubuntu cloud VM: installing anything failed with "package not found" until the daily refresh |
+| M5 | APT reboot-required falls back to comparing the newest kernel in `/boot` with the running one; discovery uses `/boot` too (`/lib/modules` only as a fallback) | Plain Debian has no `/var/run/reboot-required`; `/lib/modules` can keep directories of removed kernels |
+| M5 | Poller: dispatches again as soon as a worker frees (was: only on the 15 s tick, ~16 checks/min with 4 workers); a new host's first status check runs immediately; an update check never runs before the first status row exists; failed stores retry within a minute (were rescheduled 6 h / 24 h out) | Found while investigating slow discovery in the integration matrix |
+| M5 | Reboot timeouts are judged by the latest contact: a host that answered with the old boot id after a failed poll is "never went away" | Found as a flaky test under load: one slow handshake was reported as "went down and did not come back" |
+| M5 | A missing `systemctl` binary is treated like "systemd is not running" (`ConfigurationError`) | Found in the integration matrix on minimal containers |
+| M5 | Error hints reviewed for every class users can hit (connection timeout/DNS/no route, authentication, host key, sudo, lock, removals, reboot timeouts, no systemd); the host page explains every non-ready status and what to do; stale status is explained in the status card | M5 usability goal: actionable plain language, raw detail still available |
+| M5 | Integration tests drive the real binary over the REST API with the Docker CLI rather than testcontainers-go; systemd/reboot tests run cloud images under qemu TCG in unprivileged containers | No new Go dependencies; nothing privileged on the workstation (§22 M3 rule) |
+| M5 | Correction to the M4 entry on APT: with `NEEDRESTART_SUSPEND=1` needrestart does **not** run during DROOL's updates, so services are not restarted automatically (`NEEDRESTART_MODE=a` only prevents a prompt if suspend isn't honored). Kept that way and documented | Verified on a real Ubuntu 24.04 VM ("needrestart is suspended"). Restarting services silently during an update is a disruptive action the user should choose explicitly |
+| M5 | The controller's own SSH key (`controller-default`) can't be deleted or renamed (409 `controller_key`); the Credentials page shows its install one-liner and no Delete button for it | Found in the usability pass: deleting it broke the add-host default, and the next start would generate a different key than the one installed on hosts |
+| M5 | Editing a host resets its status to `untested` only when a connection setting changes (user, credential, sudo method or password, PTY, jump role or route); tags, groups, name and description don't | Found in the usability pass: tagging a host made it look broken |
+| M5 | Script jobs are named after their first meaningful line (not the shebang or `set -e`); the target preview says "no systemd: service operations and reboots will fail" instead of "unsupported system" for hosts without systemd; the add-host wizard says "Connected" when systemd is the only failed check | Usability pass |
+| M5 | The job page shows the first failed host's output (or the first host's) without a click | Usability pass |
+| M5 | Restore explains a permission-denied `--master-key` (Docker runs restore as the container's unprivileged user) | Usability pass with the Docker image |
+| M5 | VM tests run Debian/Ubuntu guests with `-cpu max,la57=off,cx16=off` and RHEL guests with `-cpu max,la57=off`; qemu's translation cache is capped at 256 MB | Test environment only: newer kernels (6.12+) panic under TCG with LA57 or with TCG's `cmpxchg16b` emulation, and the default cache made containers thrash at their memory limit. RHEL 9 requires x86-64-v2 (cx16) |
+| M5 | **Verified on real systemd (Debian 12, Ubuntu 24.04, Rocky 9 cloud VMs):** service start/stop/enable/disable idempotent, restart/reload always act and are verified, enable+start, reloading sshd over DROOL's own connection, `ServiceError` for no reload support, static, masked, missing and failing units (with `systemctl status` attached); reboots with a new boot id (70–140 s under emulation), reboots through a jump host, reboot-required after a newer kernel (Debian backports, Ubuntu HWE, RHEL needs-restarting) and `reboot: if_required` booting into it, a regenerated host key after reboot refused with `HostKeyError`, cancelling live dpkg and rpm transactions mid-unpack (the next operation succeeded; `dnf check` clean), unattended-upgrades starting during a DROOL install (it backed off with "lock could not be acquired"), needrestart suspended on Ubuntu | M4 validation gaps closed |
+| M5 | A kernel install that outlived its step timeout was killed with its process group and left dpkg interrupted; the next operation reported `PackageManagerError` with the `dpkg --configure -a` hint instead of repairing it. A VM whose new kernel panicked on boot left the reboot in `waiting_host` until its timeout | Observed during VM testing; behavior as designed |
+| M5 | Commands on a connection that goes silent (the host vanished without closing TCP) return at their timeout: opening a session and waiting for a closed session are bounded, and after a 5 s grace the connection is closed to unblock | Found in the VM tests: a reboot poll hit the moment the guest powered off and hung forever, leaving the reboot "waiting for host" though the host was back. Fresh connections (reboot polls) have no keepalive to rescue them; pooled ones were only rescued by keepalive |

@@ -3,6 +3,8 @@ package sshx
 import (
 	"context"
 	"errors"
+	"net"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -283,5 +285,99 @@ func TestRunCancellation(t *testing.T) {
 	_, err = c.Run(ctx, "sleep", RunOptions{})
 	if model.ClassOf(err) != model.ClassTimeout {
 		t.Fatalf("cancel: %v", err)
+	}
+}
+
+// blackhole forwards TCP to addr until stop is closed, then silently drops
+// everything in both directions without closing: what a host that lost
+// power (or a VM behind user-mode networking) looks like.
+func blackhole(t *testing.T, addr string, stop <-chan struct{}) (string, int) {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { l.Close() })
+	go func() {
+		for {
+			in, err := l.Accept()
+			if err != nil {
+				return
+			}
+			out, err := net.Dial("tcp", addr)
+			if err != nil {
+				in.Close()
+				continue
+			}
+			pipe := func(dst, src net.Conn) {
+				buf := make([]byte, 32<<10)
+				for {
+					n, err := src.Read(buf)
+					if err != nil {
+						return
+					}
+					select {
+					case <-stop:
+						continue // swallow
+					default:
+					}
+					if _, err := dst.Write(buf[:n]); err != nil {
+						return
+					}
+				}
+			}
+			go pipe(out, in)
+			go pipe(in, out)
+		}
+	}()
+	return "127.0.0.1", l.Addr().(*net.TCPAddr).Port
+}
+
+// A command on a connection that goes silent must still return at its
+// timeout instead of hanging forever (found when a VM powered off during a
+// reboot poll).
+func TestRunReturnsWhenConnectionGoesSilent(t *testing.T) {
+	unresponsiveGrace = 300 * time.Millisecond
+	hostKey := sshtest.NewEd25519Signer(t)
+	srv := sshtest.Start(t, hostKey)
+	client := sshtest.NewEd25519Signer(t)
+	srv.Authorize(client.PublicKey())
+	block := make(chan struct{})
+	defer close(block)
+	srv.SetExec(func(string, []byte) (string, string, int) { <-block; return "", "", 0 })
+	stop := make(chan struct{})
+	h, p := srv.Host()
+	ph, pp := blackhole(t, net.JoinHostPort(h, strconv.Itoa(p)), stop)
+	tg := target(t, srv, "h", client, hostKey.PublicKey())
+	tg.Address, tg.Port = ph, pp
+	c, err := (&Dialer{}).Dial(context.Background(), tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	// The host vanishes while the command runs.
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	go func() { time.Sleep(100 * time.Millisecond); close(stop) }()
+	done := make(chan error, 1)
+	go func() { _, err := c.Run(ctx, "sleep", RunOptions{}); done <- err }()
+	select {
+	case err := <-done:
+		if model.ClassOf(err) != model.ClassTimeout {
+			t.Fatalf("got %v, want a timeout", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run hung on a silent connection")
+	}
+
+	// Opening a session on the dead connection also gives up at the deadline.
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel2()
+	go func() { _, err := c.Run(ctx2, "true", RunOptions{}); done <- err }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("opening a session hung on a silent connection")
 	}
 }

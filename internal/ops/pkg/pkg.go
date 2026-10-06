@@ -113,7 +113,7 @@ func joinChanges(cs []Change) string {
 func RemovalError(extra []Change) *model.OpError {
 	return &model.OpError{Class: model.ClassValidation,
 		Message: fmt.Sprintf("this would also remove %d package(s): %s", len(extra), joinChanges(extra)),
-		Hint:    "Review the removals and run again with \"allow removals\" if they are expected."}
+		Hint:    "Nothing was changed. Use \"Preview changes\" on the New job page to review them, and allow the removals there if they are expected."}
 }
 
 func firstLines(s string, n int) string {

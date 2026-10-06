@@ -96,6 +96,20 @@ func TestHostLifecycleOverSSH(t *testing.T) {
 		t.Fatalf("probe: %d %s", r.status, r.body)
 	}
 
+	// Tags, description and groups don't touch the connection: still ready.
+	r = c.do("PATCH", "/api/v1/hosts/"+host.ID, map[string]any{"tags": []string{"role:web"}, "description": "front"})
+	r.json(t, &host)
+	if r.status != 200 || host.Status != "ready" {
+		t.Fatalf("tagging reset the connection status: %d %s", r.status, r.body)
+	}
+	// A different SSH user does: the last test no longer applies.
+	r = c.do("PATCH", "/api/v1/hosts/"+host.ID, map[string]any{"user": "someoneelse"})
+	r.json(t, &host)
+	if host.Status != "untested" {
+		t.Fatalf("changing the user should require a new test, status %q", host.Status)
+	}
+	r = c.do("PATCH", "/api/v1/hosts/"+host.ID, map[string]any{"user": "deploy"})
+
 	// Changing the address means the pinned key no longer proves identity, so
 	// the key must be approved again.
 	srv2 := sshtest.Start(t, sshtest.NewEd25519Signer(t))

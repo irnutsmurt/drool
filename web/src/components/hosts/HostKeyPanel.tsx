@@ -58,7 +58,7 @@ export function HostKeyPanel({ hostId, onApproved }: { hostId: string; onApprove
         </Button>
       </div>
       {offered.length > 0 && (
-        <details className="text-sm">
+        <details className="text-sm" open={!pinned}>
           <summary className="cursor-pointer text-muted">How do I verify a fingerprint?</summary>
           <div className="mt-2 space-y-2 text-muted">
             <p>On the host itself (or its console), run:</p>

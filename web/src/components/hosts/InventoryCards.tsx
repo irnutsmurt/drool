@@ -22,6 +22,13 @@ export function HealthCard({ host }: { host: Host }) {
       {!h ? (
         <p className="text-sm text-muted">Not checked yet. Status is collected automatically every few minutes.</p>
       ) : (
+        <>
+        {h.stale && (
+          <p className="mb-3 text-sm text-warn">
+            DROOL hasn't been able to check this host for a while (busy with jobs, or the host is unreachable). The values below
+            are from the last successful check, {formatAgo(h.checked_at)}.
+          </p>
+        )}
         <dl className="grid grid-cols-[9rem_1fr] gap-y-2 text-sm">
           <Row label="Last check">
             {formatAgo(h.checked_at)} {h.stale && <Badge tone="warn">stale</Badge>}
@@ -49,6 +56,7 @@ export function HealthCard({ host }: { host: Host }) {
             )}
           </Row>
         </dl>
+        </>
       )}
     </Card>
   );

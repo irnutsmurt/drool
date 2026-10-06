@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	"drool/internal/discovery"
 	"drool/internal/model"
 )
 
@@ -13,8 +14,10 @@ type apt struct{}
 func (apt) Name() string { return "apt" }
 
 // aptEnv makes APT fully non-interactive: no debconf prompts, keep existing
-// config files on conflicts, don't let needrestart prompt (Ubuntu), and wait
-// up to two minutes for the dpkg lock instead of failing immediately.
+// config files on conflicts, and wait up to two minutes for the dpkg lock
+// instead of failing immediately. needrestart (Ubuntu) is suspended, so no
+// services are restarted behind the user's back; MODE=a only matters if a
+// version ignores the suspend, and then avoids a prompt.
 const aptEnv = "DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 LC_ALL=C "
 const aptOpts = "-o DPkg::Lock::Timeout=120 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
 
@@ -113,12 +116,17 @@ func (apt) ParseVersions(out string, names []string) map[string]string {
 	return m
 }
 
+// RebootRequired checks Ubuntu's reboot-required file, and on systems that
+// don't maintain it (plain Debian) compares the newest installed kernel with
+// the running one.
 func (apt) RebootRequired() string {
-	return `if [ -f /var/run/reboot-required ]; then echo required; head -n 5 /var/run/reboot-required.pkgs 2>/dev/null; else echo not-required; fi`
+	return `if [ -f /var/run/reboot-required ]; then echo required; head -n 5 /var/run/reboot-required.pkgs 2>/dev/null; else echo not-required; fi; ` +
+		`echo @@kernels; ` + discovery.InstalledKernelsCommand
 }
 
 func (apt) ParseRebootRequired(out string) (*bool, string) {
-	lines := strings.Fields(strings.TrimSpace(out))
+	head, kernels, _ := strings.Cut(out, "@@kernels")
+	lines := strings.Fields(strings.TrimSpace(head))
 	if len(lines) == 0 {
 		return nil, ""
 	}
@@ -129,6 +137,11 @@ func (apt) ParseRebootRequired(out string) (*bool, string) {
 		if len(lines) > 1 {
 			reason += ": " + strings.Join(lines[1:], ", ")
 		}
+		return &b, reason
+	}
+	if newer, why := discovery.NewerKernel(strings.Fields(kernels)); newer {
+		b = true
+		reason = why
 	}
 	return &b, reason
 }
@@ -147,7 +160,7 @@ func (apt) Classify(out string, exit int) *model.OpError {
 			msg = fmt.Sprintf("the package manager is locked by %s (pid %s)", m[2], m[1])
 		}
 		return &model.OpError{Class: model.ClassPackageManager, Retryable: true, Message: msg,
-			Hint: "Usually unattended-upgrades or another apt run; DROOL retries automatically."}
+			Hint: "Another package operation is running (often unattended-upgrades). DROOL waits and retries; if this is the final result, run the job again once it has finished."}
 	case strings.Contains(out, "Unable to locate package"):
 		pkgs := regexp.MustCompile(`Unable to locate package (\S+)`).FindAllStringSubmatch(out, -1)
 		names := make([]string, len(pkgs))

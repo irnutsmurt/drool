@@ -45,6 +45,9 @@ const usage = `Usage: drool [--config FILE] <command> [options]
 Commands:
   serve                 Run the controller
   migrate               Apply database migrations and exit
+  backup [-o FILE] [--include-master-key]
+                        Back up the controller (safe while it runs)
+  restore FILE          Restore a backup (stop the controller first)
   setup code            Issue a new one-time setup code for first-admin setup
   user create           Create a local user (prompts for password); recovery path
   version               Print version information
@@ -82,6 +85,10 @@ func run(args []string) error {
 		return cmdServe(*cfgPath, explicit)
 	case "migrate":
 		return cmdMigrate(*cfgPath, explicit)
+	case "backup":
+		return cmdBackup(*cfgPath, explicit, rest[1:])
+	case "restore":
+		return cmdRestore(*cfgPath, explicit, rest[1:])
 	case "setup":
 		if len(rest) < 2 || rest[1] != "code" {
 			return errors.New("usage: drool setup code")
@@ -246,6 +253,12 @@ func cmdServe(path string, explicit bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	unlock, err := store.LockDataDir(cfg.DataDir)
+	if err != nil {
+		return fmt.Errorf("%s: %w (is another drool serve running, or a restore in progress?)", cfg.DataDir, err)
+	}
+	defer unlock()
+
 	st, applied, err := openStore(ctx, cfg)
 	if err != nil {
 		return err
@@ -270,7 +283,7 @@ func cmdServe(path string, explicit bool) error {
 	}
 	auditW := audit.NewWriter(st, logs.Audit)
 
-	box, created, insecureKey, err := secrets.LoadOrCreateBox(cfg.MasterKeyPath())
+	box, created, insecureKey, err := loadMasterKey(ctx, cfg, st)
 	if err != nil {
 		return err
 	}
@@ -388,4 +401,32 @@ func cmdServe(path string, explicit bool) error {
 	}
 	_ = auditW.Record(shutdownCtx, audit.Event{Action: "system.stop", Actor: &audit.System})
 	return nil
+}
+
+// loadMasterKey loads (or on first start creates) the master key, and refuses
+// to start when it doesn't fit the database: silently creating a new key
+// next to existing credentials would make them all undecryptable.
+func loadMasterKey(ctx context.Context, cfg *config.Loaded, st *store.Store) (*secrets.Box, bool, bool, error) {
+	var n int
+	if err := st.Reader.QueryRowContext(ctx, `SELECT count(*) FROM secrets`).Scan(&n); err != nil {
+		return nil, false, false, err
+	}
+	recovery := fmt.Sprintf(`Restore the master key file from your backup. If it is permanently lost, keep
+everything except the stored credentials with:
+    drool backup -o /tmp/drool-recovery.tar.gz
+    drool restore --discard-credentials /tmp/drool-recovery.tar.gz
+(data directory %s)`, cfg.DataDir)
+	if _, err := os.Stat(cfg.MasterKeyPath()); errors.Is(err, os.ErrNotExist) && n > 0 {
+		return nil, false, false, fmt.Errorf("the master key file %s is missing, but the database holds %d encrypted credential(s).\n%s",
+			cfg.MasterKeyPath(), n, recovery)
+	}
+	box, created, insecure, err := secrets.LoadOrCreateBox(cfg.MasterKeyPath())
+	if err != nil {
+		return nil, false, false, err
+	}
+	if _, err := secrets.VerifyBox(ctx, st.R, box); err != nil {
+		return nil, false, false, fmt.Errorf("master key %s (key id %s) does not match the database: %v.\n%s",
+			cfg.MasterKeyPath(), box.KeyID(), err, recovery)
+	}
+	return box, created, insecure, nil
 }

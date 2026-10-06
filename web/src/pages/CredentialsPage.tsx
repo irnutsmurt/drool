@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
-import { qk, useCredentials, type Credential } from "@/api/queries";
+import { qk, useControllerKey, useCredentials, type Credential } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { CodeBlock } from "@/components/ui/CodeBlock";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -24,6 +25,7 @@ export function CredentialsPage() {
   const qc = useQueryClient();
   const { can } = useAuth();
   const list = useCredentials();
+  const controllerKey = useControllerKey();
   const [mode, setMode] = useState<Mode>("generate");
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
@@ -58,6 +60,20 @@ export function CredentialsPage() {
     <>
       <PageHeader title="Credentials"
         description="SSH keys and passwords used to reach hosts. Stored encrypted; values are never shown again." />
+      {controllerKey.data && (
+        <Card title="DROOL's SSH key" className="mb-4 max-w-3xl">
+          <div className="space-y-3 text-sm">
+            <p>
+              New hosts use this key by default. To let DROOL log in, run this on the host as the user DROOL should connect
+              as (it adds the key to that user's <code className="font-mono text-xs">~/.ssh/authorized_keys</code>):
+            </p>
+            <CodeBlock text={controllerKey.data.install_command} />
+            <p className="text-muted">
+              The private key never leaves the controller. You can also add your own SSH key or a password below.
+            </p>
+          </div>
+        </Card>
+      )}
       {can("credentials.manage") && (
         <Card title="Add credential" className="mb-4 max-w-3xl">
           <form onSubmit={submit} className="space-y-4">
@@ -107,7 +123,7 @@ export function CredentialsPage() {
             { header: "Created", cell: (c) => <span className="whitespace-nowrap text-muted">{formatDateTime(c.created_at)}</span> },
             {
               header: "",
-              cell: (c) => can("credentials.manage") && (
+              cell: (c) => can("credentials.manage") && c.name !== "controller-default" && (
                 <Button size="sm" variant="danger" disabled={remove.isPending || c.used_by.length > 0}
                   title={c.used_by.length ? "In use by hosts" : undefined}
                   onClick={() => { if (confirm(`Delete credential ${c.name}?`)) remove.mutate(c.id); }}>

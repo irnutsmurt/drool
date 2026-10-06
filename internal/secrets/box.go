@@ -5,7 +5,9 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -66,6 +68,23 @@ func LoadOrCreateBox(path string) (box *Box, created, insecureMode bool, err err
 	}
 	box, err = parseKeys(string(data))
 	return box, created, insecureMode, err
+}
+
+// ParseKeyFile parses master key file contents.
+func ParseKeyFile(data []byte) (*Box, error) { return parseKeys(string(data)) }
+
+// KeyID is a short, non-secret fingerprint of the key set, used to tell
+// whether a backup and a master key file belong together.
+func (b *Box) KeyID() string {
+	h := sha256.New()
+	h.Write([]byte("drool-master-key-id"))
+	for v := 1; v <= b.current; v++ {
+		if k, ok := b.keys[v]; ok {
+			fmt.Fprintf(h, "\x00%d:", v)
+			h.Write(k)
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil)[:8])
 }
 
 func parseKeys(data string) (*Box, error) {

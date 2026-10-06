@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -94,5 +95,28 @@ func TestForeignKeysEnforced(t *testing.T) {
 		VALUES (x'00', 'usr_missing', 'c', 0, 0, 0)`)
 	if err == nil {
 		t.Fatal("expected foreign key violation")
+	}
+}
+
+func TestDatabaseFilesOwnerOnly(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	os.WriteFile(path, nil, 0o644) // e.g. created by an older version
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		fi, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		if fi.Mode().Perm() != 0o600 {
+			t.Errorf("%s has mode %v, want 0600", filepath.Base(p), fi.Mode().Perm())
+		}
 	}
 }

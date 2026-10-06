@@ -124,7 +124,7 @@ func Probe(ctx context.Context, d *sshx.Dialer, t *sshx.Target, opt ProbeOptions
 		failure = errors.Join(failure, err)
 	} else if strings.TrimSpace(string(r.Stdout)) != "systemd" {
 		e := &model.OpError{Class: model.ClassConfiguration, Message: "systemd is not running",
-			Hint: "Service and update operations require systemd."}
+			Hint: "Commands, scripts and package operations work; service management and reboots need systemd."}
 		add("init system", driver.StepFailed, "", e)
 		failure = errors.Join(failure, e)
 	} else {

@@ -8,6 +8,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { HostForm, type HostRequest } from "@/components/hosts/HostForm";
 import { HostKeyPanel } from "@/components/hosts/HostKeyPanel";
 import { HostStatusBadge } from "@/components/hosts/HostStatusBadge";
+import { statusHelp } from "@/components/hosts/statusHelp";
 import { FactsCard, HealthCard, NetworkCard, ServicesCard } from "@/components/hosts/InventoryCards";
 import { ProbeSteps } from "@/components/hosts/ProbeSteps";
 import { Alert } from "@/components/ui/Alert";
@@ -98,6 +99,10 @@ export function HostDetailPage() {
           </>
         }
       />
+      {(() => {
+        const help = statusHelp(h);
+        return help && <div className="mb-4"><Alert tone={help.tone}>{help.text}</Alert></div>;
+      })()}
       <div className="grid gap-4 lg:grid-cols-2">
         {editing ? (
           <Card title="Edit host" className="lg:col-span-2">
