@@ -227,8 +227,19 @@ type CreateTokenResult struct {
 	Row   db.ApiToken
 }
 
-// CreateAPIToken issues a token for userID. expiresAt may be zero (no expiry).
+// CreateAPIToken issues a token for userID in its own transaction.
 func (s *Service) CreateAPIToken(ctx context.Context, userID, name string, expiresAt time.Time) (*CreateTokenResult, error) {
+	var res *CreateTokenResult
+	err := s.st.InTx(ctx, func(q *db.Queries) error {
+		var err error
+		res, err = s.CreateAPITokenTx(ctx, q, userID, name, expiresAt)
+		return err
+	})
+	return res, err
+}
+
+// CreateAPITokenTx issues a token for userID. expiresAt may be zero (no expiry).
+func (s *Service) CreateAPITokenTx(ctx context.Context, q *db.Queries, userID, name string, expiresAt time.Time) (*CreateTokenResult, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return nil, err
@@ -244,7 +255,7 @@ func (s *Service) CreateAPIToken(ctx context.Context, userID, name string, expir
 	if !expiresAt.IsZero() {
 		row.ExpiresAt = sql.NullInt64{Int64: expiresAt.UnixMilli(), Valid: true}
 	}
-	if err := s.st.W.CreateAPIToken(ctx, db.CreateAPITokenParams{
+	if err := q.CreateAPIToken(ctx, db.CreateAPITokenParams{
 		ID: row.ID, UserID: row.UserID, Name: row.Name, TokenHash: row.TokenHash,
 		CreatedAt: row.CreatedAt, ExpiresAt: row.ExpiresAt,
 	}); err != nil {

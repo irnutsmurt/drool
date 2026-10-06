@@ -891,7 +891,7 @@ Meaningful choices made during implementation, newest last.
 | M0 | New permission `settings.read` (admin, auditor) gates config values and sources in `/system/info` | Config can reveal topology; viewers don't need it. Extends the §12.2 table |
 | M0 | Audit actor type `anonymous` added for failed logins | Failed logins have no authenticated actor |
 | M0 | If the audit write for a successful login fails, the session is revoked and login fails | Never grant a session we couldn't audit |
-| M0 | **Known gap:** for other mutations, the audit record is written after the change in a separate statement; a failed audit write is logged but doesn't undo the change | Fix in M1 by writing audit records inside the same transaction as the change they describe (writer accepts a transaction) |
+| M0 | ~~**Known gap:** for other mutations, the audit record is written after the change in a separate statement~~ **Fixed in M1** | — |
 | M0 | `/metrics` is unauthenticated on the main listener | No sensitive labels (route patterns, status codes); a separate listener can come later if needed |
 | M0 | HSTS only when `tls.mode=provided` | HSTS on a self-signed cert can strand users who later switch to a reverse proxy or another hostname |
 | M0 | No HTTP `WriteTimeout` | M2 job output uses long-lived SSE streams; `ReadHeaderTimeout` and `IdleTimeout` are set |
@@ -904,3 +904,4 @@ Meaningful choices made during implementation, newest last.
 | M0.1 | CLI subcommands persist audit records to the database only, without mirroring to the log stream | With `logging.output=stdout` (containers), mirrored JSON polluted command output such as `fleetmgr setup code` |
 | M0.1 | Added `Dockerfile` (distroless, non-root, `/data` volume, logs to stdout) and `compose.yaml` | Makes the documented `docker compose up -d` flow real; minimal, no healthcheck yet |
 | M0.1 | Config keys ending in `.secret` are shown as `«redacted»` in `/system/info` | `setup.secret` must not be displayed |
+| M1 | Every successful mutation commits together with its audit record (`api.Server.inTxAudited`); services expose `XxxTx(ctx, q, ...)` variants. Expensive work (password hashing) happens before the transaction. Failed attempts are audited separately. Logout and the login session/audit pair stay as before (login fails closed if its audit write fails) | Closes the M0 gap; covered by a rollback test |

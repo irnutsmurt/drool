@@ -18,6 +18,7 @@ import (
 	"fleetmgr/internal/config"
 	"fleetmgr/internal/logging"
 	"fleetmgr/internal/store"
+	"fleetmgr/internal/store/db"
 )
 
 // Deps are the server's dependencies.
@@ -227,6 +228,26 @@ func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 		Name: sessionCookie, Value: "", Path: "/", MaxAge: -1,
 		HttpOnly: true, Secure: s.secureCookie, SameSite: http.SameSiteStrictMode,
 	})
+}
+
+// inTxAudited runs fn in a write transaction together with the audit record
+// it returns, so a change and its audit trail commit or roll back together.
+// On failure nothing is recorded; callers audit failed attempts separately
+// where useful.
+func (s *Server) inTxAudited(ctx context.Context, fn func(q *db.Queries) (audit.Event, error)) error {
+	var emit func()
+	err := s.d.Store.InTx(ctx, func(q *db.Queries) error {
+		ev, err := fn(q)
+		if err != nil {
+			return err
+		}
+		emit, err = s.d.Audit.RecordTx(ctx, q, ev)
+		return err
+	})
+	if err == nil {
+		emit()
+	}
+	return err
 }
 
 // RunSessionCleanup periodically deletes expired sessions until ctx ends.

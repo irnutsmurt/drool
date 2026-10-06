@@ -279,6 +279,24 @@ func TestUserManagement(t *testing.T) {
 	}
 }
 
+func TestMutationRolledBackWhenAuditFails(t *testing.T) {
+	h := newHarness(t)
+	h.mkUser("admin", auth.RoleAdmin)
+	c := h.login("admin")
+	if _, err := h.st.Writer.Exec(`CREATE TRIGGER fail_user_create_audit BEFORE INSERT ON audit_events
+		WHEN NEW.action = 'user.create' AND NEW.result = 'success'
+		BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END`); err != nil {
+		t.Fatal(err)
+	}
+	r := c.do("POST", "/api/v1/users", map[string]string{"username": "ghost", "password": pw, "role": "viewer"})
+	if r.status != 500 {
+		t.Fatalf("expected failure, got %d %s", r.status, r.body)
+	}
+	if _, err := h.st.R.GetUserByUsername(context.Background(), "ghost"); err == nil {
+		t.Fatal("user was created even though its audit record failed")
+	}
+}
+
 func TestAPITokenFlow(t *testing.T) {
 	h := newHarness(t)
 	h.mkUser("admin", auth.RoleAdmin)

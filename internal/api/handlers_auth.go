@@ -6,6 +6,7 @@ import (
 
 	"fleetmgr/internal/audit"
 	"fleetmgr/internal/auth"
+	"fleetmgr/internal/store/db"
 )
 
 type loginRequest struct {
@@ -119,10 +120,17 @@ func (s *Server) handleChangeOwnPassword(w http.ResponseWriter, r *http.Request)
 		writeProblem(w, r, problem(http.StatusForbidden, "invalid_credentials", "current password is incorrect"))
 		return
 	}
-	if _, err := s.d.Auth.UpdateUser(ctx, p, p.UserID, auth.UserUpdate{Password: &req.NewPassword}); err != nil {
+	up := auth.UserUpdate{Password: &req.NewPassword}
+	err = up.Prepare()
+	if err == nil {
+		err = s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
+			_, err := s.d.Auth.UpdateUserTx(ctx, q, p, p.UserID, up)
+			return audit.Event{Action: "user.password_change", TargetType: "user", TargetID: p.UserID}, err
+		})
+	}
+	if err != nil {
 		writeProblem(w, r, s.userError(err))
 		return
 	}
-	_ = s.d.Audit.Record(ctx, audit.Event{Action: "user.password_change", TargetType: "user", TargetID: p.UserID})
 	w.WriteHeader(http.StatusNoContent)
 }

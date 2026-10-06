@@ -91,15 +91,19 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	u, err := s.d.Auth.CreateUser(ctx, req.Username, req.Password, req.Role)
+	u, err := s.d.Auth.NewUser(req.Username, req.Password, req.Role)
+	if err == nil {
+		err = s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
+			return audit.Event{Action: "user.create", TargetType: "user", TargetID: u.ID,
+				Details: map[string]any{"username": u.Username, "role": u.Role}}, s.d.Auth.InsertUserTx(ctx, q, u)
+		})
+	}
 	if err != nil {
 		_ = s.d.Audit.Record(ctx, audit.Event{Action: "user.create", Result: audit.Failure,
 			Details: map[string]any{"username": req.Username, "role": req.Role, "error": err.Error()}})
 		writeProblem(w, r, s.userError(err))
 		return
 	}
-	_ = s.d.Audit.Record(ctx, audit.Event{Action: "user.create", TargetType: "user", TargetID: u.ID,
-		Details: map[string]any{"username": u.Username, "role": u.Role}})
 	writeJSON(w, http.StatusCreated, toUserJSON(u))
 }
 
@@ -140,9 +144,16 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	if req.Password != nil {
 		details["password_changed"] = true
 	}
-	u, err := s.d.Auth.UpdateUser(ctx, principalFrom(ctx), id, auth.UserUpdate{
-		Role: req.Role, Disabled: req.Disabled, Password: req.Password,
-	})
+	up := auth.UserUpdate{Role: req.Role, Disabled: req.Disabled, Password: req.Password}
+	var u db.User
+	err := up.Prepare()
+	if err == nil {
+		err = s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
+			var err error
+			u, err = s.d.Auth.UpdateUserTx(ctx, q, principalFrom(ctx), id, up)
+			return audit.Event{Action: "user.update", TargetType: "user", TargetID: id, Details: details}, err
+		})
+	}
 	if err != nil {
 		details["error"] = err.Error()
 		_ = s.d.Audit.Record(ctx, audit.Event{Action: "user.update", Result: audit.Failure,
@@ -150,19 +161,22 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, s.userError(err))
 		return
 	}
-	_ = s.d.Audit.Record(ctx, audit.Event{Action: "user.update", TargetType: "user", TargetID: id, Details: details})
 	writeJSON(w, http.StatusOK, toUserJSON(u))
 }
 
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := r.PathValue("id")
-	if err := s.d.Auth.DeleteUser(ctx, principalFrom(ctx), id); err != nil {
+	err := s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
+		u, err := s.d.Auth.DeleteUserTx(ctx, q, principalFrom(ctx), id)
+		return audit.Event{Action: "user.delete", TargetType: "user", TargetID: id,
+			Details: map[string]any{"username": u.Username}}, err
+	})
+	if err != nil {
 		_ = s.d.Audit.Record(ctx, audit.Event{Action: "user.delete", Result: audit.Failure,
 			TargetType: "user", TargetID: id, Details: map[string]any{"error": err.Error()}})
 		writeProblem(w, r, s.userError(err))
 		return
 	}
-	_ = s.d.Audit.Record(ctx, audit.Event{Action: "user.delete", TargetType: "user", TargetID: id})
 	w.WriteHeader(http.StatusNoContent)
 }

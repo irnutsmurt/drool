@@ -1,7 +1,6 @@
 package api
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -77,14 +76,21 @@ func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	p := principalFrom(ctx)
-	res, err := s.d.Auth.CreateAPIToken(ctx, p.UserID, req.Name, expires)
+	var res *auth.CreateTokenResult
+	err := s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
+		var err error
+		res, err = s.d.Auth.CreateAPITokenTx(ctx, q, p.UserID, req.Name, expires)
+		if err != nil {
+			return audit.Event{}, err
+		}
+		return audit.Event{Action: "token.create", TargetType: "api_token", TargetID: res.Row.ID,
+			Details: map[string]any{"name": req.Name, "expires_in_days": req.ExpiresInDays}}, nil
+	})
 	if err != nil {
 		s.log.Error("create token", "err", err)
 		writeProblem(w, r, errInternal)
 		return
 	}
-	_ = s.d.Audit.Record(ctx, audit.Event{Action: "token.create", TargetType: "api_token", TargetID: res.Row.ID,
-		Details: map[string]any{"name": req.Name, "expires_in_days": req.ExpiresInDays}})
 	writeJSON(w, http.StatusCreated, createTokenResponse{tokenJSON: toTokenJSON(res.Row), Token: res.Token})
 }
 
@@ -92,8 +98,12 @@ func (s *Server) handleDeleteToken(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	p := principalFrom(ctx)
 	id := r.PathValue("id")
-	t, err := s.d.Store.R.GetAPIToken(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && t.UserID != p.UserID) {
+	err := s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
+		t, err := s.d.Auth.DeleteAPITokenTx(ctx, q, p.UserID, id)
+		return audit.Event{Action: "token.delete", TargetType: "api_token", TargetID: id,
+			Details: map[string]any{"name": t.Name}}, err
+	})
+	if errors.Is(err, auth.ErrTokenNotFound) {
 		writeProblem(w, r, errNotFound("token"))
 		return
 	}
@@ -101,12 +111,6 @@ func (s *Server) handleDeleteToken(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, errInternal)
 		return
 	}
-	if err := s.d.Store.W.DeleteAPIToken(ctx, id); err != nil {
-		writeProblem(w, r, errInternal)
-		return
-	}
-	_ = s.d.Audit.Record(ctx, audit.Event{Action: "token.delete", TargetType: "api_token", TargetID: id,
-		Details: map[string]any{"name": t.Name}})
 	w.WriteHeader(http.StatusNoContent)
 }
 
