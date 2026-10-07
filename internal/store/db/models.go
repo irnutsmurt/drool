@@ -258,6 +258,15 @@ type FwMgmtObservation struct {
 	ObservedAt int64
 }
 
+type FwNetwork struct {
+	ID          string
+	Name        string
+	Description string
+	CidrsJson   string
+	CreatedAt   int64
+	UpdatedAt   int64
+}
+
 type FwObservation struct {
 	HostID    string
 	Direction string

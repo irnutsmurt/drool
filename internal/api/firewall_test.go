@@ -116,7 +116,9 @@ type fwTx struct {
 	Transport string `json:"transport"`
 	Revision  int64  `json:"revision"`
 	Detail    string `json:"detail"`
-	Steps     []struct {
+	// OverrideMgmt: applied under the audited emergency override.
+	OverrideMgmt bool `json:"override_mgmt"`
+	Steps        []struct {
 		Text string `json:"text"`
 	} `json:"steps"`
 }

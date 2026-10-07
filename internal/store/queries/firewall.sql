@@ -136,3 +136,16 @@ DELETE FROM fw_observations WHERE last_seen < ?;
 
 -- name: ListAllHostAddresses :many
 SELECT * FROM host_addresses ORDER BY host_id, family, address;
+
+-- name: ListFwNetworks :many
+SELECT * FROM fw_networks ORDER BY name;
+
+-- name: InsertFwNetwork :exec
+INSERT INTO fw_networks (id, name, description, cidrs_json, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?);
+
+-- name: UpdateFwNetwork :exec
+UPDATE fw_networks SET name = ?, description = ?, cidrs_json = ?, updated_at = ? WHERE id = ?;
+
+-- name: DeleteFwNetwork :exec
+DELETE FROM fw_networks WHERE id = ?;

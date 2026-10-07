@@ -110,7 +110,7 @@ func (m *Manifest) Complete() bool {
 var countedTables = []string{"users", "api_tokens", "hosts", "ssh_host_keys", "secrets", "groups", "host_tags",
 	"host_facts", "jobs", "job_output", "audit_events", "artifacts", "file_deployments",
 	"agent_identities", "agent_ca", "agent_trust_manifests", "agent_enrollment_tokens", "agent_releases", "agent_rollouts", "state_versions",
-	"fw_policies", "fw_services", "fw_host_config", "fw_group_config", "fw_host_state", "fw_transactions", "fw_observations"}
+	"fw_policies", "fw_services", "fw_host_config", "fw_group_config", "fw_host_state", "fw_transactions", "fw_observations", "fw_networks"}
 
 // Options controls Create.
 type Options struct {

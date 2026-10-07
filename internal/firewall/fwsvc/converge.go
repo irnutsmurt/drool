@@ -244,6 +244,19 @@ func (s *Service) convergeSets(ctx context.Context, w *compile.World, h db.Host,
 	if rend.SetsHash == st.AppliedSetsHash {
 		return
 	}
+	// Conservative near management paths: if the membership or address
+	// change makes a deny now overlap a management path, hold it for review
+	// instead of pushing it unattended. (Management accepts still come
+	// first, so the host stays reachable; but the change deserves a look.)
+	if len(hp.Conflicts) > 0 {
+		msg := "held: this address or membership change makes a policy conflict with DROOL's management path (" + hp.Conflicts[0].Message +
+			"); review it in the Firewall Designer and apply it explicitly"
+		if st.SetsError != msg {
+			s.setsError(ctx, h.ID, msg)
+			s.log.Warn("firewall set update held near the management path", "host", h.Name, "conflict", hp.Conflicts[0].Message)
+		}
+		return
+	}
 	lk := s.hostLock(h.ID)
 	if !lk.TryLock() {
 		return

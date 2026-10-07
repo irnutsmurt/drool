@@ -8,6 +8,7 @@ import { cx } from "@/components/ui/cx";
 import { navItems } from "./nav";
 import { usePKI } from "@/components/agents/queries";
 import { Link } from "react-router";
+import { ThemeSwitcher } from "@/components/ui/ThemeSwitcher";
 
 export function useSystemInfo() {
   return useQuery({ queryKey: ["system", "info"], queryFn: () => unwrap(api.GET("/system/info")), staleTime: 5 * 60_000 });
@@ -49,7 +50,7 @@ export function AppShell() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {info.data?.insecure_plaintext && (
-          <div role="alert" className="bg-danger px-4 py-2 text-sm text-white">
+          <div role="alert" className="bg-danger px-4 py-2 text-sm text-danger-fg">
             Security warning: this controller serves plaintext HTTP on a network address. Credentials and
             sessions are exposed to anyone on the path.
           </div>
@@ -61,6 +62,7 @@ export function AppShell() {
           </div>
         )}
         <header className="flex h-14 items-center justify-end gap-3 border-b border-line bg-surface px-6">
+          <ThemeSwitcher compact />
           <span className="text-sm">
             {me?.user.username} <span className="text-muted">({me?.user.role})</span>
           </span>

@@ -294,7 +294,9 @@ export function ApplyDialog({ hostIds, names, remove, changes, onClose }: {
   const [overrideTimeout, setOverrideTimeout] = useState(false);
   const [allowDrift, setAllowDrift] = useState(false);
   const [reason, setReason] = useState("");
+  const [confirmOverride, setConfirmOverride] = useState("");
   const anyOverride = overrideMgmt || overrideTimeout || allowDrift;
+  const overrideConfirmed = !overrideMgmt || confirmOverride.trim().toUpperCase() === "OVERRIDE";
   const apply = useMutation({
     mutationFn: () => unwrap(api.POST("/firewall/apply", {
       body: { host_ids: hostIds, remove, override_mgmt: overrideMgmt, override_timeout: overrideTimeout, allow_drift: allowDrift, reason: anyOverride ? reason : undefined },
@@ -328,6 +330,18 @@ export function ApplyDialog({ hostIds, names, remove, changes, onClose }: {
                 hint="The dead-man rollback still applies: if the new policy really cuts DROOL off, the host restores the previous policy." />
               <Checkbox checked={overrideTimeout} onChange={setOverrideTimeout} label="Accept a rollback timeout shorter than 3× the measured connection time" />
               <Checkbox checked={allowDrift} onChange={setAllowDrift} label="Replace DROOL rules that were changed outside DROOL (drift)" />
+              {overrideMgmt && (
+                <div role="alert" className="space-y-2 rounded-ui border-2 border-danger bg-danger-bg p-3 text-fg">
+                  <p className="font-semibold text-danger">Emergency override: you are about to apply a policy that DROOL&apos;s own checks say cuts its management path.</p>
+                  <ul className="list-disc pl-5 text-xs">
+                    <li>DROOL may lose contact with {names.join(", ")} as soon as the rules are applied.</li>
+                    <li>The dead-man rollback still applies: if DROOL can&apos;t commit over a brand-new connection, each host restores its previous policy on its own when its rollback timeout runs out.</li>
+                    <li>If the new policy keeps a path DROOL didn&apos;t know about, the override can succeed and leave DROOL depending on it. Use this only to recover from a mistake.</li>
+                    <li>The override, your reason and the outcome are recorded in the audit log.</li>
+                  </ul>
+                  <Field label='Type OVERRIDE to confirm'><Input value={confirmOverride} onChange={(e) => setConfirmOverride(e.target.value)} aria-label="Type OVERRIDE to confirm the emergency override" /></Field>
+                </div>
+              )}
               {anyOverride && <Field label="Reason (recorded in the audit log)"><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field>}
             </div>
           </details>
@@ -339,8 +353,8 @@ export function ApplyDialog({ hostIds, names, remove, changes, onClose }: {
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>{apply.data ? "Close" : "Cancel"}</Button>
           {!apply.data && (
-            <Button variant={remove ? "danger" : "primary"} disabled={apply.isPending || (anyOverride && reason.trim().length < 5)} onClick={() => apply.mutate()}>
-              {remove ? "Remove policy" : "Apply"}
+            <Button variant={remove || overrideMgmt ? "danger" : "primary"} disabled={apply.isPending || (anyOverride && reason.trim().length < 5) || !overrideConfirmed} onClick={() => apply.mutate()}>
+              {remove ? "Remove policy" : overrideMgmt ? "Apply with emergency override" : "Apply"}
             </Button>
           )}
         </div>

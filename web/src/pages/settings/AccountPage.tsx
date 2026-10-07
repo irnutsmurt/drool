@@ -7,6 +7,7 @@ import { Field, Input } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { errorMessage } from "@/lib/format";
+import { ThemeSwitcher } from "@/components/ui/ThemeSwitcher";
 
 export function AccountPage() {
   const { me } = useAuth();
@@ -42,6 +43,10 @@ export function AccountPage() {
           <dt className="text-muted">Role</dt>
           <dd>{me?.user.role}</dd>
         </dl>
+      </Card>
+      <Card title="Appearance">
+        <ThemeSwitcher />
+        <p className="mt-2 text-xs text-muted">Saved in this browser. System follows your operating system's light or dark setting and changes with it.</p>
       </Card>
       <Card title="Change password">
         <form onSubmit={submit} className="space-y-4">

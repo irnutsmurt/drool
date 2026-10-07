@@ -32,7 +32,16 @@ func (s *Server) firewallEnabled(w http.ResponseWriter, r *http.Request) bool {
 func (s *Server) firewallError(err error) *Problem {
 	var oe *model.OpError
 	var re *agentsvc.ReconcileError
+	var pe *fwsvc.ProblemsError
 	switch {
+	case errors.As(err, &pe):
+		p := errValidation(pe.Error())
+		p.Problems = pe.Problems
+		return p
+	case errors.Is(err, fwsvc.ErrRevisionConflict):
+		return errConflict("revision_conflict", err.Error()+": reload the designer (your draft stays in the YAML view to copy)")
+	case errors.Is(err, fwsvc.ErrGroupsForbidden):
+		return errForbidden(err.Error())
 	case errors.Is(err, fwsvc.ErrNotFound):
 		return errNotFound("resource")
 	case errors.As(err, &re):

@@ -1798,6 +1798,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/firewall/document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The canonical firewall document (networks, groups, custom services, ordered policy) as JSON and canonical YAML. Topology, Rules and YAML in the Firewall Designer are views of it. */
+        get: operations["getFirewallDocument"];
+        /** @description Stores a draft (document or YAML) as the policy after the same validation as the check: networks, custom services and policies become exactly the document's; groups it lists get its members and descriptions (needs hosts.write), groups it omits are kept. Saving never applies anything to hosts. `revision` must be the stored revision the draft started from. */
+        put: operations["saveFirewallDocument"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/document/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Validates a draft and previews it with the real compiler: per-host changes, refused hosts, management paths and apply blockers. Nothing is stored. */
+        post: operations["checkFirewallDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/document/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Explain Host under a draft (or the stored policy when no draft is given). */
+        post: operations["explainFirewallDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The designer's layout (node positions, expanded groups). Presentation only, never policy. */
+        get: operations["getFirewallLayout"];
+        put: operations["setFirewallLayout"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/firewall/propagation": {
         parameters: {
             query?: never;
@@ -2077,6 +2146,8 @@ export interface components {
             fields?: {
                 [key: string]: string;
             };
+            /** @description Firewall document validation problems. */
+            problems?: components["schemas"]["FwDocProblem"][];
         };
         SetupStatus: {
             setup_required: boolean;
@@ -2836,7 +2907,7 @@ export interface components {
         };
         FwSelector: {
             /** @enum {string} */
-            kind: "host" | "group" | "internet" | "internal" | "any" | "cidr";
+            kind: "host" | "group" | "network" | "internet" | "internal" | "any" | "cidr";
             id?: string;
             cidr?: string;
         };
@@ -3097,6 +3168,134 @@ export interface components {
             /** @enum {string} */
             protocol: "tcp" | "udp";
             port: number;
+            /** @description A Firewall Designer draft to simulate instead of the stored policy. */
+            document?: components["schemas"]["FwDocument"];
+            /** @description A draft in YAML form. */
+            yaml?: string;
+        };
+        /** @description The canonical firewall model. References in from/to are host:NAME, group:NAME, network:NAME, cidr:PREFIX, internet, internal or any. Built-in services are implicit; services lists custom ones. */
+        FwDocument: {
+            networks: {
+                name: string;
+                description: string;
+                cidrs: string[];
+            }[];
+            groups: {
+                name: string;
+                description: string;
+                /** @description Host names. */
+                members: string[];
+            }[];
+            services: {
+                name: string;
+                description: string;
+                entries: components["schemas"]["FwEntry"][];
+            }[];
+            policy: components["schemas"]["FwRule"][];
+        };
+        FwRule: {
+            name: string;
+            description: string;
+            enabled: boolean;
+            /** @enum {string} */
+            action: "allow" | "deny";
+            from: string[];
+            to: string[];
+            services: string[];
+        };
+        FwDocumentView: {
+            document: components["schemas"]["FwDocument"];
+            yaml: string;
+            revision: string;
+        };
+        /** @description A draft as a document or as YAML (exactly one). */
+        FwDocumentInput: {
+            document?: components["schemas"]["FwDocument"];
+            yaml?: string;
+        };
+        FwDocumentSave: components["schemas"]["FwDocumentInput"] & {
+            revision: string;
+        };
+        FwDocumentSaved: {
+            document: components["schemas"]["FwDocument"];
+            yaml: string;
+            revision: string;
+            summary: {
+                /** @description "+name" added, "~name" changed, "-name" removed */
+                networks: string[];
+                groups: string[];
+                services: string[];
+                policies: string[];
+                notices: string[];
+            };
+        };
+        FwDocProblem: {
+            path: string;
+            line?: number;
+            message: string;
+        };
+        FwHostImpact: {
+            host_id: string;
+            host_name: string;
+            mode: string;
+            enforced: boolean;
+            supported: boolean | null;
+            refused?: string;
+            added: string[];
+            new_denies: string[];
+            removed: string[];
+            conflicts: string[];
+        };
+        FwMgmtHop: {
+            /** @description Host id or "controller". */
+            from: string;
+            from_name: string;
+            to: string;
+            to_name: string;
+            protocol: string;
+            port: number;
+            /** @enum {string} */
+            status: "protected" | "blocked" | "unverified";
+            detail: string;
+            blocked_by: string[];
+        };
+        FwMgmtPath: {
+            host_id: string;
+            host: string;
+            /** @enum {string} */
+            kind: "ssh" | "agent";
+            mode: string;
+            hops: components["schemas"]["FwMgmtHop"][];
+            blocked: boolean;
+            unverified: boolean;
+        };
+        FwDocumentCheck: {
+            document: components["schemas"]["FwDocument"];
+            /** @description Canonical YAML of the draft (empty when the YAML didn't parse). */
+            yaml: string;
+            valid: boolean;
+            problems: components["schemas"]["FwDocProblem"][];
+            notices: string[];
+            /** @description The draft differs from what is stored. */
+            changed: boolean;
+            /** @description The stored revision. */
+            revision: string;
+            impact: components["schemas"]["FwHostImpact"][];
+            management: components["schemas"]["FwMgmtPath"][];
+            /** @description Why applying would be refused (management path conflicts). */
+            blockers: string[];
+        };
+        FwDraftExplainRequest: components["schemas"]["FwDocumentInput"] & {
+            host_id: string;
+        };
+        FwDraftExplain: {
+            host_id: string;
+            host: string;
+            mode: string;
+            explain: components["schemas"]["FwAllowance"][];
+            conflicts: string[];
+            warnings: string[];
+            management: components["schemas"]["FwMgmtPath"][];
         };
         FwSimHop: {
             host_id: string;
@@ -6394,6 +6593,150 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["FwSimResult"];
                 };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    getFirewallDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stored document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FwDocumentView"];
+                };
+            };
+        };
+    };
+    saveFirewallDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FwDocumentSave"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FwDocumentSaved"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    checkFirewallDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FwDocumentInput"];
+            };
+        };
+        responses: {
+            /** @description Check result (invalid drafts are a 200 with problems). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FwDocumentCheck"];
+                };
+            };
+        };
+    };
+    explainFirewallDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FwDraftExplainRequest"];
+            };
+        };
+        responses: {
+            /** @description Explanation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FwDraftExplain"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    getFirewallLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Layout. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    setFirewallLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             422: components["responses"]["Problem"];
         };

@@ -1,0 +1,50 @@
+networks:
+  admin-lan:
+    cidr: 192.168.1.0/24
+  v6-lan:
+    cidr: 2001:db8:10::/48
+groups:
+  ssh-managed:
+    members:
+      - server-a
+      - server-b
+      - server-c
+services:
+  app-8812:
+    protocol: tcp
+    port: 8812
+  tcp-23:
+    protocol: tcp
+    port: 23
+policy:
+  - name: admin-to-jump
+    from: admin-lan
+    to: jump-a
+    allow:
+      - ssh
+  - name: jump-to-servers
+    from: jump-a
+    to: ssh-managed
+    allow:
+      - ssh
+  - name: server-a-to-server-b
+    from: server-a
+    to: server-b
+    allow:
+      - app-8812
+      - https
+  - name: web-from-internet
+    from: internet
+    to: server-b
+    allow:
+      - https
+  - name: v6-admin
+    from: v6-lan
+    to: jump-a
+    allow:
+      - ssh
+  - name: no-telnet
+    from: any
+    to: ssh-managed
+    deny:
+      - tcp-23

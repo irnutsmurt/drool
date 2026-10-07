@@ -24,6 +24,15 @@ func (q *Queries) DeleteFwMgmtObservations(ctx context.Context, arg DeleteFwMgmt
 	return err
 }
 
+const deleteFwNetwork = `-- name: DeleteFwNetwork :exec
+DELETE FROM fw_networks WHERE id = ?
+`
+
+func (q *Queries) DeleteFwNetwork(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteFwNetwork, id)
+	return err
+}
+
 const deleteFwObservations = `-- name: DeleteFwObservations :exec
 DELETE FROM fw_observations WHERE host_id = ?
 `
@@ -192,6 +201,32 @@ func (q *Queries) GetFwTransaction(ctx context.Context, id string) (FwTransactio
 		&i.FinishedAt,
 	)
 	return i, err
+}
+
+const insertFwNetwork = `-- name: InsertFwNetwork :exec
+INSERT INTO fw_networks (id, name, description, cidrs_json, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)
+`
+
+type InsertFwNetworkParams struct {
+	ID          string
+	Name        string
+	Description string
+	CidrsJson   string
+	CreatedAt   int64
+	UpdatedAt   int64
+}
+
+func (q *Queries) InsertFwNetwork(ctx context.Context, arg InsertFwNetworkParams) error {
+	_, err := q.db.ExecContext(ctx, insertFwNetwork,
+		arg.ID,
+		arg.Name,
+		arg.Description,
+		arg.CidrsJson,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
 }
 
 const insertFwPolicy = `-- name: InsertFwPolicy :exec
@@ -486,6 +521,40 @@ func (q *Queries) ListFwMgmtObservations(ctx context.Context, hostID string) ([]
 			&i.Address,
 			&i.Port,
 			&i.ObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFwNetworks = `-- name: ListFwNetworks :many
+SELECT id, name, description, cidrs_json, created_at, updated_at FROM fw_networks ORDER BY name
+`
+
+func (q *Queries) ListFwNetworks(ctx context.Context) ([]FwNetwork, error) {
+	rows, err := q.db.QueryContext(ctx, listFwNetworks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FwNetwork{}
+	for rows.Next() {
+		var i FwNetwork
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Description,
+			&i.CidrsJson,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -926,6 +995,29 @@ func (q *Queries) SetFwHostStatus(ctx context.Context, arg SetFwHostStatusParams
 		arg.Drift,
 		arg.UpdatedAt,
 		arg.HostID,
+	)
+	return err
+}
+
+const updateFwNetwork = `-- name: UpdateFwNetwork :exec
+UPDATE fw_networks SET name = ?, description = ?, cidrs_json = ?, updated_at = ? WHERE id = ?
+`
+
+type UpdateFwNetworkParams struct {
+	Name        string
+	Description string
+	CidrsJson   string
+	UpdatedAt   int64
+	ID          string
+}
+
+func (q *Queries) UpdateFwNetwork(ctx context.Context, arg UpdateFwNetworkParams) error {
+	_, err := q.db.ExecContext(ctx, updateFwNetwork,
+		arg.Name,
+		arg.Description,
+		arg.CidrsJson,
+		arg.UpdatedAt,
+		arg.ID,
 	)
 	return err
 }

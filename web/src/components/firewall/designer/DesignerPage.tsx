@@ -1,0 +1,182 @@
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
+import { useHosts } from "@/api/queries";
+import { useAuth } from "@/auth/AuthContext";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Dialog } from "@/components/ui/Dialog";
+import { cx } from "@/components/ui/cx";
+import { errorMessage } from "@/lib/format";
+import { ApplyDialog } from "../parts";
+import { useFwServices } from "../queries";
+import { deleteRule, type MgmtPath, type ServiceInfo } from "./model";
+import { useDesigner } from "./useDesigner";
+import { Topology, type Selection } from "./Topology";
+import { RulesView } from "./RulesView";
+import { YamlView } from "./YamlView";
+import { RuleDialog } from "./RuleDialog";
+import { Inspector, MgmtAlerts, PreviewPanel } from "./Panels";
+
+const views = [
+  { id: "topology", label: "Topology" },
+  { id: "rules", label: "Rules" },
+  { id: "yaml", label: "YAML" },
+] as const;
+type View = (typeof views)[number]["id"];
+
+/** The Firewall Designer: Topology, Rules and YAML over one draft. */
+export function DesignerPage() {
+  const d = useDesigner();
+  const { can } = useAuth();
+  const canWrite = can("firewall.write");
+  const hostsQ = useHosts();
+  const svcQ = useFwServices();
+  const [params, setParams] = useSearchParams();
+  const view = (params.get("view") as View) ?? "topology";
+  const setView = (v: View) => {
+    if (view === "yaml" && v !== "yaml") d.normalizeYAML();
+    const next = new URLSearchParams(params);
+    next.set("view", v);
+    setParams(next, { replace: true });
+  };
+  const [selection, setSelection] = useState<Selection>(null);
+  const [ruleDialog, setRuleDialog] = useState<{ index?: number; from?: string; to?: string } | null>(null);
+  const [focus, setFocus] = useState<string[]>();
+  const [side, setSide] = useState<"details" | "preview">("preview");
+  const [confirmSave, setConfirmSave] = useState(false);
+  const [applyTo, setApplyTo] = useState<string[] | null>(null);
+
+  const hosts = useMemo(() => (hostsQ.data?.items ?? []).map((h) => ({ id: h.id, name: h.name })), [hostsQ.data]);
+  const services = useMemo(() => (svcQ.data?.items ?? []).map((s) => ({ name: s.name, description: s.description, builtin: s.builtin, entries: s.entries })) as ServiceInfo[], [svcQ.data]);
+
+  // Leaving with unsaved changes asks first.
+  useEffect(() => {
+    if (!d.dirty) return;
+    const h = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, [d.dirty]);
+
+  // What to highlight: blocked management segments and the rules causing them.
+  const highlight = useMemo(() => {
+    const policies = new Set<string>();
+    const nodes = new Set<string>();
+    const byId = new Map(hosts.map((h) => [h.id, h.name]));
+    for (const p of d.management) {
+      for (const h of p.hops) {
+        if (h.status !== "blocked") continue;
+        h.blocked_by.forEach((b) => policies.add(b));
+        for (const id of [h.from, h.to]) nodes.add(id === "controller" ? "controller" : `host:${byId.get(id) ?? ""}`);
+      }
+    }
+    return { policies: [...policies], nodes: [...nodes] };
+  }, [d.management, hosts]);
+
+  const showPath = (p: MgmtPath) => {
+    const byId = new Map(hosts.map((h) => [h.id, h.name]));
+    setView("topology");
+    setFocus(p.hops.flatMap((h) => [h.from === "controller" ? "controller" : `host:${byId.get(h.from)}`, `host:${byId.get(h.to)}`]));
+  };
+
+  if (d.loading) return <p className="text-sm text-muted">Loading the firewall policy…</p>;
+  if (d.loadError) return <Alert>{errorMessage(d.loadError)}</Alert>;
+
+  const blocked = d.management.filter((p) => p.blocked).length;
+  const save = () => (blocked > 0 ? setConfirmSave(true) : d.save.mutate());
+
+  return (
+    <div className="flex flex-col gap-3" data-testid="designer">
+      <div className="flex flex-wrap items-center gap-2">
+        <div role="tablist" aria-label="Designer views" className="inline-flex overflow-hidden rounded-ui border border-line">
+          {views.map((v) => (
+            <button key={v.id} role="tab" aria-selected={view === v.id} onClick={() => setView(v.id)}
+              className={cx("px-3 py-1.5 text-sm", view === v.id ? "bg-accent text-accent-fg" : "bg-surface hover:bg-surface-2")}>
+              {v.label}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs" aria-live="polite" data-testid="designer-status">
+          {d.checking ? <span className="text-muted">Checking…</span>
+            : d.yamlBroken ? <Badge tone="danger">YAML has errors</Badge>
+              : d.check && !d.check.valid ? <Badge tone="danger">{d.check.problems.length} problem(s)</Badge>
+                : d.dirty ? <Badge tone="warn">Unsaved changes</Badge> : <Badge tone="ok">Saved</Badge>}
+          {blocked > 0 && <> <Badge tone="danger">management path blocked</Badge></>}
+        </span>
+        <div className="ml-auto flex gap-2">
+          {canWrite && <Button size="sm" variant="ghost" disabled={!d.canUndo} onClick={d.undo}>Undo</Button>}
+          {canWrite && <Button size="sm" variant="ghost" disabled={!d.dirty} onClick={d.discard}>Discard changes</Button>}
+          {canWrite && (
+            <Button size="sm" variant="primary" disabled={!d.dirty || d.yamlBroken || !d.check?.valid || d.save.isPending || d.checking} onClick={save}>
+              Save policy
+            </Button>
+          )}
+        </div>
+      </div>
+      {!canWrite && <Alert tone="warn">You can explore and simulate; only administrators can change the firewall policy.</Alert>}
+      {d.staleBase && <Alert tone="warn">Someone else saved the firewall policy since you opened it. Saving will be refused: copy your changes from the YAML view, then discard and reapply them.</Alert>}
+      {d.save.error && <Alert>{errorMessage(d.save.error)}</Alert>}
+      {d.save.isSuccess && !d.dirty && <Alert tone="ok">Saved. Nothing changes on hosts until you apply it (see Preview).</Alert>}
+      <MgmtAlerts management={d.management} onShow={showPath} />
+
+      <div className="grid min-h-[38rem] gap-3 xl:grid-cols-[1fr_24rem]">
+        <div className={cx("min-h-[38rem] overflow-hidden rounded-ui border border-line bg-surface", view === "rules" && "overflow-visible border-0 bg-transparent")} role="tabpanel" aria-label={`${view} view`}>
+          {view === "topology" && (
+            <div className="h-[38rem]">
+              <Topology doc={d.draft} services={services} hosts={hosts} management={d.management} layout={d.layout} saveLayout={d.saveLayout}
+                canWrite={canWrite} selection={selection} onSelect={(s) => { setSelection(s); if (s) setSide("details"); }}
+                onConnect={(from, to) => setRuleDialog({ from, to })} onNewRule={() => setRuleDialog({})} highlight={highlight} focusNodes={focus} />
+            </div>
+          )}
+          {view === "rules" && (
+            <RulesView doc={d.draft} edit={d.edit} services={services} hosts={hosts} storedGroups={d.storedGroups} canWrite={canWrite} highlight={highlight.policies} />
+          )}
+          {view === "yaml" && (
+            <div className="h-[38rem] p-3">
+              <YamlView text={d.yamlText} onChange={d.editYAML} problems={d.check?.problems ?? []} broken={d.yamlBroken} readOnly={!canWrite} />
+            </div>
+          )}
+        </div>
+        <aside className="rounded-ui border border-line bg-surface p-3" aria-label="Details and preview">
+          <div role="tablist" aria-label="Side panel" className="mb-3 flex gap-1 border-b border-line">
+            {(["preview", "details"] as const).map((s) => (
+              <button key={s} role="tab" aria-selected={side === s} onClick={() => setSide(s)}
+                className={cx("-mb-px border-b-2 px-2 py-1 text-sm", side === s ? "border-accent font-medium" : "border-transparent text-muted")}>
+                {s === "preview" ? "Preview" : "Details"}
+              </button>
+            ))}
+          </div>
+          {side === "preview" ? (
+            <PreviewPanel check={d.check} canApply={can("firewall.write")} onApply={(ids) => setApplyTo(ids)} />
+          ) : (
+            <Inspector selection={selection} doc={d.draft} services={services} hosts={hosts} management={d.management}
+              onEditRule={(index) => setRuleDialog({ index })} onClose={() => setSelection(null)} />
+          )}
+        </aside>
+      </div>
+
+      {ruleDialog && (
+        <RuleDialog doc={d.draft} services={services} hosts={hosts} index={ruleDialog.index}
+          initial={ruleDialog.from ? { from: [ruleDialog.from], to: [ruleDialog.to!] } : undefined}
+          onSave={(doc) => { d.edit(doc); setRuleDialog(null); }}
+          onDelete={ruleDialog.index !== undefined ? () => { d.edit(deleteRule(d.draft, ruleDialog.index!)); setRuleDialog(null); setSelection(null); } : undefined}
+          onClose={() => setRuleDialog(null)} />
+      )}
+      {confirmSave && (
+        <Dialog title="Save a policy that blocks DROOL's management path?" onClose={() => setConfirmSave(false)}>
+          <div className="space-y-3 text-sm">
+            <Alert>This policy would cut DROOL off from {d.management.filter((p) => p.blocked).map((p) => p.host).join(", ")}.</Alert>
+            <p>You can save it as a draft of the policy, but <strong>applying it to those hosts will be refused</strong> until the conflict is fixed, or an administrator uses the audited emergency override (which still rolls back on its own if DROOL loses the host).</p>
+            <div className="flex justify-end gap-2">
+              <Button onClick={() => setConfirmSave(false)}>Keep editing</Button>
+              <Button variant="danger" onClick={() => { setConfirmSave(false); d.save.mutate(); }}>Save anyway</Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+      {applyTo && (
+        <ApplyDialog hostIds={applyTo} names={applyTo.map((id) => hosts.find((h) => h.id === id)?.name ?? id)} onClose={() => setApplyTo(null)} />
+      )}
+    </div>
+  );
+}

@@ -7,6 +7,12 @@
  * mapped below, e.g. bg-surface, text-muted, border-line). Restyling the app
  * means changing values here, not editing components.
  */
+/*
+ * Theme: data-theme on <html> is "light", "dark" or "system" (set before
+ * first paint by index.html, then by src/lib/theme.ts). "system" follows
+ * prefers-color-scheme live. Dark values are a separate palette, not an
+ * inversion: status colours keep their meaning and contrast.
+ */
 :root {
   --ui-bg: #f6f7f9;
   --ui-surface: #ffffff;
@@ -16,12 +22,27 @@
   --ui-muted: #5d6673;
   --ui-accent: #2f6fde;
   --ui-accent-fg: #ffffff;
-  --ui-danger: #c93a3a;
+  --ui-danger: #b93232;
+  --ui-danger-fg: #ffffff;
   --ui-danger-bg: #fdecec;
-  --ui-warn: #a36200;
+  --ui-warn: #965a00;
   --ui-warn-bg: #fff4e0;
   --ui-ok: #1e7a46;
   --ui-ok-bg: #e5f5ec;
+  --ui-backdrop: rgb(15 18 22 / 0.35);
+  /* Firewall designer canvas */
+  --ui-canvas: #f3f5f8;
+  --ui-canvas-dot: #d3d8df;
+  --ui-node-host: #ffffff;
+  --ui-node-group: #eef4ff;
+  --ui-node-network: #f4f0ff;
+  --ui-node-external: #fff7e8;
+  --ui-node-controller: #e9f7ef;
+  --ui-edge-allow: #2f6fde;
+  --ui-edge-deny: #b93232;
+  --ui-edge-mgmt: #1e7a46;
+  --ui-edge-member: #9aa3ae;
+  --ui-highlight: #f0a020;
   --ui-radius: 6px;
   --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --ui-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -29,23 +50,69 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --ui-bg: #111418;
     --ui-surface: #181c21;
     --ui-surface-2: #20252b;
     --ui-line: #2e353d;
     --ui-text: #e6e9ed;
-    --ui-muted: #98a2ae;
-    --ui-accent: #5b93f0;
+    --ui-muted: #9aa4b0;
+    --ui-accent: #6b9ff2;
     --ui-accent-fg: #0b0e12;
-    --ui-danger: #f07272;
+    --ui-danger: #f07878;
+    --ui-danger-fg: #1c0b0b;
     --ui-danger-bg: #3a1d1f;
     --ui-warn: #f0b350;
     --ui-warn-bg: #3a2c14;
     --ui-ok: #5cc98a;
     --ui-ok-bg: #16301f;
+    --ui-backdrop: rgb(0 0 0 / 0.6);
+    --ui-canvas: #0d1013;
+    --ui-canvas-dot: #262c33;
+    --ui-node-host: #1b2026;
+    --ui-node-group: #172235;
+    --ui-node-network: #221b33;
+    --ui-node-external: #2f2615;
+    --ui-node-controller: #13291d;
+    --ui-edge-allow: #6b9ff2;
+    --ui-edge-deny: #f07878;
+    --ui-edge-mgmt: #5cc98a;
+    --ui-edge-member: #5d6772;
+    --ui-highlight: #f5b544;
     color-scheme: dark;
   }
+}
+
+:root[data-theme="dark"] {
+  --ui-bg: #111418;
+  --ui-surface: #181c21;
+  --ui-surface-2: #20252b;
+  --ui-line: #2e353d;
+  --ui-text: #e6e9ed;
+  --ui-muted: #9aa4b0;
+  --ui-accent: #6b9ff2;
+  --ui-accent-fg: #0b0e12;
+  --ui-danger: #f07878;
+  --ui-danger-fg: #1c0b0b;
+  --ui-danger-bg: #3a1d1f;
+  --ui-warn: #f0b350;
+  --ui-warn-bg: #3a2c14;
+  --ui-ok: #5cc98a;
+  --ui-ok-bg: #16301f;
+  --ui-backdrop: rgb(0 0 0 / 0.6);
+  --ui-canvas: #0d1013;
+  --ui-canvas-dot: #262c33;
+  --ui-node-host: #1b2026;
+  --ui-node-group: #172235;
+  --ui-node-network: #221b33;
+  --ui-node-external: #2f2615;
+  --ui-node-controller: #13291d;
+  --ui-edge-allow: #6b9ff2;
+  --ui-edge-deny: #f07878;
+  --ui-edge-mgmt: #5cc98a;
+  --ui-edge-member: #5d6772;
+  --ui-highlight: #f5b544;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -58,6 +125,7 @@
   --color-accent: var(--ui-accent);
   --color-accent-fg: var(--ui-accent-fg);
   --color-danger: var(--ui-danger);
+  --color-danger-fg: var(--ui-danger-fg);
   --color-danger-bg: var(--ui-danger-bg);
   --color-warn: var(--ui-warn);
   --color-warn-bg: var(--ui-warn-bg);
@@ -79,4 +147,36 @@ body {
   color: var(--ui-text);
   font-family: var(--ui-font);
   font-size: 14px;
+}
+
+/* Firewall designer: a blocked DROOL management path pulses. */
+@keyframes designer-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+.designer-blocked {
+  animation: designer-dash 1s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .designer-blocked {
+    animation: none;
+  }
+}
+/* React Flow follows the DROOL theme tokens. */
+.react-flow {
+  --xy-controls-button-background-color: var(--ui-surface);
+  --xy-controls-button-background-color-hover: var(--ui-surface-2);
+  --xy-controls-button-color: var(--ui-text);
+  --xy-controls-button-border-color: var(--ui-line);
+  --xy-minimap-background-color: var(--ui-surface);
+  --xy-edge-label-background-color: var(--ui-surface);
+}
+
+/* Connection handles big enough to grab. */
+.react-flow__node .react-flow__handle {
+  width: 11px;
+  height: 11px;
+  background: var(--ui-accent);
+  border: 2px solid var(--ui-surface);
 }

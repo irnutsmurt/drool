@@ -1,6 +1,6 @@
 # DROOL Technical Alpha: Internal Architecture
 
-**v0.6 · 2026-10-07 (v0.1.0-alpha + M6 + M7 + M8)** · Implements the *Technical Alpha* slice of `DESIGN.md` (§33), M6 file management and single-file deployment (DESIGN §13), M7, the DROOL agent and its lifecycle (DESIGN §4, §6, §8, §9, §28; §23 here), and M8, firewall policy and safe enforcement on plain-nftables hosts (DESIGN §15–19; §24 here).
+**v0.7 · 2026-10-07 (v0.1.0-alpha + M6 + M7 + M8 + M9)** · Implements the *Technical Alpha* slice of `DESIGN.md` (§33), M6 file management and single-file deployment (DESIGN §13), M7, the DROOL agent and its lifecycle (DESIGN §4, §6, §8, §9, §28; §23 here), M8, firewall policy and safe enforcement on plain-nftables hosts (DESIGN §15–19; §24 here), and M9, the Firewall Designer and an application-wide Light/Dark/System theme (§25 here).
 
 Sections 1–21 describe the implementation as built. Where an implementation decision superseded the original plan, the prose was updated and the decision and its reason are in §22.
 
@@ -26,6 +26,7 @@ This document is where we argue about concrete things: schema, operation semanti
 - **M7:** the `drool-agent` binary and the agent Driver: enrollment, PKI with an offline-capable root and trust manifest, mTLS gRPC, certificate renewal/recovery/revocation, clone quarantine, local capability ceiling, state versioning, telemetry, agent-side audit, protocol negotiation, signed self-update with automatic rollback, staged rollouts, endpoint migration; Agent preferred / SSH fallback (§23)
 
 - **M8:** intent-based firewall policy (hosts, groups, named services, internet/internal, IPv4/IPv6), compilation to nftables via named sets, environment detection and refusal, the dead-man transaction protocol over the agent and SSH (durable host journal, systemd rollback timer, boot loader, commit only over a new connection), management-path protection with an audited emergency override, set-element propagation, drift detection, Monitor/Guided/Enforce, connection learning (agents) and snapshots (SSH), simulation and Explain Host (§24)
+- **M9:** the Firewall Designer: one canonical firewall document (named networks, groups, custom services, ordered policy) edited as a topology, as rules or as YAML; live server-side check of every draft with the real compiler (validation, per-host preview, management-path analysis, apply blockers), simulation and Explain on drafts, a read-only DROOL management-path overlay, layout persistence; named network objects in the policy model; set updates held near management paths; Light/Dark/System theme across the whole UI (§25)
 
 ### Out of scope (but the design must not block them)
 Docker/container firewalling, WireGuard identity networking, batch/canary rollouts, scheduling, templated files and directory sync, desired state, YAML editing, MFA, plugins, multi-hop jumps.
@@ -948,6 +949,7 @@ Privileged containers are not used for testing (they interfered with the develop
 | **M6 Files** | File manager, artifact store, managed file deployment with preview/validation/rollback (§10.6, §10.7) |
 | **M7 Agent** | `drool-agent`, enrollment, PKI, agent Driver and `files.FS`, management router with SSH fallback, lifecycle, self-update and rollouts (§23) |
 | **M8 Firewall** | Policy model and compiler, nftables backend, coexistence refusal, dead-man transactions (agent + SSH), management-path protection, sets, drift, learning, simulation, Explain (§24) |
+| **M9 Firewall Designer** | Canonical document + YAML, Topology/Rules/YAML views over one draft, management-path overlay and warnings, draft simulation/Explain, layout, theme (§25) |
 
 ---
 
@@ -1155,6 +1157,20 @@ Meaningful choices made during implementation, newest last.
 | M8 | Side effects of a settings change (pushing the learning switch to the agent, waking the converger) run after the database transaction commits, never from inside it | Found in the container regression run: the learning push read the host's mode through another connection before the commit and sent "learning off"; it passed earlier only by winning the race |
 | M8 | Check and SSH snapshots also record how the host sees DROOL's SSH connection (`SSH_CONNECTION`, unprivileged, over the connection in use); transactions still re-measure it over a fresh connection before compiling | Found in the browser pass: before the first transaction Explain had no management row and a snapshot showed DROOL's own connection as "would be blocked" |
 | M8 | List-valued API fields are arrays, never `null` (`listResponse` marshals nil as `[]`; firewall results initialise their slices) | Found in the browser pass: `null` crashed the Firewall page and the policy preview |
+| M9 | One canonical document (`internal/firewall/document`) is the only editable form of the firewall policy; Topology, Rules and YAML are views of one draft held in the browser. The browser never evaluates policy: every draft is POSTed to `/firewall/document/check`, which resolves it to a `compile.World` and compiles every host with the M8 compiler | Three editors must not become three configuration systems, and the canvas must not grow a second evaluator |
+| M9 | Objects are referred to by name (`host:web1`, `group:web`, `network:admin-lan`, `cidr:…`, `internet`, `internal`, `any`); YAML writes bare names when they are unambiguous. Names are unique (hosts, groups, policies already were); network and service names can't be keywords | YAML has to be writable by hand; ids are not |
+| M9 | Named network objects are a new selector kind (`network`, table `fw_networks`). The compiler resolves them like literal CIDRs (rules, not dynamic sets): changing a network's CIDRs is a policy change applied by transaction | The only change to the compiler: networks are needed as nodes on the canvas and as YAML names; keeping them static keeps M8's rule/set split intact |
+| M9 | Saving a document replaces networks, custom services and policies with the document's (by name: kept policies keep their ids); groups the document lists get its members and descriptions (needs `hosts.write` too); groups it omits are kept, with a notice — groups are shared with jobs and the rest of DROOL | Deleting a DROOL-wide group from a firewall YAML edit would be surprising and destructive |
+| M9 | Saves carry the revision the draft started from; a different stored revision is a 409 | Two editors (or the M8 policy API) can't silently overwrite each other |
+| M9 | Canonical YAML: objects sorted by name, policy in order, `allow:`/`deny:` always lists, single CIDR as `cidr:`, single TCP/UDP entry as `protocol`/`port`. Comments, anchors and formatting are not kept | Stable round trips; the brief allows canonical serialization |
+| M9 | Management-path analysis (`MgmtPath`) lays out each host's paths from the inventory (controller → jump hops → host; host → controller endpoints for agents) and marks each hop protected / blocked / unverified from the compiled draft's conflicts. The port a hop protects is the one the host observed (`SSH_CONNECTION`), not the dialled one | Found in the browser pass: behind a port-forward the dialled port (18601) differs from what the host's firewall sees (22); matching the dialled port missed real conflicts |
+| M9 | Unmeasured hops whose host's compiled rules drop the dialled SSH port are flagged "at risk" (with the responsible rules) rather than shown as fine | Before the first Check DROOL can't know where its connection comes from; a deny of TCP 22 is worth a warning even then. Apply still re-measures and refuses |
+| M9 | Removing an allow never cuts DROOL's management path: management accepts are compiled ahead of every deny and allow (M8). Only effective denies can — direct, or indirect through group membership, network CIDRs, service definitions or another rule — and all of those show up as compile conflicts on the draft | Tests assert both directions |
+| M9 | The converger holds a set-only update that would create a management-path conflict (sets_error "held: …") instead of pushing it unattended | "Be conservative near management paths": a membership/address change shouldn't silently change behaviour next to DROOL's own access, even though management accepts still come first |
+| M9 | Layout (positions, expanded groups, placed objects) is a separate settings blob (`firewall.layout`), never part of the document or its revision | Moving boxes is not a policy change |
+| M9 | The theme is `data-theme` on `<html>` (light, dark, system) set before first paint by `/theme-init.js` (a static file: the CSP allows only same-origin scripts) and saved in localStorage; dark values are a separate token palette; System follows `prefers-color-scheme` live through CSS | No flash, no reload, no inline script exception in the CSP |
+| M9 | Light-theme warning and danger tokens darkened (`#965a00`, `#b93232`) | The new contrast test found them at 4.48:1 and 4.43:1 on their tinted backgrounds, just under WCAG AA |
+
 ---
 
 ## 23. Agent (M7)
@@ -1361,3 +1377,47 @@ Permissions: `firewall.read` (all roles), `firewall.write` and `firewall.overrid
 - VMs with real nftables and systemd, only inside disposable qemu (TCG) guests (`vm_firewall_test.go`; `-run '^TestVMFirewall$' -vm debian-12,ubuntu-24.04,rockylinux-9`): plain-nftables detection (nftables installed with a DROOL package job where the image lacks it), SSH transaction committed over a fresh connection, outbound restriction with the management path intact, boot restore of the committed policy, a deliberately blocked management path rolled back by the host's timer, reboot refused while pending (409), hard reset while pending → boot loader rolls back ("rebooted during the transaction"), drift detected and replaced only on request, foreign nftables rules refused and untouched (Ubuntu: enabled UFW refused; disabled UFW with its rules still loaded refused with the hint), address change pushed as a set update without a transaction, agent transaction committed over a new mTLS connection, blocked agent path rolled back, agent killed while pending → systemd timer rolls back, removal.
 - `TestVMFirewallControllerCrash` (Debian 12 behind a jump host): commit through the jump host over a brand-new SSH chain; the controller is killed while a candidate is pending; the host rolls back on its own; the restarted controller resolves the transaction as rolled back with the host's reason. The guest sees the jump host's real address, so the compiled management rule is exactly that address (the test's own side channel needs its own allowance).
 - Browser pass (puppeteer, VM + container): Check, Enforce, refusal reasons, intent-first policy editor with live affected-hosts preview, apply dialog, transaction timeline, Explain, Can A reach B? (YES/NO with the reason), management-path refusal on the host card, observations, settings. It found two pages crashing on `null` arrays and the snapshot's own SSH connection shown as "would be blocked"; all fixed.
+
+---
+
+## 25. Firewall Designer and theme (M9)
+
+The designer makes M8's policy visual without adding a second policy system or a second evaluator.
+
+### 25.1 One canonical document
+
+`internal/firewall/document` defines the document: `networks` (name → CIDRs, IPv4/IPv6), `groups` (name → member host names; DROOL's shared host groups), `services` (custom; built-ins are implicit) and the ordered `policy` (name, action, from, to, services, enabled, description). References are `host:NAME`, `group:NAME`, `network:NAME`, `cidr:PREFIX`, `internet`, `internal`, `any`. `Normalize` gives the canonical form; `Resolve` validates against the inventory and binds names to ids (new objects get provisional ids), producing the policies, groups, networks and services the M8 compiler reads. Problems carry a path and, for YAML, a line.
+
+YAML (`RenderYAML`, `ParseYAML`) is a strict view of the same document: unknown fields, both `allow` and `deny`, ambiguous bare names and unknown names are errors with line numbers. Rendering is canonical, so YAML → document → YAML is stable; comments and formatting are not kept.
+
+### 25.2 Server side
+
+| Endpoint | Does |
+|---|---|
+| `GET /firewall/document` | The stored document, its canonical YAML and its revision |
+| `POST /firewall/document/check` | Parses (document or YAML), validates, builds the draft world (`draftWorld`: stored hosts/addresses/ranges, the draft's networks, groups, services and policies) and compiles every host with the M8 compiler: per-host impact (new allowances, new denies, removed, refused hosts), management paths, apply blockers, notices. Stores nothing |
+| `PUT /firewall/document` | Same validation in a transaction, revision-checked (409), audited (`firewall.document.save`), then the converger is kicked. Never applies anything to hosts |
+| `POST /firewall/document/explain` | Explain Host and the host's management paths under a draft |
+| `POST /firewall/simulate` | Accepts an optional `document`/`yaml`: the M8 simulation on the draft world |
+| `GET/PUT /firewall/layout` | Presentation only |
+
+Applying is unchanged: M8 transactions per host, refused on management conflicts, the audited override still dead-man protected.
+
+### 25.3 Management paths
+
+`managementPaths` walks each host's configured paths (inventory hops for SSH: controller → jump … → host; agent endpoints for agents) and marks each hop from the draft's compiled conflicts: **protected** (DROOL allows it ahead of every rule), **blocked** (a deny in the draft overlaps it; names the rules), **unverified** (not measured yet; "at risk" when the host's compiled rules drop the dialled SSH port). The designer shows these as a dashed read-only overlay, a blocking banner with the required path and the blocked segment, highlights the hosts and rules involved, and asks for confirmation before saving such a draft.
+
+### 25.4 Web UI
+
+`web/src/components/firewall/designer/`: `model.ts` (pure functions over the document: edits, references, `toGraph`), `useDesigner.ts` (the single draft, debounced checks, YAML edits replacing the draft once they parse, undo, revision-checked save, layout), `Topology.tsx` (React Flow; one edge per source/destination/action listing every rule and service with its protocol/port; groups collapsed by default and expandable into a grid of members; filter; "all hosts"; auto layout with dagre; positions persist; boxes on screen stay put), `RulesView.tsx` (ordered rules table with reorder, and networks, groups and services forms — full parity without drag-and-drop), `YamlView.tsx`, `RuleDialog.tsx` (shared by drawn connections and the Rules view; named services always show protocol/port; Custom protocol/port creates a service), `Panels.tsx` (management warnings, grouped preview, inspector with draft Explain, Can it reach…? on the draft). The Firewall page's Policies and Services tabs are replaced by the Designer (old links redirect to the Rules view).
+
+### 25.5 Theme
+
+Tokens in `web/src/styles/index.css`: a light palette on `:root`, a dark palette applied by `[data-theme="dark"]` and, for `system`, by `prefers-color-scheme: dark` on `:root:not([data-theme="light"])`. `web/public/theme-init.js` sets `data-theme` before the first paint; `src/lib/theme.ts` changes and persists it and re-renders subscribers (the canvas uses the resolved theme for React Flow's controls). The switch is in the header and under Settings → Account. Dialogs gained focus management (focus in, Tab trapped, focus restored).
+
+### 25.6 Testing
+
+- `internal/firewall/document`: YAML forms, canonical round trips, the brief's example, ambiguity, invalid YAML (with lines), validation problems (ports, protocols, CIDRs, deleted objects, duplicates, keywords), and `TestGolden`: `testdata/designer.json` ⇄ `testdata/designer.yaml`.
+- `web/.../designer/model.test.ts` (vitest): the same golden JSON built through Topology operations and through Rules operations, the golden JSON drawn as a topology (and the Rules-built one draws the same graph), grouping, filtering, management overlay aggregation, edits.
+- `internal/api/designer_test.go`: YAML → document → stored policies → YAML; stale revision; direct, jump-host and agent management paths; explicit deny; indirect loss through group membership, a network CIDR change and a service redefinition; removing an allow (no loss); invalid drafts; draft simulation and Explain; apply refused and the override; permissions; layout; forwarded ports; unmeasured hosts at risk; the converger holding a set update near the management path.
+- Browser (`web/e2e`, run by `test/integration` `TestBrowser` against containers): Topology drag → Rules/YAML; YAML edit → Topology (and invalid YAML); Rules created with the keyboard only → Topology/YAML; management-path warnings, highlight and save confirmation; inspector, Explain and simulation; override confirmation; layout persistence; Light/Dark/System applied without reload, persisted, System following the OS live, the account page control; WCAG AA text contrast on 20 pages and a dialog in both themes.

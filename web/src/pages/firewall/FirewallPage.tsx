@@ -4,8 +4,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { useHosts } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
-import { ApplyDialog, PolicyEditor, statusLabels, TxList, useSelectorLabel } from "@/components/firewall/parts";
-import { fk, useFwGroups, useFwHosts, useFwPolicies, useFwServices, useFwSettings, useFwTransactions, type FwPolicy, type FwSimResult } from "@/components/firewall/queries";
+import { ApplyDialog, statusLabels, TxList } from "@/components/firewall/parts";
+import { fk, useFwGroups, useFwHosts, useFwSettings, useFwTransactions, type FwSimResult } from "@/components/firewall/queries";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -13,36 +13,37 @@ import { Card } from "@/components/ui/Card";
 import { cx } from "@/components/ui/cx";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { DesignerPage } from "@/components/firewall/designer/DesignerPage";
 import { Table } from "@/components/ui/Table";
 import { errorMessage } from "@/lib/format";
 
 const tabs = [
   { id: "hosts", label: "Hosts" },
-  { id: "policies", label: "Policies" },
+  { id: "designer", label: "Designer" },
   { id: "simulate", label: "Can A reach B?" },
-  { id: "services", label: "Services" },
   { id: "transactions", label: "Transactions" },
   { id: "settings", label: "Settings" },
 ] as const;
 
 export function FirewallPage() {
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") ?? "hosts";
+  let tab = params.get("tab") ?? "hosts";
+  // Policies and services are edited in the designer now (M8 links still work).
+  if (tab === "policies" || tab === "services") tab = "designer";
   return (
     <>
       <PageHeader title="Firewall" description="Network intent: who may reach whom, applied safely as dead-man transactions on plain-nftables hosts." />
-      <div className="mb-4 flex gap-1 overflow-x-auto border-b border-line">
+      <div role="tablist" aria-label="Firewall sections" className="mb-4 flex gap-1 overflow-x-auto border-b border-line">
         {tabs.map((t) => (
-          <button key={t.id} onClick={() => setParams({ tab: t.id })}
+          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setParams({ tab: t.id })}
             className={cx("-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm", tab === t.id ? "border-accent font-medium" : "border-transparent text-muted hover:text-fg")}>
             {t.label}
           </button>
         ))}
       </div>
       {tab === "hosts" && <HostsTab />}
-      {tab === "policies" && <PoliciesTab />}
+      {tab === "designer" && <DesignerPage />}
       {tab === "simulate" && <SimulateTab />}
-      {tab === "services" && <ServicesTab />}
       {tab === "transactions" && <TransactionsTab />}
       {tab === "settings" && <SettingsTab />}
     </>
@@ -84,44 +85,6 @@ function HostsTab() {
       </Card>
       {applying && <ApplyDialog hostIds={sel} names={items.filter((h) => sel.includes(h.host_id)).map((h) => h.host_name)} onClose={() => { setApplying(false); setSel([]); }} />}
     </div>
-  );
-}
-
-function PoliciesTab() {
-  const pols = useFwPolicies();
-  const { can } = useAuth();
-  const qc = useQueryClient();
-  const label = useSelectorLabel();
-  const [editing, setEditing] = useState<FwPolicy | "new" | null>(null);
-  const del = useMutation({
-    mutationFn: (id: string) => unwrap(api.DELETE("/firewall/policies/{id}", { params: { path: { id } } })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: fk.all }),
-  });
-  return (
-    <Card title="Policies" actions={can("firewall.write") && <Button size="sm" variant="primary" onClick={() => setEditing("new")}>New policy</Button>}>
-      <p className="mb-3 text-sm text-muted">Denies win over allows. Neither can remove a host's management path: DROOL refuses such a policy unless an
-        administrator uses the audited emergency override. Changing a policy changes nothing on hosts until it is applied.</p>
-      {del.error && <Alert>{errorMessage(del.error)}</Alert>}
-      <Table
-        rows={pols.data?.items ?? []}
-        rowKey={(p) => p.id}
-        empty="No policies yet. Start with who may reach your hosts over SSH."
-        columns={[
-          { header: "Policy", cell: (p) => <span className={p.enabled ? "font-medium" : "text-muted line-through"}>{p.name}</span> },
-          { header: "", cell: (p) => <Badge tone={p.action === "allow" ? "ok" : "danger"}>{p.action}</Badge> },
-          { header: "From", cell: (p) => p.from.map(label).join(", ") },
-          { header: "To", cell: (p) => p.to.map(label).join(", ") },
-          { header: "Services", cell: (p) => p.services.join(", ") },
-          { header: "", cell: (p) => can("firewall.write") && (
-            <span className="flex gap-1">
-              <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>Edit</Button>
-              <Button size="sm" variant="ghost" onClick={() => { if (confirm(`Delete policy ${p.name}?`)) del.mutate(p.id); }}>Delete</Button>
-            </span>
-          ) },
-        ]}
-      />
-      {editing && <PolicyEditor initial={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
-    </Card>
   );
 }
 
@@ -179,46 +142,6 @@ function SimulateTab() {
           <p className="text-xs text-muted">Evaluated: {r.pairs.join(", ")}. Simulation uses the policy DROOL wants; notes show where hosts haven't applied it yet.</p>
         </div>
       )}
-    </Card>
-  );
-}
-
-function ServicesTab() {
-  const svcs = useFwServices();
-  const { can } = useAuth();
-  const qc = useQueryClient();
-  const [name, setName] = useState("");
-  const [proto, setProto] = useState<"tcp" | "udp">("tcp");
-  const [ports, setPorts] = useState("");
-  const add = useMutation({
-    mutationFn: () => unwrap(api.POST("/firewall/services", { body: { name, entries: [{ protocol: proto, ports }] } })),
-    onSuccess: () => { setName(""); setPorts(""); void qc.invalidateQueries({ queryKey: fk.services }); },
-  });
-  const del = useMutation({
-    mutationFn: (id: string) => unwrap(api.DELETE("/firewall/services/{id}", { params: { path: { id } } })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: fk.services }),
-  });
-  return (
-    <Card title="Services">
-      {can("firewall.write") && (
-        <div className="mb-4 grid gap-2 md:grid-cols-[1fr_7rem_1fr_auto] md:items-end">
-          <Field label="New service"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="jellyfin" /></Field>
-          <Field label="Protocol"><Select value={proto} onChange={(e) => setProto(e.target.value as "tcp" | "udp")}><option>tcp</option><option>udp</option></Select></Field>
-          <Field label="Ports"><Input value={ports} onChange={(e) => setPorts(e.target.value)} placeholder="8096 or 8000-8010" /></Field>
-          <Button disabled={!name || !ports || add.isPending} onClick={() => add.mutate()}>Add</Button>
-        </div>
-      )}
-      {(add.error || del.error) && <Alert>{errorMessage(add.error ?? del.error)}</Alert>}
-      <Table
-        rows={svcs.data?.items ?? []}
-        rowKey={(s) => s.name}
-        columns={[
-          { header: "Name", cell: (s) => <span className="font-mono">{s.name}</span> },
-          { header: "Protocols and ports", cell: (s) => s.entries.map((e) => `${e.protocol.toUpperCase()} ${e.ports ?? e.icmp_type ?? ""}`).join(" + ") },
-          { header: "Description", cell: (s) => s.description },
-          { header: "", cell: (s) => s.builtin ? <Badge>built-in</Badge> : can("firewall.write") && s.id && <Button size="sm" variant="ghost" onClick={() => del.mutate(s.id!)}>Delete</Button> },
-        ]}
-      />
     </Card>
   );
 }

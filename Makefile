@@ -50,7 +50,7 @@ test-integration:
 	go test -tags integration -timeout 90m -count=1 ./test/integration/ -v $(if $(DISTROS),-distros $(DISTROS))
 
 test-web:
-	cd web && npm run typecheck
+	cd web && npm run typecheck && npm test
 
 vet:
 	$(GO) vet ./...

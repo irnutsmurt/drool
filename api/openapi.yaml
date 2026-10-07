@@ -1743,6 +1743,58 @@ paths:
       responses:
         '200': { description: Answer., content: { application/json: { schema: { $ref: '#/components/schemas/FwSimResult' } } } }
         '422': { $ref: '#/components/responses/Problem' }
+  /firewall/document:
+    get:
+      operationId: getFirewallDocument
+      tags: [firewall]
+      description: The canonical firewall document (networks, groups, custom services, ordered policy) as JSON and canonical YAML. Topology, Rules and YAML in the Firewall Designer are views of it.
+      responses:
+        '200': { description: The stored document., content: { application/json: { schema: { $ref: '#/components/schemas/FwDocumentView' } } } }
+    put:
+      operationId: saveFirewallDocument
+      tags: [firewall]
+      description: >-
+        Stores a draft (document or YAML) as the policy after the same validation as the check: networks, custom services and
+        policies become exactly the document's; groups it lists get its members and descriptions (needs hosts.write), groups it
+        omits are kept. Saving never applies anything to hosts. `revision` must be the stored revision the draft started from.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FwDocumentSave' } } } }
+      responses:
+        '200': { description: Saved., content: { application/json: { schema: { $ref: '#/components/schemas/FwDocumentSaved' } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /firewall/document/check:
+    post:
+      operationId: checkFirewallDocument
+      tags: [firewall]
+      description: 'Validates a draft and previews it with the real compiler: per-host changes, refused hosts, management paths and apply blockers. Nothing is stored.'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FwDocumentInput' } } } }
+      responses:
+        '200': { description: Check result (invalid drafts are a 200 with problems)., content: { application/json: { schema: { $ref: '#/components/schemas/FwDocumentCheck' } } } }
+  /firewall/document/explain:
+    post:
+      operationId: explainFirewallDraft
+      tags: [firewall]
+      description: Explain Host under a draft (or the stored policy when no draft is given).
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FwDraftExplainRequest' } } } }
+      responses:
+        '200': { description: Explanation., content: { application/json: { schema: { $ref: '#/components/schemas/FwDraftExplain' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /firewall/layout:
+    get:
+      operationId: getFirewallLayout
+      tags: [firewall]
+      description: "The designer's layout (node positions, expanded groups). Presentation only, never policy."
+      responses:
+        '200': { description: Layout., content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    put:
+      operationId: setFirewallLayout
+      tags: [firewall]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses:
+        '204': { description: Stored. }
+        '422': { $ref: '#/components/responses/Problem' }
   /firewall/propagation:
     get:
       operationId: firewallPropagation
@@ -2022,6 +2074,7 @@ components:
         retryable: { type: boolean }
         request_id: { type: string }
         fields: { type: object, additionalProperties: { type: string } }
+        problems: { type: array, items: { $ref: '#/components/schemas/FwDocProblem' }, description: Firewall document validation problems. }
 
     SetupStatus:
       type: object
@@ -2897,7 +2950,7 @@ components:
       type: object
       required: [kind]
       properties:
-        kind: { type: string, enum: [host, group, internet, internal, any, cidr] }
+        kind: { type: string, enum: [host, group, network, internet, internal, any, cidr] }
         id: { type: string }
         cidr: { type: string }
     FwPolicyInput:
@@ -3158,6 +3211,151 @@ components:
         to_address: { type: string }
         protocol: { type: string, enum: [tcp, udp] }
         port: { type: integer }
+        document: { $ref: '#/components/schemas/FwDocument', description: 'A Firewall Designer draft to simulate instead of the stored policy.' }
+        yaml: { type: string, description: A draft in YAML form. }
+    FwDocument:
+      type: object
+      description: >-
+        The canonical firewall model. References in from/to are host:NAME, group:NAME, network:NAME, cidr:PREFIX, internet,
+        internal or any. Built-in services are implicit; services lists custom ones.
+      required: [networks, groups, services, policy]
+      properties:
+        networks:
+          type: array
+          items: { type: object, required: [name, description, cidrs], properties: { name: { type: string }, description: { type: string }, cidrs: { type: array, items: { type: string } } } }
+        groups:
+          type: array
+          items: { type: object, required: [name, description, members], properties: { name: { type: string }, description: { type: string }, members: { type: array, items: { type: string }, description: Host names. } } }
+        services:
+          type: array
+          items: { type: object, required: [name, description, entries], properties: { name: { type: string }, description: { type: string }, entries: { type: array, items: { $ref: '#/components/schemas/FwEntry' } } } }
+        policy:
+          type: array
+          items: { $ref: '#/components/schemas/FwRule' }
+    FwRule:
+      type: object
+      required: [name, description, enabled, action, from, to, services]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        enabled: { type: boolean }
+        action: { type: string, enum: [allow, deny] }
+        from: { type: array, items: { type: string } }
+        to: { type: array, items: { type: string } }
+        services: { type: array, items: { type: string } }
+    FwDocumentView:
+      type: object
+      required: [document, yaml, revision]
+      properties:
+        document: { $ref: '#/components/schemas/FwDocument' }
+        yaml: { type: string }
+        revision: { type: string }
+    FwDocumentInput:
+      type: object
+      description: A draft as a document or as YAML (exactly one).
+      properties:
+        document: { $ref: '#/components/schemas/FwDocument' }
+        yaml: { type: string }
+    FwDocumentSave:
+      allOf:
+        - { $ref: '#/components/schemas/FwDocumentInput' }
+        - type: object
+          required: [revision]
+          properties:
+            revision: { type: string }
+    FwDocumentSaved:
+      type: object
+      required: [document, yaml, revision, summary]
+      properties:
+        document: { $ref: '#/components/schemas/FwDocument' }
+        yaml: { type: string }
+        revision: { type: string }
+        summary:
+          type: object
+          required: [networks, groups, services, policies, notices]
+          properties:
+            networks: { type: array, items: { type: string }, description: '"+name" added, "~name" changed, "-name" removed' }
+            groups: { type: array, items: { type: string } }
+            services: { type: array, items: { type: string } }
+            policies: { type: array, items: { type: string } }
+            notices: { type: array, items: { type: string } }
+    FwDocProblem:
+      type: object
+      required: [path, message]
+      properties:
+        path: { type: string }
+        line: { type: integer }
+        message: { type: string }
+    FwHostImpact:
+      type: object
+      required: [host_id, host_name, mode, enforced, supported, added, new_denies, removed, conflicts]
+      properties:
+        host_id: { type: string }
+        host_name: { type: string }
+        mode: { type: string }
+        enforced: { type: boolean }
+        supported: { type: [boolean, 'null'] }
+        refused: { type: string }
+        added: { type: array, items: { type: string } }
+        new_denies: { type: array, items: { type: string } }
+        removed: { type: array, items: { type: string } }
+        conflicts: { type: array, items: { type: string } }
+    FwMgmtHop:
+      type: object
+      required: [from, from_name, to, to_name, protocol, port, status, detail, blocked_by]
+      properties:
+        from: { type: string, description: Host id or "controller". }
+        from_name: { type: string }
+        to: { type: string }
+        to_name: { type: string }
+        protocol: { type: string }
+        port: { type: integer }
+        status: { type: string, enum: [protected, blocked, unverified] }
+        detail: { type: string }
+        blocked_by: { type: array, items: { type: string } }
+    FwMgmtPath:
+      type: object
+      required: [host_id, host, kind, mode, hops, blocked, unverified]
+      properties:
+        host_id: { type: string }
+        host: { type: string }
+        kind: { type: string, enum: [ssh, agent] }
+        mode: { type: string }
+        hops: { type: array, items: { $ref: '#/components/schemas/FwMgmtHop' } }
+        blocked: { type: boolean }
+        unverified: { type: boolean }
+    FwDocumentCheck:
+      type: object
+      required: [document, yaml, valid, problems, notices, changed, revision, impact, management, blockers]
+      properties:
+        document: { $ref: '#/components/schemas/FwDocument' }
+        yaml: { type: string, description: Canonical YAML of the draft (empty when the YAML didn't parse). }
+        valid: { type: boolean }
+        problems: { type: array, items: { $ref: '#/components/schemas/FwDocProblem' } }
+        notices: { type: array, items: { type: string } }
+        changed: { type: boolean, description: The draft differs from what is stored. }
+        revision: { type: string, description: The stored revision. }
+        impact: { type: array, items: { $ref: '#/components/schemas/FwHostImpact' } }
+        management: { type: array, items: { $ref: '#/components/schemas/FwMgmtPath' } }
+        blockers: { type: array, items: { type: string }, description: Why applying would be refused (management path conflicts). }
+    FwDraftExplainRequest:
+      allOf:
+        - { $ref: '#/components/schemas/FwDocumentInput' }
+        - type: object
+          required: [host_id]
+          properties:
+            host_id: { type: string }
+    FwDraftExplain:
+      type: object
+      required: [host_id, host, mode, explain, conflicts, warnings, management]
+      properties:
+        host_id: { type: string }
+        host: { type: string }
+        mode: { type: string }
+        explain: { type: array, items: { $ref: '#/components/schemas/FwAllowance' } }
+        conflicts: { type: array, items: { type: string } }
+        warnings: { type: array, items: { type: string } }
+        management: { type: array, items: { $ref: '#/components/schemas/FwMgmtPath' } }
     FwSimHop:
       type: object
       required: [host_id, host, direction, mode, filtered, verdict, reason]

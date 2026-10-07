@@ -1,6 +1,6 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.4**
+**Design Document v0.3.5**
 Status: Draft · 2026-10-06 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
@@ -11,6 +11,20 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.4 → v0.3.5 (M9: Firewall Designer and theme)
+
+The firewall architecture (§15–19) and M8's compiler, transactions, management-path validator, simulation and Explain are unchanged. M9 adds a way to edit the policy, not a new policy system:
+
+| # | As built | Section |
+|---|---|---|
+| 1 | One canonical firewall document (networks, groups, custom services, ordered policy) is edited three ways — **Topology** (a node-and-connection editor), **Rules** (forms and tables) and **YAML** — over one draft. Every draft is checked by the server with the real compiler: validation, per-host preview, management-path analysis, apply blockers | §15, §19 |
+| 2 | **Named network objects** join the policy model (`admin-lan: 192.168.1.0/24`, IPv4 and IPv6 together). They compile like literal CIDRs; editing one is a policy change applied by transaction | §15.1 |
+| 3 | Edges are **allowed (or denied) communication**, never routing; positions are presentation only. Group rules draw as one relationship; groups expand into members on request | §15 |
+| 4 | DROOL's **management paths** (controller → jump hosts → host over SSH; agent → controller over mTLS) are shown as a read-only overlay. A draft whose effective result removes one — through any rule, group membership, network, or service change — is flagged while editing with the required path and the blocked segment; applying stays refused; the audited override still uses the dead-man rollback | §18 |
+| 5 | Saving and applying stay separate: saving changes the desired policy; hosts change only through M8 transactions | §17 |
+| 6 | Address or membership changes that would put a deny over a management path are **held** for review instead of propagated unattended | §5.3.1, §18 |
+| 7 | The whole UI has **Light, Dark and System** appearance, saved per browser; System follows the OS setting live | — |
 
 ### v0.3.3 → v0.3.4 (M8: what the firewall ships as)
 

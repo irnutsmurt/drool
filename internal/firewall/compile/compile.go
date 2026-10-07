@@ -31,10 +31,18 @@ type GroupRef struct {
 	Members []string
 }
 
+// NetworkRef is a named network object.
+type NetworkRef struct {
+	ID       string
+	Name     string
+	Prefixes []netip.Prefix
+}
+
 // World is everything the compiler reads.
 type World struct {
 	Hosts    map[string]HostRef
 	Groups   map[string]GroupRef
+	Networks map[string]NetworkRef
 	Services map[string]policy.Service
 	Policies []policy.Policy // in evaluation order
 	Internal []netip.Prefix
@@ -316,6 +324,21 @@ func (c *compiler) peers(s policy.Selector) []struct {
 				fam = 4
 			}
 			out = append(out, fp{fam, Peer{Kind: PeerCIDRs, CIDRs: []netip.Prefix{p}, Label: p.String()}})
+		}
+	case policy.SelNetwork:
+		// Like literal CIDRs: a network's prefixes are part of the rules, so
+		// changing them is a policy change (a transaction), not a set update.
+		n := c.w.Networks[s.ID]
+		for _, fam := range []int{4, 6} {
+			var ps []netip.Prefix
+			for _, p := range n.Prefixes {
+				if (fam == 4) == p.Addr().Unmap().Is4() {
+					ps = append(ps, p.Masked())
+				}
+			}
+			if len(ps) > 0 {
+				out = append(out, fp{fam, Peer{Kind: PeerCIDRs, CIDRs: NormalizePrefixes(ps), Label: "network " + n.Name}})
+			}
 		}
 	case policy.SelAny:
 		out = append(out, fp{0, Peer{Kind: PeerAny, Label: "anywhere"}})

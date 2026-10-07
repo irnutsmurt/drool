@@ -35,6 +35,7 @@ type Server struct {
 	exec         ExecFunc
 	allowForward bool
 	connEnv      bool
+	clientIP     string // reported in SSH_CONNECTION instead of the real peer (NAT in tests)
 	commands     []string
 
 	conns  atomic.Int64
@@ -107,7 +108,11 @@ func (s *Server) AllowForwarding(v bool)      { s.mu.Lock(); s.allowForward = v;
 
 // SetConnectionEnv exports SSH_CONNECTION to commands, like sshd does.
 func (s *Server) SetConnectionEnv(v bool) { s.mu.Lock(); s.connEnv = v; s.mu.Unlock() }
-func (s *Server) Connections() int64      { return s.conns.Load() }
+
+// SetClientIP makes SSH_CONNECTION report ip as the client, as a host
+// behind NAT sees its peer.
+func (s *Server) SetClientIP(ip string) { s.mu.Lock(); s.clientIP = ip; s.mu.Unlock() }
+func (s *Server) Connections() int64    { return s.conns.Load() }
 func (s *Server) Commands() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -267,7 +272,11 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request, nc net.Conn) 
 				r, _ := nc.RemoteAddr().(*net.TCPAddr)
 				l, _ := nc.LocalAddr().(*net.TCPAddr)
 				if r != nil && l != nil {
-					cmd = fmt.Sprintf("SSH_CONNECTION='%s %d %s %d'; export SSH_CONNECTION; %s", r.IP, r.Port, l.IP, l.Port, cmd)
+					client := r.IP.String()
+					if s.clientIP != "" {
+						client = s.clientIP
+					}
+					cmd = fmt.Sprintf("SSH_CONNECTION='%s %d %s %d'; export SSH_CONNECTION; %s", client, r.Port, l.IP, l.Port, cmd)
 				}
 			}
 			s.mu.Unlock()

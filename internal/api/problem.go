@@ -21,6 +21,8 @@ type Problem struct {
 	Retryable  *bool             `json:"retryable,omitempty"`
 	RequestID  string            `json:"request_id,omitempty"`
 	Fields     map[string]string `json:"fields,omitempty"`
+	// Problems lists document validation problems (firewall designer).
+	Problems any `json:"problems,omitempty"`
 }
 
 func (p *Problem) Error() string { return p.Code + ": " + p.Detail }

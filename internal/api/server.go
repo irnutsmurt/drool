@@ -244,6 +244,12 @@ func (s *Server) routes() []route {
 		{method: "POST", path: APIPrefix + "/firewall/apply", auth: authed, perm: auth.PermFirewallWrite, h: s.handleFirewallApply},
 		{method: "GET", path: APIPrefix + "/firewall/transactions", auth: authed, perm: auth.PermFirewallRead, h: s.handleListFirewallTransactions},
 		{method: "GET", path: APIPrefix + "/firewall/transactions/{id}", auth: authed, perm: auth.PermFirewallRead, h: s.handleGetFirewallTransaction},
+		{method: "GET", path: APIPrefix + "/firewall/document", auth: authed, perm: auth.PermFirewallRead, h: s.handleGetFirewallDocument},
+		{method: "PUT", path: APIPrefix + "/firewall/document", auth: authed, perm: auth.PermFirewallWrite, h: s.handleSaveFirewallDocument},
+		{method: "POST", path: APIPrefix + "/firewall/document/check", auth: authed, perm: auth.PermFirewallRead, h: s.handleCheckFirewallDocument},
+		{method: "POST", path: APIPrefix + "/firewall/document/explain", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallDraftExplain},
+		{method: "GET", path: APIPrefix + "/firewall/layout", auth: authed, perm: auth.PermFirewallRead, h: s.handleGetFirewallLayout},
+		{method: "PUT", path: APIPrefix + "/firewall/layout", auth: authed, perm: auth.PermFirewallWrite, h: s.handleSetFirewallLayout},
 		{method: "POST", path: APIPrefix + "/firewall/simulate", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallSimulate},
 		{method: "GET", path: APIPrefix + "/firewall/propagation", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallPropagation},
 	}

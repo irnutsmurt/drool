@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"drool/internal/firewall/compile"
+	"drool/internal/firewall/document"
 	"drool/internal/firewall/nftables"
 	"drool/internal/firewall/policy"
 )
@@ -20,6 +21,10 @@ type SimRequest struct {
 	ToAddress   string `json:"to_address,omitempty"`
 	Protocol    string `json:"protocol"`
 	Port        int    `json:"port"`
+	// A draft from the Firewall Designer: simulate it instead of the stored
+	// policy (same compiler, same evaluator).
+	Document *document.Document `json:"document,omitempty"`
+	YAML     *string            `json:"yaml,omitempty"`
 }
 
 // SimHop is one host's decision.
@@ -85,7 +90,7 @@ func (s *Service) Simulate(ctx context.Context, req SimRequest) (*SimResult, err
 	if req.Port < 1 || req.Port > 65535 {
 		return nil, ValidationError("port must be 1-65535")
 	}
-	w, err := s.World(ctx)
+	w, err := s.draftOrStored(ctx, &DocInput{Document: req.Document, YAML: req.YAML})
 	if err != nil {
 		return nil, err
 	}

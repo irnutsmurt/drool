@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -375,6 +376,14 @@ func (s *Service) checkRefs(ctx context.Context, q *db.Queries, p policy.Policy)
 			if _, err := q.GetGroup(ctx, sel.ID); err != nil {
 				return ValidationError("unknown group %s", sel.ID)
 			}
+		case policy.SelNetwork:
+			nets, err := q.ListFwNetworks(ctx)
+			if err != nil {
+				return err
+			}
+			if !slices.ContainsFunc(nets, func(n db.FwNetwork) bool { return n.ID == sel.ID }) {
+				return ValidationError("unknown network %s", sel.ID)
+			}
 		}
 	}
 	return nil
@@ -589,6 +598,22 @@ func (s *Service) World(ctx context.Context) (*compile.World, error) {
 		g := w.Groups[m.GroupID]
 		g.Members = append(g.Members, m.HostID)
 		w.Groups[m.GroupID] = g
+	}
+	nets, err := q.ListFwNetworks(ctx)
+	if err != nil {
+		return nil, err
+	}
+	w.Networks = map[string]compile.NetworkRef{}
+	for _, n := range nets {
+		var cidrs []string
+		json.Unmarshal([]byte(n.CidrsJson), &cidrs)
+		nr := compile.NetworkRef{ID: n.ID, Name: n.Name}
+		for _, c := range cidrs {
+			if p, err := netip.ParsePrefix(c); err == nil {
+				nr.Prefixes = append(nr.Prefixes, p.Masked())
+			}
+		}
+		w.Networks[n.ID] = nr
 	}
 	svcs, _, err := s.Services(ctx)
 	if err != nil {

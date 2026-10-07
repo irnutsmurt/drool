@@ -19,6 +19,7 @@ const (
 	SelInternal = "internal" // internal_ranges
 	SelAny      = "any"      // as a destination: every managed host; as a peer: any address
 	SelCIDR     = "cidr"     // a literal network
+	SelNetwork  = "network"  // a named network object (one or more CIDRs)
 )
 
 // Selector is one side of a policy.
@@ -30,7 +31,7 @@ type Selector struct {
 
 func (s Selector) String() string {
 	switch s.Kind {
-	case SelHost, SelGroup:
+	case SelHost, SelGroup, SelNetwork:
 		return s.Kind + ":" + s.ID
 	case SelCIDR:
 		return s.CIDR
@@ -216,7 +217,7 @@ func Validate(p Policy, services map[string]Service) error {
 	check := func(side string, ss []Selector) error {
 		for _, s := range ss {
 			switch s.Kind {
-			case SelHost, SelGroup:
+			case SelHost, SelGroup, SelNetwork:
 				if s.ID == "" {
 					return fmt.Errorf("%s: %s needs an id", side, s.Kind)
 				}

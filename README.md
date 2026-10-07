@@ -64,7 +64,10 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
 - **Firewall** (on `main`): policies from hosts, groups and services ("web may reach database on
   PostgreSQL"), compiled to nftables, explained per host, simulated ("can A reach B?"), and applied
   as dead-man transactions that roll back on their own if DROOL loses the host. Plain-nftables
-  hosts only; Docker, firewalld, UFW and Tailscale are detected and refused.
+  hosts only; Docker, firewalld, UFW and Tailscale are detected and refused. The **Firewall
+  Designer** edits the policy as a topology, as rules or as YAML, and shows DROOL's own management
+  paths and anything that would cut them.
+- **Appearance:** Light, Dark or System (follows your OS), from the header or *Settings → Account*.
 - **Accounts and audit:** local users with roles (admin, operator, auditor, viewer), API tokens,
   credentials encrypted at rest, an append-only audit log of every change.
 - **Backup and restore** from the command line.
@@ -448,9 +451,9 @@ Minimal cloud images (Debian 12 genericcloud, for example) don't include nftable
    - **Monitor** observes connections and explains what a policy would do.
    - **Guided** also suggests policies from what it saw.
    - **Enforce** applies the policy.
-3. Under **Firewall → Policies**, create policies from hosts, groups and services. Use **internal
-   networks**, **the internet** (everything outside the internal ranges), **anywhere** or a CIDR for
-   other peers.
+3. In **Firewall → Designer**, draw or write the policy (see below): hosts, groups, named networks,
+   **internal networks**, **the internet** (everything outside the internal ranges), **anywhere** or
+   a CIDR, and the services between them. **Save policy** when the preview looks right.
 4. Check the result: the host's **Effective policy** tab lists every allowance with its reason, and
    **Firewall → Can A reach B?** answers questions like "can web01 reach database01 on TCP 5432?".
 5. Click **Apply policy** on the host, or select hosts under **Firewall → Hosts**.
@@ -460,9 +463,67 @@ allowed unless you set the host's outbound mode to **restrict**. Deny policies a
 over allows.
 
 Built-in services: ssh, dns (UDP **and** TCP 53), http, https, ntp, postgres, mysql, redis, smtp,
-submission, imap, smb, nfs, ping, mdns, mqtt, wireguard. Add your own under **Firewall →
-Services**. Internal ranges (RFC 1918, CGNAT/Tailscale, IPv6 ULA, link-local, loopback) are editable
+submission, imap, smb, nfs, ping, mdns, mqtt, wireguard. Add your own in the designer (a custom
+protocol/port, or **Rules → Services**). Internal ranges (RFC 1918, CGNAT/Tailscale, IPv6 ULA, link-local, loopback) are editable
 under **Firewall → Settings**. Add your routed LANs, VLANs and VPNs there.
+
+### Firewall Designer
+
+**Firewall → Designer** shows the same policy three ways. Edit in whichever suits you; the other two
+follow immediately, because they are views of one document.
+
+- **Topology** — boxes for hosts, groups, networks, the Internet and internal networks; arrows for
+  allowed (blue) or denied (red, dashed) communication, labelled with each service and what it
+  means on the wire (`ssh (TCP 22)`, `app-8812 (TCP 8812)`). Drag from the right edge of one box to
+  another to add a rule; click a line or its label to see the rules behind it, the affected hosts
+  and **Can it reach…?**; click a host to see what it allows inbound and outbound, its denies and
+  DROOL's own access. Lines mean *allowed communication*, not cabling: moving boxes only changes the
+  picture (it is remembered). A group is one box and one line however many hosts it has; **Show
+  members** expands it. Use the filter, **All hosts**, **Auto layout** and **Fit** on large fleets.
+- **Rules** — the same with ordinary forms and tables (keyboard-friendly): rules in order, with
+  move up/down, plus networks, groups and custom services.
+- **YAML** — the same policy as text, e.g.
+
+  ```yaml
+  networks:
+    admin-lan:
+      cidr: 192.168.1.0/24
+  groups:
+    ssh-managed:
+      members: [server-a, server-b, server-c]
+  services:
+    app-8812:
+      protocol: tcp
+      port: 8812
+  policy:
+    - name: admin-to-jump
+      from: admin-lan
+      to: jump-a
+      allow: [ssh]
+    - name: server-a-to-server-b
+      from: server-a
+      to: server-b
+      allow: [app-8812]
+  ```
+
+  Names can be written bare when they're unambiguous, or as `host:web1`, `group:web`,
+  `network:admin-lan`. YAML goes through exactly the same checks as the other views; mistakes are
+  shown with their line. Comments and formatting are not kept (DROOL rewrites it in a standard
+  form).
+
+The **Preview** panel lists every host that changes (new allowances, new denies, removed ones),
+hosts where enforcement is refused, validation problems and anything that would block applying.
+Nothing reaches a host until you apply.
+
+**DROOL's own access is drawn separately**, as dashed green *Protected DROOL management path* lines
+from the **DROOL Controller** (through jump hosts) or from agents to the controller. You can't edit
+them. If a draft would cut one — a deny, a group or network change, a redefined service, anything
+whose effect blocks it — a red **Management path blocked** banner names the host, the required path
+and the blocked segment, the canvas highlights it, saving asks you to confirm, and applying is
+refused. (Deleting an allow can't cut it: DROOL always allows its own path ahead of every rule.)
+
+Groups in the designer are DROOL's host groups: changing members here changes the group
+everywhere. Removing a group from the YAML doesn't delete it (do that on the Groups page).
 
 ### How applying works (you can't lock yourself out)
 
@@ -635,6 +696,11 @@ plain HTTP to the network by accident.
   - Reloading `nftables.service` with a config that flushes the ruleset removes DROOL's rules
     until the next apply or boot; DROOL reports it as drift.
   - Agents sample connections every 30 seconds, so very short-lived connections can be missed.
+  - Designer: one person editing at a time works best — a second save from an older draft is
+    refused (reload and redo). YAML comments and formatting are not kept. Drawing is mouse/touch;
+    everything can also be done from the keyboard in the Rules view. Very large expanded groups
+    (hundreds of hosts) are slow to draw; keep them collapsed or filter.
+  - Appearance is saved per browser, not per account.
 - **Local accounts only;** no MFA or single sign-on yet.
 - **Backup and restore are command-line only** (Settings → System shows the commands).
 - The **web UI is functional, not polished**; a visual design pass comes later.
@@ -664,7 +730,7 @@ make dev     # terminal 2: Vite dev server with hot reload, proxying /api
 ## Development
 
 ```sh
-make test               # Go tests + frontend typecheck
+make test               # Go tests + frontend typecheck + frontend unit tests (vitest)
 make vet fmt-check
 make generate           # regenerate sqlc code and TypeScript API types
 make check-generated    # CI: fail if generated code is stale
@@ -674,6 +740,10 @@ make test-integration   # real distributions in unprivileged containers (Docker,
 The VM tests for real systemd and reboots are opt-in and slow (software emulation, no special
 privileges): `go test -tags integration ./test/integration -run TestVM -vm debian-12 -v -timeout 4h`.
 
+Browser tests (`web/e2e`: the Firewall Designer, Light/Dark/System, contrast in both themes) run
+against containers with `go test -tags integration ./test/integration -run TestBrowser -v`. They need
+Chromium (`CHROME=/path/to/chromium`, default `/usr/bin/chromium`) and `npm ci` in `web/`.
+
 The REST contract lives in [`api/openapi.yaml`](api/openapi.yaml). A Go test fails if routes
 and the spec drift apart. The UI's TypeScript client types are generated from the spec.
 
@@ -681,5 +751,6 @@ and the spec drift apart. The UI's TypeScript client types are generated from th
 
 All colors, radii and fonts are semantic design tokens in `web/src/styles/index.css`, and
 components use only those tokens through Tailwind utilities (`bg-surface`, `text-muted`,
-`border-line`, ...). UI primitives live in `web/src/components/ui/`. Restyling means changing
+`border-line`, ...). Each token has a light and a dark value (not an inversion); the browser
+contrast test checks both themes against WCAG AA. UI primitives live in `web/src/components/ui/`. Restyling means changing
 tokens and primitives, not pages.

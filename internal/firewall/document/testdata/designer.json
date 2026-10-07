@@ -1,0 +1,21 @@
+{
+  "networks": [
+    {"name": "admin-lan", "description": "", "cidrs": ["192.168.1.0/24"]},
+    {"name": "v6-lan", "description": "", "cidrs": ["2001:db8:10::/48"]}
+  ],
+  "groups": [
+    {"name": "ssh-managed", "description": "", "members": ["server-a", "server-b", "server-c"]}
+  ],
+  "services": [
+    {"name": "app-8812", "description": "", "entries": [{"protocol": "tcp", "ports": "8812"}]},
+    {"name": "tcp-23", "description": "", "entries": [{"protocol": "tcp", "ports": "23"}]}
+  ],
+  "policy": [
+    {"name": "admin-to-jump", "description": "", "enabled": true, "action": "allow", "from": ["network:admin-lan"], "to": ["host:jump-a"], "services": ["ssh"]},
+    {"name": "jump-to-servers", "description": "", "enabled": true, "action": "allow", "from": ["host:jump-a"], "to": ["group:ssh-managed"], "services": ["ssh"]},
+    {"name": "server-a-to-server-b", "description": "", "enabled": true, "action": "allow", "from": ["host:server-a"], "to": ["host:server-b"], "services": ["app-8812", "https"]},
+    {"name": "web-from-internet", "description": "", "enabled": true, "action": "allow", "from": ["internet"], "to": ["host:server-b"], "services": ["https"]},
+    {"name": "v6-admin", "description": "", "enabled": true, "action": "allow", "from": ["network:v6-lan"], "to": ["host:jump-a"], "services": ["ssh"]},
+    {"name": "no-telnet", "description": "", "enabled": true, "action": "deny", "from": ["any"], "to": ["group:ssh-managed"], "services": ["tcp-23"]}
+  ]
+}
