@@ -31,6 +31,7 @@ import (
 	"drool/internal/inventory"
 	"drool/internal/logging"
 	"drool/internal/mgmt"
+	"drool/internal/netmon/netsvc"
 	"drool/internal/secrets"
 	"drool/internal/sshx"
 	"drool/internal/store"
@@ -55,6 +56,10 @@ type harness struct {
 	// (fake nft, systemd-run; see firewall_test.go), fwFake its fake kernel.
 	fwSSH  hostfw.Paths
 	fwFake string
+	// net is network monitoring; geoDir its (initially empty) GeoIP
+	// database directory.
+	net    *netsvc.Service
+	geoDir string
 }
 
 func newHarness(t *testing.T) *harness {
@@ -110,6 +115,8 @@ func newHarness(t *testing.T) *harness {
 	fwCtx, fwCancel := context.WithCancel(context.Background())
 	go fw.Run(fwCtx)
 	t.Cleanup(fwCancel)
+	geoDir := t.TempDir()
+	network := netsvc.New(netsvc.Deps{Store: st, Firewall: fw, GeoIPDir: geoDir, Log: logs.App})
 	eng := engine.New(st, inv, router, auditW, logs.Job, engine.Config{RetryDelay: 10 * time.Millisecond})
 	if err := eng.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -117,7 +124,7 @@ func newHarness(t *testing.T) *harness {
 	srv, err := New(Deps{
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng, Simulator: router, Files: router, Artifacts: arts,
-		Agents: agents, Router: router, Firewall: fw,
+		Agents: agents, Router: router, Firewall: fw, Network: network,
 		UI: fstest.MapFS{
 			"index.html":    {Data: []byte("<!doctype html><title>ui</title>")},
 			"assets/app.js": {Data: []byte("console.log(1)")},
@@ -131,7 +138,7 @@ func newHarness(t *testing.T) *harness {
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return &harness{t: t, srv: srv, ts: ts, auth: authSvc, st: st, eng: eng, agents: agents, pki: pki, router: router,
-		fw: fw, fwSSH: fwSSH, fwFake: fwFake}
+		fw: fw, fwSSH: fwSSH, fwFake: fwFake, net: network, geoDir: geoDir}
 }
 
 func (h *harness) mkUser(name, role string) {

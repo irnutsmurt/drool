@@ -33,15 +33,6 @@ func (q *Queries) DeleteFwNetwork(ctx context.Context, id string) error {
 	return err
 }
 
-const deleteFwObservations = `-- name: DeleteFwObservations :exec
-DELETE FROM fw_observations WHERE host_id = ?
-`
-
-func (q *Queries) DeleteFwObservations(ctx context.Context, hostID string) error {
-	_, err := q.db.ExecContext(ctx, deleteFwObservations, hostID)
-	return err
-}
-
 const deleteFwPolicy = `-- name: DeleteFwPolicy :exec
 DELETE FROM fw_policies WHERE id = ?
 `
@@ -569,48 +560,6 @@ func (q *Queries) ListFwNetworks(ctx context.Context) ([]FwNetwork, error) {
 	return items, nil
 }
 
-const listFwObservations = `-- name: ListFwObservations :many
-SELECT host_id, direction, protocol, port, peer, source, count, first_seen, last_seen FROM fw_observations WHERE host_id = ? ORDER BY count DESC, last_seen DESC LIMIT ?
-`
-
-type ListFwObservationsParams struct {
-	HostID string
-	Limit  int64
-}
-
-func (q *Queries) ListFwObservations(ctx context.Context, arg ListFwObservationsParams) ([]FwObservation, error) {
-	rows, err := q.db.QueryContext(ctx, listFwObservations, arg.HostID, arg.Limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []FwObservation{}
-	for rows.Next() {
-		var i FwObservation
-		if err := rows.Scan(
-			&i.HostID,
-			&i.Direction,
-			&i.Protocol,
-			&i.Port,
-			&i.Peer,
-			&i.Source,
-			&i.Count,
-			&i.FirstSeen,
-			&i.LastSeen,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listFwPolicies = `-- name: ListFwPolicies :many
 SELECT id, name, description, enabled, "action", from_json, to_json, services_json, position, created_by, created_at, updated_at FROM fw_policies ORDER BY position, created_at
 `
@@ -841,15 +790,6 @@ func (q *Queries) MaxFwPolicyPosition(ctx context.Context) (int64, error) {
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
-}
-
-const pruneFwObservations = `-- name: PruneFwObservations :exec
-DELETE FROM fw_observations WHERE last_seen < ?
-`
-
-func (q *Queries) PruneFwObservations(ctx context.Context, lastSeen int64) error {
-	_, err := q.db.ExecContext(ctx, pruneFwObservations, lastSeen)
-	return err
 }
 
 const setFwHostApplied = `-- name: SetFwHostApplied :exec
@@ -1172,43 +1112,6 @@ func (q *Queries) UpsertFwMgmtObservation(ctx context.Context, arg UpsertFwMgmtO
 		arg.Address,
 		arg.Port,
 		arg.ObservedAt,
-	)
-	return err
-}
-
-const upsertFwObservation = `-- name: UpsertFwObservation :exec
-INSERT INTO fw_observations (host_id, direction, protocol, port, peer, source, count, first_seen, last_seen)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (host_id, direction, protocol, port, peer) DO UPDATE SET
-  count = CASE WHEN excluded.source = 'snapshot' THEN max(fw_observations.count, excluded.count) ELSE fw_observations.count + excluded.count END,
-  source = CASE WHEN fw_observations.source = 'agent' THEN 'agent' ELSE excluded.source END,
-  first_seen = min(fw_observations.first_seen, excluded.first_seen),
-  last_seen = max(fw_observations.last_seen, excluded.last_seen)
-`
-
-type UpsertFwObservationParams struct {
-	HostID    string
-	Direction string
-	Protocol  string
-	Port      int64
-	Peer      string
-	Source    string
-	Count     int64
-	FirstSeen int64
-	LastSeen  int64
-}
-
-func (q *Queries) UpsertFwObservation(ctx context.Context, arg UpsertFwObservationParams) error {
-	_, err := q.db.ExecContext(ctx, upsertFwObservation,
-		arg.HostID,
-		arg.Direction,
-		arg.Protocol,
-		arg.Port,
-		arg.Peer,
-		arg.Source,
-		arg.Count,
-		arg.FirstSeen,
-		arg.LastSeen,
 	)
 	return err
 }

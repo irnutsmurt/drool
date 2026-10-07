@@ -13,6 +13,7 @@ import (
 	"drool/internal/firewall/hostfw"
 	"drool/internal/firewall/nftables"
 	"drool/internal/model"
+	"drool/internal/netmon"
 	"drool/internal/store/db"
 )
 
@@ -56,8 +57,10 @@ func (s *Service) OnTelemetry(hostID, kind string, payload []byte) {
 			s.recordAgentEndpoints(ctx, hostID, rep)
 			s.recordStatus(ctx, hostID, rep.Status)
 		}
-	case "flows":
-		s.ingestFlows(ctx, hostID, payload, "agent")
+	case "flows": // M8 agents
+		s.ingestFlows(ctx, hostID, payload)
+	case "netflows": // M10 agents
+		s.ingestReport(ctx, hostID, payload)
 	}
 }
 
@@ -71,7 +74,24 @@ func (s *Service) pushLearning(ctx context.Context, hostID string) {
 		return
 	}
 	c := s.HostConfig(ctx, hostID)
-	s.d.Agents.SendFirewallConfig(hostID, c.Mode != ModeOff, 30)
+	s.d.Agents.SendFirewallConfig(hostID, netmon.LoadSettings(ctx, s.d.Store.R).Collects(c.Mode), 30)
+}
+
+// PushCollection tells every connected agent whether to collect
+// connections (after the network settings changed).
+func (s *Service) PushCollection(ctx context.Context) {
+	if s.d.Agents == nil {
+		return
+	}
+	hosts, err := s.d.Store.R.ListHosts(ctx)
+	if err != nil {
+		return
+	}
+	for _, h := range hosts {
+		if _, ok := s.d.Agents.SessionFor(h.ID); ok {
+			s.pushLearning(ctx, h.ID)
+		}
+	}
 }
 
 // recordStatus stores the tooling status and derives drift.
@@ -166,7 +186,6 @@ func (s *Service) Run(ctx context.Context) {
 		s.converge(ctx, s.now().Sub(lastDrift) > 5*time.Minute)
 		if s.now().Sub(lastDrift) > 5*time.Minute {
 			lastDrift = s.now()
-			s.d.Store.W.PruneFwObservations(ctx, s.now().Add(-30*24*time.Hour).Unix())
 		}
 		select {
 		case <-ctx.Done():

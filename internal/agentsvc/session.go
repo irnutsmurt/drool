@@ -467,7 +467,7 @@ func (s *Service) renew(ctx context.Context, se *Session) {
 // storage as SSH polling, so stale-data rules stay the same.
 func (s *Service) ingestTelemetry(ctx context.Context, se *Session, t *pb.Telemetry) {
 	hostID := se.ident.HostID
-	if t.Kind == "firewall" || t.Kind == "flows" {
+	if t.Kind == "firewall" || t.Kind == "flows" || t.Kind == "netflows" {
 		if fh := s.firewallHooks(); fh != nil {
 			fh.OnTelemetry(hostID, t.Kind, t.Output)
 		}

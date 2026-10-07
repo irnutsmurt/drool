@@ -18,6 +18,7 @@ import (
 	"drool/internal/agentcaps"
 	"drool/internal/auth"
 	"drool/internal/firewall/hostfw"
+	"drool/internal/netmon/collect"
 	"drool/internal/sshx/sshtest"
 	"drool/internal/store/db"
 )
@@ -227,7 +228,7 @@ func (e *fwEnv) sshFwHost(t *testing.T, name string) (string, *sshtest.Server) {
 
 // agentFwHost enrolls an agent-only host whose tooling lives in its own
 // fake host directory.
-func (e *fwEnv) agentFwHost(t *testing.T, name string, caps agentcaps.Caps) (string, *runningAgent, string, hostfw.Paths) {
+func (e *fwEnv) agentFwHost(t *testing.T, name string, caps agentcaps.Caps, mods ...func(*agent.Options)) (string, *runningAgent, string, hostfw.Paths) {
 	t.Helper()
 	p := agentPaths(t, caps)
 	tok := e.token(t, map[string]any{"preset": "full", "description": name})
@@ -236,7 +237,14 @@ func (e *fwEnv) agentFwHost(t *testing.T, name string, caps agentcaps.Caps) (str
 		t.Fatal(err)
 	}
 	fake, fp := fakeHostDir(t, name)
-	a, err := agent.New(agent.Options{Paths: p, Version: "v1.0.0", StatusEvery: time.Second, RenewCheck: time.Hour, Supervisor: "exit", FirewallPaths: &fp})
+	opts := agent.Options{Paths: p, Version: "v1.0.0", StatusEvery: time.Second, RenewCheck: time.Hour, Supervisor: "exit", FirewallPaths: &fp,
+		// The in-process agent runs on the developer's machine: it must not
+		// read that machine's sockets or conntrack.
+		NetCollect: &collect.Options{DisableConntrack: true, SS: func(context.Context) (string, error) { return "", nil }}}
+	for _, m := range mods {
+		m(&opts)
+	}
+	a, err := agent.New(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,9 +286,19 @@ func TestFirewallAgentTransaction(t *testing.T) {
 	}
 	// Monitor mode: applying is refused. The agent learns (the setting is
 	// pushed after the change commits, not from inside its transaction).
+	// Since M10 collection follows the network settings: every agent host
+	// by default, or (collection "firewall") only hosts whose firewall mode
+	// isn't off — the M8 behaviour.
 	e.setHost(t, hostID, map[string]any{"mode": "monitor"})
 	eventually(t, 5*time.Second, "learning on", func() bool { return ag.a.Learning() })
 	e.setHost(t, hostID, map[string]any{"mode": "off"})
+	time.Sleep(300 * time.Millisecond)
+	if !ag.a.Learning() {
+		t.Fatal("collection stopped with the firewall mode although network collection is on for all hosts")
+	}
+	if r := e.c.do("PUT", "/api/v1/network/settings", map[string]any{"collection": "firewall", "retention_days": 30, "max_flows_per_host": 5000, "enrichment": true}); r.status != 200 {
+		t.Fatalf("network settings: %d %s", r.status, r.body)
+	}
 	eventually(t, 5*time.Second, "learning off", func() bool { return !ag.a.Learning() })
 	e.setHost(t, hostID, map[string]any{"mode": "monitor"})
 	eventually(t, 5*time.Second, "learning on again", func() bool { return ag.a.Learning() })

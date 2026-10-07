@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   addRule, affectedHosts, allServices, connect, deleteRule, emptyDoc, ensureCustomService, moveRule, rulesUsing, rulesUsingService,
-  toGraph, upsertGroup, upsertNetwork, upsertService, validPorts, type Doc, type ServiceInfo, type TopologyOptions,
+  toGraph, upsertGroup, upsertNetwork, upsertService, validPorts, type Doc, type ObsEdge, type Observed, type ServiceInfo, type TopologyOptions,
 } from "./model";
 
 // The cross-view golden test (with internal/firewall/document TestGolden):
@@ -179,5 +179,71 @@ describe("edits", () => {
     const hs = hosts;
     expect(affectedHosts(golden, golden.policy[1]!, hs)).toEqual(["server-a", "server-b", "server-c"]);
     expect(affectedHosts(golden, golden.policy[5]!, hs)).toEqual(["jump-a", "server-a", "server-b", "server-c"]);
+  });
+});
+
+// --- M10: observed traffic on the same canvas ------------------------------
+
+const obsEdge = (source: string, target: string, worst: string, count: number, port = 443): ObsEdge => ({
+  id: `obs|${source}|${target}`, source, target, services: [{ protocol: "tcp", port, service: port === 443 ? "https" : "", count }],
+  count, flows: 1, status: { [worst]: 1 }, worst, would_deny: worst === "denied" ? 1 : 0, processes: ["curl"],
+  first_seen: "2026-10-01T00:00:00Z", last_seen: "2026-10-07T00:00:00Z", flow_ids: [1],
+});
+const observed: Observed = {
+  nodes: [
+    { key: "asn:15169", kind: "asn", label: "Google LLC", detail: "AS15169 · US", members: [{ ip: "142.250.1.1", flows: 1 }], member_total: 3 },
+    { key: "asn:other", kind: "asn", label: "Other external networks", detail: "", members: [], member_total: 40 },
+  ],
+  edges: [
+    obsEdge("host:server-a", "asn:15169", "covered", 10),
+    obsEdge("host:server-b", "asn:15169", "unclassified", 5, 8812),
+    obsEdge("host:server-a", "host:server-b", "covered", 7),
+    obsEdge("host:server-c", "asn:other", "denied", 1, 25),
+    obsEdge("controller", "host:jump-a", "management", 9, 22),
+  ],
+  truncated: false, collapsed: 12, considered: 5,
+};
+
+describe("observed topology", () => {
+  it("configured mode ignores observations", () => {
+    const g = toGraph(golden, allServices(golden, builtin), opts({ mode: "configured" }), [], observed);
+    expect(g.edges.some((e) => e.kind === "observed")).toBe(false);
+    expect(g.nodes.some((n) => n.key.startsWith("asn:"))).toBe(false);
+  });
+
+  it("observed mode draws only what was seen, grouped by network owner and host group", () => {
+    const g = toGraph(golden, allServices(golden, builtin), opts({ mode: "observed" }), [], observed);
+    expect(g.edges.every((e) => e.kind === "observed")).toBe(true);
+    const ids = g.edges.map((e) => e.id).sort();
+    // server-a, server-b and server-c are members of ssh-managed: one group
+    // node; the two edges to Google merge, the edge inside the group is
+    // drawn on the group itself (skipped).
+    expect(ids).toEqual(["obs|controller|host:jump-a", "obs|group:ssh-managed|asn:15169", "obs|group:ssh-managed|asn:other"]);
+    const google = g.edges.find((e) => e.target === "asn:15169")!;
+    expect(google.obs!.count).toBe(15);
+    expect(google.obs!.worst).toBe("unclassified"); // the most notable status wins
+    expect(google.label).toMatch(/^⚠ https 443 \+1 · 15$/); // short on the canvas
+    expect(google.detail).toContain("⚠ Observed · unclassified"); // full wording: tooltip, name, details
+    expect(google.obs!.services.map((s) => s.port).sort()).toEqual([443, 8812]);
+    const asn = g.nodes.find((n) => n.key === "asn:15169")!;
+    expect(asn.kind).toBe("asn");
+    expect(asn.observed!.member_total).toBe(3);
+    expect(g.edges.find((e) => e.target === "asn:other")!.detail).toContain("✕ Observed · denied");
+  });
+
+  it("expanded groups show members; both mode overlays reality on the policy", () => {
+    const g = toGraph(golden, allServices(golden, builtin), opts({ mode: "both", expanded: new Set(["group:ssh-managed"]) }), [], observed);
+    expect(g.edges.some((e) => e.kind === "rule")).toBe(true);
+    const obsIds = g.edges.filter((e) => e.kind === "observed").map((e) => e.id).sort();
+    expect(obsIds).toContain("obs|host:server-a|host:server-b");
+    expect(obsIds).toContain("obs|host:server-a|asn:15169");
+    expect(obsIds).toContain("obs|host:server-b|asn:15169");
+  });
+
+  it("stays usable without data", () => {
+    const g = toGraph(emptyDoc(), builtin, opts({ mode: "observed" }), [], { nodes: [], edges: [], truncated: false, collapsed: 0, considered: 0 });
+    expect(g.nodes).toEqual([]);
+    expect(g.edges).toEqual([]);
+    expect(toGraph(emptyDoc(), builtin, opts({ mode: "both" }), [], undefined).edges).toEqual([]);
   });
 });

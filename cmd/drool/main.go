@@ -39,6 +39,7 @@ import (
 	"drool/internal/inventory"
 	"drool/internal/logging"
 	"drool/internal/mgmt"
+	"drool/internal/netmon/netsvc"
 	"drool/internal/poller"
 	"drool/internal/secrets"
 	"drool/internal/sshx"
@@ -408,6 +409,8 @@ func cmdServe(path string, explicit bool) error {
 	}
 	go poll.Run(ctx)
 	go fw.Run(ctx)
+	network := netsvc.New(netsvc.Deps{Store: st, Firewall: fw, GeoIPDir: cfg.GeoIPDir(), Log: logs.App.With("component", "network")})
+	go network.Run(ctx)
 	go artifactGC(ctx, arts, log)
 
 	srv, err := api.New(api.Deps{
@@ -415,7 +418,7 @@ func cmdServe(path string, explicit bool) error {
 		UI: web.Dist(), Registry: reg, TLSMode: tlsRes.Mode,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
 		Poller: poll, StaleAfter: pollCfg.StaleAfter(), Simulator: router, Files: router, Artifacts: arts,
-		Agents: agents, Router: router, WebPin: webPin(tlsRes), Firewall: fw,
+		Agents: agents, Router: router, WebPin: webPin(tlsRes), Firewall: fw, Network: network,
 	})
 	if err != nil {
 		return err

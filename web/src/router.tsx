@@ -27,6 +27,7 @@ const EditFilePage = lazy(() => import("@/pages/files/EditFilePage").then((x) =>
 const FileDeploymentPage = lazy(() => import("@/pages/files/FileDeploymentPage").then((x) => ({ default: x.FileDeploymentPage })));
 const AgentsPage = lazy(() => import("@/pages/agents/AgentsPage").then((x) => ({ default: x.AgentsPage })));
 const FirewallPage = lazy(() => import("@/pages/firewall/FirewallPage").then((x) => ({ default: x.FirewallPage })));
+const NetworkPage = lazy(() => import("@/pages/network/NetworkPage").then((x) => ({ default: x.NetworkPage })));
 const later = (el: ReactNode) => <Suspense fallback={null}>{el}</Suspense>;
 
 export const router = createBrowserRouter([
@@ -53,6 +54,7 @@ export const router = createBrowserRouter([
       { path: "jobs/:id", element: <RequirePermission permission="jobs.read"><JobDetailPage /></RequirePermission> },
       { path: "agents", element: <RequirePermission permission="agents.read">{later(<AgentsPage />)}</RequirePermission> },
       { path: "firewall", element: <RequirePermission permission="firewall.read">{later(<FirewallPage />)}</RequirePermission> },
+      { path: "network", element: <RequirePermission permission="network.read">{later(<NetworkPage />)}</RequirePermission> },
       { path: "credentials", element: <RequirePermission permission="credentials.use"><CredentialsPage /></RequirePermission> },
       { path: "audit", element: <RequirePermission permission="audit.read"><AuditPage /></RequirePermission> },
       {

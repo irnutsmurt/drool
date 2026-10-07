@@ -116,24 +116,6 @@ ORDER BY created_at DESC LIMIT sqlc.arg('lim');
 -- name: ListOpenFwTransactions :many
 SELECT * FROM fw_transactions WHERE state IN ('preparing','pending','unknown') ORDER BY created_at;
 
--- name: UpsertFwObservation :exec
-INSERT INTO fw_observations (host_id, direction, protocol, port, peer, source, count, first_seen, last_seen)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (host_id, direction, protocol, port, peer) DO UPDATE SET
-  count = CASE WHEN excluded.source = 'snapshot' THEN max(fw_observations.count, excluded.count) ELSE fw_observations.count + excluded.count END,
-  source = CASE WHEN fw_observations.source = 'agent' THEN 'agent' ELSE excluded.source END,
-  first_seen = min(fw_observations.first_seen, excluded.first_seen),
-  last_seen = max(fw_observations.last_seen, excluded.last_seen);
-
--- name: ListFwObservations :many
-SELECT * FROM fw_observations WHERE host_id = ? ORDER BY count DESC, last_seen DESC LIMIT ?;
-
--- name: DeleteFwObservations :exec
-DELETE FROM fw_observations WHERE host_id = ?;
-
--- name: PruneFwObservations :exec
-DELETE FROM fw_observations WHERE last_seen < ?;
-
 -- name: ListAllHostAddresses :many
 SELECT * FROM host_addresses ORDER BY host_id, family, address;
 

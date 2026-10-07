@@ -212,19 +212,20 @@ export function renameRef(doc: Doc, from: string, to: string): Doc {
 
 // --- topology ----------------------------------------------------------------
 
-export type NodeKind = RefKind | "controller";
+export type NodeKind = RefKind | "controller" | "asn" | "ip" | "more" | "special";
 export type GNode = {
-  key: string; // a reference ("host:web1", "internet", ...) or "controller"
+  key: string; // a reference ("host:web1", "internet", ...), "controller", or an observed node ("asn:15169", "ip:…")
   kind: NodeKind;
   label: string;
   detail: string; // CIDRs, member count, ...
   members?: string[]; // groups: host names
   parentGroup?: string; // a host shown as a member of an expanded group
+  observed?: ObsNode; // a node only observation knows (external networks, addresses)
 };
 export type EdgeRule = { index: number; name: string; services: string[]; enabled: boolean };
 export type GEdge = {
   id: string;
-  kind: "rule" | "member" | "mgmt";
+  kind: "rule" | "member" | "mgmt" | "observed";
   source: string;
   target: string;
   action?: Rule["action"];
@@ -233,12 +234,36 @@ export type GEdge = {
   status?: "protected" | "blocked" | "unverified";
   count?: number; // management paths aggregated into this edge
   detail?: string;
+  obs?: ObsEdge; // observed traffic (aggregated onto the visible nodes)
 };
+
+/** Observed connections, as the API returns them (GET /network/topology). */
+export type ObsNode = { key: string; kind: string; label: string; detail: string; members: { ip: string; country?: string; flows: number }[]; member_total: number; parent?: string };
+export type ObsService = { protocol: string; port: number; service: string; count: number };
+export type ObsEdge = {
+  id: string; source: string; target: string; services: ObsService[]; count: number; flows: number;
+  status: Record<string, number>; worst: string; would_deny: number; processes: string[]; first_seen: string; last_seen: string; flow_ids: number[];
+};
+export type Observed = { nodes: ObsNode[]; edges: ObsEdge[]; truncated: boolean; collapsed: number; considered: number };
+export type TopologyMode = "configured" | "observed" | "both";
+
+const statusRank: Record<string, number> = { management: 0, covered: 1, unclassified: 2, denied: 3 };
+export const obsIcon: Record<string, string> = { covered: "✓", management: "⛨", unclassified: "⚠", denied: "✕" };
+export const obsStatusLabel: Record<string, string> = {
+  covered: "✓ Observed · covered", management: "⛨ Observed · DROOL management", unclassified: "⚠ Observed · unclassified", denied: "✕ Observed · denied",
+};
+
+/** "HTTPS 443, TCP 8812 +2" */
+export function obsServicesLabel(svcs: ObsService[]): string {
+  const parts = svcs.slice(0, 3).map((s) => `${s.service ? s.service + " " : ""}${s.protocol.toUpperCase()} ${s.port}`);
+  return parts.join(", ") + (svcs.length > 3 ? ` +${svcs.length - 3}` : "");
+}
 
 export type MgmtHop = { from: string; from_name: string; to: string; to_name: string; protocol: string; port: number; status: string; detail: string; blocked_by: string[]; at_risk?: boolean };
 export type MgmtPath = { host_id: string; host: string; kind: string; mode: string; hops: MgmtHop[]; blocked: boolean; unverified: boolean; at_risk?: boolean };
 
 export type TopologyOptions = {
+  mode?: TopologyMode; // configured (default), observed, or both
   expanded: Set<string>; // group refs shown with their members
   pinned: Set<string>; // nodes kept on the canvas without rules
   showAllHosts: boolean;
@@ -250,7 +275,8 @@ export type TopologyOptions = {
 /** Turns the document into nodes and grouped edges. One edge per source,
  * destination and action, listing every rule and service on it, so a group
  * rule is one line however many members the group has. */
-export function toGraph(doc: Doc, all: ServiceInfo[], opt: TopologyOptions, mgmt: MgmtPath[] = []): { nodes: GNode[]; edges: GEdge[] } {
+export function toGraph(doc: Doc, all: ServiceInfo[], opt: TopologyOptions, mgmt: MgmtPath[] = [], observed?: Observed): { nodes: GNode[]; edges: GEdge[] } {
+  const mode = opt.mode ?? "configured";
   const nodes = new Map<string, GNode>();
   const groupOf = new Map<string, string[]>(); // host name → group refs it belongs to
   for (const g of doc.groups) for (const m of g.members) groupOf.set(m.toLowerCase(), [...(groupOf.get(m.toLowerCase()) ?? []), `group:${g.name}`]);
@@ -278,7 +304,8 @@ export function toGraph(doc: Doc, all: ServiceInfo[], opt: TopologyOptions, mgmt
   };
 
   const ruleEdges = new Map<string, GEdge>();
-  doc.policy.forEach((r, index) => {
+  // Observed only: the configured rules stay off the canvas.
+  if (mode !== "observed") doc.policy.forEach((r, index) => {
     for (const f of r.from) {
       for (const t of r.to) {
         addNode(f);
@@ -309,6 +336,80 @@ export function toGraph(doc: Doc, all: ServiceInfo[], opt: TopologyOptions, mgmt
         nodes.get(ref)!.parentGroup = n.key;
       }
       edges.push({ id: `member|${n.key}|${ref}`, kind: "member", source: n.key, target: ref, rules: [], label: "member" });
+    }
+  }
+
+  // Observed traffic: each end attaches to the node that shows it (a host,
+  // the collapsed group it belongs to, a named network, an external
+  // network owner); edges landing on the same pair merge.
+  if (mode !== "configured" && observed) {
+    const obsNodes = new Map(observed.nodes.map((n) => [n.key, n]));
+    const place = (key: string): string => {
+      if (key.startsWith("host:")) {
+        const name = key.slice(5);
+        const own = nodes.get(key);
+        if (own) return key;
+        // Large fleets: a host in a (collapsed) group is drawn as the group.
+        const group = (groupOf.get(name.toLowerCase()) ?? []).find((g) => nodes.has(g) && !opt.expanded.has(g))
+          ?? (groupOf.get(name.toLowerCase()) ?? []).find((g) => !opt.expanded.has(g));
+        if (group) {
+          addNode(group);
+          return group;
+        }
+        addNode(key);
+        return key;
+      }
+      if (key === "controller") {
+        if (!nodes.has("controller")) nodes.set("controller", { key: "controller", kind: "controller", label: "DROOL Controller", detail: "management (read-only)" });
+        return key;
+      }
+      const on = obsNodes.get(key);
+      if (on && (on.kind === "asn" || on.kind === "ip" || on.kind === "more" || on.kind === "special")) {
+        if (!nodes.has(key)) nodes.set(key, { key, kind: on.kind as NodeKind, label: on.label, detail: on.detail, observed: on });
+        return key;
+      }
+      addNode(key); // network:NAME, internal, internet
+      const n = nodes.get(key)!;
+      if (on) n.observed = on;
+      return key;
+    };
+    const merged = new Map<string, GEdge>();
+    for (const oe of observed.edges) {
+      const s0 = place(oe.source);
+      const t0 = place(oe.target);
+      if (s0 === t0) continue;
+      const id = `obs|${s0}|${t0}`;
+      const prev = merged.get(id);
+      if (!prev) {
+        merged.set(id, { id, kind: "observed", source: s0, target: t0, rules: [], label: "", obs: { ...oe, id, source: s0, target: t0, services: [...oe.services], status: { ...oe.status }, processes: [...oe.processes], flow_ids: [...oe.flow_ids] } });
+        continue;
+      }
+      const o = prev.obs!;
+      o.count += oe.count;
+      o.flows += oe.flows;
+      o.would_deny += oe.would_deny;
+      for (const [k, v] of Object.entries(oe.status)) o.status[k] = (o.status[k] ?? 0) + v;
+      if ((statusRank[oe.worst] ?? 0) > (statusRank[o.worst] ?? 0)) o.worst = oe.worst;
+      for (const sv of oe.services) {
+        const m = o.services.find((x) => x.protocol === sv.protocol && x.port === sv.port);
+        if (m) m.count += sv.count; else o.services.push({ ...sv });
+      }
+      o.services.sort((a, b) => b.count - a.count);
+      o.processes = [...new Set([...o.processes, ...oe.processes])].slice(0, 5);
+      o.flow_ids = [...o.flow_ids, ...oe.flow_ids].slice(0, 20);
+      if (oe.first_seen < o.first_seen) o.first_seen = oe.first_seen;
+      if (oe.last_seen > o.last_seen) o.last_seen = oe.last_seen;
+    }
+    for (const e of merged.values()) {
+      const o = e.obs!;
+      e.status = undefined;
+      // Short on the canvas (symbol, main service, count); the full wording
+      // is the line's tooltip, accessible name and details.
+      const first = o.services[0];
+      const svc = first ? `${first.service || first.protocol.toUpperCase()} ${first.port}${o.services.length > 1 ? ` +${o.services.length - 1}` : ""}` : "";
+      e.label = `${obsIcon[o.worst] ?? "•"} ${svc} · ${o.count.toLocaleString()}`;
+      e.detail = `${obsStatusLabel[o.worst] ?? "Observed"}: ${obsServicesLabel(o.services)} · ${o.count.toLocaleString()} connections`;
+      edges.push(e);
     }
   }
 

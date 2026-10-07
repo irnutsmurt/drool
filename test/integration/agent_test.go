@@ -124,6 +124,24 @@ func testAgentOnDistro(t *testing.T, d distro) {
 	c := startHost(t, image(t, d), short, true, netOuter)
 	h := addHost(t, short, c, hostOpts{})
 
+	// M10: an SSH-only host is observed by snapshots only (ss over SSH, as
+	// root through sudo): the controller's own SSH session is there,
+	// attributed to sshd and classified as DROOL management.
+	t.Run("network: SSH snapshot", func(t *testing.T) {
+		var snap struct{ Flows int }
+		ctl.must(t, "POST", "/api/v1/hosts/"+h.ID+"/network/snapshot", nil, &snap)
+		var p netFlowsT
+		ctl.must(t, "GET", "/api/v1/network/flows?host="+h.ID+"&direction=in&port=22", nil, &p)
+		if snap.Flows < 1 || len(p.Items) == 0 || p.Items[0].Process != "sshd" || p.Items[0].Source != "snapshot" || p.Items[0].Policy.Status != "management" {
+			t.Fatalf("snapshot: %+v %+v", snap, p.Items)
+		}
+		var hn hostNetT
+		ctl.must(t, "GET", "/api/v1/hosts/"+h.ID+"/network", nil, &hn)
+		if hn.Collection.Label != "Snapshot only: SSH" {
+			t.Fatalf("collection: %+v", hn.Collection)
+		}
+	})
+
 	t.Run("install over the trusted SSH connection", func(t *testing.T) {
 		installAgent(t, h.ID, "full", "")
 		a := waitAgent(t, h.ID, time.Minute, "agent connected", func(a hostAgent) bool { return a.Management.Active == "agent" })
@@ -152,6 +170,29 @@ func testAgentOnDistro(t *testing.T, d distro) {
 		jh, _ = runT(t, h.ID, svc("cron", "running", nil))
 		if jh.Transport != "agent" || jh.ErrorClass != "ConfigurationError" {
 			t.Errorf("service via agent without systemd: %+v", jh)
+		}
+	})
+
+	// M10: the agent collects continuously. An unprivileged container has
+	// no CAP_NET_ADMIN, so conntrack events are out of reach: the agent
+	// falls back to socket sampling and says why.
+	t.Run("network: continuous socket sampling", func(t *testing.T) {
+		var hn hostNetT
+		waitFor(t, 3*time.Minute, "agent network report", func() bool {
+			ctl.must(t, "GET", "/api/v1/hosts/"+h.ID+"/network", nil, &hn)
+			return hn.Collection.Source != ""
+		})
+		if hn.Collection.Mode != "continuous" || hn.Collection.Source != "sockets" || !strings.HasPrefix(hn.Collection.Label, "Continuous: socket sampling") ||
+			!strings.Contains(hn.Collection.Detail, "not seen") {
+			t.Fatalf("collection: %+v", hn.Collection)
+		}
+		var p netFlowsT
+		waitFor(t, 2*time.Minute, "the agent's own connection", func() bool {
+			ctl.must(t, "GET", fmt.Sprintf("/api/v1/network/flows?host=%s&direction=out&port=%d", h.ID, agentPort), nil, &p)
+			return len(p.Items) > 0
+		})
+		if f := p.Items[0]; f.Process != "drool-agent" || f.Source != "sockets" || f.Policy.Status != "management" {
+			t.Fatalf("agent connection: %+v", f)
 		}
 	})
 
@@ -454,3 +495,21 @@ func TestAgentUpdates(t *testing.T) {
 }
 
 var _ = fmt.Sprint
+
+// Network observation views (M10), as the API returns them.
+type netFlowsT struct {
+	Items []struct {
+		Direction string `json:"direction"`
+		Port      int    `json:"port"`
+		Process   string `json:"process"`
+		Source    string `json:"source"`
+		Count     int64  `json:"count"`
+		Policy    struct {
+			Status string `json:"status"`
+		} `json:"policy"`
+	} `json:"items"`
+}
+
+type hostNetT struct {
+	Collection struct{ Mode, Source, Label, Detail string } `json:"collection"`
+}

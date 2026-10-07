@@ -1,7 +1,7 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.5**
-Status: Draft · 2026-10-06 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
+**Design Document v0.3.6**
+Status: Draft · 2026-10-07 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
 > DROOL is a web-first platform for managing, automating, monitoring, and eventually segmenting Linux systems through SSH or an agent.
@@ -11,6 +11,20 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.5 → v0.3.6 (M10: network connectivity monitoring)
+
+The firewall (§15–19), its compiler, transactions, Designer and management-path system are unchanged. M10 makes the observations M8 already collected answer "what is this host actually talking to?":
+
+| # | As built | Section |
+|---|---|---|
+| 1 | One observation model for the firewall and the network views: a flow is host + direction + protocol + local address + service port + remote address, with last ports, process, first/last seen and a count — never one row per connection | §19.1 |
+| 2 | Agents collect from **conntrack** events when connection tracking is active, otherwise by **socket sampling**, and say which (and why). SSH hosts stay **snapshot only**. Process names come from socket ownership or are "Unknown" | §19.1 |
+| 3 | The **firewall compiler** classifies every flow: covered, DROOL management, unclassified, denied / would be denied, and "not applied yet" when the host enforces an older policy. The browser never decides | §19.4 |
+| 4 | **Internal** means the firewall's `internal_ranges`; nothing else. Public addresses are enriched with **country and network owner (ASN)** from **local** databases the operator installs; never online, never for private or special addresses; context, not a verdict | §19.4 |
+| 5 | Host **Network connections**, fleet **Network activity** (server-side filters, paging, new destinations), and the Designer's **Configured / Observed / Configured + Observed** topology with external addresses grouped by network owner | §19.4 |
+| 6 | "Create policy from observed connection" opens a **draft** in the Designer; it goes through validation, management checks, preview, save and the safe apply like any edit | §19.4 |
+| 7 | Retention (30 days) and a per-host cap bound the data; monitoring settings and enrichment changes are audited, observed connections are not | §19.4 |
 
 ### v0.3.4 → v0.3.5 (M9: Firewall Designer and theme)
 
@@ -990,8 +1004,8 @@ Authorized admins may use an explicit emergency override (audited). Even with th
 
 | Host type | Capability |
 |---|---|
-| Agent | Continuous learning (socket sampling every 30 s, aggregated; conntrack/eBPF later) |
-| SSH | **Current connection snapshot only** (`ss`, conntrack dump). Not labeled "learning" |
+| Agent | Continuous: conntrack "new connection" events when connection tracking is active (short-lived connections included), otherwise socket sampling every 30 s; aggregated; processes from socket ownership. The UI says which, and why |
+| SSH | **Current connection snapshot only** (`ss`, with processes when visible). Never labeled continuous or "learning" |
 
 Modes: **Monitor** (observe), **Guided** (observe, suggest, admin approves), **Enforce** (apply, detect drift). Observations are aggregated (e.g. "web01 → database01:5432, 12,482 connections"). Unclassified flows are highlighted.
 
@@ -1002,6 +1016,17 @@ Modes: **Monitor** (observe), **Guided** (observe, suggest, admin approves), **E
 ### 19.3 Explain Host
 
 For each host: inbound and outbound allowances, each with its reason (policy name, management path, DNS policy), plus explicit denies.
+
+### 19.4 Network connectivity monitoring
+
+Observed flows answer "what is this host talking to, over what port, using what process, and where does the remote address belong?" — visibility, not enforcement:
+
+- **Policy relationship** comes from the firewall compiler (the same evaluation as Explain Host and simulation): covered by a policy, a protected DROOL management path, unclassified, denied or would be denied; on hosts enforcing an older policy, what the host does now.
+- **Internal or external** comes from `internal_ranges`. Internal addresses show DROOL identity (host, groups, named network) next to the raw address; public ones show country and network owner (ASN) from local MaxMind-format databases. Private, loopback, link-local, multicast and documentation addresses are never looked up. GeoIP/ASN is context: nothing is labelled suspicious, scored or blocked because of a country or network.
+- **New destinations** (first seen by a host, or by the fleet, in a period) are situational awareness, not alarms.
+- **Privacy:** no packet contents, no DNS payloads, no online lookups, no observation records in application logs; reading needs `network.read` (not viewers); settings changes are audited.
+- **Topology:** the Designer overlays observed traffic on the configured policy; external addresses are grouped by network owner and expand to addresses; a list gives the same information without the canvas.
+- **Drafts, not rules:** an observed connection can start a draft rule in the Designer; it is never applied by itself.
 
 ---
 

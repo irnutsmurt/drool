@@ -19,6 +19,7 @@ import (
 	"drool/internal/hostexec"
 	"drool/internal/hostops"
 	"drool/internal/model"
+	"drool/internal/netmon"
 	"drool/internal/store/db"
 )
 
@@ -387,12 +388,13 @@ func (s *Service) Plan(ctx context.Context, hostID string, override bool) (*Plan
 	default:
 		p.Transport = "none"
 	}
-	p.Learning = "off"
-	if p.Config.Mode != ModeOff {
-		if h.ManagementMethod == "agent" {
+	// Collection follows the network settings (M10): SSH hosts only ever
+	// get snapshots.
+	p.Learning = "snapshot"
+	if h.ManagementMethod == "agent" {
+		p.Learning = "off"
+		if netmon.LoadSettings(ctx, s.d.Store.R).Collects(p.Config.Mode) {
 			p.Learning = "continuous"
-		} else {
-			p.Learning = "snapshot"
 		}
 	}
 	return p, nil

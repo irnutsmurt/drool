@@ -166,7 +166,10 @@ func setup(m *testing.M) (int, error) {
 		"DROOL_AGENT_BINARIES_DIR=" + agentDir,
 		// Per-host firewall test control (delay or skip commits; M8 tests).
 		"DROOL_TEST_FW_CONTROL=" + filepath.Join(work, "fw-control"),
+		// Synthetic network observations for the browser tests (M10).
+		"DROOL_TEST_NETFLOWS_FILE=" + filepath.Join(work, "netflows.json"),
 	}}
+	netflowsFile = filepath.Join(work, "netflows.json")
 	fwControlFile = filepath.Join(work, "fw-control")
 	if err := ctl.start(); err != nil {
 		return 0, err

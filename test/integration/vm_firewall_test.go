@@ -541,6 +541,66 @@ func testVMFirewallAgent(t *testing.T, def vmDef, v *vm, h host) {
 		}
 	})
 
+	// M10: with DROOL's firewall enforced, connection tracking is active on
+	// the host: the agent switches from socket sampling to conntrack and
+	// counts connections too short-lived for any sample.
+	t.Run("network monitoring: conntrack sees short-lived connections", func(t *testing.T) {
+		type hostNet struct {
+			Collection struct{ Mode, Source, Label, Detail string } `json:"collection"`
+		}
+		var hn hostNet
+		deadline := time.Now().Add(5 * time.Minute)
+		for {
+			ctl.must(t, "GET", "/api/v1/hosts/"+h.ID+"/network", nil, &hn)
+			if hn.Collection.Source == "conntrack" {
+				break
+			}
+			if time.Now().After(deadline) {
+				diag, _ := vmSSH(v, "sysctl net.netfilter.nf_conntrack_events net.netfilter.nf_conntrack_count 2>&1; lsmod | grep -i conntrack; journalctl -u drool-agent --no-pager | grep -i 'collection' | tail -5")
+				t.Fatalf("no conntrack collection: %+v\n%s", hn.Collection, diag)
+			}
+			time.Sleep(5 * time.Second)
+		}
+		if hn.Collection.Label != "Continuous: conntrack" {
+			t.Fatalf("collection: %+v", hn.Collection)
+		}
+		type page struct {
+			Items []struct {
+				Direction string `json:"direction"`
+				Port      int    `json:"port"`
+				Process   string `json:"process"`
+				Count     int64  `json:"count"`
+				Source    string `json:"source"`
+			} `json:"items"`
+		}
+		count := func() int64 {
+			var p page
+			ctl.must(t, "GET", fmt.Sprintf("/api/v1/network/flows?host=%s&direction=out&peer=%s&port=%d", h.ID, agentGateway, agentPort), nil, &p)
+			var n int64
+			for _, f := range p.Items {
+				n += f.Count
+			}
+			return n
+		}
+		before := count()
+		// Six TCP connections that open and close within a second.
+		mustVMSSH(t, v, fmt.Sprintf("for i in 1 2 3 4 5 6; do timeout 3 bash -c 'exec 3<>/dev/tcp/%s/%d' 2>/dev/null; sleep 0.3; done; true", agentGateway, agentPort))
+		waitFor(t, 3*time.Minute, "short-lived connections counted", func() bool { return count() >= before+6 })
+		// Inbound SSH is attributed to the listening sshd.
+		var p page
+		ctl.must(t, "GET", "/api/v1/network/flows?host="+h.ID+"&direction=in&port=22", nil, &p)
+		found := false
+		for _, f := range p.Items {
+			if f.Process == "sshd" {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("inbound SSH without its process: %+v", p.Items)
+		}
+		t.Logf("conntrack: %d → %d connections to the agent endpoint", before, count())
+	})
+
 	t.Run("agent path blocked: rollback, then reconnect", func(t *testing.T) {
 		svc := "agentport-" + strings.ReplaceAll(def.Name, ".", "")
 		pid := fwPolicy(t, map[string]any{"name": "cut-agent-" + def.Name, "action": "deny", "from": []any{map[string]any{"kind": "host", "id": h.ID}},

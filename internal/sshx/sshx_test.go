@@ -228,6 +228,11 @@ func TestPoolReuseAndEvict(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.Release()
+	// The test server counts a connection after its side of the handshake
+	// returns, which can be just after the client's.
+	for end := time.Now().Add(2 * time.Second); srv.Connections() < 2 && time.Now().Before(end); {
+		time.Sleep(5 * time.Millisecond)
+	}
 	if n := srv.Connections(); n != 2 {
 		t.Fatalf("settings change: %d connections, want 2", n)
 	}

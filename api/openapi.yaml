@@ -1801,6 +1801,136 @@ paths:
       tags: [firewall]
       responses:
         '200': { description: Set propagation across enforced hosts., content: { application/json: { schema: { $ref: '#/components/schemas/FwPropagation' } } } }
+  /network/summary:
+    get:
+      operationId: networkSummary
+      tags: [network]
+      description: Fleet Network Activity header for the flows matching the filters (database filters only); how every host is observed.
+      parameters: &netFilter
+        - { name: host, in: query, description: Host ids (repeat for several)., schema: { type: array, items: { type: string } }, style: form, explode: true }
+        - { name: group, in: query, description: A group id; its members' flows., schema: { type: string } }
+        - { name: direction, in: query, schema: { type: string, enum: [in, out] } }
+        - { name: scope, in: query, description: The remote address (external = public)., schema: { type: string, enum: [internal, external, public, special] } }
+        - { name: protocol, in: query, schema: { type: string, enum: [tcp, udp] } }
+        - { name: port, in: query, description: The service port, either direction., schema: { type: integer } }
+        - { name: local_port, in: query, schema: { type: integer } }
+        - { name: remote_port, in: query, schema: { type: integer } }
+        - { name: process, in: query, description: Substring; "unknown" for flows without a process., schema: { type: string } }
+        - { name: service, in: query, description: A named service., schema: { type: string } }
+        - { name: country, in: query, description: ISO 3166-1 alpha-2., schema: { type: string } }
+        - { name: asn, in: query, description: 15169 or AS15169., schema: { type: string } }
+        - { name: org, in: query, description: Substring of the network organization., schema: { type: string } }
+        - { name: peer, in: query, description: A remote address or CIDR., schema: { type: string } }
+        - { name: policy, in: query, description: denied includes flows the desired policy would deny., schema: { type: string, enum: [management, covered, unclassified, denied] } }
+        - { name: source, in: query, schema: { type: string, enum: [conntrack, sockets, snapshot] } }
+        - { name: first_seen_after, in: query, description: Unix seconds, RFC 3339 or a duration back from now (24h, 7d)., schema: { type: string } }
+        - { name: last_seen_after, in: query, schema: { type: string } }
+        - { name: new, in: query, description: Public destinations first seen (within retention) by the host, or by the whole fleet, since `since`., schema: { type: string, enum: [host, fleet] } }
+        - { name: since, in: query, description: For new; default 24h., schema: { type: string } }
+        - { name: q, in: query, description: Free text (address, host, process, organization)., schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string, enum: [last_seen, first_seen, count] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Summary., content: { application/json: { schema: { $ref: '#/components/schemas/NetSummary' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /network/flows:
+    get:
+      operationId: listNetworkFlows
+      tags: [network]
+      description: >-
+        Observed connections (aggregated flows), newest first, filtered and paginated on the server (keyset cursor; at most 500
+        per page). Policy status comes from the firewall compiler. Country and network are local GeoIP/ASN enrichment of
+        public addresses only. There is no unbounded "everything" endpoint.
+      parameters: *netFilter
+      responses:
+        '200': { description: A page of flows., content: { application/json: { schema: { $ref: '#/components/schemas/NetFlowPage' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /network/flows/{id}:
+    get:
+      operationId: getNetworkFlow
+      tags: [network]
+      description: One flow with its firewall classification, collection fidelity, related flows and, when no policy covers it, a rule the Firewall Designer can add to a draft.
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: The flow., content: { application/json: { schema: { $ref: '#/components/schemas/NetFlowDetail' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /network/filters:
+    get:
+      operationId: networkFilters
+      tags: [network]
+      description: Values the filters offer (hosts, groups, processes, ports, services, countries, networks), optionally for some hosts.
+      parameters: [{ name: host, in: query, schema: { type: array, items: { type: string } }, style: form, explode: true }]
+      responses:
+        '200': { description: Facets., content: { application/json: { schema: { $ref: '#/components/schemas/NetFacets' } } } }
+  /network/topology:
+    get:
+      operationId: networkTopology
+      tags: [network]
+      description: >-
+        Observed connections as a graph for the Firewall Designer's Observed and Configured + Observed modes. Node keys are the
+        designer's references; external addresses are grouped by network owner (asn:N), expandable to addresses.
+      parameters:
+        - { name: expand, in: query, description: 'Grouped nodes to show as addresses (asn:15169, internal, internet).', schema: { type: array, items: { type: string } }, style: form, explode: true }
+        - { name: max_external, in: query, description: External network nodes kept (default 25); 0 groups them all into one., schema: { type: integer, minimum: 0, maximum: 200 } }
+        - { name: host, in: query, schema: { type: array, items: { type: string } }, style: form, explode: true }
+        - { name: group, in: query, schema: { type: string } }
+        - { name: direction, in: query, schema: { type: string, enum: [in, out] } }
+        - { name: scope, in: query, schema: { type: string, enum: [internal, external, public, special] } }
+        - { name: policy, in: query, schema: { type: string, enum: [management, covered, unclassified, denied] } }
+        - { name: last_seen_after, in: query, schema: { type: string } }
+        - { name: country, in: query, schema: { type: string } }
+        - { name: asn, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string } }
+      responses:
+        '200': { description: The observed graph., content: { application/json: { schema: { $ref: '#/components/schemas/NetTopology' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /network/settings:
+    get:
+      operationId: networkSettings
+      tags: [network]
+      responses:
+        '200': { description: Settings and enrichment status., content: { application/json: { schema: { $ref: '#/components/schemas/NetSettingsView' } } } }
+    put:
+      operationId: setNetworkSettings
+      tags: [network]
+      description: Audited (network.settings.update). Requires network.settings.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/NetSettings' } } } }
+      responses:
+        '200': { description: Saved., content: { application/json: { schema: { $ref: '#/components/schemas/NetSettingsView' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /network/enrichment:
+    get:
+      operationId: networkEnrichment
+      tags: [network]
+      description: The local GeoIP/ASN databases DROOL found, and the lookup cache.
+      responses:
+        '200': { description: Status., content: { application/json: { schema: { $ref: '#/components/schemas/NetEnrichment' } } } }
+  /network/enrichment/reload:
+    post:
+      operationId: reloadNetworkEnrichment
+      tags: [network]
+      description: Reload the databases now (they are also reloaded automatically when the files change). Audited (network.enrichment.reload).
+      responses:
+        '200': { description: Status after reloading., content: { application/json: { schema: { $ref: '#/components/schemas/NetEnrichment' } } } }
+  /hosts/{id}/network:
+    get:
+      operationId: hostNetwork
+      tags: [network]
+      description: "A host's Network summary: how it is observed, listening ports (from inventory) with observed inbound use, counts."
+      parameters: [{ $ref: '#/components/parameters/HostId' }]
+      responses:
+        '200': { description: Summary., content: { application/json: { schema: { $ref: '#/components/schemas/NetHost' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/network/snapshot:
+    post:
+      operationId: hostNetworkSnapshot
+      tags: [network]
+      description: Take a one-off connection snapshot (ss) — the only observation SSH hosts get. Requires network.snapshot.
+      parameters: [{ $ref: '#/components/parameters/HostId' }]
+      responses:
+        '200': { description: Flows recorded., content: { application/json: { schema: { type: object, required: [flows], properties: { flows: { type: integer } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
 components:
   securitySchemes:
     session: { type: apiKey, in: cookie, name: drool_session }
@@ -3174,6 +3304,265 @@ components:
         updated_at: { type: string, format: date-time }
         finished_at: { type: string, format: date-time }
         candidate: { type: string }
+    NetGeo:
+      type: object
+      description: Local GeoIP/ASN enrichment of a public address. Context, not a verdict; may be inaccurate or stale.
+      properties:
+        country_code: { type: string }
+        country: { type: string }
+        asn: { type: integer }
+        org: { type: string }
+    NetHostRef:
+      type: object
+      required: [id, name, groups]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        groups: { type: array, items: { type: string } }
+    NetCorrelation:
+      type: object
+      description: The firewall compiler's view of a flow, against the desired policy and, on enforced hosts with unapplied changes, the applied one.
+      required: [status, verdict, would_deny, reason_kind, reason, enforcement, notes]
+      properties:
+        status: { type: string, enum: [management, covered, unclassified, denied] }
+        verdict: { type: string }
+        would_deny: { type: boolean }
+        reason_kind: { type: string }
+        reason: { type: string }
+        policy_id: { type: string }
+        policy_name: { type: string }
+        rule: { type: string }
+        enforcement: { type: string, enum: [unmanaged, monitor, guided, enforce_pending, enforced] }
+        applied_verdict: { type: string }
+        notes: { type: array, items: { type: string } }
+    NetFlow:
+      type: object
+      required: [id, host, direction, protocol, local_ip, local_port, remote_ip, remote_port, port, service, process, source, count, first_seen, last_seen, scope, peer_host, geo, policy]
+      properties:
+        id: { type: integer }
+        host: { $ref: '#/components/schemas/NetHostRef' }
+        direction: { type: string, enum: [in, out] }
+        protocol: { type: string, enum: [tcp, udp] }
+        local_ip: { type: string }
+        local_port: { type: integer }
+        remote_ip: { type: string }
+        remote_port: { type: integer }
+        port: { type: integer, description: The service port. }
+        service: { type: string }
+        process: { type: string, description: Empty when unknown (never guessed). }
+        pid: { type: integer }
+        source: { type: string, enum: [conntrack, sockets, snapshot] }
+        count: { type: integer }
+        first_seen: { type: string, format: date-time }
+        last_seen: { type: string, format: date-time }
+        scope: { type: string, enum: [internal, public, special] }
+        scope_range: { type: string }
+        peer_host: { oneOf: [{ $ref: '#/components/schemas/NetHostRef' }, { type: 'null' }] }
+        peer_network: { type: string }
+        geo: { oneOf: [{ $ref: '#/components/schemas/NetGeo' }, { type: 'null' }] }
+        peer_first_seen: { type: string, format: date-time }
+        policy: { $ref: '#/components/schemas/NetCorrelation' }
+    NetFlowPage:
+      type: object
+      required: [items, total, scanned, truncated]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/NetFlow' } }
+        next_cursor: { type: string }
+        total: { type: [integer, 'null'], description: Known when every filter ran in the database. }
+        scanned: { type: integer }
+        truncated: { type: boolean }
+    NetCollection:
+      type: object
+      required: [mode, source, label, detail, agent, enabled, events_lost, dropped, forwarded]
+      properties:
+        mode: { type: string, enum: [continuous, snapshot, none] }
+        source: { type: string }
+        label: { type: string }
+        detail: { type: string }
+        agent: { type: boolean }
+        enabled: { type: boolean }
+        sample_seconds: { type: integer }
+        reported_at: { type: string, format: date-time }
+        snapshot_at: { type: string, format: date-time }
+        events_lost: { type: integer }
+        dropped: { type: integer }
+        forwarded: { type: integer }
+    NetHostFirewall:
+      type: object
+      required: [mode, enforcement, outbound, rules_changed, sets_pending, drift]
+      properties:
+        mode: { type: string }
+        enforcement: { type: string }
+        outbound: { type: string }
+        rules_changed: { type: boolean }
+        sets_pending: { type: boolean }
+        drift: { type: boolean }
+    NetDraftSuggestion:
+      type: object
+      required: [title, rule]
+      properties:
+        title: { type: string }
+        rule: { $ref: '#/components/schemas/FwRule' }
+        new_service: { type: object, required: [name, description, entries], properties: { name: { type: string }, description: { type: string }, entries: { type: array, items: { $ref: '#/components/schemas/FwEntry' } } } }
+    NetFlowDetail:
+      allOf:
+        - { $ref: '#/components/schemas/NetFlow' }
+        - type: object
+          required: [firewall, collection, suggestion, related]
+          properties:
+            fleet_first_seen: { type: string, format: date-time }
+            firewall: { $ref: '#/components/schemas/NetHostFirewall' }
+            collection: { $ref: '#/components/schemas/NetCollection' }
+            suggestion: { oneOf: [{ $ref: '#/components/schemas/NetDraftSuggestion' }, { type: 'null' }] }
+            related: { type: array, items: { $ref: '#/components/schemas/NetFlow' } }
+    NetCounts:
+      type: object
+      required: [flows, inbound, outbound, internal, external, unclassified, denied, new_external_24h]
+      properties:
+        flows: { type: integer }
+        inbound: { type: integer }
+        outbound: { type: integer }
+        internal: { type: integer }
+        external: { type: integer }
+        unclassified: { type: integer }
+        denied: { type: integer }
+        new_external_24h: { type: integer }
+    NetListening:
+      type: object
+      required: [protocol, address, port, process, service, exposure, flows, peers]
+      properties:
+        protocol: { type: string }
+        address: { type: string }
+        port: { type: integer }
+        process: { type: string }
+        service: { type: string }
+        exposure: { type: string }
+        flows: { type: integer }
+        peers: { type: integer }
+    NetHost:
+      type: object
+      required: [host, collection, firewall, listening, counts, enrichment]
+      properties:
+        host: { $ref: '#/components/schemas/NetHostRef' }
+        collection: { $ref: '#/components/schemas/NetCollection' }
+        firewall: { $ref: '#/components/schemas/NetHostFirewall' }
+        listening: { type: array, items: { $ref: '#/components/schemas/NetListening' } }
+        listening_at: { type: string, format: date-time }
+        counts: { $ref: '#/components/schemas/NetCounts' }
+        enrichment: { type: boolean }
+    NetSettings:
+      type: object
+      required: [collection, retention_days, max_flows_per_host, enrichment]
+      properties:
+        collection: { type: string, enum: [all, firewall, 'off'], description: Which agent hosts collect continuously. SSH hosts only get snapshots. }
+        retention_days: { type: integer, minimum: 1, maximum: 365 }
+        max_flows_per_host: { type: integer, minimum: 100, maximum: 100000 }
+        enrichment: { type: boolean, description: Look public addresses up in the local GeoIP/ASN databases. Never online. }
+    NetEnrichment:
+      type: object
+      required: [directory, country, asn, files, cache]
+      properties:
+        directory: { type: string }
+        country: { type: boolean }
+        asn: { type: boolean }
+        files:
+          type: array
+          items:
+            type: object
+            required: [name, size, modified, provides, used]
+            properties:
+              name: { type: string }
+              size: { type: integer }
+              modified: { type: string, format: date-time }
+              database_type: { type: string }
+              build_date: { type: string }
+              provides: { type: array, items: { type: string } }
+              used: { type: array, items: { type: string } }
+              error: { type: string }
+        loaded_at: { type: string, format: date-time }
+        error: { type: string }
+        cache: { type: object, required: [entries, max, hits, misses], properties: { entries: { type: integer }, max: { type: integer }, hits: { type: integer }, misses: { type: integer } } }
+    NetSettingsView:
+      allOf:
+        - { $ref: '#/components/schemas/NetSettings' }
+        - type: object
+          required: [enrichment_status]
+          properties:
+            enrichment_status: { $ref: '#/components/schemas/NetEnrichment' }
+    NetPrune:
+      type: object
+      required: [expired, trimmed, rows]
+      properties:
+        at: { type: string, format: date-time }
+        expired: { type: integer }
+        trimmed: { type: integer }
+        rows: { type: integer }
+        error: { type: string }
+    NetSummary:
+      type: object
+      required: [counts, hosts, enrichment, settings, last_prune]
+      properties:
+        counts: { $ref: '#/components/schemas/NetCounts' }
+        hosts:
+          type: object
+          required: [total, conntrack, sockets, snapshot, no_snapshot, 'off']
+          properties: { total: { type: integer }, conntrack: { type: integer }, sockets: { type: integer }, snapshot: { type: integer }, no_snapshot: { type: integer }, 'off': { type: integer } }
+        enrichment: { type: boolean }
+        settings: { $ref: '#/components/schemas/NetSettings' }
+        last_prune: { $ref: '#/components/schemas/NetPrune' }
+    NetFacet:
+      type: object
+      required: [value, label, count]
+      properties: { value: { type: string }, label: { type: string }, count: { type: integer } }
+    NetFacets:
+      type: object
+      required: [hosts, groups, processes, ports, countries, networks, services, partial]
+      properties:
+        hosts: { type: array, items: { $ref: '#/components/schemas/NetFacet' } }
+        groups: { type: array, items: { $ref: '#/components/schemas/NetFacet' } }
+        processes: { type: array, items: { $ref: '#/components/schemas/NetFacet' } }
+        ports: { type: array, items: { $ref: '#/components/schemas/NetFacet' } }
+        countries: { type: array, items: { $ref: '#/components/schemas/NetFacet' } }
+        networks: { type: array, items: { $ref: '#/components/schemas/NetFacet' } }
+        services: { type: array, items: { $ref: '#/components/schemas/NetFacet' } }
+        partial: { type: boolean }
+    NetTopoNode:
+      type: object
+      required: [key, kind, label, detail, members, member_total]
+      properties:
+        key: { type: string }
+        kind: { type: string, enum: [asn, ip, more, internal, internet, special] }
+        label: { type: string }
+        detail: { type: string }
+        members: { type: array, items: { type: object, required: [ip, flows], properties: { ip: { type: string }, country: { type: string }, flows: { type: integer } } } }
+        member_total: { type: integer }
+        parent: { type: string }
+    NetTopoEdge:
+      type: object
+      required: [id, source, target, services, count, flows, status, worst, would_deny, processes, first_seen, last_seen, flow_ids]
+      properties:
+        id: { type: string }
+        source: { type: string }
+        target: { type: string }
+        services: { type: array, items: { type: object, required: [protocol, port, service, count], properties: { protocol: { type: string }, port: { type: integer }, service: { type: string }, count: { type: integer } } } }
+        count: { type: integer }
+        flows: { type: integer }
+        status: { type: object, additionalProperties: { type: integer } }
+        worst: { type: string, enum: [management, covered, unclassified, denied] }
+        would_deny: { type: integer }
+        processes: { type: array, items: { type: string } }
+        first_seen: { type: string, format: date-time }
+        last_seen: { type: string, format: date-time }
+        flow_ids: { type: array, items: { type: integer } }
+    NetTopology:
+      type: object
+      required: [nodes, edges, considered, truncated, collapsed]
+      properties:
+        nodes: { type: array, items: { $ref: '#/components/schemas/NetTopoNode' } }
+        edges: { type: array, items: { $ref: '#/components/schemas/NetTopoEdge' } }
+        considered: { type: integer }
+        truncated: { type: boolean }
+        collapsed: { type: integer }
     FwObservation:
       type: object
       required: [direction, protocol, port, peer, source, count, first_seen, last_seen, classified, verdict, reason]
@@ -3185,7 +3574,8 @@ components:
         peer_host_id: { type: string }
         peer_host: { type: string }
         service: { type: string }
-        source: { type: string, enum: [agent, snapshot] }
+        process: { type: string }
+        source: { type: string, enum: [conntrack, sockets, snapshot] }
         count: { type: integer }
         first_seen: { type: string, format: date-time }
         last_seen: { type: string, format: date-time }

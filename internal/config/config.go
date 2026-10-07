@@ -46,6 +46,24 @@ type Config struct {
 	Retention Retention `yaml:"retention"`
 	Logging   Logging   `yaml:"logging"`
 	Agent     Agent     `yaml:"agent"`
+	Network   Network   `yaml:"network"`
+}
+
+// Network configures network connectivity monitoring (M10).
+type Network struct {
+	// GeoIPDir holds optional MaxMind-format (.mmdb) country and ASN
+	// databases the operator installs and updates (default
+	// <data_dir>/geoip). DROOL only reads them; it never downloads them or
+	// looks addresses up online.
+	GeoIPDir string `yaml:"geoip_dir"`
+}
+
+// GeoIPDir returns the GeoIP database directory.
+func (c *Config) GeoIPDir() string {
+	if c.Network.GeoIPDir != "" {
+		return c.Network.GeoIPDir
+	}
+	return filepath.Join(c.DataDir, "geoip")
 }
 
 // Agent configures the agent endpoint (ARCHITECTURE-ALPHA §23).

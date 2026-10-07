@@ -2,7 +2,8 @@ package observe
 
 import "testing"
 
-// Captured from Debian 12 (ss 6.1) output shapes.
+// Captured from Debian 12 (ss 6.1) output shapes: the M8 snapshot sections,
+// still read for snapshots taken by older tooling.
 var sample = map[string]string{
 	"listen": `udp   UNCONN 0      0       127.0.0.53%lo:53         0.0.0.0:*
 udp   UNCONN 0      0       0.0.0.0%eth0:68          0.0.0.0:*
@@ -36,11 +37,11 @@ func TestParseAndAggregate(t *testing.T) {
 		byKey[f.FlowKey()] = f
 	}
 	for k, want := range map[string]int64{
-		"in tcp 22 10.0.2.2":        1,
-		"in tcp 5432 10.0.1.20":     2,
-		"in tcp 5432 fd00::20":      1,
-		"out tcp 443 151.101.2.132": 1,
-		"out udp 53 10.0.0.53":      1,
+		"in tcp 10.0.2.15 22 10.0.2.2":        1,
+		"in tcp 10.0.2.10 5432 10.0.1.20":     2,
+		"in tcp fd00::10 5432 fd00::20":       1,
+		"out tcp 10.0.2.10 443 151.101.2.132": 1,
+		"out udp 10.0.2.10 53 10.0.0.53":      1,
 	} {
 		if f, ok := byKey[k]; !ok || f.Count != want || f.LastSeen != 130 || f.FirstSeen != 100 {
 			t.Errorf("%s: %+v", k, f)

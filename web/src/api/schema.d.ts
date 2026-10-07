@@ -1883,6 +1883,176 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/network/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Fleet Network Activity header for the flows matching the filters (database filters only); how every host is observed. */
+        get: operations["networkSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/network/flows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Observed connections (aggregated flows), newest first, filtered and paginated on the server (keyset cursor; at most 500 per page). Policy status comes from the firewall compiler. Country and network are local GeoIP/ASN enrichment of public addresses only. There is no unbounded "everything" endpoint. */
+        get: operations["listNetworkFlows"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/network/flows/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One flow with its firewall classification, collection fidelity, related flows and, when no policy covers it, a rule the Firewall Designer can add to a draft. */
+        get: operations["getNetworkFlow"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/network/filters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Values the filters offer (hosts, groups, processes, ports, services, countries, networks), optionally for some hosts. */
+        get: operations["networkFilters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/network/topology": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Observed connections as a graph for the Firewall Designer's Observed and Configured + Observed modes. Node keys are the designer's references; external addresses are grouped by network owner (asn:N), expandable to addresses. */
+        get: operations["networkTopology"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/network/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["networkSettings"];
+        /** @description Audited (network.settings.update). Requires network.settings. */
+        put: operations["setNetworkSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/network/enrichment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The local GeoIP/ASN databases DROOL found, and the lookup cache. */
+        get: operations["networkEnrichment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/network/enrichment/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Reload the databases now (they are also reloaded automatically when the files change). Audited (network.enrichment.reload). */
+        post: operations["reloadNetworkEnrichment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A host's Network summary: how it is observed, listening ports (from inventory) with observed inbound use, counts. */
+        get: operations["hostNetwork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/network/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Take a one-off connection snapshot (ss) — the only observation SSH hosts get. Requires network.snapshot. */
+        post: operations["hostNetworkSnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3133,6 +3303,270 @@ export interface components {
             finished_at?: string;
             candidate?: string;
         };
+        /** @description Local GeoIP/ASN enrichment of a public address. Context, not a verdict; may be inaccurate or stale. */
+        NetGeo: {
+            country_code?: string;
+            country?: string;
+            asn?: number;
+            org?: string;
+        };
+        NetHostRef: {
+            id: string;
+            name: string;
+            groups: string[];
+        };
+        /** @description The firewall compiler's view of a flow, against the desired policy and, on enforced hosts with unapplied changes, the applied one. */
+        NetCorrelation: {
+            /** @enum {string} */
+            status: "management" | "covered" | "unclassified" | "denied";
+            verdict: string;
+            would_deny: boolean;
+            reason_kind: string;
+            reason: string;
+            policy_id?: string;
+            policy_name?: string;
+            rule?: string;
+            /** @enum {string} */
+            enforcement: "unmanaged" | "monitor" | "guided" | "enforce_pending" | "enforced";
+            applied_verdict?: string;
+            notes: string[];
+        };
+        NetFlow: {
+            id: number;
+            host: components["schemas"]["NetHostRef"];
+            /** @enum {string} */
+            direction: "in" | "out";
+            /** @enum {string} */
+            protocol: "tcp" | "udp";
+            local_ip: string;
+            local_port: number;
+            remote_ip: string;
+            remote_port: number;
+            /** @description The service port. */
+            port: number;
+            service: string;
+            /** @description Empty when unknown (never guessed). */
+            process: string;
+            pid?: number;
+            /** @enum {string} */
+            source: "conntrack" | "sockets" | "snapshot";
+            count: number;
+            /** Format: date-time */
+            first_seen: string;
+            /** Format: date-time */
+            last_seen: string;
+            /** @enum {string} */
+            scope: "internal" | "public" | "special";
+            scope_range?: string;
+            peer_host: components["schemas"]["NetHostRef"] | null;
+            peer_network?: string;
+            geo: components["schemas"]["NetGeo"] | null;
+            /** Format: date-time */
+            peer_first_seen?: string;
+            policy: components["schemas"]["NetCorrelation"];
+        };
+        NetFlowPage: {
+            items: components["schemas"]["NetFlow"][];
+            next_cursor?: string;
+            /** @description Known when every filter ran in the database. */
+            total: number | null;
+            scanned: number;
+            truncated: boolean;
+        };
+        NetCollection: {
+            /** @enum {string} */
+            mode: "continuous" | "snapshot" | "none";
+            source: string;
+            label: string;
+            detail: string;
+            agent: boolean;
+            enabled: boolean;
+            sample_seconds?: number;
+            /** Format: date-time */
+            reported_at?: string;
+            /** Format: date-time */
+            snapshot_at?: string;
+            events_lost: number;
+            dropped: number;
+            forwarded: number;
+        };
+        NetHostFirewall: {
+            mode: string;
+            enforcement: string;
+            outbound: string;
+            rules_changed: boolean;
+            sets_pending: boolean;
+            drift: boolean;
+        };
+        NetDraftSuggestion: {
+            title: string;
+            rule: components["schemas"]["FwRule"];
+            new_service?: {
+                name: string;
+                description: string;
+                entries: components["schemas"]["FwEntry"][];
+            };
+        };
+        NetFlowDetail: components["schemas"]["NetFlow"] & {
+            /** Format: date-time */
+            fleet_first_seen?: string;
+            firewall: components["schemas"]["NetHostFirewall"];
+            collection: components["schemas"]["NetCollection"];
+            suggestion: components["schemas"]["NetDraftSuggestion"] | null;
+            related: components["schemas"]["NetFlow"][];
+        };
+        NetCounts: {
+            flows: number;
+            inbound: number;
+            outbound: number;
+            internal: number;
+            external: number;
+            unclassified: number;
+            denied: number;
+            new_external_24h: number;
+        };
+        NetListening: {
+            protocol: string;
+            address: string;
+            port: number;
+            process: string;
+            service: string;
+            exposure: string;
+            flows: number;
+            peers: number;
+        };
+        NetHost: {
+            host: components["schemas"]["NetHostRef"];
+            collection: components["schemas"]["NetCollection"];
+            firewall: components["schemas"]["NetHostFirewall"];
+            listening: components["schemas"]["NetListening"][];
+            /** Format: date-time */
+            listening_at?: string;
+            counts: components["schemas"]["NetCounts"];
+            enrichment: boolean;
+        };
+        NetSettings: {
+            /**
+             * @description Which agent hosts collect continuously. SSH hosts only get snapshots.
+             * @enum {string}
+             */
+            collection: "all" | "firewall" | "off";
+            retention_days: number;
+            max_flows_per_host: number;
+            /** @description Look public addresses up in the local GeoIP/ASN databases. Never online. */
+            enrichment: boolean;
+        };
+        NetEnrichment: {
+            directory: string;
+            country: boolean;
+            asn: boolean;
+            files: {
+                name: string;
+                size: number;
+                /** Format: date-time */
+                modified: string;
+                database_type?: string;
+                build_date?: string;
+                provides: string[];
+                used: string[];
+                error?: string;
+            }[];
+            /** Format: date-time */
+            loaded_at?: string;
+            error?: string;
+            cache: {
+                entries: number;
+                max: number;
+                hits: number;
+                misses: number;
+            };
+        };
+        NetSettingsView: components["schemas"]["NetSettings"] & {
+            enrichment_status: components["schemas"]["NetEnrichment"];
+        };
+        NetPrune: {
+            /** Format: date-time */
+            at?: string;
+            expired: number;
+            trimmed: number;
+            rows: number;
+            error?: string;
+        };
+        NetSummary: {
+            counts: components["schemas"]["NetCounts"];
+            hosts: {
+                total: number;
+                conntrack: number;
+                sockets: number;
+                snapshot: number;
+                no_snapshot: number;
+                off: number;
+            };
+            enrichment: boolean;
+            settings: components["schemas"]["NetSettings"];
+            last_prune: components["schemas"]["NetPrune"];
+        };
+        NetFacet: {
+            value: string;
+            label: string;
+            count: number;
+        };
+        NetFacets: {
+            hosts: components["schemas"]["NetFacet"][];
+            groups: components["schemas"]["NetFacet"][];
+            processes: components["schemas"]["NetFacet"][];
+            ports: components["schemas"]["NetFacet"][];
+            countries: components["schemas"]["NetFacet"][];
+            networks: components["schemas"]["NetFacet"][];
+            services: components["schemas"]["NetFacet"][];
+            partial: boolean;
+        };
+        NetTopoNode: {
+            key: string;
+            /** @enum {string} */
+            kind: "asn" | "ip" | "more" | "internal" | "internet" | "special";
+            label: string;
+            detail: string;
+            members: {
+                ip: string;
+                country?: string;
+                flows: number;
+            }[];
+            member_total: number;
+            parent?: string;
+        };
+        NetTopoEdge: {
+            id: string;
+            source: string;
+            target: string;
+            services: {
+                protocol: string;
+                port: number;
+                service: string;
+                count: number;
+            }[];
+            count: number;
+            flows: number;
+            status: {
+                [key: string]: number;
+            };
+            /** @enum {string} */
+            worst: "management" | "covered" | "unclassified" | "denied";
+            would_deny: number;
+            processes: string[];
+            /** Format: date-time */
+            first_seen: string;
+            /** Format: date-time */
+            last_seen: string;
+            flow_ids: number[];
+        };
+        NetTopology: {
+            nodes: components["schemas"]["NetTopoNode"][];
+            edges: components["schemas"]["NetTopoEdge"][];
+            considered: number;
+            truncated: boolean;
+            collapsed: number;
+        };
         FwObservation: {
             /** @enum {string} */
             direction: "in" | "out";
@@ -3142,8 +3576,9 @@ export interface components {
             peer_host_id?: string;
             peer_host?: string;
             service?: string;
+            process?: string;
             /** @enum {string} */
-            source: "agent" | "snapshot";
+            source: "conntrack" | "sockets" | "snapshot";
             count: number;
             /** Format: date-time */
             first_seen: string;
@@ -6759,6 +7194,341 @@ export interface operations {
                     "application/json": components["schemas"]["FwPropagation"];
                 };
             };
+        };
+    };
+    networkSummary: {
+        parameters: {
+            query?: {
+                /** @description Host ids (repeat for several). */
+                host?: string[];
+                /** @description A group id; its members' flows. */
+                group?: string;
+                direction?: "in" | "out";
+                /** @description The remote address (external = public). */
+                scope?: "internal" | "external" | "public" | "special";
+                protocol?: "tcp" | "udp";
+                /** @description The service port */
+                port?: number;
+                local_port?: number;
+                remote_port?: number;
+                /** @description Substring; "unknown" for flows without a process. */
+                process?: string;
+                /** @description A named service. */
+                service?: string;
+                /** @description ISO 3166-1 alpha-2. */
+                country?: string;
+                /** @description 15169 or AS15169. */
+                asn?: string;
+                /** @description Substring of the network organization. */
+                org?: string;
+                /** @description A remote address or CIDR. */
+                peer?: string;
+                /** @description denied includes flows the desired policy would deny. */
+                policy?: "management" | "covered" | "unclassified" | "denied";
+                source?: "conntrack" | "sockets" | "snapshot";
+                /** @description Unix seconds */
+                first_seen_after?: string;
+                last_seen_after?: string;
+                /** @description Public destinations first seen (within retention) by the host */
+                new?: "host" | "fleet";
+                /** @description For new; default 24h. */
+                since?: string;
+                /** @description Free text (address */
+                q?: string;
+                sort?: "last_seen" | "first_seen" | "count";
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetSummary"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    listNetworkFlows: {
+        parameters: {
+            query?: {
+                /** @description Host ids (repeat for several). */
+                host?: string[];
+                /** @description A group id; its members' flows. */
+                group?: string;
+                direction?: "in" | "out";
+                /** @description The remote address (external = public). */
+                scope?: "internal" | "external" | "public" | "special";
+                protocol?: "tcp" | "udp";
+                /** @description The service port */
+                port?: number;
+                local_port?: number;
+                remote_port?: number;
+                /** @description Substring; "unknown" for flows without a process. */
+                process?: string;
+                /** @description A named service. */
+                service?: string;
+                /** @description ISO 3166-1 alpha-2. */
+                country?: string;
+                /** @description 15169 or AS15169. */
+                asn?: string;
+                /** @description Substring of the network organization. */
+                org?: string;
+                /** @description A remote address or CIDR. */
+                peer?: string;
+                /** @description denied includes flows the desired policy would deny. */
+                policy?: "management" | "covered" | "unclassified" | "denied";
+                source?: "conntrack" | "sockets" | "snapshot";
+                /** @description Unix seconds */
+                first_seen_after?: string;
+                last_seen_after?: string;
+                /** @description Public destinations first seen (within retention) by the host */
+                new?: "host" | "fleet";
+                /** @description For new; default 24h. */
+                since?: string;
+                /** @description Free text (address */
+                q?: string;
+                sort?: "last_seen" | "first_seen" | "count";
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of flows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetFlowPage"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    getNetworkFlow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The flow. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetFlowDetail"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    networkFilters: {
+        parameters: {
+            query?: {
+                host?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Facets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetFacets"];
+                };
+            };
+        };
+    };
+    networkTopology: {
+        parameters: {
+            query?: {
+                /** @description Grouped nodes to show as addresses (asn:15169, internal, internet). */
+                expand?: string[];
+                /** @description External network nodes kept (default 25); 0 groups them all into one. */
+                max_external?: number;
+                host?: string[];
+                group?: string;
+                direction?: "in" | "out";
+                scope?: "internal" | "external" | "public" | "special";
+                policy?: "management" | "covered" | "unclassified" | "denied";
+                last_seen_after?: string;
+                country?: string;
+                asn?: string;
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The observed graph. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetTopology"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    networkSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Settings and enrichment status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetSettingsView"];
+                };
+            };
+        };
+    };
+    setNetworkSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NetSettings"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetSettingsView"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    networkEnrichment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetEnrichment"];
+                };
+            };
+        };
+    };
+    reloadNetworkEnrichment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Status after reloading. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetEnrichment"];
+                };
+            };
+        };
+    };
+    hostNetwork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetHost"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    hostNetworkSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Flows recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        flows: number;
+                    };
+                };
+            };
+            404: components["responses"]["Problem"];
         };
     };
 }

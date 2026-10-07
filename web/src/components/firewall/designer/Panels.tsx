@@ -6,7 +6,11 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Input, Select } from "@/components/ui/Field";
 import { errorMessage } from "@/lib/format";
-import { affectedHosts, entriesLabel, kindLabel, parseRef, refLabel, serviceLabel, type Doc, type GEdge, type MgmtPath, type ServiceInfo } from "./model";
+import { Link } from "react-router";
+import { FlowDialog } from "@/components/network/FlowDialog";
+import { PolicyBadge, when } from "@/components/network/labels";
+import { useNetFlow } from "@/components/network/queries";
+import { affectedHosts, entriesLabel, kindLabel, obsStatusLabel, parseRef, refLabel, serviceLabel, type Doc, type GEdge, type MgmtPath, type ServiceInfo } from "./model";
 import type { CheckResult } from "./useDesigner";
 import type { Selection } from "./Topology";
 
@@ -280,6 +284,7 @@ export function Inspector({ selection, doc, services, hosts, management, onEditR
   );
   if (selection.kind === "edge") {
     const e: GEdge = selection.edge;
+    if (e.kind === "observed") return <ObservedEdge e={e} hosts={hosts} onClose={onClose} />;
     if (e.kind === "mgmt") {
       return (
         <div className="space-y-2 text-sm">
@@ -316,6 +321,7 @@ export function Inspector({ selection, doc, services, hosts, management, onEditR
       </div>
     );
   }
+  if (/^(asn|ip|more|special):/.test(nodeKey)) return <ObservedNode nodeKey={nodeKey} head={head} />;
   const r = parseRef(nodeKey);
   const usedBy = doc.policy.flatMap((p, i) => (p.from.includes(nodeKey) || p.to.includes(nodeKey) ? [i] : []));
   const mine = management.filter((m) => m.host === hostName);
@@ -365,6 +371,84 @@ export function Inspector({ selection, doc, services, hosts, management, onEditR
         </>
       )}
       <p className="text-[11px] text-muted">Services show their protocol and port: {all.slice(0, 3).map((s) => `${s.name} = ${entriesLabel(s.entries)}`).join(", ")}…</p>
+    </div>
+  );
+}
+
+const nodeName = (k: string) => (k === "controller" ? "DROOL Controller" : k.replace(/^(host|group|network|asn|ip|special|more):/, "").replace(/^internal$/, "Internal").replace(/^internet$/, "Internet"));
+
+/** Where an observed line's connections are listed in Network activity. */
+function flowsLink(e: GEdge, hosts: { id: string; name: string }[]): string {
+  const p = new URLSearchParams();
+  for (const k of [e.source, e.target]) {
+    if (k.startsWith("host:")) {
+      const id = hosts.find((h) => h.name === k.slice(5))?.id;
+      if (id && !p.has("host")) p.append("host", id);
+    } else if (k.startsWith("asn:") && /^asn:\d+$/.test(k)) p.set("asn", k.slice(4));
+    else if (k.startsWith("ip:")) p.set("peer", k.slice(3));
+    else if (k === "internal") p.set("scope", "internal");
+  }
+  return `/network?${p.toString()}`;
+}
+
+/** An observed line: what was seen, how the policy classifies it, and the
+ * connections behind it. */
+function ObservedEdge({ e, hosts, onClose }: { e: GEdge; hosts: { id: string; name: string }[]; onClose: () => void }) {
+  const o = e.obs!;
+  const [open, setOpen] = useState<number>();
+  return (
+    <div className="space-y-3 text-sm" data-testid="observed-details">
+      <div className="flex items-start justify-between gap-2">
+        <div><div className="text-xs uppercase text-muted">observed connections</div><h3 className="text-base font-semibold">{nodeName(e.source)} → {nodeName(e.target)}</h3></div>
+        <Button size="sm" variant="ghost" onClick={onClose} aria-label="Close details">×</Button>
+      </div>
+      <p>{obsStatusLabel[o.worst]?.replace("Observed · ", "Most notable: ")}</p>
+      <dl className="grid grid-cols-[7rem_1fr] gap-y-1 text-xs">
+        <dt className="text-muted">Connections</dt><dd>{o.count.toLocaleString()} in {o.flows} flow(s)</dd>
+        <dt className="text-muted">Services</dt><dd>{o.services.map((s) => `${s.service ? s.service + " " : ""}${s.protocol.toUpperCase()} ${s.port} (${s.count})`).join(", ")}</dd>
+        <dt className="text-muted">Processes</dt><dd>{o.processes.length ? o.processes.join(", ") : <span className="italic">Unknown</span>}</dd>
+        <dt className="text-muted">First seen</dt><dd>{when(o.first_seen)}</dd>
+        <dt className="text-muted">Last seen</dt><dd>{when(o.last_seen)}</dd>
+        <dt className="text-muted">Policy</dt>
+        <dd className="space-x-1">{Object.entries(o.status).map(([k, v]) => <Badge key={k} tone={k === "denied" ? "danger" : k === "unclassified" ? "warn" : k === "management" ? "accent" : "ok"}>{obsStatusLabel[k]?.replace("Observed · ", "")}: {v}</Badge>)}
+          {o.would_deny > 0 && <Badge tone="danger">✕ would be denied: {o.would_deny}</Badge>}</dd>
+      </dl>
+      <div>
+        <div className="mb-1 text-xs font-medium uppercase text-muted">Connections</div>
+        <ul className="space-y-1">{o.flow_ids.slice(0, 6).map((id) => <FlowLine key={id} id={id} onOpen={() => setOpen(id)} />)}</ul>
+        <Link className="mt-1 inline-block text-xs text-accent underline" to={flowsLink(e, hosts)}>Show all in Network activity</Link>
+      </div>
+      <p className="text-[11px] text-muted">Observed lines show traffic DROOL has seen, not routes. The firewall policy decides the status; nothing here changes it — use “Create policy from observed connection” in a connection&apos;s details to start a draft rule.</p>
+      {open !== undefined && <FlowDialog id={open} onClose={() => setOpen(undefined)} />}
+    </div>
+  );
+}
+
+function FlowLine({ id, onOpen }: { id: number; onOpen: () => void }) {
+  const q = useNetFlow(id);
+  const f = q.data;
+  if (!f) return <li className="text-xs text-muted">…</li>;
+  return (
+    <li className="text-xs">
+      <button type="button" className="text-left text-accent underline" onClick={onOpen}>
+        {f.host.name} {f.direction === "in" ? "←" : "→"} {f.remote_ip}:{f.port} {f.protocol.toUpperCase()}
+      </button>{" "}
+      <span className="text-muted">{f.process || "unknown process"} · {f.count}</span> <PolicyBadge flow={f} />
+    </li>
+  );
+}
+
+function ObservedNode({ nodeKey, head }: { nodeKey: string; head: (title: string, sub: string) => React.ReactNode }) {
+  const [kind, value] = [nodeKey.split(":")[0]!, nodeKey.slice(nodeKey.indexOf(":") + 1)];
+  const link = kind === "asn" && /^\d+$/.test(value) ? `/network?asn=${value}` : kind === "ip" ? `/network?peer=${encodeURIComponent(value)}` : "/network?scope=external";
+  return (
+    <div className="space-y-2 text-sm">
+      {head(kind === "asn" ? (value === "other" ? "Other external networks" : `AS${value}`) : value, kind === "asn" ? "external network (observed)" : kind === "ip" ? "address (observed)" : "observed")}
+      <p className="text-xs text-muted">
+        {kind === "asn" ? "Public addresses grouped by the network that owns them, from the local ASN database. Country and owner are context, not a verdict."
+          : "An address DROOL has seen hosts connect to or from."}
+      </p>
+      <Link className="text-xs text-accent underline" to={link}>Show its connections in Network activity</Link>
     </div>
   );
 }

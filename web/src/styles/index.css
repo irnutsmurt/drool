@@ -42,6 +42,8 @@
   --ui-edge-deny: #b93232;
   --ui-edge-mgmt: #1e7a46;
   --ui-edge-member: #9aa3ae;
+  --ui-edge-observed: #0e7c86;
+  --ui-node-asn: #eef8f9;
   --ui-highlight: #f0a020;
   --ui-radius: 6px;
   --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -78,6 +80,8 @@
     --ui-edge-deny: #f07878;
     --ui-edge-mgmt: #5cc98a;
     --ui-edge-member: #5d6772;
+    --ui-edge-observed: #4fc3cf;
+    --ui-node-asn: #142a2d;
     --ui-highlight: #f5b544;
     color-scheme: dark;
   }
@@ -111,6 +115,8 @@
   --ui-edge-deny: #f07878;
   --ui-edge-mgmt: #5cc98a;
   --ui-edge-member: #5d6772;
+  --ui-edge-observed: #4fc3cf;
+  --ui-node-asn: #142a2d;
   --ui-highlight: #f5b544;
   color-scheme: dark;
 }

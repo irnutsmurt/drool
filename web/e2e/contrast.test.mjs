@@ -78,6 +78,9 @@ const pages = async () => {
     "/settings/account", "/settings/system", "/settings/users", "/settings/tokens",
     "/firewall", "/firewall?tab=designer&view=topology", "/firewall?tab=designer&view=rules", "/firewall?tab=designer&view=yaml",
     "/firewall?tab=simulate", "/firewall?tab=transactions", "/firewall?tab=settings",
+    // M10: network monitoring, the observed topology, filtered and empty views.
+    "/network", "/network?policy=unclassified", "/network?scope=external&new=host&since=7d", "/network?peer=192.0.2.123", "/network?tab=settings",
+    "/firewall?tab=designer&view=topology&topo=observed", "/firewall?tab=designer&view=topology&topo=both",
   ];
 };
 
@@ -103,6 +106,19 @@ for (const theme of ["light", "dark"]) {
       const low = await page.evaluate(lowContrast);
       if (low.length) failures.push(`rule dialog:\n  ${low.join("\n  ")}`);
       await shot(page, `${theme}-rule-dialog`);
+      await page.keyboard.press("Escape");
+    }
+    // A connection's details.
+    await page.goto(base + "/network", { waitUntil: "networkidle0" });
+    await sleep(800);
+    const row = await page.$('[data-testid="flow-table"] tbody tr[data-flow-id] button');
+    if (row) {
+      await row.click();
+      await page.waitForSelector('[data-testid="flow-details"]', { timeout: 10000 });
+      await sleep(400);
+      const low = await page.evaluate(lowContrast);
+      if (low.length) failures.push(`connection details:\n  ${low.join("\n  ")}`);
+      await shot(page, `${theme}-connection-details`);
       await page.keyboard.press("Escape");
     }
     assert.deepEqual(failures, [], `low-contrast text in ${theme} mode`);

@@ -15,6 +15,8 @@ import { RuleDialog } from "./RuleDialog";
 type Props = {
   doc: Doc; edit: (d: Doc) => void; services: ServiceInfo[]; hosts: { id: string; name: string }[];
   storedGroups: Set<string>; canWrite: boolean; highlight?: string[]; onExplainRule?: (index: number) => void;
+  /** Rules just added from an observed connection (M10): marked, not alarmed. */
+  fresh?: string[];
 };
 
 /** The conventional editor: everything the topology can do, with normal,
@@ -42,7 +44,7 @@ function RefList({ refs }: { refs: string[] }) {
   );
 }
 
-function PoliciesCard({ doc, edit, services, hosts, canWrite, highlight = [] }: Props) {
+function PoliciesCard({ doc, edit, services, hosts, canWrite, highlight = [], fresh = [] }: Props) {
   const [dialog, setDialog] = useState<{ index?: number } | null>(null);
   const all = [...services.filter((s) => s.builtin), ...doc.services.map((s) => ({ ...s, builtin: false }))];
   return (
@@ -65,13 +67,14 @@ function PoliciesCard({ doc, edit, services, hosts, canWrite, highlight = [] }: 
             </thead>
             <tbody>
               {doc.policy.map((r, i) => (
-                <tr key={r.name + i} className={`border-b border-line align-top ${highlight.includes(r.name) ? "bg-danger-bg" : ""} ${r.enabled ? "" : "opacity-60"}`}>
+                <tr key={r.name + i} className={`border-b border-line align-top ${highlight.includes(r.name) ? "bg-danger-bg" : fresh.includes(r.name) ? "bg-accent/10" : ""} ${r.enabled ? "" : "opacity-60"}`}>
                   <td className="py-2 pr-2 text-muted">{i + 1}</td>
                   <td className="py-2 pr-2">
                     <div className="font-medium">{r.name}</div>
                     {r.description && <div className="text-xs text-muted">{r.description}</div>}
                     {!r.enabled && <Badge>disabled</Badge>}
                     {highlight.includes(r.name) && <Badge tone="danger">blocks the management path</Badge>}
+                    {fresh.includes(r.name) && <Badge tone="accent">new · from an observed connection</Badge>}
                   </td>
                   <td className="py-2 pr-2"><Badge tone={r.action === "deny" ? "danger" : "ok"}>{r.action === "deny" ? "Deny" : "Allow"}</Badge></td>
                   <td className="py-2 pr-2"><RefList refs={r.from} /></td>

@@ -83,7 +83,7 @@ func TestFirewallContainers(t *testing.T) {
 		c2.exec(t, `ip=$(hostname -i | cut -d' ' -f1); for i in 1 2 3; do bash -c "exec 3<>/dev/tcp/$ip/22; sleep 300" >/dev/null 2>&1 & done; true`)
 		waitFor(t, 4*time.Minute, "agent-learned flows", func() bool {
 			for _, o := range fwObservations(t, h2.ID) {
-				if o.Source == "agent" && o.Port == 22 && o.Direction == "in" && o.Count >= 3 {
+				if (o.Source == "sockets" || o.Source == "conntrack") && o.Port == 22 && o.Direction == "in" && o.Count >= 3 {
 					return true
 				}
 			}

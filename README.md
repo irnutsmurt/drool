@@ -67,6 +67,11 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
   hosts only; Docker, firewalld, UFW and Tailscale are detected and refused. The **Firewall
   Designer** edits the policy as a topology, as rules or as YAML, and shows DROOL's own management
   paths and anything that would cut them.
+- **Network monitoring** (on `main`): what each host actually talks to — inbound, outbound,
+  internal, external, which process — how the firewall policy classifies every connection, and,
+  for public addresses, the country and network owner from local GeoIP/ASN databases you install.
+  Agent hosts are observed continuously (conntrack when available), SSH hosts by snapshot. See
+  [Network monitoring](#network-monitoring).
 - **Appearance:** Light, Dark or System (follows your OS), from the header or *Settings → Account*.
 - **Accounts and audit:** local users with roles (admin, operator, auditor, viewer), API tokens,
   credentials encrypted at rest, an append-only audit log of every change.
@@ -83,6 +88,8 @@ These are planned (see `DESIGN.md`) but **do not exist yet**:
   deployment exist on `main`; see [Files](#files))
 - plugins
 - batch/canary rollouts for jobs (agent updates do have them), workflows, MFA, single sign-on, high availability, Windows
+- network security features beyond visibility: blocking by address or country, threat scores or
+  reputation, packet capture, intrusion detection, alerting
 
 ## Supported hosts
 
@@ -566,12 +573,11 @@ transaction. The Firewall page shows "Policy propagation incomplete" until every
 
 ### Observations
 
-- **Agent hosts** sample their connections continuously in Monitor, Guided and Enforce mode, and
-  report aggregated flows: who connected to which port, and how often.
-- **SSH hosts** only get on-demand snapshots (**Take snapshot now**). They are not "learning".
-
-Flows that no policy covers are marked **unclassified**. In Guided mode they become suggested
-policies, which you review before anything is created.
+Observed connections are shown under [Network monitoring](#network-monitoring), each with what
+the firewall policy says about it. Flows that no policy covers are **unclassified**: in Guided
+mode they become suggested policies (host page → Firewall → Observed connections), and from any
+connection's details **Create policy from observed connection** starts a draft rule in the
+Designer. Nothing is created until you review, save and apply it.
 
 ### Permissions
 
@@ -580,6 +586,85 @@ policies, which you review before anything is created.
 | `firewall.read` | every role | Viewing |
 | `firewall.write` | administrators | Policies, modes, checks and applying |
 | `firewall.override` | administrators | Emergency override, short timeouts, replacing drift |
+
+## Network monitoring
+
+**Network** in the sidebar shows what your hosts actually talk to; every host page has a
+**Network connections** card. Monitoring only: nothing here blocks traffic, scores addresses or
+raises alarms.
+
+For every observed connection DROOL shows the direction, the process (or **Unknown** — it never
+guesses), local and remote addresses and ports, the protocol, first and last seen, how many
+connections, and its **policy status**:
+
+| Status | Means |
+|---|---|
+| ✓ Covered by policy | A firewall policy allows it (named in the details) |
+| ⛨ DROOL management | DROOL's own SSH or agent connection — always protected |
+| ? Unclassified | No policy says anything about it |
+| ✕ Denied / would be denied | A deny policy, or the default drop once the firewall is enforced |
+| ↻ not applied yet | The host still runs an older policy that treats it differently |
+
+Internal addresses (the firewall's **internal ranges**, Firewall → Settings) show the DROOL host,
+its groups or the named network they belong to. Public addresses show the **country and network
+owner (ASN)** when a database is installed (below). Filters cover host, group, direction,
+internal/external, protocol, ports, process, service, country, network, policy status, first and
+last seen, and **new external destinations** (first seen by a host, or by any host, in the last
+24 hours or 7 days). The Firewall Designer's topology can show **Configured**, **Observed** or
+**Configured + Observed**: observed traffic is dotted, external addresses are grouped by the
+network that owns them, and the same lines are listed below the canvas.
+
+### What agent and SSH hosts can see
+
+| | Agent hosts | SSH-only hosts |
+|---|---|---|
+| How | **Continuous.** *conntrack* when the kernel tracks connections (a firewall uses it — for example once DROOL's firewall is enforced): every new connection, however short. Otherwise *socket sampling* every 30 s, which misses connections that open and close in between | **Snapshot only**: **Take snapshot** shows what is open at that moment |
+| Processes | From who owns the socket: the listening service for inbound connections; for outbound ones, if the connection still exists when DROOL looks | The same, at the moment of the snapshot |
+| Never | Packet contents, DNS queries, byte counts | The same |
+
+Each host shows which applies and why ("Continuous: conntrack", "Continuous: socket sampling (every
+30 s)" with the reason conntrack isn't used, "Snapshot only: SSH"). DROOL never installs packages,
+loads kernel modules or changes sysctls to collect more. Connections routed *through* a host
+(containers on a bridge, routers) are counted but not shown. Settings: **Network → Collection and
+enrichment** (collect on every agent host, only on hosts whose firewall mode isn't Off, or not at
+all).
+
+### GeoIP and ASN (optional)
+
+DROOL looks public addresses up **locally** in MaxMind-format (`.mmdb`) files in
+`<data_dir>/geoip` (`network.geoip_dir`; in Docker `/data/geoip`). It never sends addresses to an
+online service, and never looks up private, loopback, link-local, multicast or documentation
+addresses. Without databases everything works; country and network show as *Unknown*.
+
+Use any of these (DROOL recognises them by content; keep a country and an ASN database, or one
+that has both):
+
+- **MaxMind GeoLite2** Country and ASN (free account; `geoipupdate` keeps them current — point its
+  `DatabaseDirectory` at the directory above).
+- **DB-IP Lite** country and ASN (monthly downloads, CC BY 4.0):
+  `curl -L https://download.db-ip.com/free/dbip-country-lite-$(date +%Y-%m).mmdb.gz | gunzip > dbip-country-lite.mmdb`
+  (and the same for `asn`).
+- **IPinfo Lite** (country and ASN in one file).
+
+Files are reloaded automatically when they change (or with **Reload databases**); a half-written
+or corrupt replacement keeps the previous copy. Country and network owner are context and can be
+wrong or out of date — DROOL never labels anything suspicious because of them.
+
+### Retention and size
+
+Connections are stored as **flows** (host, direction, protocol, local address, service port and
+remote address), not one row per connection. Flows not seen for 30 days are removed, and each host
+keeps at most 5 000 (the least recently seen go first); both are settings. A flow takes about
+250 bytes: a typical server with a few hundred peers needs well under 1 MB; 200 hosts at the
+5 000-flow cap would need about 250 MB.
+
+### Permissions
+
+| Permission | Roles | Allows |
+|---|---|---|
+| `network.read` | administrators, operators, auditors | Observed connections, topology, enrichment status (not viewers: connection metadata is sensitive) |
+| `network.snapshot` | administrators, operators | Taking a snapshot of an SSH host |
+| `network.settings` | administrators | Collection, retention, enrichment (audited) |
 
 ## Backup and restore
 
@@ -655,6 +740,9 @@ if present) → `DROOL_*` environment variables. The variable name is the key pa
 snake case, e.g. `server.web_port` → `DROOL_SERVER_WEB_PORT`. **Settings → System** in the UI
 shows every effective value and where it came from.
 
+Network monitoring reads optional GeoIP/ASN databases from `network.geoip_dir` (default
+`<data_dir>/geoip`); see [GeoIP and ASN](#geoip-and-asn-optional).
+
 TLS defaults to a self-signed certificate. Use `server.tls.mode: provided` with
 `server.tls.cert_file`/`key_file` for your own certificate. `server.tls.mode: off` (for a reverse
 proxy on the same host) is only accepted with a loopback `server.bind`, so DROOL never serves
@@ -695,12 +783,19 @@ plain HTTP to the network by accident.
     the controller or jump host changes address, apply again before relying on the new one.
   - Reloading `nftables.service` with a config that flushes the ruleset removes DROOL's rules
     until the next apply or boot; DROOL reports it as drift.
-  - Agents sample connections every 30 seconds, so very short-lived connections can be missed.
+  - Agents without conntrack (no firewall using connection tracking, or no permission) sample
+    connections every 30 seconds, so very short-lived connections can be missed; the host's
+    Network card says so.
   - Designer: one person editing at a time works best — a second save from an older draft is
     refused (reload and redo). YAML comments and formatting are not kept. Drawing is mouse/touch;
     everything can also be done from the keyboard in the Rules view. Very large expanded groups
     (hundreds of hosts) are slow to draw; keep them collapsed or filter.
   - Appearance is saved per browser, not per account.
+- **Network monitoring:** no byte counts; processes only when the socket can still be seen (often
+  "Unknown" for very short outbound connections); connections routed through a host (containers)
+  are not shown; "new" is relative to the retained history (30 days by default); GeoIP/ASN only
+  from databases you install and update; observations from M8 agents have no processes until the
+  agent is updated.
 - **Local accounts only;** no MFA or single sign-on yet.
 - **Backup and restore are command-line only** (Settings → System shows the commands).
 - The **web UI is functional, not polished**; a visual design pass comes later.
@@ -740,8 +835,9 @@ make test-integration   # real distributions in unprivileged containers (Docker,
 The VM tests for real systemd and reboots are opt-in and slow (software emulation, no special
 privileges): `go test -tags integration ./test/integration -run TestVM -vm debian-12 -v -timeout 4h`.
 
-Browser tests (`web/e2e`: the Firewall Designer, Light/Dark/System, contrast in both themes) run
-against containers with `go test -tags integration ./test/integration -run TestBrowser -v`. They need
+Browser tests (`web/e2e`: the Firewall Designer, network monitoring, Light/Dark/System, contrast
+in both themes) run against containers with
+`go test -tags integration ./test/integration -run TestBrowser -v`. They need
 Chromium (`CHROME=/path/to/chromium`, default `/usr/bin/chromium`) and `npm ci` in `web/`.
 
 The REST contract lives in [`api/openapi.yaml`](api/openapi.yaml). A Go test fails if routes

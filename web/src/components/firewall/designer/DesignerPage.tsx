@@ -10,7 +10,8 @@ import { cx } from "@/components/ui/cx";
 import { errorMessage } from "@/lib/format";
 import { ApplyDialog } from "../parts";
 import { useFwServices } from "../queries";
-import { deleteRule, type MgmtPath, type ServiceInfo } from "./model";
+import { addRule, deleteRule, uniqueRuleName, upsertService, type MgmtPath, type Rule, type Service, type ServiceInfo, type TopologyMode } from "./model";
+import { useNetFlow } from "@/components/network/queries";
 import { useDesigner } from "./useDesigner";
 import { Topology, type Selection } from "./Topology";
 import { RulesView } from "./RulesView";
@@ -46,6 +47,37 @@ export function DesignerPage() {
   const [side, setSide] = useState<"details" | "preview">("preview");
   const [confirmSave, setConfirmSave] = useState(false);
   const [applyTo, setApplyTo] = useState<string[] | null>(null);
+  const topoMode = (params.get("topo") as TopologyMode | null) ?? "configured";
+  const setTopoMode = (m: TopologyMode) => {
+    const next = new URLSearchParams(params);
+    if (m === "configured") next.delete("topo"); else next.set("topo", m);
+    setParams(next, { replace: true });
+  };
+
+  // "Create policy from observed connection": the suggested rule becomes
+  // part of the draft — never saved or applied here. Validation, the
+  // management-path checks, preview, save and apply follow as for any edit.
+  const suggestId = params.get("suggest");
+  const suggestion = useNetFlow(suggestId ? Number(suggestId) : undefined);
+  const [suggested, setSuggested] = useState<string>();
+  useEffect(() => {
+    const sg = suggestion.data?.suggestion;
+    if (!suggestId || d.loading || !suggestion.data) return;
+    const next = new URLSearchParams(params);
+    next.delete("suggest");
+    if (sg && canWrite) {
+      let doc = d.draft;
+      if (sg.new_service && !doc.services.some((x) => x.name === sg.new_service!.name) && !services.some((x) => x.builtin && x.name === sg.new_service!.name)) {
+        doc = upsertService(doc, { name: sg.new_service.name, description: sg.new_service.description, entries: sg.new_service.entries as Service["entries"] });
+      }
+      const name = uniqueRuleName(doc, sg.rule.name);
+      d.edit(addRule(doc, { ...(sg.rule as Rule), name }));
+      setSuggested(name);
+      next.set("view", "rules");
+    }
+    setParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestId, d.loading, suggestion.data]);
 
   const hosts = useMemo(() => (hostsQ.data?.items ?? []).map((h) => ({ id: h.id, name: h.name })), [hostsQ.data]);
   const services = useMemo(() => (svcQ.data?.items ?? []).map((s) => ({ name: s.name, description: s.description, builtin: s.builtin, entries: s.entries })) as ServiceInfo[], [svcQ.data]);
@@ -117,19 +149,28 @@ export function DesignerPage() {
       {d.staleBase && <Alert tone="warn">Someone else saved the firewall policy since you opened it. Saving will be refused: copy your changes from the YAML view, then discard and reapply them.</Alert>}
       {d.save.error && <Alert>{errorMessage(d.save.error)}</Alert>}
       {d.save.isSuccess && !d.dirty && <Alert tone="ok">Saved. Nothing changes on hosts until you apply it (see Preview).</Alert>}
+      {suggested && (
+        <Alert tone="warn">
+          Draft rule <strong>{suggested}</strong> was added from an observed connection. It is only part of this draft: review it below, check the preview and
+          management paths, then save the policy and apply it — or discard it.
+        </Alert>
+      )}
+      {suggestId && !canWrite && <Alert tone="warn">Only administrators can turn an observed connection into a policy.</Alert>}
       <MgmtAlerts management={d.management} onShow={showPath} />
 
       <div className="grid min-h-[38rem] gap-3 xl:grid-cols-[1fr_24rem]">
         <div className={cx("min-h-[38rem] overflow-hidden rounded-ui border border-line bg-surface", view === "rules" && "overflow-visible border-0 bg-transparent")} role="tabpanel" aria-label={`${view} view`}>
           {view === "topology" && (
-            <div className="h-[38rem]">
+            <div className={topoMode === "configured" ? "h-[38rem]" : "h-[46rem]"}>
               <Topology doc={d.draft} services={services} hosts={hosts} management={d.management} layout={d.layout} saveLayout={d.saveLayout}
                 canWrite={canWrite} selection={selection} onSelect={(s) => { setSelection(s); if (s) setSide("details"); }}
-                onConnect={(from, to) => setRuleDialog({ from, to })} onNewRule={() => setRuleDialog({})} highlight={highlight} focusNodes={focus} />
+                onConnect={(from, to) => setRuleDialog({ from, to })} onNewRule={() => setRuleDialog({})} highlight={highlight} focusNodes={focus}
+                mode={topoMode} onMode={setTopoMode} canObserve={can("network.read")} />
             </div>
           )}
           {view === "rules" && (
-            <RulesView doc={d.draft} edit={d.edit} services={services} hosts={hosts} storedGroups={d.storedGroups} canWrite={canWrite} highlight={highlight.policies} />
+            <RulesView doc={d.draft} edit={d.edit} services={services} hosts={hosts} storedGroups={d.storedGroups} canWrite={canWrite}
+              highlight={highlight.policies} fresh={suggested ? [suggested] : []} />
           )}
           {view === "yaml" && (
             <div className="h-[38rem] p-3">

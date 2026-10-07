@@ -1,6 +1,6 @@
 # DROOL Technical Alpha: Internal Architecture
 
-**v0.7 · 2026-10-07 (v0.1.0-alpha + M6 + M7 + M8 + M9)** · Implements the *Technical Alpha* slice of `DESIGN.md` (§33), M6 file management and single-file deployment (DESIGN §13), M7, the DROOL agent and its lifecycle (DESIGN §4, §6, §8, §9, §28; §23 here), M8, firewall policy and safe enforcement on plain-nftables hosts (DESIGN §15–19; §24 here), and M9, the Firewall Designer and an application-wide Light/Dark/System theme (§25 here).
+**v0.8 · 2026-10-07 (v0.1.0-alpha + M6 + M7 + M8 + M9 + M10)** · Implements the *Technical Alpha* slice of `DESIGN.md` (§33), M6 file management and single-file deployment (DESIGN §13), M7, the DROOL agent and its lifecycle (DESIGN §4, §6, §8, §9, §28; §23 here), M8, firewall policy and safe enforcement on plain-nftables hosts (DESIGN §15–19; §24 here), M9, the Firewall Designer and an application-wide Light/Dark/System theme (§25 here), and M10, network connectivity monitoring and enrichment (DESIGN §19.1, §19.4; §26 here).
 
 Sections 1–21 describe the implementation as built. Where an implementation decision superseded the original plan, the prose was updated and the decision and its reason are in §22.
 
@@ -27,9 +27,10 @@ This document is where we argue about concrete things: schema, operation semanti
 
 - **M8:** intent-based firewall policy (hosts, groups, named services, internet/internal, IPv4/IPv6), compilation to nftables via named sets, environment detection and refusal, the dead-man transaction protocol over the agent and SSH (durable host journal, systemd rollback timer, boot loader, commit only over a new connection), management-path protection with an audited emergency override, set-element propagation, drift detection, Monitor/Guided/Enforce, connection learning (agents) and snapshots (SSH), simulation and Explain Host (§24)
 - **M9:** the Firewall Designer: one canonical firewall document (named networks, groups, custom services, ordered policy) edited as a topology, as rules or as YAML; live server-side check of every draft with the real compiler (validation, per-host preview, management-path analysis, apply blockers), simulation and Explain on drafts, a read-only DROOL management-path overlay, layout persistence; named network objects in the policy model; set updates held near management paths; Light/Dark/System theme across the whole UI (§25)
+- **M10:** network connectivity monitoring: the M8 observation store extended into one flow model (local address, last ports, process, scope, collection source), continuous agent collection from conntrack events when connection tracking is active (socket sampling otherwise, said so), SSH snapshots with process names, correlation of every flow with the firewall policy by the M8 compiler (covered, management, unclassified, denied, applied vs desired), local GeoIP/ASN enrichment of public addresses (MaxMind-format databases, cached, optional), a host Network connections card, a fleet Network activity page with server-side filters and paging, new-destination views, the Designer's Configured / Observed / Configured + Observed topology, and "Create policy from observed connection" as a designer draft (§26)
 
 ### Out of scope (but the design must not block them)
-Docker/container firewalling, WireGuard identity networking, batch/canary rollouts, scheduling, templated files and directory sync, desired state, YAML editing, MFA, plugins, multi-hop jumps.
+Docker/container firewalling, WireGuard identity networking, batch/canary rollouts, scheduling, templated files and directory sync, desired state, MFA, plugins, multi-hop jumps. (YAML editing of the firewall policy was added in M9, §25.) For network monitoring (M10): automatic or geographic blocking, threat scores, threat-intelligence feeds and IP reputation, packet capture and payload inspection, IDS signatures, SIEM features, alerting beyond new-destination visibility, eBPF collection.
 
 ### Supported managed hosts
 Debian 12+, Ubuntu 22.04+, RHEL/Rocky/Alma 9+, current Fedora (dnf5). The integration matrix (§18) runs Debian 12 and 13, Ubuntu 24.04 and 26.04, Rocky 9 and 10, and Fedora 44.
@@ -52,7 +53,7 @@ Requirements on the host: `sshd`, POSIX `sh`, coreutils, and `sudo` if the login
 │       │                                                                       │
 │       ▼                                                                       │
 │  Driver interface ──► SSH Driver ──► SSH Connection Manager (pool, jump, pin) │
-│                       (Agent Driver: Alpha 2)                                 │
+│                       Agent Driver ──► drool-agent (mTLS gRPC, M7 §23)        │
 │       │                                                                       │
 │  Store (SQLite WAL) · Secret Box (AES-256-GCM) · slog (JSON, rotation)        │
 └───────────────────────────────────────────────────────────────────────────────┘
@@ -90,6 +91,11 @@ internal/
     sshdriver/                turns typed operations into remote shell execution
   sshx/                       connection manager, host key pinning, jump dialing, keepalive
   poller/                     periodic status checks
+  firewall/                   policy, compiler, nftables backend, document, host tool, observations (M8, M9)
+  netmon/                     network monitoring (M10): address scopes, settings
+    collect/                  the agent's connection collector (conntrack events, socket sampling)
+    geoip/                    local MMDB reader, GeoIP/ASN enricher and cache
+    netsvc/                   queries, correlation views, topology, pruning
   api/                        HTTP handlers, problem+json errors, SSE, OpenAPI
   backup/
 web/                          React + TypeScript (Vite)
@@ -123,7 +129,7 @@ type OpResult struct {
 ```
 
 - **SSH driver (alpha):** each operation is translated into remote shell via `ops/`, run over SSH, and the output is parsed back into an `OpResult`.
-- **Agent driver (Alpha 2):** forwards the same typed operation over gRPC. The agent implements it natively and enforces its capability ceiling.
+- **Agent driver (M7, §23):** forwards the same typed operation over gRPC. The agent implements it natively and enforces its capability ceiling.
 
 So the engine, API and UI don't change when the agent arrives. Errors returned from `Execute` are always `*model.OpError` carrying one of the DESIGN §12.9 error classes.
 
@@ -930,7 +936,7 @@ Privileged containers are not used for testing (they interfered with the develop
 | Multi-hop | `host_hops` table; dialer recursion is written but limited to one hop |
 | Firewall Beta | **Done in M8** (§24); container/Docker strategies and the WireGuard backend reuse the backend-independent compiler (`internal/firewall/compile`) |
 | Desired state | Idempotent ops already return `Changed` with before/after states |
-| YAML | Canonical Go types + generated JSON Schema |
+| YAML | Firewall policy YAML **done in M9** (§25); other domains: canonical Go types + generated JSON Schema |
 | Hash-chained audit | `prev_hash` column reserved |
 | PostgreSQL | sqlc, portable SQL, writer abstraction |
 
@@ -950,6 +956,7 @@ Privileged containers are not used for testing (they interfered with the develop
 | **M7 Agent** | `drool-agent`, enrollment, PKI, agent Driver and `files.FS`, management router with SSH fallback, lifecycle, self-update and rollouts (§23) |
 | **M8 Firewall** | Policy model and compiler, nftables backend, coexistence refusal, dead-man transactions (agent + SSH), management-path protection, sets, drift, learning, simulation, Explain (§24) |
 | **M9 Firewall Designer** | Canonical document + YAML, Topology/Rules/YAML views over one draft, management-path overlay and warnings, draft simulation/Explain, layout, theme (§25) |
+| **M10 Network monitoring** | One flow model over the M8 store, conntrack collection with socket-sampling fallback, process attribution, policy correlation by the compiler, local GeoIP/ASN enrichment, host and fleet views, observed topology, drafts from observations (§26) |
 
 ---
 
@@ -1170,6 +1177,24 @@ Meaningful choices made during implementation, newest last.
 | M9 | Layout (positions, expanded groups, placed objects) is a separate settings blob (`firewall.layout`), never part of the document or its revision | Moving boxes is not a policy change |
 | M9 | The theme is `data-theme` on `<html>` (light, dark, system) set before first paint by `/theme-init.js` (a static file: the CSP allows only same-origin scripts) and saved in localStorage; dark values are a separate token palette; System follows `prefers-color-scheme` live through CSS | No flash, no reload, no inline script exception in the CSP |
 | M9 | Light-theme warning and danger tokens darkened (`#965a00`, `#b93232`) | The new contrast test found them at 4.48:1 and 4.43:1 on their tinted backgrounds, just under WCAG AA |
+| M10 | Observations stay one store (`fw_observations`, rebuilt): flow identity is host + direction + protocol + local address + service port + remote address; the client's ephemeral port, the process and the pid are "last seen" attributes | One busy client is one row, not one row per connection; the firewall and the network views read the same data |
+| M10 | Policy status comes only from the M8 compiler (`fwsvc.Classifier`): the desired policy, and on enforced hosts with unapplied changes the applied one. Outbound flows on hosts that don't restrict outbound are checked against the host compiled as if outbound were restricted, so "a policy names this connection" is answered without a second evaluator | The browser never decides firewall semantics; an outbound allow the compiler doesn't need on that host still covers the flow |
+| M10 | Status values: management, covered (a policy or base rule), unclassified (the default), denied (a deny policy, or the default drop on an enforced host); `would_deny` separately marks what the desired policy would drop | A host in Monitor mode with an inbound flow nothing allows is unclassified *and* would be denied — both are true |
+| M10 | One definition of internal: the firewall's `internal_ranges`. Scope is internal (in those ranges), public (globally routable unicast outside them) or special (loopback, link-local, multicast, documentation, private space removed from the ranges, ...). Only public addresses are ever looked up; the stored scope is recomputed when the ranges change | No second "LAN ranges" setting; nothing private is ever sent to a database lookup, even one on disk |
+| M10 | Agents prefer conntrack: ctnetlink "new connection" events (read only, CAP_NET_ADMIN, no modules, sysctls or rules touched). It is used only after the kernel confirms it tracks the agent's own controller connection (a `CT_GET` for its tuple); otherwise, and after any failure, the agent samples sockets (`ss -Hntuap`) and reports why. Rechecked every minute while sampling, every five minutes on conntrack | Connection tracking is only active while something (a firewall) uses it; an honest fidelity label beats a silent gap |
+| M10 | Socket sampling still runs alongside conntrack: it advances "last seen" for long-lived connections and names processes (scans at most every 2 s while conntrack announces unattributed connections). Inbound flows take the listening socket's process; outbound UDP from an unconnected socket its owner; otherwise "Unknown" | Process attribution from socket ownership is reliable or absent — never guessed |
+| M10 | No bytes counters | conntrack counters exist only with `nf_conntrack_acct` (off by default; DROOL doesn't change sysctls) and socket samples have none: partial totals would mislead |
+| M10 | Routed connections (containers on a bridge, a router) are counted, not shown | They aren't the host's own connections; container networking is out of scope |
+| M10 | GeoIP/ASN behind `geoip.Provider`; the first backend reads MaxMind-format (MMDB v2) files from `network.geoip_dir` (default `<data_dir>/geoip`) with DROOL's own bounds-checked reader. Country and ASN databases are recognised by content (MaxMind GeoLite2/GeoIP2, DB-IP Lite, IPinfo Lite); the newest of each kind wins; a changed file is reloaded; a broken replacement keeps the last good copy; a 50 000-address LRU caches lookups and is cleared on reload. Enrichment happens when results are read, not stored | No vendor account in DROOL, no online lookups, no dependency on a vendor library; database updates are the operator's (geoipupdate, downloads), separate from collection; a new database applies to old observations |
+| M10 | Retention (default 30 days) and a per-host cap (default 5 000 flows, least recently seen first) are pruned every 10 minutes in 2 000-row batches; ingestion writes each report in 500-row transactions | Bounded database; pruning interleaves with collection |
+| M10 | Fleet queries filter in SQL first (host, group, direction, scope, protocol, ports, process, source, times, new destinations), then classify and enrich rows in Go for policy, country, ASN, organization, service, CIDR and text filters, scanning in 1 000-row chunks behind a keyset cursor (at most 500 per page, 200 000 rows per request). The total is returned only when every filter ran in SQL | Server-side filtering and paging that stays correct for filters the database can't evaluate |
+| M10 | "New destination": a public address first seen (within retention) by that host, or by any host, after `since` | Situational awareness, not an alarm; no scores |
+| M10 | The observed topology uses the designer's node keys and groups public addresses by ASN (top N networks, the rest as "Other external networks", or one box), expandable to at most 40 addresses per network; both ends of an internal connection are counted once | No node per address, no country nodes (country isn't a route); large fleets stay readable |
+| M10 | "Create policy from observed connection" returns a document rule (and a custom service when no service matches); the designer adds it to its draft and nothing else happens | An observation never becomes a rule silently; validation, management checks, preview, save and the transaction all still apply |
+| M10 | `network.read` for admins, operators and auditors (not viewers), `network.snapshot` for admins and operators, `network.settings` for admins; the M8 observations and suggestions routes moved to `network.read` | Observed connections are sensitive metadata |
+| M10 | Agents announce `netmon-1` and send `netflows` reports (source, explanation, lost events, flows); M8 agents' `flows` reports are still accepted as socket sampling | Agents update after the controller; nothing is lost in between |
+| M10 | The agent reads its session's peer with `peer.FromContext(stream.Context())` | Bug found by the VM conntrack test: `grpc.Peer` is only filled in when a stream ends, so the agent never knew its own connection (needed to prove conntrack) — and M7's operation log never recorded the controller's certificate fingerprint |
+| M10 | Test mode: `DROOL_TEST_NETFLOWS_FILE` ingests reports from a file when it changes (browser tests need hundreds of public addresses) | Logged as TEST MODE, like M8's firewall test hooks |
 
 ---
 
@@ -1421,3 +1446,68 @@ Tokens in `web/src/styles/index.css`: a light palette on `:root`, a dark palette
 - `web/.../designer/model.test.ts` (vitest): the same golden JSON built through Topology operations and through Rules operations, the golden JSON drawn as a topology (and the Rules-built one draws the same graph), grouping, filtering, management overlay aggregation, edits.
 - `internal/api/designer_test.go`: YAML → document → stored policies → YAML; stale revision; direct, jump-host and agent management paths; explicit deny; indirect loss through group membership, a network CIDR change and a service redefinition; removing an allow (no loss); invalid drafts; draft simulation and Explain; apply refused and the override; permissions; layout; forwarded ports; unmeasured hosts at risk; the converger holding a set update near the management path.
 - Browser (`web/e2e`, run by `test/integration` `TestBrowser` against containers): Topology drag → Rules/YAML; YAML edit → Topology (and invalid YAML); Rules created with the keyboard only → Topology/YAML; management-path warnings, highlight and save confirmation; inspector, Explain and simulation; override confirmation; layout persistence; Light/Dark/System applied without reload, persisted, System following the OS live, the account page control; WCAG AA text contrast on 20 pages and a dialog in both themes.
+
+---
+
+## 26. Network connectivity monitoring (M10)
+
+What hosts actually talk to, correlated with the firewall policy and enriched with where public addresses belong. Visibility only: nothing in M10 blocks, scores or alerts, and nothing changes a host.
+
+### 26.1 What each kind of host can see
+
+| | Agent host | SSH-only host |
+|---|---|---|
+| Collection | **Continuous.** `conntrack` when connection tracking is active (DROOL's firewall, or another, uses it) and the agent may read events; otherwise socket sampling every 30 s | **Snapshot only**, on request: the sockets open at that moment. Never called continuous |
+| New connections | conntrack: every connection the kernel confirms, however short (events lost to a full buffer are counted and reported). Sampling: only connections open at a sample | Only those open during the snapshot |
+| Long-lived connections | Seen at every sample (last seen advances) | Once per snapshot |
+| Processes | From socket ownership (`ss -p`, root): inbound flows take the listening process; outbound ones the owning socket's, if it still exists when scanned; otherwise "Unknown" | The same through sudo, at the moment of the snapshot |
+| Not seen | Packet contents (never read), DNS queries, byte counts, connections routed through the host (counted only), loopback | The same, plus everything between snapshots |
+| Label in the UI | "Continuous: conntrack" or "Continuous: socket sampling (every 30 s)" with the reason conntrack isn't used | "Snapshot only: SSH" |
+
+M8 agents (no `netmon-1`) keep sending socket-sampling `flows` reports; they are stored as socket sampling with an "update the agent" note.
+
+### 26.2 Collection (`internal/netmon/collect`)
+
+The collector runs for the agent's lifetime while collection is on (network settings: every agent host, only hosts whose firewall mode isn't off, or none). It samples `ss -Hntuap` every 30 s (listeners, established sockets, owners) and, when usable, subscribes to ctnetlink `NFNLGRP_CONNTRACK_NEW` (`collect/conntrack_linux.go`: a minimal netlink client parsing `CTA_TUPLE_ORIG`; 8 MB receive buffer; `ENOBUFS` counted). Conntrack is used only after a `IPCTNL_MSG_CT_GET` for the agent's own controller connection succeeds; the check repeats every minute while sampling and every five minutes on conntrack. Events become connections by the host's addresses (source local: outbound; destination local: inbound; neither: routed, counted). An aggregator (`internal/firewall/observe`) counts each connection once — from its event, or the first sample that sees it — and holds at most 20 000 flows between reports (dropped flows are counted). Reports go every two sample periods (and at least every five minutes, so the fidelity label stays current).
+
+### 26.3 Storage
+
+`fw_observations` (migration 0010 rebuilds M8's table): `host_id, direction, protocol, local_ip, port` (the service port) `, peer` identify a flow; `local_port`/`remote_port` (last seen), `process`/`pid`, `scope`, `source` (the best that ever saw it: conntrack > sockets > snapshot), `count`, `first_seen`, `last_seen` describe it. Snapshots raise counts (they see open connections, not new ones); continuous sources add. Every flow is validated before storage (direction, tcp/udp only, ports 1–65535, parseable non-loopback non-multicast addresses without zones, sane times, printable process names, at most 25 000 flows per report); rejected ones are counted in the log, never logged. `net_collectors` holds each host's source, explanation, lost events, dropped and routed counts, last report and last snapshot.
+
+Growth, measured with SQLite as DROOL configures it: about 250 bytes per flow including indexes. A host that talks to a few hundred peers keeps a few hundred rows (≈100 KB); the per-host cap (default 5 000) bounds the worst case at ≈1.25 MB per host, ≈250 MB for 200 hosts at the cap. Ingestion handles ≈7 000 flow updates per second on a desktop SSD (a 200-agent fleet reporting a few hundred flows a minute each needs a few hundred). Pruning (retention, then the cap) runs every 10 minutes in 2 000-row batches.
+
+Query cost at fleet scale (`internal/api/network_scale_test.go`, `DROOL_SCALE_TEST=1`: 200 hosts, 500 flows each, through the real ingestion path): a page of flows 10–50 ms with database filters, 35–200 ms with classifier/enrichment filters, new destinations 210 ms, the fleet summary 560 ms, filter values 300 ms, the topology 730 ms. "New destinations" uses one grouped pass (`(host_id, peer) IN (… GROUP BY … HAVING min(first_seen) >= ?)`); the first version, a correlated lookup per row, took 5.5 s and was replaced.
+
+### 26.4 Correlation (`fwsvc.Classifier`)
+
+One world snapshot per request; each host compiled at most once. A flow is evaluated with `HostPolicy.Evaluate` exactly like Explain Host: management (a protected DROOL path), covered (a policy, or a base rule), unclassified (the default), denied (a deny policy; or the default drop on an enforced host). On hosts that don't restrict outbound, outbound flows are also evaluated against the host compiled with outbound restricted, so a policy that names the connection still covers it (noted: "the firewall doesn't need it"). On enforced hosts whose rules differ from the desired ones, the applied policy (stored at commit) is evaluated too and a different verdict is reported ("not applied yet"). Modes, pending enforcement, pending set updates and drift become notes.
+
+### 26.5 Enrichment (`internal/netmon/geoip`)
+
+`Provider` is the interface; `Enricher` serves the directory's databases. The MMDB reader validates the metadata, tree and every data offset, bounds nesting and work per lookup, and never panics on corrupt input (tested by flipping bytes across a file). Lookups are only made for public addresses, cached (50 000-entry LRU, invalidated on reload), and never stored, so a database update applies to everything already observed. Missing directory, no files, unrecognised or corrupt files: monitoring is unaffected and the UI says "Unknown" / how to enable enrichment.
+
+### 26.6 API (`api/openapi.yaml`, tag `network`)
+
+| Endpoint | |
+|---|---|
+| `GET /network/flows` | Filtered, keyset-paged flows (≤500 per page), each with host, endpoints, process, source, counts, times, scope, peer host/groups or named network, GeoIP/ASN, policy correlation |
+| `GET /network/flows/{id}` | One flow: collection fidelity, firewall summary, related flows, first seen by the host and by the fleet, and a draft rule when no policy covers it |
+| `GET /network/summary` | Counts, how every host is observed, settings, last prune |
+| `GET /network/filters` | Filter values (hosts, groups, processes, ports, services, countries, networks) |
+| `GET /network/topology` | The observed graph for the designer (`expand`, `max_external`, filters) |
+| `GET/PUT /network/settings` | Collection, retention, per-host cap, enrichment (audited: `network.settings.update`) |
+| `GET /network/enrichment`, `POST …/reload` | Database status; reload (audited: `network.enrichment.reload`) |
+| `GET /hosts/{id}/network`, `POST …/snapshot` | A host's summary (collection, listening ports from inventory with observed inbound use, counts); an SSH snapshot (audited: `firewall.snapshot`) |
+
+### 26.7 Web UI
+
+`web/src/components/network/`: `FlowTable` (server-paged, keyboard-operable rows), `FlowFilters` (presets and every filter; text filters apply after a pause), `FlowDialog` (Source/Destination/Country/Network/Protocol/Port/Process/times/connections, the firewall's reason, collection fidelity, related flows, "Create policy from observed connection"), `HostNetworkCard` (host page: collection, listening, inbound/outbound/internal/external/new/unclassified views; replaces the inventory card's port list and the firewall card's observation table) and `pages/network/NetworkPage` (fleet summary, fidelity, presets, filters, table; settings and enrichment status). The designer's topology gains Configured / Observed / Configured + Observed (`model.ts` merges observed edges onto the visible nodes — hosts, collapsed groups, named networks, the controller for management — and draws them dotted with a status symbol and dash pattern), status/scope/period/network-count filters, external networks expandable to addresses, an observed-connections list as the non-canvas equivalent, and observed edge and node details. Status is always words plus a symbol (✓ covered, ⛨ management, ⚠ unclassified, ✕ denied), never colour alone; country is text, never a flag only.
+
+### 26.8 Testing
+
+- `internal/netmon`: scope classification (RFC 1918, CGNAT, ULA, loopback, link-local, multicast, documentation, benchmarking, reserved, mapped IPv4, public IPv4/IPv6, custom ranges, most specific range), settings.
+- `internal/netmon/geoip`: record sizes 24/28/32, IPv4 and IPv6 databases, IPv4 in IPv6 trees, pointers, corrupt and truncated files (byte flips everywhere), missing directory, unknown addresses, the cache (hits, bound), replacement and a broken replacement, IPinfo layout; checked once by hand against the real DB-IP Lite databases.
+- `internal/netmon/collect`: `ss -p` parsing (dual-stack listeners, mapped addresses, owners, no owner), socket-sampling fallback for each reason (no conntrack, no permission, not tracking), conntrack events (short-lived connections counted, inbound attributed to the listener, UDP to its socket, routed and loopback skipped, ICMP ignored, no double counting with samples), losing conntrack, lost events, the pending bound; ctnetlink encoding/parsing (IPv4/IPv6, unknown attributes, truncation, garbage).
+- `internal/api/network_test.go`: ingestion and validation, aggregation (first seen stable, last seen advancing, counts), every filter, paging with and without totals, details and the suggestion (accepted by the designer's check), management, covered, unclassified, would-deny, denied and stale (applied ≠ desired) correlation, internal_ranges changes, enrichment off, private addresses never looked up, facets, topology (ASN grouping, both ends counted once, expansion, folding), host summary with listening ports, retention and cap pruning, concurrent reports, M8 reports, permissions, missing and corrupt databases, the agent end to end (socket sampling, processes, collection off).
+- `test/integration`: SSH snapshots in containers (sshd, management); agents in unprivileged containers fall back to socket sampling with the reason; `TestVMFirewall` (TCG VMs): with DROOL's firewall enforced the agent switches to conntrack and counts six sub-second connections, inbound SSH attributed to sshd.
+- Browser (`web/e2e/network.test.mjs`, `TestBrowser`, synthetic observations and test GeoIP databases): fleet page, paging, presets and filters, details from the keyboard, new destinations, the draft from an observation (stored policy unchanged), the host card with a real snapshot, Configured/Observed/both with ASN grouping, expansion and the list equivalent, empty results and settings; the contrast pass covers the new pages, topology modes and the details dialog in Light and Dark.

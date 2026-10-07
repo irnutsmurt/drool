@@ -268,15 +268,22 @@ type FwNetwork struct {
 }
 
 type FwObservation struct {
-	HostID    string
-	Direction string
-	Protocol  string
-	Port      int64
-	Peer      string
-	Source    string
-	Count     int64
-	FirstSeen int64
-	LastSeen  int64
+	ID         int64
+	HostID     string
+	Direction  string
+	Protocol   string
+	LocalIp    string
+	Port       int64
+	Peer       string
+	LocalPort  int64
+	RemotePort int64
+	Scope      string
+	Source     string
+	Process    string
+	Pid        int64
+	Count      int64
+	FirstSeen  int64
+	LastSeen   int64
 }
 
 type FwPolicy struct {
@@ -489,6 +496,18 @@ type JobStep struct {
 	Truncated   int64
 	StartedAt   int64
 	FinishedAt  sql.NullInt64
+}
+
+type NetCollector struct {
+	HostID        string
+	Source        string
+	Detail        string
+	SampleSeconds int64
+	EventsLost    int64
+	Dropped       int64
+	Forwarded     int64
+	ReportedAt    sql.NullInt64
+	SnapshotAt    sql.NullInt64
 }
 
 type Secret struct {

@@ -94,6 +94,8 @@ func (s *Server) handleSetFirewallSettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	s.d.Firewall.Kick()
+	// internal_ranges decide which observed addresses are internal (M10).
+	go s.d.Firewall.Rescope(context.WithoutCancel(ctx))
 	writeJSON(w, http.StatusOK, s.d.Firewall.GetSettings(ctx))
 }
 

@@ -155,7 +155,7 @@ export function ServicesCard({ host }: { host: Host }) {
   const manage = can("jobs.execute") && full.systemd_running;
   const services = full.services.filter((s) => !filter || `${s.name} ${s.description ?? ""}`.toLowerCase().includes(filter.toLowerCase()));
   return (
-    <Card title="Services and listening ports">
+    <Card title={can("network.read") ? "Services" : "Services and listening ports"}>
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3">
@@ -196,17 +196,26 @@ export function ServicesCard({ host }: { host: Host }) {
         </div>
         <div className="space-y-2">
           <h3 className="text-sm font-medium">Listening ports ({full.ports.length})</h3>
-          <Table
-            rows={full.ports}
-            rowKey={(p) => `${p.proto}|${p.address}|${p.port}`}
-            empty="None reported."
-            columns={[
-              { header: "Port", cell: (p) => `${p.port}/${p.proto}` },
-              { header: "Address", cell: (p) => <span className="font-mono text-xs">{p.address}</span> },
-              { header: "Process", cell: (p) => p.process ?? <span className="text-muted">—</span> },
-            ]}
-          />
-          <p className="text-xs text-muted">Process names are shown only for processes the SSH user can see.</p>
+          {can("network.read") ? (
+            <p className="text-sm text-muted">
+              Listening ports, with the connections observed arriving on them, are shown under{" "}
+              <a className="text-accent underline" href="#network">Network connections</a>.
+            </p>
+          ) : (
+            <>
+              <Table
+                rows={full.ports}
+                rowKey={(p) => `${p.proto}|${p.address}|${p.port}`}
+                empty="None reported."
+                columns={[
+                  { header: "Port", cell: (p) => `${p.port}/${p.proto}` },
+                  { header: "Address", cell: (p) => <span className="font-mono text-xs">{p.address}</span> },
+                  { header: "Process", cell: (p) => p.process ?? <span className="text-muted">—</span> },
+                ]}
+              />
+              <p className="text-xs text-muted">Process names are shown only for processes the SSH user can see.</p>
+            </>
+          )}
         </div>
       </div>
     </Card>

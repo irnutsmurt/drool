@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"net/netip"
 	"os"
 	"runtime"
 	"sync"
@@ -33,6 +34,8 @@ type session struct {
 	conn       *grpc.ClientConn
 	controller string // controller certificate fingerprint (for the op log)
 	endpoint   string
+	local      netip.AddrPort // this end of the controller connection
+	remote     netip.AddrPort
 	mu         sync.Mutex
 	renewing   bool
 }
@@ -274,6 +277,11 @@ func (a *Agent) connect(ctx context.Context, ep string) error {
 	if err != nil {
 		return err
 	}
+	// The live stream's peer (grpc.Peer is only filled in when the stream
+	// ends, so it can't be used here).
+	if p, ok := peer.FromContext(stream.Context()); ok {
+		pr = *p
+	}
 	if ti, ok := pr.AuthInfo.(credentials.TLSInfo); ok && len(ti.State.PeerCertificates) > 0 {
 		s.controller = agentpki.Fingerprint(ti.State.PeerCertificates[0].Raw)
 	}
@@ -291,6 +299,11 @@ func (a *Agent) connect(ctx context.Context, ep string) error {
 		return &errIncompatible{reason: ack.Reason}
 	}
 	a.log.Info("connected to controller", "endpoint", ep, "protocol", ack.Protocol, "host", ack.HostName, "quarantined", ack.Quarantined)
+	if pr.LocalAddr != nil && pr.Addr != nil {
+		s.local, _ = netip.ParseAddrPort(pr.LocalAddr.String())
+		s.remote, _ = netip.ParseAddrPort(pr.Addr.String())
+		s.local, s.remote = netip.AddrPortFrom(s.local.Addr().Unmap(), s.local.Port()), netip.AddrPortFrom(s.remote.Addr().Unmap(), s.remote.Port())
+	}
 	a.mu.Lock()
 	a.session = s
 	a.mu.Unlock()

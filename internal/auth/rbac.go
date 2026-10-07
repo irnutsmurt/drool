@@ -39,9 +39,17 @@ const (
 	// is admin only; the emergency override (applying a policy that removes
 	// a management path, short rollback timeouts, replacing drifted rules)
 	// is a separate permission.
-	PermFirewallRead     Permission = "firewall.read"     // policies, explain, simulation, transactions, observations
+	PermFirewallRead     Permission = "firewall.read"     // policies, explain, simulation, transactions
 	PermFirewallWrite    Permission = "firewall.write"    // policies, services, modes, detection, snapshots, apply
 	PermFirewallOverride Permission = "firewall.override" // emergency override, timeout override, replace drift
+
+	// Network monitoring (M10). Observed connections are sensitive
+	// metadata (who talks to whom, from which process): viewers don't see
+	// them. Snapshots run ss as root over SSH; settings and enrichment
+	// changes are admin only.
+	PermNetworkRead     Permission = "network.read"     // observed connections, topology, enrichment status
+	PermNetworkSnapshot Permission = "network.snapshot" // take a connection snapshot of an SSH host
+	PermNetworkSettings Permission = "network.settings" // collection, retention, enrichment
 )
 
 // Role names stored in users.role.
@@ -63,16 +71,17 @@ var rolePermissions = map[string][]Permission{
 		PermFilesRead, PermFilesWrite, PermFilesDeploy, PermFilesElevate,
 		PermAgentsRead, PermAgentsEnroll, PermAgentsManage, PermAgentsPKI,
 		PermFirewallRead, PermFirewallWrite, PermFirewallOverride,
+		PermNetworkRead, PermNetworkSnapshot, PermNetworkSettings,
 	},
 	// Operators can already run commands as root (jobs.execute), so file
 	// elevation adds no power they don't have.
 	RoleOperator: {
 		PermHostsRead, PermJobsRead, PermJobsExecute, PermCredentialsUse,
 		PermFilesRead, PermFilesWrite, PermFilesDeploy, PermFilesElevate,
-		PermAgentsRead, PermFirewallRead,
+		PermAgentsRead, PermFirewallRead, PermNetworkRead, PermNetworkSnapshot,
 	},
 	RoleAuditor: {
-		PermHostsRead, PermJobsRead, PermAuditRead, PermSettingsRead, PermAgentsRead, PermFirewallRead,
+		PermHostsRead, PermJobsRead, PermAuditRead, PermSettingsRead, PermAgentsRead, PermFirewallRead, PermNetworkRead,
 	},
 	RoleViewer: {
 		PermHostsRead, PermJobsRead, PermAgentsRead, PermFirewallRead,

@@ -3,7 +3,7 @@ package agent
 import (
 	"context"
 	"drool/internal/firewall/hostfw"
-	"drool/internal/firewall/observe"
+	"drool/internal/netmon/collect"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -36,6 +36,9 @@ type Options struct {
 	Supervisor string
 	// FirewallPaths redirects the firewall tooling (tests).
 	FirewallPaths *hostfw.Paths
+	// NetCollect overrides the connection collector's options (tests: a
+	// fake ss, a short sample period, a fake conntrack).
+	NetCollect *collect.Options
 }
 
 // Agent is one running agent.
@@ -62,8 +65,8 @@ type Agent struct {
 	sessionCancel context.CancelCauseFunc // ends the current session (firewall verification)
 	learning      bool
 	sampleEvery   time.Duration
-	flowsMu       sync.Mutex
-	flows         *observe.Aggregator
+	coll          *collect.Collector // connection collector, while collection is on
+	collectStop   context.CancelFunc
 }
 
 // LoadCeiling reads and checks /etc/drool/agent.yaml. When the agent runs
@@ -124,7 +127,7 @@ func New(opt Options) (*Agent, error) {
 	}
 	a := &Agent{opt: opt, paths: opt.Paths, store: st, ledger: led, oplog: ol, file: file, ceiling: file.Capabilities,
 		run: opt.Runner, log: opt.Log, now: opt.Now, nonce: randomID(), running: map[string]context.CancelFunc{},
-		flows: observe.NewAggregator(), sampleEvery: defaultSampleEvery}
+		sampleEvery: defaultSampleEvery}
 	a.effective = a.computeEffective()
 	return a, nil
 }

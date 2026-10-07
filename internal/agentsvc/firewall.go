@@ -11,7 +11,8 @@ import (
 type FirewallHooks interface {
 	// OnSession runs after a session's hello was acknowledged.
 	OnSession(hostID string, firewallJSON []byte, features []string, connectedAt time.Time)
-	// OnTelemetry receives "firewall" status and "flows" observations.
+	// OnTelemetry receives "firewall" status and "flows" (M8) and
+	// "netflows" (M10) observations.
 	OnTelemetry(hostID, kind string, payload []byte)
 	// UpdateBlocked returns why the agent must not be updated right now
 	// (a firewall transaction is pending), or "".

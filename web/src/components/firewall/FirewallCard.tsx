@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import type { Host } from "@/api/queries";
@@ -10,10 +11,9 @@ import { Card } from "@/components/ui/Card";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 import { cx } from "@/components/ui/cx";
 import { Field, Input, Select } from "@/components/ui/Field";
-import { Table } from "@/components/ui/Table";
-import { errorMessage, formatAgo, formatDateTime } from "@/lib/format";
+import { errorMessage, formatAgo } from "@/lib/format";
 import { ApplyDialog, ExplainTable, modeInfo, PolicyEditor, statusLabels, TxList } from "./parts";
-import { fk, useFwHost, useFwObservations, useFwSuggestions, useFwTransactions, type FwPlan, type FwSuggestion } from "./queries";
+import { fk, useFwHost, useFwSuggestions, useFwTransactions, type FwPlan, type FwSuggestion } from "./queries";
 
 /** The host's firewall (DESIGN §15–19): mode, environment, what is
  *  enforced and why, observations, and transactions. */
@@ -183,29 +183,17 @@ function ExplainSection({ p }: { p: FwPlan }) {
 
 function Observed({ p }: { p: FwPlan }) {
   const { can } = useAuth();
-  const qc = useQueryClient();
-  const obs = useFwObservations(p.host_id);
-  const sug = useFwSuggestions(p.host_id, p.config.mode === "guided" || p.config.mode === "enforce");
-  const snap = useMutation({
-    mutationFn: () => unwrap(api.POST("/firewall/hosts/{id}/snapshot", { params: { path: { id: p.host_id } } })),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: fk.observations(p.host_id) });
-      void qc.invalidateQueries({ queryKey: fk.suggestions(p.host_id) });
-    },
-  });
+  const sug = useFwSuggestions(p.host_id, can("network.read") && (p.config.mode === "guided" || p.config.mode === "enforce"));
   const [approve, setApprove] = useState<FwSuggestion | null>(null);
   return (
     <div className="space-y-3 text-sm">
-      <div className="flex items-center justify-between">
-        <p className="text-muted">
-          {p.learning === "continuous" ? "The agent records connections continuously (aggregated: who talks to whom on which port)."
-            : p.learning === "snapshot" ? "SSH hosts don't learn continuously: take a snapshot of the current connections."
-              : p.transport === "agent" ? "Mode is off: the agent isn't recording connections. Turn on Monitor, Guided or Enforce for continuous learning, or take a one-off snapshot."
-                : "Take a snapshot of the current connections (SSH hosts never learn continuously)."}
-        </p>
-        {can("firewall.write") && <Button size="sm" disabled={snap.isPending} onClick={() => snap.mutate()}>Take snapshot now</Button>}
-      </div>
-      {snap.error && <Alert>{errorMessage(snap.error)}</Alert>}
+      <p className="text-muted">
+        {p.learning === "continuous" ? "The agent records connections continuously."
+          : p.learning === "snapshot" ? "SSH hosts are never observed continuously: take a snapshot of the current connections."
+            : "Continuous collection is off for this host (Network → Collection and enrichment)."}{" "}
+        Observed connections, with how this policy classifies each of them, are under <a className="text-accent underline" href="#network">Network connections</a>
+        {" "}and on the <Link className="text-accent underline" to={`/network?host=${p.host_id}`}>Network activity</Link> page.
+      </p>
       {(sug.data?.items ?? []).length > 0 && (
         <div className="rounded-ui border border-line p-3">
           <div className="mb-1 font-medium">Suggested policies</div>
@@ -219,20 +207,6 @@ function Observed({ p }: { p: FwPlan }) {
           </ul>
         </div>
       )}
-      <Table
-        rows={obs.data?.items ?? []}
-        rowKey={(o) => o.direction + o.protocol + o.port + o.peer}
-        empty="No connections observed yet."
-        columns={[
-          { header: "", cell: (o) => (o.classified ? <Badge tone="ok">covered</Badge> : <Badge tone="warn">unclassified</Badge>) },
-          { header: "Direction", cell: (o) => (o.direction === "in" ? "inbound" : "outbound") },
-          { header: "Peer", cell: (o) => o.peer_host ? <span>{o.peer_host} <span className="text-xs text-muted">{o.peer}</span></span> : o.peer },
-          { header: "Service", cell: (o) => `${o.protocol.toUpperCase()} ${o.port}${o.service ? ` (${o.service})` : ""}` },
-          { header: "Connections", cell: (o) => o.count.toLocaleString() },
-          { header: "Seen", cell: (o) => <span title={formatDateTime(o.last_seen)}>{formatAgo(o.last_seen)} <span className="text-xs text-muted">{o.source}</span></span> },
-          { header: "Policy", cell: (o) => <span className={o.verdict === "drop" ? "text-danger" : ""}>{o.verdict === "drop" ? "would be blocked" : "allowed"}: {o.reason}</span> },
-        ]}
-      />
       {approve && <ApproveSuggestion s={approve} onClose={() => setApprove(null)} />}
     </div>
   );

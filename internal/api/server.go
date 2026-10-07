@@ -11,6 +11,7 @@ import (
 	"drool/internal/hostops"
 	"drool/internal/mgmt"
 	"drool/internal/model"
+	"drool/internal/netmon/netsvc"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -55,6 +56,7 @@ type Deps struct {
 	Router    *mgmt.Router      // management paths; nil: SSH only
 	WebPin    func() string     // curl --pinnedpubkey value of the web TLS key
 	Firewall  *fwsvc.Service    // firewall policy (M8)
+	Network   *netsvc.Service   // network monitoring (M10); nil disables its routes
 	Artifacts *artifacts.Store  // deployment artifacts
 	// StaleAfter is how old a status check may be before it is shown as stale.
 	StaleAfter time.Duration
@@ -238,8 +240,8 @@ func (s *Server) routes() []route {
 		{method: "PUT", path: APIPrefix + "/firewall/hosts/{id}", auth: authed, perm: auth.PermFirewallWrite, h: s.handleSetFirewallHost},
 		{method: "POST", path: APIPrefix + "/firewall/hosts/{id}/detect", auth: authed, perm: auth.PermFirewallWrite, h: s.handleFirewallDetect},
 		{method: "POST", path: APIPrefix + "/firewall/hosts/{id}/snapshot", auth: authed, perm: auth.PermFirewallWrite, h: s.handleFirewallSnapshot},
-		{method: "GET", path: APIPrefix + "/firewall/hosts/{id}/observations", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallObservations},
-		{method: "GET", path: APIPrefix + "/firewall/hosts/{id}/suggestions", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallSuggestions},
+		{method: "GET", path: APIPrefix + "/firewall/hosts/{id}/observations", auth: authed, perm: auth.PermNetworkRead, h: s.handleFirewallObservations},
+		{method: "GET", path: APIPrefix + "/firewall/hosts/{id}/suggestions", auth: authed, perm: auth.PermNetworkRead, h: s.handleFirewallSuggestions},
 		{method: "POST", path: APIPrefix + "/firewall/hosts/{id}/adopt", auth: authed, perm: auth.PermFirewallWrite, h: s.handleFirewallAdopt},
 		{method: "POST", path: APIPrefix + "/firewall/apply", auth: authed, perm: auth.PermFirewallWrite, h: s.handleFirewallApply},
 		{method: "GET", path: APIPrefix + "/firewall/transactions", auth: authed, perm: auth.PermFirewallRead, h: s.handleListFirewallTransactions},
@@ -251,6 +253,17 @@ func (s *Server) routes() []route {
 		{method: "GET", path: APIPrefix + "/firewall/layout", auth: authed, perm: auth.PermFirewallRead, h: s.handleGetFirewallLayout},
 		{method: "PUT", path: APIPrefix + "/firewall/layout", auth: authed, perm: auth.PermFirewallWrite, h: s.handleSetFirewallLayout},
 		{method: "POST", path: APIPrefix + "/firewall/simulate", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallSimulate},
+		{method: "GET", path: APIPrefix + "/network/summary", auth: authed, perm: auth.PermNetworkRead, h: s.handleNetworkSummary},
+		{method: "GET", path: APIPrefix + "/network/flows", auth: authed, perm: auth.PermNetworkRead, h: s.handleNetworkFlows},
+		{method: "GET", path: APIPrefix + "/network/flows/{id}", auth: authed, perm: auth.PermNetworkRead, h: s.handleNetworkFlow},
+		{method: "GET", path: APIPrefix + "/network/filters", auth: authed, perm: auth.PermNetworkRead, h: s.handleNetworkFacets},
+		{method: "GET", path: APIPrefix + "/network/topology", auth: authed, perm: auth.PermNetworkRead, h: s.handleNetworkTopology},
+		{method: "GET", path: APIPrefix + "/network/settings", auth: authed, perm: auth.PermNetworkRead, h: s.handleNetworkSettings},
+		{method: "PUT", path: APIPrefix + "/network/settings", auth: authed, perm: auth.PermNetworkSettings, h: s.handleSetNetworkSettings},
+		{method: "GET", path: APIPrefix + "/network/enrichment", auth: authed, perm: auth.PermNetworkRead, h: s.handleNetworkEnrichment},
+		{method: "POST", path: APIPrefix + "/network/enrichment/reload", auth: authed, perm: auth.PermNetworkSettings, h: s.handleReloadNetworkEnrichment},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/network", auth: authed, perm: auth.PermNetworkRead, h: s.handleHostNetwork},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/network/snapshot", auth: authed, perm: auth.PermNetworkSnapshot, h: s.handleHostNetworkSnapshot},
 		{method: "GET", path: APIPrefix + "/firewall/propagation", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallPropagation},
 	}
 }

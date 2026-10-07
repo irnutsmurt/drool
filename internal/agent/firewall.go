@@ -5,21 +5,23 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"net/netip"
+	"os"
 	"strconv"
 	"time"
 
 	"drool/internal/agentrpc/pb"
 	"drool/internal/driver"
 	"drool/internal/firewall/hostfw"
-	"drool/internal/firewall/observe"
 	"drool/internal/hostops"
 	"drool/internal/model"
+	"drool/internal/netmon/collect"
 )
 
 // Features are optional capabilities of this agent build, announced in the
 // hello. The controller only sends firewall operations to agents that
-// announce "firewall-1".
-var Features = []string{"firewall-1"}
+// announce "firewall-1"; "netmon-1" agents report "netflows" (M10).
+var Features = []string{"firewall-1", "netmon-1"}
 
 // errReconnect ends a session on purpose: after applying a firewall
 // candidate the agent proves the management path with a completely new
@@ -119,7 +121,7 @@ func (a *Agent) afterFirewallOp(op *model.FirewallOp, res *driver.OpResult) {
 	}()
 }
 
-// --- continuous learning (DESIGN §19.1): agent hosts only ---
+// --- continuous connection collection (DESIGN §19.1, M10): agent hosts only ---
 
 const defaultSampleEvery = 30 * time.Second
 
@@ -133,17 +135,63 @@ func (a *Agent) setFirewallConfig(fc *pb.FirewallConfig) {
 	a.mu.Unlock()
 }
 
-// Learning reports whether the controller has turned continuous learning on.
+// Learning reports whether the controller has turned continuous collection on.
 func (a *Agent) Learning() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.learning
 }
 
+// controlConn is the current controller connection's two ends: the
+// collector proves conntrack is tracking by asking about it.
+func (a *Agent) controlConn() (netip.AddrPort, netip.AddrPort, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.session == nil || !a.session.local.IsValid() || !a.session.remote.IsValid() {
+		return netip.AddrPort{}, netip.AddrPort{}, false
+	}
+	return a.session.local, a.session.remote, true
+}
+
+// collector starts or stops the connection collector. It runs for the
+// agent's lifetime (not one session), so a reconnect loses nothing.
+func (a *Agent) collector(on bool, every time.Duration) *collect.Collector {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !on {
+		if a.collectStop != nil {
+			a.collectStop()
+			a.collectStop, a.coll = nil, nil
+		}
+		return nil
+	}
+	if a.coll == nil {
+		parent := a.ctx // a.mu is held: not rootCtx
+		if parent == nil {
+			parent = context.Background()
+		}
+		ctx, cancel := context.WithCancel(parent)
+		opt := collect.Options{Every: every, DisableConntrack: os.Getenv("DROOL_AGENT_NO_CONNTRACK") == "1"}
+		if a.opt.NetCollect != nil {
+			opt = *a.opt.NetCollect
+		}
+		opt.Control, opt.Log = a.controlConn, a.log
+		a.coll = collect.New(opt)
+		a.collectStop = cancel
+		go a.coll.Run(ctx)
+	}
+	return a.coll
+}
+
 func (a *Agent) learnLoop(ctx context.Context, s *session) {
-	tick := time.NewTicker(5 * time.Second)
+	period := 5 * time.Second
+	if a.opt.NetCollect != nil && a.opt.NetCollect.Every > 0 && a.opt.NetCollect.Every < period {
+		period = a.opt.NetCollect.Every
+	}
+	tick := time.NewTicker(period)
 	defer tick.Stop()
-	var lastSample, lastSend time.Time
+	var lastSend, lastStatus time.Time
+	lastSrc := ""
 	for {
 		select {
 		case <-ctx.Done():
@@ -153,30 +201,27 @@ func (a *Agent) learnLoop(ctx context.Context, s *session) {
 		a.mu.Lock()
 		on, every := a.learning, a.sampleEvery
 		a.mu.Unlock()
-		if !on || !a.Effective().Monitoring {
+		if a.opt.NetCollect != nil && a.opt.NetCollect.Every > 0 {
+			every = a.opt.NetCollect.Every
+		}
+		col := a.collector(on && a.Effective().Monitoring, every)
+		if col == nil {
 			continue
 		}
 		now := a.now()
-		if now.Sub(lastSample) >= every {
-			lastSample = now
-			res, err := hostfw.Run(ctx, a.run, hostops.Become{Method: "none"}, a.fwPaths(), hostfw.Action{Kind: hostfw.Snapshot})
-			if err == nil {
-				a.flowsMu.Lock()
-				a.flows.Add(observe.Parse(res.Sections), now.Unix())
-				a.flowsMu.Unlock()
-			}
+		if now.Sub(lastSend) < 2*every {
+			continue
 		}
-		if now.Sub(lastSend) >= 2*every {
-			lastSend = now
-			a.flowsMu.Lock()
-			fl := a.flows.Drain()
-			a.flowsMu.Unlock()
-			if len(fl) == 0 {
-				continue
-			}
-			b, _ := json.Marshal(fl)
-			s.send(&pb.AgentMessage{Msg: &pb.AgentMessage_Telemetry{Telemetry: &pb.Telemetry{Kind: "flows", Output: b, CollectedAtUnix: now.Unix()}}})
+		lastSend = now
+		r := col.Report()
+		// Empty reports still go out now and then: the controller shows
+		// how this host is observed (conntrack or socket sampling).
+		if len(r.Flows) == 0 && r.Source == lastSrc && now.Sub(lastStatus) < 5*time.Minute {
+			continue
 		}
+		lastSrc, lastStatus = r.Source, now
+		b, _ := json.Marshal(r)
+		s.send(&pb.AgentMessage{Msg: &pb.AgentMessage_Telemetry{Telemetry: &pb.Telemetry{Kind: "netflows", Output: b, CollectedAtUnix: now.Unix()}}})
 	}
 }
 
