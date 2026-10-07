@@ -81,6 +81,10 @@ type Poller struct {
 	mu    sync.Mutex
 	due   map[string]map[string]time.Time // host -> task -> next run
 	inFly map[string]bool                 // host -> a task is running
+
+	// AgentManaged reports hosts whose inventory comes from their agent's
+	// telemetry; they are not polled over SSH (ARCHITECTURE-ALPHA §23.7).
+	AgentManaged func(ctx context.Context, h db.Host) bool
 }
 
 func New(st *store.Store, inv *inventory.Service, locks *lock.Manager, busy func() bool, log *slog.Logger, cfg Config) *Poller {
@@ -176,7 +180,7 @@ func (p *Poller) tick(ctx context.Context) {
 	seen := map[string]bool{}
 	for _, h := range hosts {
 		seen[h.ID] = true
-		if !eligible(h) {
+		if !eligible(h) || (p.AgentManaged != nil && p.AgentManaged(ctx, h)) {
 			continue
 		}
 		p.mu.Lock()

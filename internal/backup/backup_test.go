@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"drool/internal/agentsvc"
 	"drool/internal/artifacts"
 	"drool/internal/config"
 	"drool/internal/secrets"
@@ -414,5 +415,67 @@ func TestArtifactsRoundTripAndTamperDetection(t *testing.T) {
 	}, nil)
 	if _, err := Restore(ctx, fresh(t), bytes.NewReader(evil), RestoreOptions{}); err == nil || !strings.Contains(err.Error(), "artifact") {
 		t.Fatalf("tampered artifact accepted: %v", err)
+	}
+}
+
+// TestAgentPKIBackup: Agent PKI state travels with backups (identities,
+// manifests and the intermediate key, sealed with the master key), but a
+// root key that was exported and removed never reappears. After a restore
+// without the master key the PKI is recovered with the offline root key.
+func TestAgentPKIBackup(t *testing.T) {
+	src := controller(t)
+	ctx := context.Background()
+	st, err := store.Open(filepath.Join(src.DataDir, store.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, _, _, _ := secrets.LoadOrCreateBox(src.MasterKeyPath())
+	pki, _, err := agentsvc.OpenPKI(ctx, st, box, "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rootKey, _ := pki.ExportRoot()
+	if err := pki.RemoveRootKey(ctx); err != nil {
+		t.Fatal(err)
+	}
+	fp := pki.RootFingerprint()
+	st.Close()
+
+	// With the master key: everything works after the restore, and the
+	// removed root key is not in it.
+	dst := fresh(t)
+	if _, err := Restore(ctx, dst, bytes.NewReader(makeBackup(t, src, true)), RestoreOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if count(t, dst, "agent_ca WHERE kind = 'root' AND key_ciphertext IS NOT NULL") != 0 {
+		t.Fatal("a removed root key came back through the backup")
+	}
+	st2, _ := store.Open(filepath.Join(dst.DataDir, store.FileName))
+	box2, _, _, _ := secrets.LoadOrCreateBox(dst.MasterKeyPath())
+	p2, _, err := agentsvc.OpenPKI(ctx, st2, box2, "t")
+	if err != nil || p2.RootFingerprint() != fp {
+		t.Fatalf("PKI after restore: %v", err)
+	}
+	st2.Close()
+
+	// Without the master key (credentials discarded): the PKI is unusable
+	// until a new intermediate is issued with the offline root key.
+	dst3 := fresh(t)
+	if _, err := Restore(ctx, dst3, bytes.NewReader(makeBackup(t, src, false)), RestoreOptions{DiscardCredentials: true}); err != nil {
+		t.Fatal(err)
+	}
+	st3, _ := store.Open(filepath.Join(dst3.DataDir, store.FileName))
+	defer st3.Close()
+	box3, _, _, _ := secrets.LoadOrCreateBox(dst3.MasterKeyPath())
+	if _, _, err := agentsvc.OpenPKI(ctx, st3, box3, "t"); !errors.Is(err, agentsvc.ErrPKIUnusable) {
+		t.Fatalf("PKI after discarding: %v", err)
+	}
+	v, err := agentsvc.RecoverIntermediate(ctx, st3, box3, rootKey)
+	if err != nil || v != 2 {
+		t.Fatalf("recover intermediate: %d %v", v, err)
+	}
+	p3, _, err := agentsvc.OpenPKI(ctx, st3, box3, "t")
+	if err != nil || p3.RootFingerprint() != fp || len(p3.Status().RevokedIntermediates) != 1 {
+		t.Fatalf("PKI after recovery: %v %+v", err, p3)
 	}
 }

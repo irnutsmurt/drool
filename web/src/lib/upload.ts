@@ -2,13 +2,14 @@ import { getCsrfToken, ApiError } from "@/api/client";
 
 /** Stream a file with progress (fetch can't report upload progress). */
 export function upload(method: "PUT" | "POST", url: string, body: Blob, onProgress?: (fraction: number) => void,
-  signal?: AbortSignal): Promise<unknown> {
+  signal?: AbortSignal, headers?: Record<string, string>): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open(method, "/api/v1" + url);
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
     const csrf = getCsrfToken();
     if (csrf) xhr.setRequestHeader("X-DROOL-CSRF", csrf);
+    for (const [k, v] of Object.entries(headers ?? {})) xhr.setRequestHeader(k, v);
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
     xhr.onload = () => {
       let data: unknown;

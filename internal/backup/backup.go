@@ -90,17 +90,26 @@ type Manifest struct {
 	TLSNote string           `json:"tls_note,omitempty"`
 	Counts  map[string]int64 `json:"counts"`
 	Files   []FileEntry      `json:"files"`
+	// Agent PKI (M7): the intermediate (and the root, while it is still on
+	// the controller) is sealed with the master key. A root key that was
+	// exported and removed is never in a backup: keep that offline copy.
+	AgentRootFingerprint string `json:"agent_root_fingerprint,omitempty"`
+	AgentRootKeyIncluded bool   `json:"agent_root_key_included"`
+	AgentKeysSealed      int64  `json:"agent_keys_sealed"`
 	// Reserved for Beta restore reconciliation (DESIGN §10); null in the alpha.
 	StateEpoch    *string `json:"state_epoch"`
 	StateRevision *int64  `json:"state_revision"`
 }
 
 // Complete reports whether the backup alone can restore working credentials.
-func (m *Manifest) Complete() bool { return m.IncludesMasterKey || m.Credentials == 0 }
+func (m *Manifest) Complete() bool {
+	return m.IncludesMasterKey || (m.Credentials == 0 && m.AgentKeysSealed == 0)
+}
 
 // countedTables are summarized in the manifest and after a restore.
 var countedTables = []string{"users", "api_tokens", "hosts", "ssh_host_keys", "secrets", "groups", "host_tags",
-	"host_facts", "jobs", "job_output", "audit_events", "artifacts", "file_deployments"}
+	"host_facts", "jobs", "job_output", "audit_events", "artifacts", "file_deployments",
+	"agent_identities", "agent_ca", "agent_trust_manifests", "agent_enrollment_tokens", "agent_releases", "agent_rollouts", "state_versions"}
 
 // Options controls Create.
 type Options struct {
@@ -178,6 +187,22 @@ func Create(ctx context.Context, cfg *config.Loaded, w io.Writer, opts Options) 
 		return nil, err
 	}
 	m.Credentials = m.Counts["secrets"]
+	if rows, qerr := sdb.QueryContext(ctx, `SELECT kind, fingerprint, key_ciphertext IS NOT NULL FROM agent_ca`); qerr == nil {
+		for rows.Next() {
+			var kind, fp string
+			var sealed bool
+			if rows.Scan(&kind, &fp, &sealed) != nil {
+				continue
+			}
+			if sealed {
+				m.AgentKeysSealed++
+			}
+			if kind == "root" {
+				m.AgentRootFingerprint, m.AgentRootKeyIncluded = fp, sealed
+			}
+		}
+		rows.Close()
+	}
 
 	// Fingerprint the key, and make sure it actually opens the credentials:
 	// a backup that records the wrong key is worse than none.

@@ -9,6 +9,7 @@ package sshx
 import (
 	"bytes"
 	"context"
+	"drool/internal/hostexec"
 	"errors"
 	"fmt"
 	"io"
@@ -364,19 +365,10 @@ func classify(t *Target, err error) error {
 }
 
 // RunResult is the outcome of a command.
-type RunResult struct {
-	Stdout    []byte
-	Stderr    []byte
-	ExitCode  int
-	Truncated bool
-}
+type RunResult = hostexec.RunResult
 
 // RunOptions control Run.
-type RunOptions struct {
-	Stdin     []byte
-	PTY       bool
-	MaxOutput int // per stream; 0 = 1 MiB
-}
+type RunOptions = hostexec.RunOptions
 
 // Run executes cmd in a new session and waits for it. Cancelling ctx closes
 // the session. A non-zero exit status is reported in ExitCode, not as an error.

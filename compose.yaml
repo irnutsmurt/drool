@@ -7,7 +7,12 @@ services:
     image: drool:local
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8080:8080"   # web UI and API
+      - "9443:9443"   # agent endpoint (agents connect to it)
+    # Agents need an address they can reach; inside a container DROOL can't
+    # know it. Set it to this machine's name or IP (port 9443):
+    # environment:
+    #   DROOL_AGENT_ADVERTISE: drool.example.net:9443
     volumes:
       - drool-data:/data
     # Optional: provide your own setup code for automated deployments

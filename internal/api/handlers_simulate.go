@@ -111,14 +111,9 @@ func (s *Server) simulateHost(ctx context.Context, h *simHostJSON, step model.Op
 		return
 	}
 	defer release()
-	conn, err := s.d.Inventory.Resolve(ctx, h.HostID, true)
-	if err != nil {
-		fail(err)
-		return
-	}
 	sctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
-	res, err := s.d.Simulator.Simulate(sctx, conn.Target, conn.Become, step)
+	res, err := s.d.Simulator.Simulate(sctx, h.HostID, step)
 	if err != nil {
 		fail(err)
 		return

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -49,6 +50,7 @@ type hostJSON struct {
 	PinnedKey          *hostKeyJSON      `json:"pinned_key"`
 	Facts              *factsSummaryJSON `json:"facts"`
 	Health             *healthJSON       `json:"health"`
+	Management         *managementJSON   `json:"management"`
 	CreatedAt          string            `json:"created_at"`
 	UpdatedAt          string            `json:"updated_at"`
 }
@@ -80,6 +82,7 @@ func (s *Server) toHostJSON(v inventory.HostView) hostJSON {
 		out.PinnedKey = &k
 	}
 	out.Facts, out.Health = toFactsSummary(v.Facts), s.toHealth(v.Health)
+	out.Management = s.management(context.Background(), v.Host)
 	return out
 }
 

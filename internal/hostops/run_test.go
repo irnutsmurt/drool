@@ -1,4 +1,4 @@
-package sshdriver
+package hostops
 
 import (
 	"strings"
@@ -30,7 +30,7 @@ func TestRunDirPattern(t *testing.T) {
 }
 
 func TestShQuote(t *testing.T) {
-	if got := shQuote(`a'b`); got != `'a'\''b'` {
-		t.Fatalf("shQuote: %s", got)
+	if got := ShQuote(`a'b`); got != `'a'\''b'` {
+		t.Fatalf("ShQuote: %s", got)
 	}
 }

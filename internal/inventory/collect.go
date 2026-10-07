@@ -65,9 +65,15 @@ func (s *Service) Discover(ctx context.Context, hostID string) (*discovery.Facts
 	return &f, nil
 }
 
-// StoreFactsTx saves facts and refreshes discovered addresses (informational
-// only; DESIGN §5.2 convergence comes later).
+// StoreFactsTx saves facts collected over SSH and refreshes discovered
+// addresses (informational only; DESIGN §5.2 convergence comes later).
 func (s *Service) StoreFactsTx(ctx context.Context, q *db.Queries, hostID string, f *discovery.Facts) error {
+	return s.StoreFactsSourceTx(ctx, q, hostID, f, "discovered")
+}
+
+// StoreFactsSourceTx saves facts; source is the address source
+// ("discovered" for SSH, "agent" for authenticated agent telemetry).
+func (s *Service) StoreFactsSourceTx(ctx context.Context, q *db.Queries, hostID string, f *discovery.Facts, source string) error {
 	raw, err := json.Marshal(f)
 	if err != nil {
 		return err
@@ -88,15 +94,15 @@ func (s *Service) StoreFactsTx(ctx context.Context, q *db.Queries, hostID string
 			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
 				continue
 			}
-			if err := q.UpsertDiscoveredAddress(ctx, db.UpsertDiscoveredAddressParams{
-				HostID: hostID, Address: a.Address, Family: int64(a.Family), Interface: iface.Name,
+			if err := q.UpsertObservedAddress(ctx, db.UpsertObservedAddressParams{
+				HostID: hostID, Address: a.Address, Family: int64(a.Family), Interface: iface.Name, Source: source,
 				FirstSeenAt: now, LastSeenAt: now,
 			}); err != nil {
 				return err
 			}
 		}
 	}
-	return q.DeleteStaleDiscoveredAddresses(ctx, db.DeleteStaleDiscoveredAddressesParams{HostID: hostID, LastSeenAt: now})
+	return q.DeleteStaleObservedAddresses(ctx, db.DeleteStaleObservedAddressesParams{HostID: hostID, LastSeenAt: now})
 }
 
 // CheckStatus runs the lightweight status check.

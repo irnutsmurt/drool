@@ -1,3 +1,4 @@
+import { lazy, Suspense, type ReactNode } from "react";
 import { createBrowserRouter, Navigate } from "react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { RequireAuth, RequirePermission } from "@/auth/RequireAuth";
@@ -19,9 +20,13 @@ import { AccountPage } from "@/pages/settings/AccountPage";
 import { TokensPage } from "@/pages/settings/TokensPage";
 import { UsersPage } from "@/pages/settings/UsersPage";
 import { SystemPage } from "@/pages/settings/SystemPage";
-import { FilesPage } from "@/pages/files/FilesPage";
-import { EditFilePage } from "@/pages/files/EditFilePage";
-import { FileDeploymentPage } from "@/pages/files/FileDeploymentPage";
+
+// Larger, less used pages load on demand to keep the main bundle small.
+const FilesPage = lazy(() => import("@/pages/files/FilesPage").then((x) => ({ default: x.FilesPage })));
+const EditFilePage = lazy(() => import("@/pages/files/EditFilePage").then((x) => ({ default: x.EditFilePage })));
+const FileDeploymentPage = lazy(() => import("@/pages/files/FileDeploymentPage").then((x) => ({ default: x.FileDeploymentPage })));
+const AgentsPage = lazy(() => import("@/pages/agents/AgentsPage").then((x) => ({ default: x.AgentsPage })));
+const later = (el: ReactNode) => <Suspense fallback={null}>{el}</Suspense>;
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -38,13 +43,14 @@ export const router = createBrowserRouter([
       { path: "hosts", element: <RequirePermission permission="hosts.read"><HostsPage /></RequirePermission> },
       { path: "hosts/new", element: <RequirePermission permission="hosts.write"><AddHostPage /></RequirePermission> },
       { path: "hosts/:id", element: <RequirePermission permission="hosts.read"><HostDetailPage /></RequirePermission> },
-      { path: "hosts/:id/files", element: <RequirePermission permission="files.read"><FilesPage /></RequirePermission> },
-      { path: "hosts/:id/files/edit", element: <RequirePermission permission="files.read"><EditFilePage /></RequirePermission> },
-      { path: "file-deployments/:id", element: <RequirePermission permission="files.read"><FileDeploymentPage /></RequirePermission> },
+      { path: "hosts/:id/files", element: <RequirePermission permission="files.read">{later(<FilesPage />)}</RequirePermission> },
+      { path: "hosts/:id/files/edit", element: <RequirePermission permission="files.read">{later(<EditFilePage />)}</RequirePermission> },
+      { path: "file-deployments/:id", element: <RequirePermission permission="files.read">{later(<FileDeploymentPage />)}</RequirePermission> },
       { path: "groups", element: <RequirePermission permission="hosts.read"><GroupsPage /></RequirePermission> },
       { path: "jobs", element: <RequirePermission permission="jobs.read"><JobsPage /></RequirePermission> },
       { path: "jobs/new", element: <RequirePermission permission="jobs.execute"><NewJobPage /></RequirePermission> },
       { path: "jobs/:id", element: <RequirePermission permission="jobs.read"><JobDetailPage /></RequirePermission> },
+      { path: "agents", element: <RequirePermission permission="agents.read">{later(<AgentsPage />)}</RequirePermission> },
       { path: "credentials", element: <RequirePermission permission="credentials.use"><CredentialsPage /></RequirePermission> },
       { path: "audit", element: <RequirePermission permission="audit.read"><AuditPage /></RequirePermission> },
       {

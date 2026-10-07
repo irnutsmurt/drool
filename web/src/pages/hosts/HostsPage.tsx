@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Table } from "@/components/ui/Table";
+import { ManagementBadge } from "@/components/agents/ManagementBadge";
 import { errorMessage } from "@/lib/format";
 
 export function HostsPage() {
@@ -96,6 +97,7 @@ export function HostsPage() {
             { header: "Address", cell: (h) => <span className="font-mono text-xs">{h.address}{h.port !== 22 && `:${h.port}`}</span> },
             { header: "OS", cell: (h) => <span className="text-muted">{osLabel(h)}</span> },
             { header: "Health", cell: (h) => (h.jump_only ? <Badge>jump host</Badge> : <ReachabilityBadge host={h} />) },
+            { header: "Managed via", cell: (h) => (h.jump_only ? "" : <ManagementBadge m={h.management} />) },
             { header: "Connection", cell: (h) => <HostStatusBadge status={h.status} /> },
             {
               header: "Updates",

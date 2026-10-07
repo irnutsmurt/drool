@@ -85,9 +85,11 @@ func SetPhase(out OutputSink, state string) {
 // StepInfo identifies the job step an operation runs for, for operations
 // that record their own history (file deployments).
 type StepInfo struct {
-	JobID  string
-	HostID string
-	UserID string // who created the job
+	JobID   string
+	HostID  string
+	UserID  string // who created the job
+	Step    int    // step index within the job
+	Attempt int
 }
 
 type stepInfoKey struct{}

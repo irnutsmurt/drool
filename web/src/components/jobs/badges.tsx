@@ -30,10 +30,10 @@ export function HostStateBadge({ state }: { state: JobHost["state"] }) {
 
 /** Plain-language explanations for error classes (ARCHITECTURE-ALPHA §14). */
 export const errorExplanations: Record<string, string> = {
-  ConnectionError: "The SSH connection failed.",
+  ConnectionError: "DROOL could not reach the host (SSH or agent connection).",
   AuthenticationError: "The host rejected DROOL's credential.",
   HostKeyError: "The host's SSH key does not match the trusted key, so DROOL did not connect.",
-  AuthorizationError: "Logged in, but privilege escalation (sudo) was refused.",
+  AuthorizationError: "Not allowed: sudo, file permissions or the host's management state refused this.",
   TimeoutError: "The operation did not finish within its timeout.",
   ExecutionError: "The command ran but exited with an error.",
   ConfigurationError: "The host is missing something this operation needs.",
@@ -44,4 +44,5 @@ export const errorExplanations: Record<string, string> = {
   LockTimeoutError: "Another job kept this host busy for too long.",
   InterruptedError: "The controller restarted while this host was running; the outcome is unknown.",
   InternalError: "Something went wrong inside DROOL. The controller log has details.",
+  CapabilityError: "Refused by the host's agent.",
 };

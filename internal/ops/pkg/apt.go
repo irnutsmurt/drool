@@ -161,11 +161,14 @@ func (apt) Classify(out string, exit int) *model.OpError {
 		}
 		return &model.OpError{Class: model.ClassPackageManager, Retryable: true, Message: msg,
 			Hint: "Another package operation is running (often unattended-upgrades). DROOL waits and retries; if this is the final result, run the job again once it has finished."}
-	case strings.Contains(out, "Unable to locate package"):
-		pkgs := regexp.MustCompile(`Unable to locate package (\S+)`).FindAllStringSubmatch(out, -1)
+	case strings.Contains(out, "Unable to locate package"), strings.Contains(out, "has no installation candidate"):
+		// The second form: the name is known (another package refers to
+		// it) but the lists have no version of it, e.g. stale lists on a
+		// fresh cloud image. Both may be fixed by refreshing metadata.
+		pkgs := regexp.MustCompile(`Unable to locate package (\S+)|Package '([^']+)' has no installation candidate`).FindAllStringSubmatch(out, -1)
 		names := make([]string, len(pkgs))
 		for i, m := range pkgs {
-			names[i] = m[1]
+			names[i] = m[1] + m[2]
 		}
 		return &model.OpError{Class: model.ClassValidation, Message: "package not found: " + strings.Join(names, ", "),
 			Hint: "Check the name, or refresh package metadata (apt-get update) first."}

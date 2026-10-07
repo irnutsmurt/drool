@@ -8,7 +8,7 @@ LDFLAGS := -s -w \
 	-X drool/internal/version.Commit=$(COMMIT) \
 	-X drool/internal/version.Date=$(DATE)
 
-.PHONY: all build image web web-deps go test test-go test-web test-integration vet fmt-check generate check-generated run dev clean
+.PHONY: all build image web web-deps go agent proto test test-go test-web test-integration vet fmt-check generate check-generated run dev clean
 
 all: build
 
@@ -20,9 +20,19 @@ web-deps:
 web: web-deps
 	cd web && npm run build
 
-# Static binary (pure-Go SQLite, no cgo).
-go:
+# Static binaries (pure-Go SQLite, no cgo). The agent binaries sit next to
+# drool, which serves them to new hosts (agent.binaries_dir).
+go: agent
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o bin/drool ./cmd/drool
+
+agent:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o bin/drool-agent-linux-amd64 ./cmd/drool-agent
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o bin/drool-agent-linux-arm64 ./cmd/drool-agent
+
+# Regenerate the agent protocol code (needs protoc, protoc-gen-go, protoc-gen-go-grpc).
+proto:
+	protoc -I api/agent/v1 --go_out=internal/agentrpc/pb --go_opt=paths=source_relative \
+	  --go-grpc_out=internal/agentrpc/pb --go-grpc_opt=paths=source_relative api/agent/v1/agent.proto
 
 test: test-go test-web
 

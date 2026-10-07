@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"drool/internal/hostops"
 	"drool/internal/model"
 	"drool/internal/sshx"
 	"drool/internal/sshx/sshtest"
@@ -226,7 +227,7 @@ func TestRebootWaitsForNewBootID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reboot: %v\n%s", err, s.out.String())
 	}
-	rb := res.Data["reboot"].(*RebootResult)
+	rb := res.Data["reboot"].(*hostops.RebootResult)
 	if rb.BootIDAfter != "22222222-2222-2222-2222-222222222222" || rb.DownSeconds <= 0 {
 		t.Fatalf("result %+v", rb)
 	}
@@ -262,20 +263,5 @@ func TestRebootComesBackWithDifferentKey(t *testing.T) {
 	_, err := x.Execute(ctx, tg, Become{Method: "sudo"}, rebootOp(10), &sink{}, func() {})
 	if model.ClassOf(err) != model.ClassHostKey {
 		t.Fatalf("expected HostKeyError after reboot with a new key, got %v", err)
-	}
-}
-
-func TestClassifySystemctlWithoutSystemd(t *testing.T) {
-	for _, out := range []string{
-		"System has not been booted with systemd as init system (PID 1). Can't operate.\nFailed to connect to bus: Host is down",
-		"bash: line 1: systemctl: command not found",
-		"sh: 1: systemctl: not found",
-	} {
-		if e := classifySystemctl(out); e == nil || e.Class != model.ClassConfiguration {
-			t.Errorf("%q: got %v, want ConfigurationError", out, e)
-		}
-	}
-	if e := classifySystemctl("LoadState=loaded\n"); e != nil {
-		t.Errorf("normal output classified as %v", e)
 	}
 }

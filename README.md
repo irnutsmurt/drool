@@ -25,8 +25,8 @@ Linux is the product scope.
 
 ## Status: v0.1.0-alpha (Technical Alpha)
 
-`main` additionally contains file management and file deployment ([Files](#files)), which are not
-part of a tagged release yet.
+`main` additionally contains file management and file deployment ([Files](#files)) and the
+[DROOL agent](#the-drool-agent), which are not part of a tagged release yet.
 
 "Technical Alpha" means: the core works end to end and has been tested against real
 distributions, but DROOL is young. Expect rough edges, plain visuals, and breaking changes before
@@ -56,6 +56,10 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
   with administrator privileges. **File deployment** sends one file to many hosts with a per-host
   preview and diff, an optional validation command, an optional service reload or restart, and
   one-click rollback.
+- **DROOL agent** (on `main`, after v0.1.0-alpha): an optional agent that connects out to DROOL
+  over mutually authenticated TLS. It runs the same operations as SSH, within limits set on the
+  host itself, and falls back to SSH safely when it's offline. It updates itself from signed
+  releases and rolls back automatically.
 - **Accounts and audit:** local users with roles (admin, operator, auditor, viewer), API tokens,
   credentials encrypted at rest, an append-only audit log of every change.
 - **Backup and restore** from the command line.
@@ -64,14 +68,13 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
 
 These are planned (see `DESIGN.md`) but **do not exist yet**:
 
-- the DROOL agent (SSH is the only way DROOL talks to hosts)
 - firewall management and network intent
 - scheduling (jobs run when you start them)
 - desired state / drift detection
 - templated files, directory sync, desired-state file baselines (file management and single-file
   deployment exist on `main`; see [Files](#files))
 - plugins
-- batch/canary rollouts, workflows, MFA, single sign-on, high availability, Windows
+- batch/canary rollouts for jobs (agent updates do have them), workflows, MFA, single sign-on, high availability, Windows
 
 ## Supported hosts
 
@@ -246,6 +249,163 @@ secrets. Every change is audited with host, path, action, result, checksums befo
 owner, group and permissions; file contents never go into the audit log. Reads with
 administrator privileges are audited too.
 
+## The DROOL agent
+
+SSH stays fully supported. The agent is optional, and useful when:
+
+- DROOL can't reach the host (behind NAT, on another network): the agent connects **out** to
+  DROOL, and the host needs no open port.
+- You want **limits on the host itself** that DROOL can't override: the agent only does what
+  `/etc/drool/agent.yaml` on that host allows.
+- You want cheap, frequent monitoring without SSH polling.
+
+The agent talks to DROOL on **port 9443** (`agent.port`). That port must be reachable from your
+hosts. With Docker, `compose.yaml` publishes it.
+
+### Installing
+
+**From an SSH host (easiest):** open the host, then *Install DROOL agent* on the *Management* card. Choose a
+preset and confirm. DROOL copies the agent over the SSH connection it already trusts, enrolls it,
+and switches the host to *Preferred: Agent, Fallback: SSH*.
+
+**Any host, with a token:** *Agents → Enrollment → New token* gives you a one-line install command:
+
+```sh
+curl -fsSL -k --pinnedpubkey 'sha256//…' https://drool.example:8080/agent/install.sh | sudo sh -s -- --token 'drool-enroll-1.…' --preset managed
+```
+
+The command pins DROOL's web certificate, so `-k` doesn't weaken it. Tokens expire after an hour
+by default and work once. They can be revoked, and they can be bound to one host or put new
+hosts into a group.
+
+**Manually:** copy `drool-agent-linux-<arch>` (from *Agents → Enrollment*, or `make agent`) to the
+host, then run:
+
+```sh
+sudo ./drool-agent install --preset managed --token-file -     # paste the token, then Ctrl-D
+```
+
+Enrollment never trusts a host because its name or address matches an existing one. A new agent
+becomes a new host unless its token was created for a specific host.
+
+The agent creates its private key on the host, and the key never leaves it. The agent trusts DROOL
+only through the **Agent Root CA** fingerprint inside the token, never through browser
+certificates.
+
+### What the agent may do: presets and the local ceiling
+
+`/etc/drool/agent.yaml` (root-owned, 0600) is the **ceiling**. DROOL can narrow it per host
+(*Narrow…* on the host's *Management* card) but never widen it. Edit the file and restart the agent
+(`systemctl restart drool-agent`) to change it. `drool-agent presets` shows exactly what each
+preset enables:
+
+| Preset | Allows |
+|---|---|
+| Monitor Only | Telemetry only. No commands, packages, services, reboots or files |
+| Managed | Packages from configured repositories, all services, reboots. No commands, no file access |
+| Full | Everything, including commands and scripts as root |
+
+The UI marks **root-equivalent** capabilities: commands, unrestricted files, package installs and
+unrestricted services. Anything the ceiling forbids fails with **CapabilityError**, and DROOL
+never retries it over SSH. Note that SSH, when configured, is bounded only by the SSH account's
+rights. If the ceiling must be absolute, set the host's fallback to *None*.
+
+### Agent first, SSH as fallback
+
+Each host shows *Preferred*, *Fallback* and the path in use (*Management* card, *Managed via*
+column), and each job result shows the path used (*Via*).
+
+- If the agent isn't connected (or is incompatible) **before** a step is sent, DROOL uses SSH and
+  says so on the job.
+- Once a step was sent to the agent, DROOL never switches transports. If the agent vanishes
+  mid-step, DROOL asks it what happened when it's back. If that isn't possible, the result is
+  *outcome unknown*, as with SSH.
+- A revoked or quarantined agent **blocks** management of that host. DROOL doesn't fall back to
+  SSH: someone has to look at it first.
+
+### Certificates, revocation and cloned machines
+
+Agent certificates last 30 days and renew automatically. An agent that was off long enough for its
+certificate to expire recovers by proving it still holds its key, within 180 days
+(`agent.recovery_grace`). After that it must be enrolled again. *Revoke* on the Agents page takes
+effect immediately.
+
+If two machines connect with the same identity (typically a cloned VM), DROOL quarantines the
+identity and shows both connections. You decide which one is real; DROOL never guesses.
+
+### Agent Root CA: keep it offline
+
+On first start DROOL creates an **Agent Root CA** and an intermediate that signs agent
+certificates. The root key stays in DROOL until you move it, and the UI warns until you do:
+
+```sh
+drool agent-ca export-root -o drool-agent-root      # writes .key/.crt: store them offline, encrypted
+drool agent-ca remove-root --confirm <fingerprint>
+```
+
+(*Agents → Trust* does the same in the browser.) With the root key offline you still need it for
+two jobs: **rotating the intermediate** (`drool agent-ca rotate --root-key FILE [--revoke-old]`)
+and signing a new trust manifest. Agents only accept a newer manifest signed by the root, and they
+never accept an older one.
+
+**Backups** contain the intermediate (encrypted with the master key), manifests, identities and
+update metadata, but never a root key that you removed. For disaster recovery, keep the following:
+
+- the backup and `master.key`, which together restore everything, including agent trust;
+- the offline root key, needed to rotate if the intermediate is ever compromised or lost.
+
+If you restore with `--discard-credentials`, the agent CA keys are discarded too. Agents then
+can't be managed until you rotate the intermediate with the offline root
+(`drool agent-ca rotate --root-key …`). Without the root key, every agent has to be re-enrolled.
+
+### Agent updates
+
+Agents update themselves from releases signed with a **release-signing key that is not on the
+controller**. A compromised DROOL can offer an update, but it can't make agents run unsigned code.
+
+```sh
+drool release keygen -o drool-release              # once, on a machine you trust; keep .key offline
+make agent                                         # bin/drool-agent-linux-{amd64,arm64}
+drool release sign --key drool-release.key --version v1.2.3 bin/drool-agent-linux-amd64
+```
+
+1. Register `drool-release.pub` under *Agents → Updates*. Hosts must trust it too: pass it to
+   *Install DROOL agent*, use `--trust-release-key` at install, or run
+   `drool-agent trust-release-key drool-release.pub` on the host. Trusting a key is
+   security-sensitive, and DROOL can't do it for you remotely.
+2. Upload the binary together with its `.release.json` under *Agents → Updates*.
+3. Start a rollout, or set the policy to *Automatic* (newest version in a channel, or one exact
+   version).
+
+A rollout updates a canary first, then batches. It **pauses** after the configured number of
+failures and waits for you. Offline hosts update when they come back. Each host stages the new
+binary next to the current one, switches atomically and restarts. It keeps the new version only
+when it starts and completes a session with DROOL within the health window. Otherwise the host
+rolls back to the previous version on its own, without needing the new binary to work. A power
+cut leaves either the old or the new version complete. Downgrades are refused, except for this
+automatic rollback.
+
+### Agent compatibility and versions
+
+The agent protocol has its own version, separate from DROOL's (currently protocol 1, accepted range
+1–1). The Agents page shows each agent's version, protocol and compatibility. An incompatible agent
+isn't used, and hosts with an SSH fallback keep working over SSH.
+
+### On the host
+
+- `drool-agent status`: identity, certificate, trust, endpoints, capabilities.
+- `/var/log/drool-agent/operations.log`: every operation the agent received (id, type, controller,
+  time, outcome). It records no command text, file contents or secrets. DROOL can't change it.
+- `updates: {policy: deny}` in `agent.yaml` keeps the agent on its installed version, whatever
+  DROOL asks.
+- Without systemd (containers), `drool-agent install` runs the agent under a small supervisor
+  script instead of a unit.
+
+### Changing DROOL's address
+
+*Agents → Controller address* proposes a new address. Every connected agent tests it first. Commit
+once enough agents have confirmed. Agents keep the old address as a fallback, so none are stranded.
+
 ## Backup and restore
 
 ```sh
@@ -306,6 +466,10 @@ Take a backup, then replace the binary (native: stop, install, start) or rebuild
 run automatically on start and only move forward. A newer database is never opened by an older
 DROOL.
 
+**Upgrading to a build with the agent:** the agent endpoint uses port 9443 by default. If your
+`server.web_port` is 9443, set `agent.port` to something else (DROOL refuses to start with both on
+one port). Set `agent.enabled: false` if you don't want the endpoint at all.
+
 ## Configuration
 
 Precedence: built-in defaults → config file (`--config`, default `/etc/drool/config.yaml`
@@ -322,7 +486,11 @@ plain HTTP to the network by accident.
 
 - **One controller, SQLite, no high availability.** Sized for homelabs and small fleets; tested
   with tens of hosts, not thousands.
-- **SSH only, at most one jump host.**
+- **At most one jump host.** Agents connect directly to DROOL (no relays).
+- **Agent:** Linux amd64/arm64 only. Service management and reboots need systemd, as with SSH.
+  Restoring a backup older than the hosts' agent state is detected and shown (*host ahead*), but
+  full reconciliation is manual (*Adopt host state*). Agent updates need a release-signing key that
+  you manage yourself.
 - **No scheduling, no rollout batches:** a job runs on its targets now, a configurable number of
   hosts at a time, optionally stopping after N failures.
 - **If the controller crashes or restarts during a job,** commands already running on hosts keep

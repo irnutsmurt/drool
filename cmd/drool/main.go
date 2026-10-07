@@ -4,6 +4,9 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -23,6 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"golang.org/x/term"
 
+	"drool/internal/agentsvc"
 	"drool/internal/api"
 	"drool/internal/artifacts"
 	"drool/internal/audit"
@@ -33,6 +37,7 @@ import (
 	"drool/internal/filedeploy"
 	"drool/internal/inventory"
 	"drool/internal/logging"
+	"drool/internal/mgmt"
 	"drool/internal/poller"
 	"drool/internal/secrets"
 	"drool/internal/sshx"
@@ -53,6 +58,14 @@ Commands:
   restore FILE          Restore a backup (stop the controller first)
   setup code            Issue a new one-time setup code for first-admin setup
   user create           Create a local user (prompts for password); recovery path
+  agent-ca status       Agent PKI: root (online/offline), intermediate, trust manifest
+  agent-ca export-root  Write the Agent Root CA key and certificate for offline storage
+  agent-ca remove-root  Remove the root private key from the controller (and future backups)
+  agent-ca rotate       New intermediate CA and trust manifest (--root-key FILE, --revoke-old)
+  agent-ca sign-manifest / import-manifest   Sign a trust manifest offline / import it
+  release keygen        Create an agent release-signing key pair (keep the private key offline)
+  release sign          Sign an agent binary: writes BINARY.release.json
+  release verify        Check a signed release against a public key
   version               Print version information
 
 Configuration is read from built-in defaults, then the config file
@@ -97,6 +110,10 @@ func run(args []string) error {
 			return errors.New("usage: drool setup code")
 		}
 		return cmdSetupCode(*cfgPath, explicit, rest[2:])
+	case "release":
+		return cmdRelease(rest[1:])
+	case "agent-ca":
+		return cmdAgentCA(*cfgPath, explicit, rest[1:])
 	case "user":
 		if len(rest) < 2 || rest[1] != "create" {
 			return errors.New("usage: drool user create --username NAME [--role admin]")
@@ -316,9 +333,37 @@ func cmdServe(path string, explicit bool) error {
 	if err != nil {
 		return err
 	}
-	executor := &sshdriver.Executor{Pool: pool, Files: &sshdriver.FileDeps{
-		Source: arts, Recorder: &filedeploy.StoreRecorder{Store: st, Audit: auditW}}}
-	eng := engine.New(st, inv, executor, auditW, logs.Job, engine.Config{
+	recorder := &filedeploy.StoreRecorder{Store: st, Audit: auditW}
+	executor := &sshdriver.Executor{Pool: pool, Files: &sshdriver.FileDeps{Source: arts, Recorder: recorder}}
+
+	// Agent PKI and endpoint (ARCHITECTURE-ALPHA §23).
+	pki, pkiCreated, err := agentsvc.OpenPKI(ctx, st, box, installationName())
+	agentsOK := true
+	if errors.Is(err, agentsvc.ErrPKIUnusable) {
+		// After a restore without the master key: SSH management keeps
+		// working; the agent endpoint waits for a new intermediate.
+		logs.Security.Error("agent endpoint disabled: " + err.Error())
+		agentsOK = false
+	} else if err != nil {
+		return fmt.Errorf("agent PKI: %w (if the master key was replaced, restore the original key file)", err)
+	}
+	if agentsOK && pkiCreated {
+		log.Info("created the DROOL Agent PKI (root and intermediate CA, trust manifest 1)", "root", pki.RootFingerprint())
+		_ = auditW.Record(ctx, audit.Event{Action: "agent_ca.create", Actor: &audit.System,
+			Details: map[string]any{"root_fingerprint": pki.RootFingerprint()}})
+	}
+	if agentsOK && pki.RootOnline() {
+		logs.Security.Warn("the Agent Root CA private key is stored on this controller; export it to offline storage and remove it (Agents → Trust in the web UI, or `drool agent-ca export-root` then `drool agent-ca remove-root`)")
+	}
+	var agents *agentsvc.Service
+	if agentsOK {
+		if agents, err = agentsvc.New(ctx, agentsvc.Options{Config: cfg.Agent, Store: st, PKI: pki, Audit: auditW, Inventory: inv,
+			Artifacts: arts, Recorder: recorder, Log: logs.App.With("component", "agent")}); err != nil {
+			return err
+		}
+	}
+	router := &mgmt.Router{St: st, Inv: inv, SSH: executor, Agents: agents}
+	eng := engine.New(st, inv, router, auditW, logs.Job, engine.Config{
 		GlobalConcurrency:  cfg.Engine.GlobalConcurrency,
 		PerJumpConcurrency: cfg.Engine.PerJumpHostConcurrency,
 		OutputCap:          cfg.Engine.OutputCapBytes,
@@ -335,7 +380,22 @@ func cmdServe(path string, explicit bool) error {
 		Workers:         cfg.Poller.Workers,
 	}
 	poll := poller.New(st, inv, eng.Locks(), eng.Saturated, logs.App, pollCfg)
+	poll.AgentManaged = router.AgentHealthy
 	eng.OnHostChanged(poll.RunNow)
+	if cfg.Agent.Enabled && agents != nil {
+		pki.SetHosts(advertisedHosts(cfg.Agent.Advertise))
+		bind := cfg.Agent.Bind
+		if bind == "" {
+			bind = cfg.Server.Bind
+		}
+		agentAddr := net.JoinHostPort(bind, strconv.Itoa(cfg.Agent.Port))
+		if err := agents.Listen(agentAddr); err != nil {
+			return err
+		}
+		defer agents.Stop()
+		go agents.RunRollouts(ctx)
+		log.Info("agent endpoint listening", "listen", agentAddr, "root_ca", pki.RootFingerprint())
+	}
 	go poll.Run(ctx)
 	go artifactGC(ctx, arts, log)
 
@@ -343,7 +403,8 @@ func cmdServe(path string, explicit bool) error {
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
 		UI: web.Dist(), Registry: reg, TLSMode: tlsRes.Mode,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
-		Poller: poll, StaleAfter: pollCfg.StaleAfter(), Simulator: executor, Files: inv, Artifacts: arts,
+		Poller: poll, StaleAfter: pollCfg.StaleAfter(), Simulator: router, Files: router, Artifacts: arts,
+		Agents: agents, Router: router, WebPin: webPin(tlsRes),
 	})
 	if err != nil {
 		return err
@@ -412,12 +473,52 @@ func cmdServe(path string, explicit bool) error {
 	return nil
 }
 
+// installationName names the Agent Root CA after this machine.
+func installationName() string {
+	h, _ := os.Hostname()
+	if h == "" {
+		h = "drool"
+	}
+	return h
+}
+
+func advertisedHosts(adv []string) []string {
+	var out []string
+	for _, a := range adv {
+		if h, _, err := net.SplitHostPort(a); err == nil {
+			a = h
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
+// webPin is curl's --pinnedpubkey value for the web TLS certificate, so
+// the install one-liner authenticates the download without trusting a CA.
+func webPin(r *tlsutil.Result) func() string {
+	return func() string {
+		if r == nil || r.Config == nil || len(r.Config.Certificates) == 0 {
+			return ""
+		}
+		c := r.Config.Certificates[0]
+		leaf := c.Leaf
+		if leaf == nil {
+			var err error
+			if leaf, err = x509.ParseCertificate(c.Certificate[0]); err != nil {
+				return ""
+			}
+		}
+		sum := sha256.Sum256(leaf.RawSubjectPublicKeyInfo)
+		return "sha256//" + base64.StdEncoding.EncodeToString(sum[:])
+	}
+}
+
 // loadMasterKey loads (or on first start creates) the master key, and refuses
 // to start when it doesn't fit the database: silently creating a new key
 // next to existing credentials would make them all undecryptable.
 func loadMasterKey(ctx context.Context, cfg *config.Loaded, st *store.Store) (*secrets.Box, bool, bool, error) {
 	var n int
-	if err := st.Reader.QueryRowContext(ctx, `SELECT count(*) FROM secrets`).Scan(&n); err != nil {
+	if err := st.Reader.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM secrets) + (SELECT count(*) FROM agent_ca WHERE key_ciphertext IS NOT NULL)`).Scan(&n); err != nil {
 		return nil, false, false, err
 	}
 	recovery := fmt.Sprintf(`Restore the master key file from your backup. If it is permanently lost, keep

@@ -38,7 +38,7 @@ func (x *Executor) executeFileDeploy(ctx context.Context, t *sshx.Target, b Beco
 			return err
 		}
 		state := map[string]string{"reload": "reloaded", "restart": "restarted"}[action]
-		_, err = x.executeService(ctx, fsys.c, rb, &model.ServiceOp{Name: unit, State: state, TimeoutS: 120}, out, func() {})
+		_, err = x.host(fsys.c, t, rb).Service(ctx, &model.ServiceOp{Name: unit, State: state, TimeoutS: 120}, out, func() {})
 		return err
 	}
 	res, err := filedeploy.Run(ctx, filedeploy.Deps{

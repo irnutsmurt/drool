@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { cx } from "@/components/ui/cx";
 import { navItems } from "./nav";
+import { usePKI } from "@/components/agents/queries";
+import { Link } from "react-router";
 
 export function useSystemInfo() {
   return useQuery({ queryKey: ["system", "info"], queryFn: () => unwrap(api.GET("/system/info")), staleTime: 5 * 60_000 });
@@ -14,6 +16,7 @@ export function useSystemInfo() {
 export function AppShell() {
   const { me, can, logout } = useAuth();
   const info = useSystemInfo();
+  const pki = usePKI(can("agents.read"));
 
   return (
     <div className="flex h-full">
@@ -49,6 +52,12 @@ export function AppShell() {
           <div role="alert" className="bg-danger px-4 py-2 text-sm text-white">
             Security warning: this controller serves plaintext HTTP on a network address. Credentials and
             sessions are exposed to anyone on the path.
+          </div>
+        )}
+        {pki.data?.root_key_online && (
+          <div role="alert" className="bg-warn-bg px-4 py-2 text-sm text-warn">
+            Security: the Agent Root CA private key is stored on this controller. Export it to offline storage and remove it
+            {can("agents.pki") && <> — <Link className="underline" to="/agents?tab=trust">Agents → Trust</Link></>}.
           </div>
         )}
         <header className="flex h-14 items-center justify-end gap-3 border-b border-line bg-surface px-6">

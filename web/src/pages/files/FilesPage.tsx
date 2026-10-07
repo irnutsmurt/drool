@@ -116,18 +116,28 @@ export function FilesPage() {
   }, [notDir, path]);
   const crumbs = dir.split("/").filter(Boolean);
   const caps = listing.data?.caps;
+  const viaAgent = caps?.transport === "agent";
 
   return (
     <>
       <PageHeader
         title={`Files on ${host.data?.name ?? ""}`}
         description={host.data && <Link className="text-accent" to={`/hosts/${id}`}>Back to host</Link>}
-        actions={can("files.elevate") && (
+        actions={can("files.elevate") && !viaAgent && (
           <Checkbox checked={elevated} onChange={setElevated} label="Use administrator privileges"
             hint="Act as root through this host's sudo setting." />
         )}
       />
-      {elevated && (
+      {viaAgent && (
+        <div className="mb-4">
+          <Alert tone="warn">
+            Files on this host go through the <strong>DROOL agent</strong>, which acts as <strong>root</strong>
+            {caps?.allowed_paths?.length ? <> within the paths its owner allowed: <span className="font-mono">{caps.allowed_paths.join(", ")}</span></> : <> on the whole filesystem (root-equivalent)</>}.
+            Every change is in the audit log and in the agent's own log on the host.
+          </Alert>
+        </div>
+      )}
+      {elevated && !viaAgent && (
         <div className="mb-4">
           <Alert tone="warn">
             Administrator privileges are on: you are reading and changing files as <strong>root</strong>. Every change is
@@ -135,7 +145,7 @@ export function FilesPage() {
           </Alert>
         </div>
       )}
-      {!elevated && caps?.root_equivalent && (
+      {!elevated && !viaAgent && caps?.root_equivalent && (
         <div className="mb-4"><Alert tone="warn">This host's login account is root: every change is made as root.</Alert></div>
       )}
 

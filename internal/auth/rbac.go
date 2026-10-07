@@ -27,6 +27,13 @@ const (
 	PermFilesWrite   Permission = "files.write"   // upload, edit, mkdir, rename/move, delete, chmod, chown
 	PermFilesDeploy  Permission = "files.deploy"  // upload deployment artifacts, preview, deploy, roll back
 	PermFilesElevate Permission = "files.elevate" // any of the above as root (sudo)
+
+	// Agents (M7). Enrolling an agent creates a managed host and changing
+	// the PKI or release trust changes who the fleet trusts: admin only.
+	PermAgentsRead   Permission = "agents.read"   // agent status, PKI status, releases, rollouts
+	PermAgentsEnroll Permission = "agents.enroll" // enrollment tokens, install the agent over SSH
+	PermAgentsManage Permission = "agents.manage" // revoke, resolve conflicts, narrow capabilities, updates, endpoints
+	PermAgentsPKI    Permission = "agents.pki"    // export/remove the root key, rotate the intermediate, import manifests
 )
 
 // Role names stored in users.role.
@@ -46,18 +53,20 @@ var rolePermissions = map[string][]Permission{
 		PermCredentialsUse, PermCredentialsManage,
 		PermAuditRead, PermUsersManage, PermSettingsRead, PermSettingsWrite,
 		PermFilesRead, PermFilesWrite, PermFilesDeploy, PermFilesElevate,
+		PermAgentsRead, PermAgentsEnroll, PermAgentsManage, PermAgentsPKI,
 	},
 	// Operators can already run commands as root (jobs.execute), so file
 	// elevation adds no power they don't have.
 	RoleOperator: {
 		PermHostsRead, PermJobsRead, PermJobsExecute, PermCredentialsUse,
 		PermFilesRead, PermFilesWrite, PermFilesDeploy, PermFilesElevate,
+		PermAgentsRead,
 	},
 	RoleAuditor: {
-		PermHostsRead, PermJobsRead, PermAuditRead, PermSettingsRead,
+		PermHostsRead, PermJobsRead, PermAuditRead, PermSettingsRead, PermAgentsRead,
 	},
 	RoleViewer: {
-		PermHostsRead, PermJobsRead,
+		PermHostsRead, PermJobsRead, PermAgentsRead,
 	},
 }
 

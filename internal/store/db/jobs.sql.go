@@ -191,7 +191,7 @@ func (q *Queries) GetJobByIdempotencyKey(ctx context.Context, arg GetJobByIdempo
 }
 
 const getJobHost = `-- name: GetJobHost :one
-SELECT job_id, host_id, host_name, position, state, current_step, attempt, exit_code, error_class, error_message, error_hint, retryable, started_at, finished_at FROM job_hosts WHERE job_id = ? AND host_id = ?
+SELECT job_id, host_id, host_name, position, state, current_step, attempt, exit_code, error_class, error_message, error_hint, retryable, started_at, finished_at, transport, transport_note FROM job_hosts WHERE job_id = ? AND host_id = ?
 `
 
 type GetJobHostParams struct {
@@ -217,6 +217,8 @@ func (q *Queries) GetJobHost(ctx context.Context, arg GetJobHostParams) (JobHost
 		&i.Retryable,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.Transport,
+		&i.TransportNote,
 	)
 	return i, err
 }
@@ -376,7 +378,7 @@ func (q *Queries) InterruptActiveJobs(ctx context.Context, finishedAt sql.NullIn
 }
 
 const listJobHosts = `-- name: ListJobHosts :many
-SELECT job_id, host_id, host_name, position, state, current_step, attempt, exit_code, error_class, error_message, error_hint, retryable, started_at, finished_at FROM job_hosts WHERE job_id = ? ORDER BY position
+SELECT job_id, host_id, host_name, position, state, current_step, attempt, exit_code, error_class, error_message, error_hint, retryable, started_at, finished_at, transport, transport_note FROM job_hosts WHERE job_id = ? ORDER BY position
 `
 
 func (q *Queries) ListJobHosts(ctx context.Context, jobID string) ([]JobHost, error) {
@@ -403,6 +405,8 @@ func (q *Queries) ListJobHosts(ctx context.Context, jobID string) ([]JobHost, er
 			&i.Retryable,
 			&i.StartedAt,
 			&i.FinishedAt,
+			&i.Transport,
+			&i.TransportNote,
 		); err != nil {
 			return nil, err
 		}

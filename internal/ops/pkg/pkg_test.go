@@ -63,6 +63,13 @@ func TestAPTErrors(t *testing.T) {
 	if e.Retryable || !strings.Contains(e.Hint, "dpkg --configure -a") {
 		t.Fatalf("interrupted: %+v", e)
 	}
+	// Seen on a fresh Debian 12 cloud image with stale lists: refreshing
+	// metadata fixes it, so it must classify like "Unable to locate".
+	e = b.Classify("Reading package lists...\nPackage cron is not available, but is referred to by another package.\n"+
+		"E: Package 'cron' has no installation candidate\n", 100)
+	if e.Class != model.ClassValidation || e.Message != "package not found: cron" {
+		t.Fatalf("no installation candidate: %+v", e)
+	}
 	if _, err := b.Exec("system-security", nil); model.ClassOf(err) != model.ClassValidation {
 		t.Fatalf("apt security-only must be refused: %v", err)
 	}

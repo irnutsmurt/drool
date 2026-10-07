@@ -34,7 +34,7 @@ func (s *Server) fileError(err error) *Problem {
 		switch fe.Code {
 		case files.CodeNotFound:
 			status = http.StatusNotFound
-		case files.CodePermission:
+		case files.CodePermission, "capability":
 			status = http.StatusForbidden
 		case files.CodeExists, files.CodeSymlink, files.CodeNotEmpty:
 			status = http.StatusConflict
@@ -96,6 +96,13 @@ func (s *Server) openFS(w http.ResponseWriter, r *http.Request, elevated, change
 	if err != nil {
 		release()
 		writeProblem(w, r, s.fileError(err))
+		return nil, nil, false
+	}
+	// The agent acts as root (within its allowed paths): that is elevated
+	// access whatever the request said, and needs files.elevate.
+	if fsys.Caps().Elevated && !elevated && !s.requireElevate(w, r, true) {
+		fsys.Close()
+		release()
 		return nil, nil, false
 	}
 	return fsys, func() { fsys.Close(); release() }, true

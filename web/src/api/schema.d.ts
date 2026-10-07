@@ -995,10 +995,744 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Enrolled (non-revoked) agent identities. */
+        get: operations["listAgents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/pki": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Agent PKI status. `root_key_online` true means the root private key is still on the controller (a persistent security warning). */
+        get: operations["getAgentPKI"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/pki/root.crt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The Agent Root CA certificate (PEM). Not the browser certificate. */
+        get: operations["getAgentRootCert"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/pki/export-root": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Returns the root private key for offline storage (session only, `agents.pki`, audited). */
+        post: operations["exportAgentRoot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/pki/remove-root": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Removes the root private key from the controller (and from later backups). `confirm` must be the root fingerprint. */
+        post: operations["removeAgentRoot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/pki/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description New intermediate CA and trust manifest N+1. `revoke_old` after a compromise (agents switch over via certificate
+         *     recovery, without re-enrolling). With the root offline, `root_key_pem` is used once and not stored.
+         */
+        post: operations["rotateAgentIntermediate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/pki/manifests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Import a trust manifest signed offline (`drool agent-ca sign-manifest`). It must verify against the root and be newer. */
+        post: operations["importTrustManifest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Installer presets (DESIGN §6.7) with exactly what each allows and the agent.yaml it writes. */
+        get: operations["listAgentPresets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listEnrollmentTokens"];
+        put?: never;
+        /** @description Single-use, short-lived enrollment token. Bound to an existing host (`host_id`) or creating new hosts (optionally in `group_id`). The token is shown once. */
+        post: operations["createEnrollmentToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/tokens/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["revokeEnrollmentToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Revoke an agent identity immediately. Its sessions close; the host isn't managed again until re-enrollment or an explicit switch to SSH. */
+        post: operations["revokeAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{id}/resolve-conflict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Release an identity-conflict quarantine. Refused while two machines are connected with the identity. */
+        post: operations["resolveAgentConflict"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/updates/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAgentUpdatePolicy"];
+        put: operations["setAgentUpdatePolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/release-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Release-signing public keys known to the controller (display and early checks; agents trust their own local list). */
+        get: operations["listReleaseKeys"];
+        put?: never;
+        post: operations["addReleaseKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/release-keys/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteReleaseKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAgentReleases"];
+        put?: never;
+        /** @description Body is the agent binary; the signed manifest (`.release.json` from `drool release sign`) goes base64-encoded in `X-DROOL-Release`. Verified here for early feedback and again by every agent. */
+        post: operations["uploadAgentRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/releases/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteAgentRelease"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/rollouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAgentRollouts"];
+        put?: never;
+        /** @description Update agents to an uploaded release with a canary, then bounded batches, pausing on failures (policy settings). Empty `host_ids` = every agent. */
+        post: operations["startAgentRollout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/rollouts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAgentRollout"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/rollouts/{id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["pauseAgentRollout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/rollouts/{id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["resumeAgentRollout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/rollouts/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["cancelAgentRollout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/endpoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listEndpointMigrations"];
+        put?: never;
+        /** @description Propose a new agent endpoint (host:port). Agents store and test it; nothing changes until commit, and only for agents that confirmed it. */
+        post: operations["proposeEndpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/endpoints/{id}/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["commitEndpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/agent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The host's management model, agent identity, sessions, capabilities and state versions. */
+        get: operations["getHostAgent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/management": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Preferred management path and fallback (audited). */
+        put: operations["setHostManagement"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/agent/caps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Narrow the agent's capability ceiling (never widen). `caps` null removes the narrowing. */
+        put: operations["setAgentCaps"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/agent/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Install and enroll the agent over the host's pinned SSH connection (synchronous, up to a few minutes). */
+        post: operations["installAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/state/{domain}/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description For a domain where the host is ahead of the controller (e.g. after restoring an old backup), adopt the host's revision so new changes are newer. Full reconciliation comes with the Beta. */
+        post: operations["adoptHostState"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description How DROOL manages the host (DESIGN §8). */
+        Management: {
+            /** @enum {string} */
+            preferred: "ssh" | "agent";
+            /** @enum {string} */
+            fallback: "none" | "ssh";
+            ssh_configured: boolean;
+            /**
+             * @description The path operations use right now.
+             * @enum {string}
+             */
+            active: "agent" | "ssh" | "none";
+            /** @description connected, not_connected, not_enrolled, incompatible, epoch_mismatch, quarantined, revoked, disabled, or empty for SSH hosts */
+            agent_state: string;
+            reason?: string;
+            /** @description No path may be used until an administrator decides (revoked or quarantined identity). */
+            blocked: boolean;
+        };
+        AgentCaps: {
+            monitoring: boolean;
+            shell: boolean;
+            packages: {
+                enabled: boolean;
+                configured_repositories_only: boolean;
+            };
+            services: {
+                enabled: boolean;
+                allowed?: string[];
+            };
+            reboot: boolean;
+            files: {
+                enabled: boolean;
+                allowed_paths?: string[];
+                allowed_validation_commands?: string[];
+            };
+            firewall: boolean;
+            users: boolean;
+        };
+        AgentPreset: {
+            name: string;
+            caps: components["schemas"]["AgentCaps"];
+            root_equivalent: string[];
+            file: string;
+        };
+        AgentPKIStatus: {
+            root_fingerprint: string;
+            /** Format: date-time */
+            root_not_after: string;
+            root_key_online: boolean;
+            /** Format: date-time */
+            root_key_removed_at?: string;
+            intermediate_fingerprint: string;
+            /** Format: date-time */
+            intermediate_not_after: string;
+            manifest_version: number;
+            trusted_intermediates: string[] | null;
+            revoked_intermediates: string[] | null;
+        };
+        AgentPKI: components["schemas"]["AgentPKIStatus"] & {
+            endpoint_port: string;
+            controller_epoch: string;
+        };
+        EnrollmentToken: {
+            id: string;
+            description: string;
+            host_id: string | null;
+            host_name: string;
+            group_id: string | null;
+            group_name: string;
+            preset: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            used_at: string | null;
+            /** Format: date-time */
+            revoked_at: string | null;
+            /** @enum {string} */
+            state: "active" | "used" | "expired" | "revoked";
+        };
+        CreatedEnrollmentToken: {
+            id: string;
+            /** @description Shown once. Carries the controller endpoints and the pinned Agent Root CA fingerprint. */
+            token: string;
+            /** Format: date-time */
+            expires_at: string;
+            endpoints: string[];
+            install_command: string;
+            root_fingerprint: string;
+            pinned_web_key: string;
+        };
+        AgentIdentity: {
+            id: string;
+            host_id: string;
+            /** @enum {string} */
+            status: "active" | "quarantined" | "revoked";
+            key_fingerprint: string;
+            /** Format: date-time */
+            enrolled_at: string;
+            /** Format: date-time */
+            cert_not_after: string;
+            cert_renew_after: string;
+            /** Format: date-time */
+            recovered_at: string | null;
+            /** Format: date-time */
+            revoked_at: string | null;
+            revoke_reason?: string;
+            conflict?: {
+                detected_at?: string;
+                sessions?: {
+                    address?: string;
+                    connected_at?: string;
+                    hostname?: string;
+                    machine_id?: string;
+                    boot_id?: string;
+                    agent_version?: string;
+                }[];
+            };
+            agent_version: string;
+            protocol: number;
+            protocol_min: number;
+            protocol_max: number;
+            compatible: boolean;
+            compat_reason?: string;
+            hostname: string;
+            os: string;
+            arch: string;
+            ceiling: components["schemas"]["AgentCaps"];
+            effective: components["schemas"]["AgentCaps"];
+            root_equivalent: string[];
+            manifest_version: number;
+            epoch_reported: string;
+            epoch_matches: boolean;
+            /** Format: date-time */
+            last_seen_at: string | null;
+            last_address: string;
+            connected: boolean;
+            update_state: string;
+            update_version: string;
+            update_detail: string;
+            /** Format: date-time */
+            update_at: string | null;
+        };
+        AgentSession: {
+            address: string;
+            /** Format: date-time */
+            connected_at: string;
+            /** Format: date-time */
+            last_seen: string;
+            protocol: number;
+            agent_version: string;
+            quarantined: boolean;
+        };
+        StateVersion: {
+            domain: string;
+            epoch: string;
+            revision: number;
+            reported_epoch: string;
+            reported_revision: number;
+            /** @enum {string} */
+            status: "ok" | "host_ahead" | "epoch_mismatch";
+        };
+        HostAgent: {
+            management: components["schemas"]["Management"];
+            identity: components["schemas"]["AgentIdentity"] | null;
+            sessions: components["schemas"]["AgentSession"][];
+            state_versions: components["schemas"]["StateVersion"][];
+            requested_caps: components["schemas"]["AgentCaps"] | null;
+            /** @description SSH fallback with root access exists; it is not limited by the agent's ceiling. */
+            ssh_bypasses_ceiling: boolean;
+            update_available?: string;
+        };
+        AgentUpdatePolicy: {
+            /** @enum {string} */
+            policy: "manual" | "automatic";
+            channel: string;
+            version: string;
+            canary: number;
+            batch_size: number;
+            max_failures: number;
+            health_window_s: number;
+        };
+        ReleaseKey: {
+            id: string;
+            name: string;
+            public_key: string;
+            /** Format: date-time */
+            added_at: string;
+        };
+        AgentRelease: {
+            id: string;
+            version: string;
+            channel: string;
+            os: string;
+            arch: string;
+            protocol_min: number;
+            protocol_max: number;
+            sha256: string;
+            size: number;
+            key_id: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AgentRollout: {
+            id: string;
+            version: string;
+            /** @enum {string} */
+            status: "running" | "paused" | "completed" | "cancelled";
+            canary: number;
+            batch_size: number;
+            max_failures: number;
+            health_window_s: number;
+            failures: number;
+            paused_reason: string;
+            automatic: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            hosts?: {
+                host_id: string;
+                host_name: string;
+                wave: number;
+                /** @enum {string} */
+                state: "pending" | "offered" | "staged" | "updating" | "healthy" | "rolled_back" | "failed" | "skipped";
+                from_version: string;
+                detail: string;
+                offline: boolean;
+                /** Format: date-time */
+                updated_at: string;
+            }[];
+        };
+        EndpointMigration: {
+            id: string;
+            endpoint: string;
+            /** @enum {string} */
+            status: "testing" | "committed" | "cancelled";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            committed_at: string | null;
+            confirmed: number;
+            failed: number;
+            committed: number;
+            agents: number;
+        };
         Problem: {
             type: string;
             title: string;
@@ -1210,6 +1944,7 @@ export interface components {
             facts: components["schemas"]["FactsSummary"] | null;
             /** @description Latest polled status (null before the first check). */
             health: components["schemas"]["Health"] | null;
+            management: components["schemas"]["Management"];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -1354,6 +2089,10 @@ export interface components {
             host_count: number;
         };
         JobHost: {
+            /** @description Management path that ran it: agent, ssh, or empty. */
+            transport: string;
+            /** @description Why, e.g. "SSH fallback: the agent is not connected". */
+            transport_note: string;
             host_id: string;
             host_name: string;
             state: components["schemas"]["JobHostState"];
@@ -3514,6 +4253,867 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Job"];
                 };
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    listAgents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Identities. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AgentIdentity"][];
+                    };
+                };
+            };
+        };
+    };
+    getAgentPKI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description PKI status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPKI"];
+                };
+            };
+        };
+    };
+    getAgentRootCert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description PEM certificate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-pem-file": string;
+                };
+            };
+        };
+    };
+    exportAgentRoot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Root certificate and key (PEM). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        cert_pem: string;
+                        key_pem: string;
+                    };
+                };
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    removeAgentRoot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    confirm: string;
+                };
+            };
+        };
+        responses: {
+            /** @description PKI status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPKIStatus"];
+                };
+            };
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    rotateAgentIntermediate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    root_key_pem?: string;
+                    revoke_old?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description PKI status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPKIStatus"];
+                };
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    importTrustManifest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: byte */
+                    payload: string;
+                    /** Format: byte */
+                    signature: string;
+                };
+            };
+        };
+        responses: {
+            /** @description PKI status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPKIStatus"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    listAgentPresets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Presets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AgentPreset"][];
+                    };
+                };
+            };
+        };
+    };
+    listEnrollmentTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tokens (never the secret). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["EnrollmentToken"][];
+                    };
+                };
+            };
+        };
+    };
+    createEnrollmentToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    description?: string;
+                    host_id?: string;
+                    group_id?: string;
+                    /** @enum {string} */
+                    preset?: "monitor" | "managed" | "full" | "";
+                    ttl_minutes?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedEnrollmentToken"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    revokeEnrollmentToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    revokeAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    resolveAgentConflict: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Released. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    getAgentUpdatePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentUpdatePolicy"];
+                };
+            };
+        };
+    };
+    setAgentUpdatePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentUpdatePolicy"];
+            };
+        };
+        responses: {
+            /** @description Policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentUpdatePolicy"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    listReleaseKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Keys. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["ReleaseKey"][];
+                    };
+                };
+            };
+        };
+    };
+    addReleaseKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    public_key: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseKey"];
+                };
+            };
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    deleteReleaseKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    listAgentReleases: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Releases. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AgentRelease"][];
+                    };
+                };
+            };
+        };
+    };
+    uploadAgentRelease: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-DROOL-Release": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRelease"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    deleteAgentRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    listAgentRollouts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rollouts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AgentRollout"][];
+                    };
+                };
+            };
+        };
+    };
+    startAgentRollout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    version: string;
+                    host_ids?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Started. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRollout"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    getAgentRollout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rollout with hosts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRollout"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    pauseAgentRollout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rollout. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRollout"];
+                };
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    resumeAgentRollout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rollout. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRollout"];
+                };
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    cancelAgentRollout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rollout. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRollout"];
+                };
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    listEndpointMigrations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Migrations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["EndpointMigration"][];
+                    };
+                };
+            };
+        };
+    };
+    proposeEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    endpoint: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Proposed. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                    };
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    commitEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Committed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        committed_now: number;
+                    };
+                };
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    getHostAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent view. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostAgent"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    setHostManagement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    preferred: "ssh" | "agent";
+                    /** @enum {string} */
+                    fallback: "none" | "ssh";
+                };
+            };
+        };
+        responses: {
+            /** @description Management. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Management"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    setAgentCaps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    caps: components["schemas"]["AgentCaps"] | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Stored and pushed to the agent. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    installAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    preset: "monitor" | "managed" | "full";
+                    release_key?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        output: string;
+                        error?: string;
+                    };
+                };
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    adoptHostState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+                domain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Adopted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             409: components["responses"]["Problem"];
         };

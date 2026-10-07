@@ -4,8 +4,12 @@ package api
 
 import (
 	"context"
+	"drool/internal/agentsvc"
 	"drool/internal/artifacts"
 	"drool/internal/files"
+	"drool/internal/hostops"
+	"drool/internal/mgmt"
+	"drool/internal/model"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -18,7 +22,6 @@ import (
 	"drool/internal/audit"
 	"drool/internal/auth"
 	"drool/internal/config"
-	"drool/internal/driver/sshdriver"
 	"drool/internal/engine"
 	"drool/internal/inventory"
 	"drool/internal/logging"
@@ -45,11 +48,19 @@ type Deps struct {
 	Pool      *sshx.Pool
 	Engine    *engine.Engine
 	Poller    *poller.Poller // may be nil (tests)
-	Simulator *sshdriver.Executor
-	Files     files.Opener     // file manager and deployment previews; nil disables them
-	Artifacts *artifacts.Store // deployment artifacts
+	Simulator Simulator
+	Files     files.Opener      // file manager and deployment previews; nil disables them
+	Agents    *agentsvc.Service // agent endpoint; nil disables agent routes
+	Router    *mgmt.Router      // management paths; nil: SSH only
+	WebPin    func() string     // curl --pinnedpubkey value of the web TLS key
+	Artifacts *artifacts.Store  // deployment artifacts
 	// StaleAfter is how old a status check may be before it is shown as stale.
 	StaleAfter time.Duration
+}
+
+// Simulator runs package/system-update dry runs on a host's management path.
+type Simulator interface {
+	Simulate(ctx context.Context, hostID string, op model.Operation) (*hostops.SimResult, error)
 }
 
 // Server is the HTTP API server.
@@ -168,6 +179,43 @@ func (s *Server) routes() []route {
 		{method: "POST", path: APIPrefix + "/jobs/{id}/cancel", auth: authed, perm: auth.PermJobsExecute, h: s.handleCancelJob},
 		{method: "POST", path: APIPrefix + "/jobs/{id}/resume", auth: authed, perm: auth.PermJobsExecute, h: s.handleResumeJob},
 		{method: "POST", path: APIPrefix + "/jobs/{id}/rerun", auth: authed, perm: auth.PermJobsExecute, h: s.handleRerunJob},
+
+		// Agents (M7).
+		{method: "GET", path: APIPrefix + "/agents", auth: authed, perm: auth.PermAgentsRead, h: s.handleListAgents},
+		{method: "GET", path: APIPrefix + "/agents/pki", auth: authed, perm: auth.PermAgentsRead, h: s.handleAgentPKI},
+		{method: "GET", path: APIPrefix + "/agents/pki/root.crt", auth: authed, perm: auth.PermAgentsRead, h: s.handleAgentRootCert},
+		{method: "POST", path: APIPrefix + "/agents/pki/export-root", auth: authed, perm: auth.PermAgentsPKI, sessionOnly: true, h: s.handleAgentExportRoot},
+		{method: "POST", path: APIPrefix + "/agents/pki/remove-root", auth: authed, perm: auth.PermAgentsPKI, sessionOnly: true, h: s.handleAgentRemoveRoot},
+		{method: "POST", path: APIPrefix + "/agents/pki/rotate", auth: authed, perm: auth.PermAgentsPKI, sessionOnly: true, h: s.handleAgentRotate},
+		{method: "POST", path: APIPrefix + "/agents/pki/manifests", auth: authed, perm: auth.PermAgentsPKI, h: s.handleAgentImportManifest},
+		{method: "GET", path: APIPrefix + "/agents/presets", auth: authed, perm: auth.PermAgentsRead, h: s.handleAgentPresets},
+		{method: "GET", path: APIPrefix + "/agents/tokens", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleListAgentTokens},
+		{method: "POST", path: APIPrefix + "/agents/tokens", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleCreateAgentToken},
+		{method: "POST", path: APIPrefix + "/agents/tokens/{id}/revoke", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleRevokeAgentToken},
+		{method: "POST", path: APIPrefix + "/agents/{id}/revoke", auth: authed, perm: auth.PermAgentsManage, h: s.handleRevokeAgent},
+		{method: "POST", path: APIPrefix + "/agents/{id}/resolve-conflict", auth: authed, perm: auth.PermAgentsManage, h: s.handleResolveConflict},
+		{method: "GET", path: APIPrefix + "/agents/updates/policy", auth: authed, perm: auth.PermAgentsRead, h: s.handleGetUpdatePolicy},
+		{method: "PUT", path: APIPrefix + "/agents/updates/policy", auth: authed, perm: auth.PermAgentsManage, h: s.handleSetUpdatePolicy},
+		{method: "GET", path: APIPrefix + "/agents/release-keys", auth: authed, perm: auth.PermAgentsRead, h: s.handleListReleaseKeys},
+		{method: "POST", path: APIPrefix + "/agents/release-keys", auth: authed, perm: auth.PermAgentsManage, h: s.handleAddReleaseKey},
+		{method: "DELETE", path: APIPrefix + "/agents/release-keys/{id}", auth: authed, perm: auth.PermAgentsManage, h: s.handleDeleteReleaseKey},
+		{method: "GET", path: APIPrefix + "/agents/releases", auth: authed, perm: auth.PermAgentsRead, h: s.handleListReleases},
+		{method: "POST", path: APIPrefix + "/agents/releases", auth: authed, perm: auth.PermAgentsManage, h: s.handleUploadRelease},
+		{method: "DELETE", path: APIPrefix + "/agents/releases/{id}", auth: authed, perm: auth.PermAgentsManage, h: s.handleDeleteRelease},
+		{method: "GET", path: APIPrefix + "/agents/rollouts", auth: authed, perm: auth.PermAgentsRead, h: s.handleListRollouts},
+		{method: "POST", path: APIPrefix + "/agents/rollouts", auth: authed, perm: auth.PermAgentsManage, h: s.handleStartRollout},
+		{method: "GET", path: APIPrefix + "/agents/rollouts/{id}", auth: authed, perm: auth.PermAgentsRead, h: s.handleGetRollout},
+		{method: "POST", path: APIPrefix + "/agents/rollouts/{id}/pause", auth: authed, perm: auth.PermAgentsManage, h: s.handleRolloutAction("pause")},
+		{method: "POST", path: APIPrefix + "/agents/rollouts/{id}/resume", auth: authed, perm: auth.PermAgentsManage, h: s.handleRolloutAction("resume")},
+		{method: "POST", path: APIPrefix + "/agents/rollouts/{id}/cancel", auth: authed, perm: auth.PermAgentsManage, h: s.handleRolloutAction("cancel")},
+		{method: "GET", path: APIPrefix + "/agents/endpoints", auth: authed, perm: auth.PermAgentsRead, h: s.handleListEndpointMigrations},
+		{method: "POST", path: APIPrefix + "/agents/endpoints", auth: authed, perm: auth.PermAgentsManage, h: s.handleProposeEndpoint},
+		{method: "POST", path: APIPrefix + "/agents/endpoints/{id}/commit", auth: authed, perm: auth.PermAgentsManage, h: s.handleCommitEndpoint},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/agent", auth: authed, perm: auth.PermHostsRead, h: s.handleHostAgent},
+		{method: "PUT", path: APIPrefix + "/hosts/{id}/management", auth: authed, perm: auth.PermHostsWrite, h: s.handleSetManagement},
+		{method: "PUT", path: APIPrefix + "/hosts/{id}/agent/caps", auth: authed, perm: auth.PermAgentsManage, h: s.handleSetAgentCaps},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/agent/install", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleInstallAgent},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/state/{domain}/adopt", auth: authed, perm: auth.PermAgentsManage, h: s.handleAdoptState},
 	}
 }
 
@@ -202,6 +250,9 @@ func New(d Deps) (*Server, error) {
 	mux.Handle(APIPrefix+"/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, errNotFound("endpoint"))
 	}))
+	// Agent installer (public: no secrets; see handleAgentInstallScript).
+	mux.HandleFunc("GET /agent/install.sh", s.handleAgentInstallScript)
+	mux.HandleFunc("GET /agent/download/{platform}", s.handleAgentDownload)
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /ready", s.handleReady)
 	mux.Handle("GET /metrics", metricsHandler(d.Registry))

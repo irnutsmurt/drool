@@ -6,6 +6,7 @@ import { jk, useJob, useJobHost, useJobHosts, type JobHost } from "@/api/queries
 import { useAuth } from "@/auth/AuthContext";
 import { useJobEvents } from "@/hooks/useJobEvents";
 import { HostStateBadge, JobStatusBadge, errorExplanations } from "@/components/jobs/badges";
+import { Badge } from "@/components/ui/Badge";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -139,6 +140,7 @@ export function JobDetailPage() {
               },
               { header: "State", cell: (h) => <HostStateBadge state={h.state} /> },
               { header: "Exit", cell: (h) => (h.exit_code ?? "—") },
+              { header: "Via", cell: (h) => h.transport ? <span title={h.transport_note}><Badge tone={h.transport_note ? "warn" : h.transport === "agent" ? "ok" : "neutral"}>{h.transport === "agent" ? "agent" : h.transport_note ? "SSH fallback" : "SSH"}</Badge></span> : "" },
               { header: "Time", cell: (h) => <span className="text-muted">{duration(h)}</span> },
               { header: "Problem", cell: (h) => <span className="text-muted">{h.error_message}</span> },
             ]}
@@ -163,6 +165,9 @@ function HostOutput({ jobId, host, live, onOutput }: {
   const steps = detail.data?.steps ?? [];
   return (
     <Card title={`Output: ${host.host_name}`}>
+      {host.transport_note && (
+        <div className="mb-3"><Alert tone="warn">{host.transport_note}</Alert></div>
+      )}
       {host.error_class && (
         <div className="mb-3">
           <Alert tone={host.state === "cancelled" || host.state === "skipped" ? "warn" : "danger"}>

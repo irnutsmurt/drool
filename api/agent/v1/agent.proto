@@ -1,0 +1,313 @@
+// DROOL agent protocol (ARCHITECTURE-ALPHA §23.4).
+//
+// The agent always connects outbound to the controller over mutual TLS.
+// The envelope is protobuf; operation bodies, file requests and results
+// reuse the canonical JSON model (internal/model) so there is exactly one
+// definition of every operation.
+//
+// The protocol version (Hello.protocol_min/max, HelloAck.protocol) is
+// independent of the product version. Additive changes (new fields, new
+// message kinds that old peers may ignore) don't change it; anything an
+// old peer would misinterpret does.
+syntax = "proto3";
+
+package drool.agent.v1;
+
+option go_package = "drool/internal/agentrpc/pb;pb";
+
+service Agent {
+  // Root-signed trust manifests. Unauthenticated on purpose: manifests are
+  // self-authenticating (root signature, monotonic version), and an agent
+  // must be able to learn about a rotated intermediate before it can
+  // verify the controller's new certificate.
+  rpc GetTrust(GetTrustRequest) returns (TrustBundle);
+
+  // Enrollment with a single-use token; no client certificate.
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+
+  // Expired-certificate recovery (DESIGN §6.4). The only RPCs an expired
+  // certificate may use; they issue a certificate and nothing else.
+  rpc RecoveryChallenge(RecoveryChallengeRequest) returns (RecoveryChallengeResponse);
+  rpc Recover(RecoverRequest) returns (RecoverResponse);
+
+  // The agent's session. Requires a valid operational certificate.
+  rpc Session(stream AgentMessage) returns (stream ControllerMessage);
+
+  // A data channel the agent opens when the controller asks for one
+  // (operations, file sessions). Requires a valid certificate of the same
+  // identity as the session that requested it.
+  rpc Channel(stream Frame) returns (stream Frame);
+
+  // Agent release binaries. The agent verifies them itself against its
+  // trusted release keys; the controller's word is not enough.
+  rpc FetchRelease(FetchReleaseRequest) returns (stream Chunk);
+}
+
+message GetTrustRequest {
+  uint64 have_version = 1;
+}
+
+message TrustBundle {
+  bytes root_cert = 1;            // DER
+  SignedManifest manifest = 2;    // the newest the controller has
+}
+
+message SignedManifest {
+  bytes payload = 1;              // canonical JSON (agentpki.Manifest)
+  bytes signature = 2;            // Ed25519 by the root
+}
+
+message AgentInfo {
+  string agent_version = 1;
+  uint32 protocol_min = 2;
+  uint32 protocol_max = 3;
+  string hostname = 4;
+  string machine_id = 5;
+  string os = 6;
+  string arch = 7;
+  string boot_id = 8;
+}
+
+message EnrollRequest {
+  string token = 1;
+  bytes public_key = 2;           // Ed25519 identity public key
+  // Ed25519 signature by the identity key over
+  // "drool-enroll-v1\0" || sha256(token) || public_key: proof of possession.
+  bytes proof = 3;
+  AgentInfo info = 4;
+  bytes ceiling_json = 5;         // the local capability ceiling
+}
+
+message EnrollResponse {
+  string identity_id = 1;
+  string host_id = 2;
+  string host_name = 3;
+  repeated bytes cert_chain = 4;  // DER: operational certificate, intermediate
+  SignedManifest manifest = 5;
+  repeated string endpoints = 6;  // controller agent endpoints (host:port)
+  string controller_epoch = 7;
+}
+
+message RecoveryChallengeRequest {
+  string identity_id = 1;
+}
+
+message RecoveryChallengeResponse {
+  bytes nonce = 1;
+}
+
+message RecoverRequest {
+  string identity_id = 1;
+  bytes nonce = 2;
+  // Ed25519 by the identity key over "drool-recover-v1\0" || identity_id || "\0" || nonce.
+  bytes signature = 3;
+}
+
+message RecoverResponse {
+  repeated bytes cert_chain = 1;
+}
+
+// --- session ---
+
+message AgentMessage {
+  oneof msg {
+    Hello hello = 1;
+    Heartbeat heartbeat = 2;
+    Telemetry telemetry = 3;
+    RenewRequest renew = 4;
+    OpStatus op_status = 5;
+    EndpointTestResult endpoint_test = 6;
+    UpdateReport update = 7;
+    ManifestAck manifest_ack = 8;
+    ChannelFailed channel_failed = 9;
+    ConfigAck config_ack = 10;
+  }
+}
+
+message ControllerMessage {
+  oneof msg {
+    HelloAck hello_ack = 1;
+    Ping ping = 2;
+    OpenChannel open_channel = 3;
+    RenewResponse renew = 4;
+    QueryOp query_op = 5;
+    CancelOp cancel_op = 6;
+    EndpointCandidate endpoint_candidate = 7;
+    EndpointCommit endpoint_commit = 8;
+    UpdateOffer update_offer = 9;
+    SignedManifest manifest = 10;
+    Disconnect disconnect = 11;
+    RequestTelemetry request_telemetry = 12;
+    ConfigPush config = 13;
+  }
+}
+
+message Hello {
+  AgentInfo info = 1;
+  string session_nonce = 2;       // random per agent process
+  bytes ceiling_json = 3;         // local ceiling (authoritative)
+  bytes effective_json = 4;       // ceiling ∩ controller narrowing
+  uint64 manifest_version = 5;
+  int64 cert_not_after_unix = 6;
+  StateReport state = 7;
+  UpdateReport update = 8;        // outcome of a pending/finished update
+  repeated string endpoints = 9;
+  string controller_epoch = 10;   // the epoch the agent was enrolled with
+}
+
+message StateReport {
+  repeated DomainState domains = 1;
+}
+
+message DomainState {
+  string domain = 1;
+  string epoch = 2;
+  uint64 revision = 3;
+  string content_hash = 4;
+}
+
+message HelloAck {
+  uint32 protocol = 1;            // negotiated; 0 = incompatible
+  bool compatible = 2;
+  string reason = 3;              // why not, in plain words
+  string controller_epoch = 4;
+  int64 server_time_unix = 5;
+  uint32 heartbeat_seconds = 6;
+  bool quarantined = 7;           // identity conflict: no operations
+  string host_id = 8;
+  string host_name = 9;
+}
+
+message Heartbeat {
+  int64 time_unix = 1;
+  string boot_id = 2;
+}
+
+message Ping {
+  string nonce = 1;
+}
+
+// Telemetry carries the raw output of the same collection scripts the SSH
+// path runs; the controller parses it with the same code.
+message Telemetry {
+  string kind = 1;                // facts | status | updates
+  bytes output = 2;
+  string package_manager = 3;     // for updates
+  int64 collected_at_unix = 4;
+}
+
+message RenewRequest {
+  // The session is already authenticated by the identity key; renewal
+  // re-issues a certificate over the same key.
+}
+
+message RenewResponse {
+  repeated bytes cert_chain = 1;
+  string error = 2;
+}
+
+message OpenChannel {
+  string channel_id = 1;
+  string purpose = 2;             // op | files
+}
+
+message ChannelFailed {
+  string channel_id = 1;
+  string error = 2;
+}
+
+message QueryOp {
+  string op_id = 1;
+  // abandon: if the agent never recorded this id, record it as abandoned
+  // so a delayed copy can never start. This makes "unknown" a safe answer
+  // for falling back to another management path.
+  bool abandon = 2;
+  int64 expires_at_unix = 3;
+}
+
+message OpStatus {
+  string op_id = 1;
+  string state = 2;               // unknown | accepted | running | completed | interrupted | abandoned
+  bytes result_json = 3;          // agentrpc.OpResult when completed
+}
+
+message CancelOp {
+  string op_id = 1;
+}
+
+message EndpointCandidate {
+  string id = 1;
+  string endpoint = 2;            // host:port
+}
+
+message EndpointTestResult {
+  string id = 1;
+  string endpoint = 2;
+  bool ok = 3;
+  string error = 4;
+}
+
+message EndpointCommit {
+  string id = 1;
+  string endpoint = 2;
+}
+
+message UpdateOffer {
+  string release_id = 1;
+  bytes manifest_payload = 2;     // release.Signed: payload, key id, signature
+  string key_id = 3;
+  bytes signature = 4;
+  uint32 health_window_seconds = 5;
+}
+
+message UpdateReport {
+  string release_id = 1;
+  string version = 2;
+  string state = 3;               // staged | updating | healthy | rolled_back | failed
+  string detail = 4;
+  string from_version = 5;
+}
+
+message ManifestAck {
+  uint64 version = 1;
+  string error = 2;
+}
+
+message ConfigPush {
+  bytes requested_caps_json = 1;  // narrowing only; the agent intersects with its ceiling
+  DomainState version = 2;        // agent-config state version
+}
+
+message ConfigAck {
+  DomainState version = 1;
+  bool applied = 2;
+  string error = 3;
+  bytes effective_json = 4;
+}
+
+message Disconnect {
+  string reason = 1;
+  string code = 2;                // revoked | incompatible | replaced | shutdown
+}
+
+message RequestTelemetry {
+  string kind = 1;
+}
+
+// --- channels ---
+
+message Frame {
+  string channel_id = 1;          // first frame from the agent
+  string kind = 2;
+  bytes json = 3;
+  bytes data = 4;
+}
+
+message FetchReleaseRequest {
+  string release_id = 1;
+  int64 offset = 2;               // resume after an interrupted download
+}
+
+message Chunk {
+  bytes data = 1;
+}

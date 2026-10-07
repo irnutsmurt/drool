@@ -12,11 +12,8 @@ import (
 
 	"drool/internal/audit"
 	"drool/internal/driver"
-	"drool/internal/driver/sshdriver"
-	"drool/internal/inventory"
 	"drool/internal/logging"
 	"drool/internal/model"
-	"drool/internal/sshx"
 	"drool/internal/store"
 	"drool/internal/store/db"
 )
@@ -34,10 +31,22 @@ func (fakeResolver) HostOS(_ context.Context, id string) (model.HostOS, error) {
 	return model.HostOS{}, nil
 }
 
-func (fakeResolver) Resolve(_ context.Context, id string, _ bool) (*inventory.Conn, error) {
-	return &inventory.Conn{Target: &sshx.Target{HostID: id, Name: id},
-		Become: sshdriver.Become{Method: "sudo", Password: "s3cret-sudo-pw"}}, nil
+// execFunc is the shape of a fake executor's per-operation behavior.
+type execFunc func(ctx context.Context, host string, op model.Operation, out driver.OutputSink, started func()) (*driver.OpResult, error)
+
+// fakePath adapts an execFunc to the engine's Path (an SSH-like path with
+// a known sudo password to redact).
+type fakePath struct {
+	host string
+	run  execFunc
 }
+
+func (p fakePath) Execute(ctx context.Context, op model.Operation, out driver.OutputSink, started func()) (*driver.OpResult, error) {
+	return p.run(ctx, p.host, op, out, started)
+}
+func (p fakePath) Transport() (string, string) { return "ssh", "" }
+func (p fakePath) JumpHostID() string          { return "" }
+func (p fakePath) Secrets() []string           { return []string{"s3cret-sudo-pw"} }
 
 // fakeExec runs a per-host behavior.
 type fakeExec struct {
@@ -48,11 +57,14 @@ type fakeExec struct {
 	do      func(ctx context.Context, host string, call int, out driver.OutputSink) (*driver.OpResult, error)
 }
 
-func (f *fakeExec) Execute(ctx context.Context, t *sshx.Target, _ sshdriver.Become, _ model.Operation,
-	out driver.OutputSink, started func()) (*driver.OpResult, error) {
+func (f *fakeExec) Prepare(_ context.Context, id string) (Path, error) {
+	return fakePath{host: id, run: f.execute}, nil
+}
+
+func (f *fakeExec) execute(ctx context.Context, host string, _ model.Operation, out driver.OutputSink, started func()) (*driver.OpResult, error) {
 	f.mu.Lock()
-	f.calls[t.HostID]++
-	n := f.calls[t.HostID]
+	f.calls[host]++
+	n := f.calls[host]
 	f.mu.Unlock()
 	cur := f.running.Add(1)
 	defer f.running.Add(-1)
@@ -63,7 +75,7 @@ func (f *fakeExec) Execute(ctx context.Context, t *sshx.Target, _ sshdriver.Beco
 		}
 	}
 	started()
-	return f.do(ctx, t.HostID, n, out)
+	return f.do(ctx, host, n, out)
 }
 
 func ok() (*driver.OpResult, error) { c := 0; return &driver.OpResult{ExitCode: &c}, nil }
@@ -519,15 +531,16 @@ type recordingExec struct {
 	record func(host, what string)
 }
 
-func (r *recordingExec) Execute(ctx context.Context, t *sshx.Target, _ sshdriver.Become, op model.Operation,
-	_ driver.OutputSink, started func()) (*driver.OpResult, error) {
-	started()
-	if op.Type == model.OpScript {
-		r.record(t.HostID, op.Script.Body.Text)
-	} else {
-		r.record(t.HostID, op.Command.Command)
-	}
-	return ok()
+func (r *recordingExec) Prepare(_ context.Context, id string) (Path, error) {
+	return fakePath{host: id, run: func(ctx context.Context, host string, op model.Operation, _ driver.OutputSink, started func()) (*driver.OpResult, error) {
+		started()
+		if op.Type == model.OpScript {
+			r.record(host, op.Script.Body.Text)
+		} else {
+			r.record(host, op.Command.Command)
+		}
+		return ok()
+	}}, nil
 }
 
 func TestHostChangedAfterTypedOps(t *testing.T) {

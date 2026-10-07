@@ -347,6 +347,22 @@ func VerifyBox(ctx context.Context, q *db.Queries, box *Box) (int, error) {
 			bad.Failed++
 		}
 	}
+	// The Agent CA keys are sealed with the same master key.
+	cas, err := q.ListAgentCA(ctx)
+	if err != nil {
+		return 0, err
+	}
+	for _, r := range cas {
+		if len(r.KeyCiphertext) == 0 {
+			continue // offline root, or discarded during recovery
+		}
+		if _, err := box.Open(r.ID, "agent-ca-"+r.Kind, r.KeyCiphertext, r.KeyNonce, int(r.KeyVersion.Int64)); err != nil {
+			if bad == nil {
+				bad = &KeyMismatchError{Total: len(rows) + len(cas), First: "Agent CA " + r.Kind + " key"}
+			}
+			bad.Failed++
+		}
+	}
 	if bad != nil {
 		return len(rows), bad
 	}
@@ -382,6 +398,12 @@ func DiscardAllTx(ctx context.Context, tx *sql.Tx) ([]string, error) {
 			status = CASE WHEN status IN ('pending_hostkey','hostkey_mismatch','disabled') THEN status ELSE 'untested' END,
 			status_detail = CASE WHEN ssh_credential_id IS NOT NULL THEN 'credential discarded during recovery; assign a credential' ELSE status_detail END`,
 		`DELETE FROM secrets`,
+		// The Agent CA keys can't be decrypted either. Agents keep working
+		// once a new intermediate is issued with the offline root key
+		// (drool agent-ca rotate --root-key): they move to it through
+		// certificate recovery, without re-enrolling.
+		`UPDATE agent_ca SET key_ciphertext = NULL, key_nonce = NULL, key_version = NULL,
+			key_removed_at = CAST(strftime('%s','now') AS INTEGER) * 1000 WHERE key_ciphertext IS NOT NULL`,
 	} {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return nil, err

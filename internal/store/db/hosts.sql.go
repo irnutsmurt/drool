@@ -47,7 +47,7 @@ func (q *Queries) DeleteHostTags(ctx context.Context, hostID string) error {
 }
 
 const getHost = `-- name: GetHost :one
-SELECT id, name, description, connect_address, management_method, ssh_port, ssh_user, ssh_credential_id, become_method, become_credential_id, ssh_needs_pty, jump_only, status, status_detail, last_probe_at, created_at, updated_at FROM hosts WHERE id = ?
+SELECT id, name, description, connect_address, management_method, ssh_port, ssh_user, ssh_credential_id, become_method, become_credential_id, ssh_needs_pty, jump_only, status, status_detail, last_probe_at, created_at, updated_at, management_fallback, ssh_configured, requested_caps_json FROM hosts WHERE id = ?
 `
 
 func (q *Queries) GetHost(ctx context.Context, id string) (Host, error) {
@@ -71,6 +71,9 @@ func (q *Queries) GetHost(ctx context.Context, id string) (Host, error) {
 		&i.LastProbeAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ManagementFallback,
+		&i.SshConfigured,
+		&i.RequestedCapsJson,
 	)
 	return i, err
 }
@@ -247,7 +250,7 @@ func (q *Queries) ListHostTags(ctx context.Context) ([]HostTag, error) {
 }
 
 const listHosts = `-- name: ListHosts :many
-SELECT id, name, description, connect_address, management_method, ssh_port, ssh_user, ssh_credential_id, become_method, become_credential_id, ssh_needs_pty, jump_only, status, status_detail, last_probe_at, created_at, updated_at FROM hosts ORDER BY name
+SELECT id, name, description, connect_address, management_method, ssh_port, ssh_user, ssh_credential_id, become_method, become_credential_id, ssh_needs_pty, jump_only, status, status_detail, last_probe_at, created_at, updated_at, management_fallback, ssh_configured, requested_caps_json FROM hosts ORDER BY name
 `
 
 func (q *Queries) ListHosts(ctx context.Context) ([]Host, error) {
@@ -277,6 +280,9 @@ func (q *Queries) ListHosts(ctx context.Context) ([]Host, error) {
 			&i.LastProbeAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ManagementFallback,
+			&i.SshConfigured,
+			&i.RequestedCapsJson,
 		); err != nil {
 			return nil, err
 		}

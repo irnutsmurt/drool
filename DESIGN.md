@@ -1,6 +1,6 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.2**
+**Design Document v0.3.3**
 Status: Draft · 2026-10-06 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
@@ -11,6 +11,10 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.2 → v0.3.3
+
+- **Agent self-update moved into Alpha 2** (§28, §33). An agent that can't be updated safely leaves outdated agents in the fleet, and that undermines the trust model. The update trust (release-signing key, not held by the controller) stays separate from the Agent CA (§4.4).
 
 ### v0.3.1 → v0.3.2
 
@@ -1103,7 +1107,13 @@ Temporary firewall rollback, console-initiated agent reset, emergency admin role
 
 ## 28. Agent Updates and Compatibility
 
-Controller-managed rollout (canary → 10% → 50% → rest). The previous version is kept for rollback. The compatibility matrix flags unsupported agent/controller combinations.
+Agent self-update ships with the agent in Alpha 2.
+
+- **Separate trust.** Releases are signed with a release-signing key whose private half is not on the controller (§4.4). Agents verify the signed manifest and the binary themselves; a compromised controller can offer a release but can't make an agent run unsigned code. Trusting another release key takes explicit local or admin action and is flagged as security-sensitive.
+- **Signed manifest.** It covers version, protocol range, OS, architecture, SHA-256, size and upgrade compatibility. The artifact is verified against it before anything is installed.
+- **Safe install.** The new version is staged next to the current one, and the previous one is kept. The switch is atomic and followed by a restart. The update counts only after a local health check and a controller-visible one (the new agent completed a session). Otherwise it reverts automatically, and the rollback doesn't depend on the new binary. A power loss leaves the old or the new version complete. Unsupported downgrades are refused; automatic rollback to the kept previous version is allowed.
+- **Rollout.** Controller-managed: manual or automatic (a channel or a desired version), canary first and then bounded batches, pausing on failures. One host's failure never becomes a fleet-wide failure. Offline hosts catch up when they return.
+- **Compatibility.** The agent protocol is versioned independently of the product, negotiated per session, and has a documented compatibility range. Incompatible agents are shown as such and use SSH where it is configured.
 
 ---
 
@@ -1198,6 +1208,7 @@ AuditEvent, SystemEvent
 - Agent → SSH fallback
 - Local capability ceiling
 - State versioning (§9)
+- Agent self-update: separate release-signing trust, signed manifests, staged atomic install with health-checked automatic rollback, controller-managed canary/batch rollout of the agent (§28)
 
 ### Beta: The differentiator
 - Host firewall policies, named services, host groups
@@ -1212,7 +1223,7 @@ AuditEvent, SystemEvent
 Beta plus hardening, scheduling, batch/canary updates, file deployment with diffs, MFA, hash-chained audit with remote sink. **Firewalling ships before 1.0.** Without it we're competing directly with Semaphore/Rundeck without our main differentiator.
 
 ### Later
-Desired-state baselines, workflows UI, dynamic groups, maintenance windows, agent self-update, network visualization, Docker discovery/segmentation/exposure audit, Dockhand, learning mode, Explain Host, dependency awareness, plugin ecosystem (Arr, Jellyfin, Proxmox, Caddy, Tailscale, WireGuard, Syncthing, ZFS), WireGuard identity backend.
+Desired-state baselines, workflows UI, dynamic groups, maintenance windows, network visualization, Docker discovery/segmentation/exposure audit, Dockhand, learning mode, Explain Host, dependency awareness, plugin ecosystem (Arr, Jellyfin, Proxmox, Caddy, Tailscale, WireGuard, Syncthing, ZFS), WireGuard identity backend.
 
 ---
 

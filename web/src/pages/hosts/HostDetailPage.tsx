@@ -12,6 +12,7 @@ import { statusHelp } from "@/components/hosts/statusHelp";
 import { FactsCard, HealthCard, NetworkCard, ServicesCard } from "@/components/hosts/InventoryCards";
 import { ProbeSteps } from "@/components/hosts/ProbeSteps";
 import { ManagedFilesCard } from "@/components/files/ManagedFilesCard";
+import { ManagementCard } from "@/components/agents/ManagementCard";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -70,7 +71,8 @@ export function HostDetailPage() {
   const nameOf = (hid?: string | null) => (hosts.data?.items ?? []).find((x) => x.id === hid)?.name;
   const credName = (cid?: string | null) => (creds.data?.items ?? []).find((c) => c.id === cid)?.name ?? cid;
   const groupNames = (groups.data?.items ?? []).filter((g) => h.group_ids.includes(g.id)).map((g) => g.name);
-  const needsKey = h.status === "pending_hostkey" || h.status === "hostkey_mismatch";
+  const sshHost = h.management.ssh_configured;
+  const needsKey = sshHost && (h.status === "pending_hostkey" || h.status === "hostkey_mismatch");
 
   return (
     <>
@@ -79,12 +81,12 @@ export function HostDetailPage() {
         description={<span className="inline-flex items-center gap-2"><HostStatusBadge status={h.status} /> {h.status_detail}</span>}
         actions={
           <>
-            {can("jobs.execute") && (
+            {can("jobs.execute") && sshHost && (
               <Button variant="primary" onClick={() => test.mutate()} disabled={test.isPending || needsKey}>
                 {test.isPending ? "Testing…" : "Test connection"}
               </Button>
             )}
-            {can("jobs.execute") && !h.jump_only && h.pinned_key && (
+            {can("jobs.execute") && !h.jump_only && h.pinned_key && sshHost && (
               <Button onClick={() => refresh.mutate()} disabled={refresh.isPending}>
                 {refresh.isPending ? "Refreshing…" : "Refresh"}
               </Button>
@@ -112,7 +114,7 @@ export function HostDetailPage() {
             <HostForm host={h} submitLabel="Save" busy={update.isPending} onSubmit={(b) => update.mutate(b)}
               onCancel={() => setEditing(false)} />
           </Card>
-        ) : (
+        ) : !sshHost ? null : (
           <Card title="Connection">
             <dl className="grid grid-cols-[9rem_1fr] gap-y-2 text-sm">
               <dt className="text-muted">Address</dt><dd className="font-mono text-xs">{h.address}:{h.port}</dd>
@@ -132,7 +134,7 @@ export function HostDetailPage() {
           </Card>
         )}
 
-        <Card title="Host key">
+        {sshHost && <Card title="Host key">
           {needsKey || !h.pinned_key ? (
             <HostKeyPanel hostId={h.id} onApproved={() => test.mutate()} />
           ) : (
@@ -144,7 +146,9 @@ export function HostDetailPage() {
               <p className="text-muted">Trusted {formatDateTime(h.pinned_key.decided_at)}.</p>
             </div>
           )}
-        </Card>
+        </Card>}
+
+        {!h.jump_only && <div className="lg:col-span-2"><ManagementCard host={h} /></div>}
 
         {(probe || test.error) && (
           <Card title="Connection test" className="lg:col-span-2">

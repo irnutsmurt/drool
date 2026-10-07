@@ -17,12 +17,9 @@ import (
 
 	"drool/internal/audit"
 	"drool/internal/driver"
-	"drool/internal/driver/sshdriver"
 	"drool/internal/engine/lock"
 	"drool/internal/ids"
-	"drool/internal/inventory"
 	"drool/internal/model"
-	"drool/internal/sshx"
 	"drool/internal/store"
 	"drool/internal/store/db"
 )
@@ -57,15 +54,29 @@ var (
 	ErrJobIdempotent = errors.New("job already submitted with this idempotency key")
 )
 
-// Executor runs one operation on one host.
+// Executor chooses how a job reaches a host (its management path: SSH,
+// or the agent with an optional SSH fallback; internal/mgmt).
 type Executor interface {
-	Execute(ctx context.Context, t *sshx.Target, b sshdriver.Become, op model.Operation,
-		out driver.OutputSink, started func()) (*driver.OpResult, error)
+	Prepare(ctx context.Context, hostID string) (Path, error)
 }
 
-// Resolver turns a host id into connection details.
+// Path runs one job's operations on one host. Steps of a host run in
+// order, so implementations may keep per-step state (e.g. which transport
+// an operation was dispatched on, so a retry never switches transports
+// after the operation may have started).
+type Path interface {
+	Execute(ctx context.Context, op model.Operation, out driver.OutputSink, started func()) (*driver.OpResult, error)
+	// Transport is the path used last ("ssh", "agent") and a note such as
+	// "SSH fallback: the agent is not connected".
+	Transport() (string, string)
+	// JumpHostID is the SSH jump host, for per-jump concurrency ("" none).
+	JumpHostID() string
+	// Secrets are values to redact from output (passwords).
+	Secrets() []string
+}
+
+// Resolver provides host facts for job conditions.
 type Resolver interface {
-	Resolve(ctx context.Context, hostID string, requirePinned bool) (*inventory.Conn, error)
 	HostOS(ctx context.Context, hostID string) (model.HostOS, error)
 }
 
@@ -566,13 +577,18 @@ func (e *Engine) runHost(jr *jobRun, h db.JobHost) {
 	}()
 
 	e.setState(jr.id, h, HostConnecting, 0, 1, nil)
-	conn, err := e.inv.Resolve(ctx, h.HostID, true)
+	path, err := e.exec.Prepare(ctx, h.HostID)
 	if err != nil {
 		e.hostFailed(jr, h, nil, err)
 		return
 	}
-	if conn.Target.Via != nil {
-		slot := e.jumpSlot(conn.Target.Via.HostID)
+	defer func() {
+		if tr, note := path.Transport(); tr != "" {
+			e.st.W.SetJobHostTransport(e.base, db.SetJobHostTransportParams{Transport: tr, TransportNote: note, JobID: jr.id, HostID: h.HostID})
+		}
+	}()
+	if via := path.JumpHostID(); via != "" {
+		slot := e.jumpSlot(via)
 		select {
 		case slot <- struct{}{}:
 			defer func() { <-slot }()
@@ -581,7 +597,7 @@ func (e *Engine) runHost(jr *jobRun, h db.JobHost) {
 			return
 		}
 	}
-	secrets := []string{conn.Target.Password, conn.Become.Password}
+	secrets := path.Secrets()
 	var last *driver.OpResult
 
 	var hostOS model.HostOS
@@ -614,8 +630,8 @@ func (e *Engine) runHost(jr *jobRun, h db.JobHost) {
 				out.Note(fmt.Sprintf("attempt %d of %d", attempt, e.cfg.RetryAttempts))
 			}
 			sctx, cancel := context.WithTimeout(ctx, time.Duration(meta.TimeoutS)*time.Second)
-			sctx = driver.WithStepInfo(sctx, driver.StepInfo{JobID: jr.id, HostID: h.HostID, UserID: jr.createdBy})
-			res, err := e.exec.Execute(sctx, conn.Target, conn.Become, step, out,
+			sctx = driver.WithStepInfo(sctx, driver.StepInfo{JobID: jr.id, HostID: h.HostID, UserID: jr.createdBy, Step: i, Attempt: attempt})
+			res, err := path.Execute(sctx, step, out,
 				func() { e.setState(jr.id, h, HostRunning, i, attempt, nil) })
 			cancel()
 			if err != nil && ctx.Err() != nil && model.ClassOf(err) != model.ClassCancelled {

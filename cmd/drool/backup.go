@@ -115,6 +115,13 @@ Keep a copy of that file somewhere safe and separate from this backup, or run
 "drool backup --include-master-key" for a self-contained backup.
 `, m.Credentials, m.MasterKeyID, cfg.MasterKeyPath())
 	}
+	if m.AgentRootFingerprint != "" {
+		if m.AgentRootKeyIncluded {
+			fmt.Fprintf(msg, "\nThe Agent Root CA private key is still on this controller, so it is in this backup (sealed with the\nmaster key). Export it to offline storage and remove it from the controller (Agents → Trust in the web UI).\n")
+		} else {
+			fmt.Fprintf(msg, "\nThe Agent Root CA private key is offline and NOT in this backup (root %s).\nKeep your offline copy: it is needed to recover from a lost master key or a compromised intermediate.\n", m.AgentRootFingerprint[:23])
+		}
+	}
 	if m.TLSNote != "" {
 		fmt.Fprintf(msg, "\nNote: %s.\n", m.TLSNote)
 	}
@@ -195,6 +202,11 @@ Nothing was changed. To restore, do one of:
 	switch {
 	case res.Discarded:
 		fmt.Printf("  Stored credentials were DISCARDED. Hosts that need a credential assigned: %s\n", orDash(strings.Join(res.DiscardedFor, ", ")))
+		if m.AgentKeysSealed > 0 {
+			fmt.Printf("  The Agent CA keys were discarded too. Until you issue a new intermediate with the offline root key\n" +
+				"  (drool agent-ca rotate --root-key FILE), the agent endpoint stays off and agent hosts use SSH fallback if configured.\n" +
+				"  Agents then move to the new intermediate by themselves; no re-enrollment.\n")
+		}
 	case m.Credentials == 0:
 		fmt.Println("  No stored credentials in this backup.")
 	default:

@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
 
+	"drool/internal/agentsvc"
 	"drool/internal/artifacts"
 	"drool/internal/audit"
 	"drool/internal/auth"
@@ -27,6 +28,7 @@ import (
 	"drool/internal/filedeploy"
 	"drool/internal/inventory"
 	"drool/internal/logging"
+	"drool/internal/mgmt"
 	"drool/internal/secrets"
 	"drool/internal/sshx"
 	"drool/internal/store"
@@ -42,6 +44,10 @@ type harness struct {
 	ts   *httptest.Server
 	auth *auth.Service
 	st   *store.Store
+
+	agents *agentsvc.Service
+	pki    *agentsvc.PKI
+	router *mgmt.Router
 }
 
 func newHarness(t *testing.T) *harness {
@@ -61,7 +67,8 @@ func newHarness(t *testing.T) *harness {
 	logs := logging.Discard()
 	authSvc := auth.NewService(st, auth.Options{IdleTimeout: time.Hour, AbsoluteTimeout: 24 * time.Hour})
 	auditW := audit.NewWriter(st, logs.Audit)
-	secretSvc := secrets.NewService(st, secrets.NewBoxForTest())
+	box := secrets.NewBoxForTest()
+	secretSvc := secrets.NewService(st, box)
 	if _, _, err := secretSvc.EnsureControllerKey(context.Background(), func(*db.Queries, db.Secret) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -73,15 +80,26 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	executor := &sshdriver.Executor{Pool: pool, Files: &sshdriver.FileDeps{
-		Source: arts, Recorder: &filedeploy.StoreRecorder{Store: st, Audit: auditW}}}
-	eng := engine.New(st, inv, executor, auditW, logs.Job, engine.Config{RetryDelay: 10 * time.Millisecond})
+	rec := &filedeploy.StoreRecorder{Store: st, Audit: auditW}
+	executor := &sshdriver.Executor{Pool: pool, Files: &sshdriver.FileDeps{Source: arts, Recorder: rec}}
+	pki, _, err := agentsvc.OpenPKI(context.Background(), st, box, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	agents, err := agentsvc.New(context.Background(), agentsvc.Options{Config: cfg.Agent, Store: st, PKI: pki, Audit: auditW,
+		Inventory: inv, Artifacts: arts, Recorder: rec, Log: logs.App})
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := &mgmt.Router{St: st, Inv: inv, SSH: executor, Agents: agents}
+	eng := engine.New(st, inv, router, auditW, logs.Job, engine.Config{RetryDelay: 10 * time.Millisecond})
 	if err := eng.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	srv, err := New(Deps{
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
-		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng, Simulator: executor, Files: inv, Artifacts: arts,
+		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng, Simulator: router, Files: router, Artifacts: arts,
+		Agents: agents, Router: router,
 		UI: fstest.MapFS{
 			"index.html":    {Data: []byte("<!doctype html><title>ui</title>")},
 			"assets/app.js": {Data: []byte("console.log(1)")},
@@ -94,7 +112,7 @@ func newHarness(t *testing.T) *harness {
 	srv.SetReady(true)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
-	return &harness{t: t, srv: srv, ts: ts, auth: authSvc, st: st, eng: eng}
+	return &harness{t: t, srv: srv, ts: ts, auth: authSvc, st: st, eng: eng, agents: agents, pki: pki, router: router}
 }
 
 func (h *harness) mkUser(name, role string) {

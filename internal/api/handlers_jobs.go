@@ -59,12 +59,16 @@ type jobHostJSON struct {
 	ErrorHint    string  `json:"error_hint"`
 	StartedAt    *string `json:"started_at"`
 	FinishedAt   *string `json:"finished_at"`
+	// Transport is the management path that ran it (agent, ssh); the note
+	// says why (e.g. "SSH fallback: the agent is not connected").
+	Transport     string `json:"transport"`
+	TransportNote string `json:"transport_note"`
 }
 
 func toJobHostJSON(h db.JobHost) jobHostJSON {
 	out := jobHostJSON{HostID: h.HostID, HostName: h.HostName, State: h.State, CurrentStep: h.CurrentStep,
 		Attempt: h.Attempt, ErrorClass: h.ErrorClass, ErrorMessage: h.ErrorMessage, ErrorHint: h.ErrorHint,
-		StartedAt: nullMsTime(h.StartedAt), FinishedAt: nullMsTime(h.FinishedAt)}
+		StartedAt: nullMsTime(h.StartedAt), FinishedAt: nullMsTime(h.FinishedAt), Transport: h.Transport, TransportNote: h.TransportNote}
 	if h.ExitCode.Valid {
 		out.ExitCode = &h.ExitCode.Int64
 	}

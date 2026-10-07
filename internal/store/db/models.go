@@ -8,6 +8,153 @@ import (
 	"database/sql"
 )
 
+type AgentCa struct {
+	ID            string
+	Kind          string
+	CertDer       []byte
+	Fingerprint   string
+	KeyCiphertext []byte
+	KeyNonce      []byte
+	KeyVersion    sql.NullInt64
+	Status        string
+	NotAfter      int64
+	CreatedAt     int64
+	KeyRemovedAt  sql.NullInt64
+}
+
+type AgentEndpointMigration struct {
+	ID          string
+	Endpoint    string
+	Status      string
+	CreatedBy   sql.NullString
+	CreatedAt   int64
+	CommittedAt sql.NullInt64
+}
+
+type AgentEndpointTest struct {
+	MigrationID string
+	IdentityID  string
+	Ok          int64
+	Error       string
+	TestedAt    int64
+	Committed   int64
+}
+
+type AgentEnrollmentToken struct {
+	ID             string
+	TokenHash      []byte
+	Description    string
+	HostID         sql.NullString
+	GroupID        sql.NullString
+	Preset         string
+	CreatedBy      sql.NullString
+	CreatedAt      int64
+	ExpiresAt      int64
+	UsedAt         sql.NullInt64
+	UsedByIdentity sql.NullString
+	RevokedAt      sql.NullInt64
+}
+
+type AgentIdentity struct {
+	ID              string
+	HostID          string
+	PublicKey       []byte
+	Fingerprint     string
+	Status          string
+	EnrolledAt      int64
+	TokenID         sql.NullString
+	CertSerial      string
+	CertNotAfter    int64
+	CertIssuedAt    int64
+	RecoveredAt     sql.NullInt64
+	RevokedAt       sql.NullInt64
+	RevokedBy       sql.NullString
+	RevokeReason    string
+	QuarantinedAt   sql.NullInt64
+	ConflictJson    string
+	AgentVersion    string
+	Protocol        int64
+	ProtocolMin     int64
+	ProtocolMax     int64
+	Compatible      int64
+	CompatReason    string
+	Hostname        string
+	MachineID       string
+	Os              string
+	Arch            string
+	CeilingJson     string
+	EffectiveJson   string
+	ManifestVersion int64
+	EpochReported   string
+	EndpointsJson   string
+	BootID          string
+	LastSeenAt      sql.NullInt64
+	LastAddress     string
+	Connected       int64
+	UpdateState     string
+	UpdateVersion   string
+	UpdateDetail    string
+	UpdateAt        sql.NullInt64
+}
+
+type AgentRelease struct {
+	ID              string
+	Version         string
+	Channel         string
+	Os              string
+	Arch            string
+	ProtocolMin     int64
+	ProtocolMax     int64
+	Sha256          string
+	Size            int64
+	KeyID           string
+	ManifestPayload []byte
+	Signature       []byte
+	UploadedBy      sql.NullString
+	CreatedAt       int64
+}
+
+type AgentReleaseKey struct {
+	ID        string
+	PublicKey []byte
+	Name      string
+	AddedBy   sql.NullString
+	AddedAt   int64
+}
+
+type AgentRollout struct {
+	ID            string
+	Version       string
+	Status        string
+	Canary        int64
+	BatchSize     int64
+	MaxFailures   int64
+	HealthWindowS int64
+	Failures      int64
+	PausedReason  string
+	Automatic     int64
+	CreatedBy     sql.NullString
+	CreatedAt     int64
+	UpdatedAt     int64
+}
+
+type AgentRolloutHost struct {
+	RolloutID   string
+	HostID      string
+	Wave        int64
+	State       string
+	FromVersion string
+	Detail      string
+	UpdatedAt   int64
+}
+
+type AgentTrustManifest struct {
+	Version   int64
+	Payload   []byte
+	Signature []byte
+	CreatedAt int64
+}
+
 type ApiToken struct {
 	ID         string
 	UserID     string
@@ -98,6 +245,9 @@ type Host struct {
 	LastProbeAt        sql.NullInt64
 	CreatedAt          int64
 	UpdatedAt          int64
+	ManagementFallback string
+	SshConfigured      int64
+	RequestedCapsJson  string
 }
 
 type HostAddress struct {
@@ -177,20 +327,22 @@ type Job struct {
 }
 
 type JobHost struct {
-	JobID        string
-	HostID       string
-	HostName     string
-	Position     int64
-	State        string
-	CurrentStep  int64
-	Attempt      int64
-	ExitCode     sql.NullInt64
-	ErrorClass   string
-	ErrorMessage string
-	ErrorHint    string
-	Retryable    int64
-	StartedAt    sql.NullInt64
-	FinishedAt   sql.NullInt64
+	JobID         string
+	HostID        string
+	HostName      string
+	Position      int64
+	State         string
+	CurrentStep   int64
+	Attempt       int64
+	ExitCode      sql.NullInt64
+	ErrorClass    string
+	ErrorMessage  string
+	ErrorHint     string
+	Retryable     int64
+	StartedAt     sql.NullInt64
+	FinishedAt    sql.NullInt64
+	Transport     string
+	TransportNote string
 }
 
 type JobOutput struct {
@@ -271,6 +423,20 @@ type SshHostKey struct {
 	LastSeenAt        int64
 	DecidedBy         sql.NullString
 	DecidedAt         sql.NullInt64
+}
+
+type StateVersion struct {
+	HostID           string
+	Domain           string
+	Epoch            string
+	Revision         int64
+	ContentHash      string
+	UpdatedAt        int64
+	ReportedEpoch    string
+	ReportedRevision int64
+	ReportedHash     string
+	ReportedAt       sql.NullInt64
+	Status           string
 }
 
 type User struct {

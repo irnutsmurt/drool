@@ -62,6 +62,13 @@ var (
 
 const sudoPassword = "drool-it-sudo-pw" // set in images/*/Dockerfile
 
+// Agent versions built for the tests.
+const (
+	agentV1     = "v1.0.0"
+	agentV2     = "v1.1.0"
+	agentBroken = "v1.2.0"
+)
+
 var (
 	root     string // repo root
 	binPath  string
@@ -69,8 +76,12 @@ var (
 	netOuter string // controller-reachable containers
 	netInner string // only reachable through the jump host
 	ctl      *controller
-	imagesMu sync.Mutex
-	built    = map[string]error{}
+
+	agentDir, releaseDir string
+	agentGateway         string
+	agentPort            int
+	imagesMu             sync.Mutex
+	built                = map[string]error{}
 )
 
 func TestMain(m *testing.M) {
@@ -100,6 +111,26 @@ func setup(m *testing.M) (int, error) {
 	if err := build.Run(); err != nil {
 		return 0, fmt.Errorf("build drool: %w", err)
 	}
+	// Agent builds: the one the controller hands out, a newer one for
+	// update tests, and a deliberately broken newer one for rollback tests.
+	agentDir = filepath.Join(work, "agent-dist")
+	releaseDir = filepath.Join(work, "agent-releases")
+	for _, b := range []struct{ out, version, tags string }{
+		{filepath.Join(agentDir, "drool-agent-linux-amd64"), agentV1, ""},
+		{filepath.Join(releaseDir, "drool-agent-"+agentV2), agentV2, ""},
+		{filepath.Join(releaseDir, "drool-agent-"+agentBroken), agentBroken, "droolbroken"},
+	} {
+		args := []string{"build", "-trimpath", "-ldflags", "-X drool/internal/version.Version=" + b.version, "-o", b.out}
+		if b.tags != "" {
+			args = append(args, "-tags", b.tags)
+		}
+		cmd := exec.Command("go", append(args, "./cmd/drool-agent")...)
+		cmd.Dir, cmd.Stdout, cmd.Stderr = root, os.Stderr, os.Stderr
+		cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64")
+		if err := cmd.Run(); err != nil {
+			return 0, fmt.Errorf("build drool-agent %s: %w", b.version, err)
+		}
+	}
 	netOuter, netInner = "drool-it-"+runID+"-outer", "drool-it-"+runID+"-inner"
 	for _, n := range []string{netOuter, netInner} {
 		if _, err := docker("network", "create", n); err != nil {
@@ -119,9 +150,20 @@ func setup(m *testing.M) (int, error) {
 		os.RemoveAll(work)
 	}()
 
+	// The agent endpoint listens on the test network's gateway only, so
+	// containers reach it and nothing else on the workstation does.
+	gw, err := docker("network", "inspect", "-f", "{{(index .IPAM.Config 0).Gateway}}", netOuter)
+	if err != nil {
+		return 0, err
+	}
+	agentGateway, agentPort = strings.TrimSpace(gw), freePort()
 	ctl = &controller{dataDir: filepath.Join(work, "data"), extraEnv: []string{
 		// Small enough to exercise the cap without huge outputs.
 		"DROOL_ENGINE_OUTPUT_CAP_BYTES=1048576",
+		"DROOL_AGENT_BIND=" + agentGateway,
+		fmt.Sprintf("DROOL_AGENT_PORT=%d", agentPort),
+		fmt.Sprintf("DROOL_AGENT_ADVERTISE=%s:%d", agentGateway, agentPort),
+		"DROOL_AGENT_BINARIES_DIR=" + agentDir,
 	}}
 	if err := ctl.start(); err != nil {
 		return 0, err
@@ -667,4 +709,19 @@ func (c *controller) raw(ctx context.Context, method, path string, body io.Reade
 		req.Header.Set("X-DROOL-CSRF", c.csrf)
 	}
 	return c.client.Do(req)
+}
+
+func execCommand(name string, args ...string) *exec.Cmd { return exec.Command(name, args...) }
+
+// newRawRequest builds an authenticated request for a non-JSON body.
+func newRawRequest(method, path string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequest(method, ctl.base()+path, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	if ctl.csrf != "" {
+		req.Header.Set("X-DROOL-CSRF", ctl.csrf)
+	}
+	return req, nil
 }

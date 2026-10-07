@@ -48,7 +48,7 @@ poller:
   status_interval: 10m
 `)
 	env := []string{
-		"DROOL_SERVER_WEB_PORT=9443",
+		"DROOL_SERVER_WEB_PORT=9444",
 		"DROOL_SERVER_TRUSTED_PROXIES=10.0.0.1, 192.168.0.0/16",
 		"DROOL_LOGGING_COMPRESS=bogus-ignored-unknown-key",
 		"UNRELATED=1",
@@ -57,7 +57,7 @@ poller:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l.Server.WebPort != 9443 || l.Sources["server.web_port"] != SourceEnv {
+	if l.Server.WebPort != 9444 || l.Sources["server.web_port"] != SourceEnv {
 		t.Fatalf("env should override file: port=%d source=%s", l.Server.WebPort, l.Sources["server.web_port"])
 	}
 	if l.Server.Bind != "127.0.0.1" || l.Sources["server.bind"] != SourceFile {

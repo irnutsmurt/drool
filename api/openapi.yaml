@@ -1178,6 +1178,336 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Job' }
         '409': { $ref: '#/components/responses/Problem' }
+  /agents:
+    get:
+      operationId: listAgents
+      tags: [agents]
+      description: Enrolled (non-revoked) agent identities.
+      responses:
+        '200':
+          description: Identities.
+          content:
+            application/json:
+              schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/AgentIdentity' } } } }
+  /agents/pki:
+    get:
+      operationId: getAgentPKI
+      tags: [agents]
+      description: Agent PKI status. `root_key_online` true means the root private key is still on the controller (a persistent security warning).
+      responses:
+        '200':
+          description: PKI status.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AgentPKI' } } }
+  /agents/pki/root.crt:
+    get:
+      operationId: getAgentRootCert
+      tags: [agents]
+      description: The Agent Root CA certificate (PEM). Not the browser certificate.
+      responses:
+        '200': { description: PEM certificate., content: { application/x-pem-file: { schema: { type: string } } } }
+  /agents/pki/export-root:
+    post:
+      operationId: exportAgentRoot
+      tags: [agents]
+      description: Returns the root private key for offline storage (session only, `agents.pki`, audited).
+      responses:
+        '200':
+          description: Root certificate and key (PEM).
+          content: { application/json: { schema: { type: object, required: [cert_pem, key_pem], properties: { cert_pem: { type: string }, key_pem: { type: string } } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /agents/pki/remove-root:
+    post:
+      operationId: removeAgentRoot
+      tags: [agents]
+      description: Removes the root private key from the controller (and from later backups). `confirm` must be the root fingerprint.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [confirm], properties: { confirm: { type: string } } } } }
+      responses:
+        '200': { description: PKI status., content: { application/json: { schema: { $ref: '#/components/schemas/AgentPKIStatus' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /agents/pki/rotate:
+    post:
+      operationId: rotateAgentIntermediate
+      tags: [agents]
+      description: |
+        New intermediate CA and trust manifest N+1. `revoke_old` after a compromise (agents switch over via certificate
+        recovery, without re-enrolling). With the root offline, `root_key_pem` is used once and not stored.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, properties: { root_key_pem: { type: string }, revoke_old: { type: boolean } } } } }
+      responses:
+        '200': { description: PKI status., content: { application/json: { schema: { $ref: '#/components/schemas/AgentPKIStatus' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /agents/pki/manifests:
+    post:
+      operationId: importTrustManifest
+      tags: [agents]
+      description: Import a trust manifest signed offline (`drool agent-ca sign-manifest`). It must verify against the root and be newer.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [payload, signature], properties: { payload: { type: string, format: byte }, signature: { type: string, format: byte } } } } }
+      responses:
+        '200': { description: PKI status., content: { application/json: { schema: { $ref: '#/components/schemas/AgentPKIStatus' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /agents/presets:
+    get:
+      operationId: listAgentPresets
+      tags: [agents]
+      description: Installer presets (DESIGN §6.7) with exactly what each allows and the agent.yaml it writes.
+      responses:
+        '200':
+          description: Presets.
+          content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/AgentPreset' } } } } } }
+  /agents/tokens:
+    get:
+      operationId: listEnrollmentTokens
+      tags: [agents]
+      responses:
+        '200':
+          description: Tokens (never the secret).
+          content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/EnrollmentToken' } } } } } }
+    post:
+      operationId: createEnrollmentToken
+      tags: [agents]
+      description: Single-use, short-lived enrollment token. Bound to an existing host (`host_id`) or creating new hosts (optionally in `group_id`). The token is shown once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description: { type: string }
+                host_id: { type: string }
+                group_id: { type: string }
+                preset: { type: string, enum: [monitor, managed, full, ''] }
+                ttl_minutes: { type: integer }
+      responses:
+        '201': { description: Created., content: { application/json: { schema: { $ref: '#/components/schemas/CreatedEnrollmentToken' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /agents/tokens/{id}/revoke:
+    post:
+      operationId: revokeEnrollmentToken
+      tags: [agents]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '204': { description: Revoked. }
+        '409': { $ref: '#/components/responses/Problem' }
+  /agents/{id}/revoke:
+    post:
+      operationId: revokeAgent
+      tags: [agents]
+      description: Revoke an agent identity immediately. Its sessions close; the host isn't managed again until re-enrollment or an explicit switch to SSH.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [reason], properties: { reason: { type: string } } } } }
+      responses:
+        '204': { description: Revoked. }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /agents/{id}/resolve-conflict:
+    post:
+      operationId: resolveAgentConflict
+      tags: [agents]
+      description: Release an identity-conflict quarantine. Refused while two machines are connected with the identity.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '204': { description: Released. }
+        '409': { $ref: '#/components/responses/Problem' }
+  /agents/updates/policy:
+    get:
+      operationId: getAgentUpdatePolicy
+      tags: [agents]
+      responses:
+        '200': { description: Policy., content: { application/json: { schema: { $ref: '#/components/schemas/AgentUpdatePolicy' } } } }
+    put:
+      operationId: setAgentUpdatePolicy
+      tags: [agents]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AgentUpdatePolicy' } } }
+      responses:
+        '200': { description: Policy., content: { application/json: { schema: { $ref: '#/components/schemas/AgentUpdatePolicy' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /agents/release-keys:
+    get:
+      operationId: listReleaseKeys
+      tags: [agents]
+      description: Release-signing public keys known to the controller (display and early checks; agents trust their own local list).
+      responses:
+        '200': { description: Keys., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/ReleaseKey' } } } } } } }
+    post:
+      operationId: addReleaseKey
+      tags: [agents]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [public_key], properties: { public_key: { type: string } } } } }
+      responses:
+        '201': { description: Added., content: { application/json: { schema: { $ref: '#/components/schemas/ReleaseKey' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /agents/release-keys/{id}:
+    delete:
+      operationId: deleteReleaseKey
+      tags: [agents]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '204': { description: Deleted. }
+        '404': { $ref: '#/components/responses/Problem' }
+  /agents/releases:
+    get:
+      operationId: listAgentReleases
+      tags: [agents]
+      responses:
+        '200': { description: Releases., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/AgentRelease' } } } } } } }
+    post:
+      operationId: uploadAgentRelease
+      tags: [agents]
+      description: Body is the agent binary; the signed manifest (`.release.json` from `drool release sign`) goes base64-encoded in `X-DROOL-Release`. Verified here for early feedback and again by every agent.
+      parameters: [{ name: X-DROOL-Release, in: header, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content: { application/octet-stream: { schema: { type: string, format: binary } } }
+      responses:
+        '201': { description: Stored., content: { application/json: { schema: { $ref: '#/components/schemas/AgentRelease' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /agents/releases/{id}:
+    delete:
+      operationId: deleteAgentRelease
+      tags: [agents]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '204': { description: Deleted. }
+        '404': { $ref: '#/components/responses/Problem' }
+  /agents/rollouts:
+    get:
+      operationId: listAgentRollouts
+      tags: [agents]
+      responses:
+        '200': { description: Rollouts., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/AgentRollout' } } } } } } }
+    post:
+      operationId: startAgentRollout
+      tags: [agents]
+      description: Update agents to an uploaded release with a canary, then bounded batches, pausing on failures (policy settings). Empty `host_ids` = every agent.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: string }, host_ids: { type: array, items: { type: string } } } } } }
+      responses:
+        '201': { description: Started., content: { application/json: { schema: { $ref: '#/components/schemas/AgentRollout' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /agents/rollouts/{id}:
+    get:
+      operationId: getAgentRollout
+      tags: [agents]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Rollout with hosts., content: { application/json: { schema: { $ref: '#/components/schemas/AgentRollout' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /agents/rollouts/{id}/pause:
+    post:
+      operationId: pauseAgentRollout
+      tags: [agents]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Rollout., content: { application/json: { schema: { $ref: '#/components/schemas/AgentRollout' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /agents/rollouts/{id}/resume:
+    post:
+      operationId: resumeAgentRollout
+      tags: [agents]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Rollout., content: { application/json: { schema: { $ref: '#/components/schemas/AgentRollout' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /agents/rollouts/{id}/cancel:
+    post:
+      operationId: cancelAgentRollout
+      tags: [agents]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Rollout., content: { application/json: { schema: { $ref: '#/components/schemas/AgentRollout' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /agents/endpoints:
+    get:
+      operationId: listEndpointMigrations
+      tags: [agents]
+      responses:
+        '200': { description: Migrations., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/EndpointMigration' } } } } } } }
+    post:
+      operationId: proposeEndpoint
+      tags: [agents]
+      description: Propose a new agent endpoint (host:port). Agents store and test it; nothing changes until commit, and only for agents that confirmed it.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [endpoint], properties: { endpoint: { type: string } } } } }
+      responses:
+        '201': { description: Proposed., content: { application/json: { schema: { type: object, required: [id], properties: { id: { type: string } } } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /agents/endpoints/{id}/commit:
+    post:
+      operationId: commitEndpoint
+      tags: [agents]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Committed., content: { application/json: { schema: { type: object, required: [committed_now], properties: { committed_now: { type: integer } } } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/agent:
+    get:
+      operationId: getHostAgent
+      tags: [agents]
+      description: The host's management model, agent identity, sessions, capabilities and state versions.
+      parameters: [{ $ref: '#/components/parameters/HostId' }]
+      responses:
+        '200': { description: Agent view., content: { application/json: { schema: { $ref: '#/components/schemas/HostAgent' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/management:
+    put:
+      operationId: setHostManagement
+      tags: [agents]
+      description: Preferred management path and fallback (audited).
+      parameters: [{ $ref: '#/components/parameters/HostId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [preferred, fallback], properties: { preferred: { type: string, enum: [ssh, agent] }, fallback: { type: string, enum: [none, ssh] } } } } }
+      responses:
+        '200': { description: Management., content: { application/json: { schema: { $ref: '#/components/schemas/Management' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/agent/caps:
+    put:
+      operationId: setAgentCaps
+      tags: [agents]
+      description: Narrow the agent's capability ceiling (never widen). `caps` null removes the narrowing.
+      parameters: [{ $ref: '#/components/parameters/HostId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [caps], properties: { caps: { oneOf: [{ $ref: '#/components/schemas/AgentCaps' }, { type: 'null' }] } } } } }
+      responses:
+        '204': { description: Stored and pushed to the agent. }
+        '422': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/agent/install:
+    post:
+      operationId: installAgent
+      tags: [agents]
+      description: Install and enroll the agent over the host's pinned SSH connection (synchronous, up to a few minutes).
+      parameters: [{ $ref: '#/components/parameters/HostId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [preset], properties: { preset: { type: string, enum: [monitor, managed, full] }, release_key: { type: string } } } } }
+      responses:
+        '200': { description: Result., content: { application/json: { schema: { type: object, required: [ok, output], properties: { ok: { type: boolean }, output: { type: string }, error: { type: string } } } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/state/{domain}/adopt:
+    post:
+      operationId: adoptHostState
+      tags: [agents]
+      description: For a domain where the host is ahead of the controller (e.g. after restoring an old backup), adopt the host's revision so new changes are newer. Full reconciliation comes with the Beta.
+      parameters: [{ $ref: '#/components/parameters/HostId' }, { name: domain, in: path, required: true, schema: { type: string } }]
+      responses:
+        '204': { description: Adopted. }
+        '409': { $ref: '#/components/responses/Problem' }
 components:
   securitySchemes:
     session: { type: apiKey, in: cookie, name: drool_session }
@@ -1199,6 +1529,245 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
 
   schemas:
+    Management:
+      type: object
+      description: How DROOL manages the host (DESIGN §8).
+      required: [preferred, fallback, ssh_configured, active, agent_state, blocked]
+      properties:
+        preferred: { type: string, enum: [ssh, agent] }
+        fallback: { type: string, enum: [none, ssh] }
+        ssh_configured: { type: boolean }
+        active: { type: string, enum: [agent, ssh, none], description: The path operations use right now. }
+        agent_state: { type: string, description: 'connected, not_connected, not_enrolled, incompatible, epoch_mismatch, quarantined, revoked, disabled, or empty for SSH hosts' }
+        reason: { type: string }
+        blocked: { type: boolean, description: No path may be used until an administrator decides (revoked or quarantined identity). }
+    AgentCaps:
+      type: object
+      required: [monitoring, shell, packages, services, reboot, files, firewall, users]
+      properties:
+        monitoring: { type: boolean }
+        shell: { type: boolean }
+        packages: { type: object, required: [enabled, configured_repositories_only], properties: { enabled: { type: boolean }, configured_repositories_only: { type: boolean } } }
+        services: { type: object, required: [enabled], properties: { enabled: { type: boolean }, allowed: { type: array, items: { type: string } } } }
+        reboot: { type: boolean }
+        files:
+          type: object
+          required: [enabled]
+          properties:
+            enabled: { type: boolean }
+            allowed_paths: { type: array, items: { type: string } }
+            allowed_validation_commands: { type: array, items: { type: string } }
+        firewall: { type: boolean }
+        users: { type: boolean }
+    AgentPreset:
+      type: object
+      required: [name, caps, root_equivalent, file]
+      properties:
+        name: { type: string }
+        caps: { $ref: '#/components/schemas/AgentCaps' }
+        root_equivalent: { type: array, items: { type: string } }
+        file: { type: string }
+    AgentPKIStatus:
+      type: object
+      required: [root_fingerprint, root_not_after, root_key_online, intermediate_fingerprint, intermediate_not_after, manifest_version, trusted_intermediates, revoked_intermediates]
+      properties:
+        root_fingerprint: { type: string }
+        root_not_after: { type: string, format: date-time }
+        root_key_online: { type: boolean }
+        root_key_removed_at: { type: string, format: date-time }
+        intermediate_fingerprint: { type: string }
+        intermediate_not_after: { type: string, format: date-time }
+        manifest_version: { type: integer }
+        trusted_intermediates: { type: [array, 'null'], items: { type: string } }
+        revoked_intermediates: { type: [array, 'null'], items: { type: string } }
+    AgentPKI:
+      allOf:
+        - $ref: '#/components/schemas/AgentPKIStatus'
+        - type: object
+          required: [endpoint_port, controller_epoch]
+          properties:
+            endpoint_port: { type: string }
+            controller_epoch: { type: string }
+    EnrollmentToken:
+      type: object
+      required: [id, description, host_id, host_name, group_id, group_name, preset, created_at, expires_at, used_at, revoked_at, state]
+      properties:
+        id: { type: string }
+        description: { type: string }
+        host_id: { type: [string, 'null'] }
+        host_name: { type: string }
+        group_id: { type: [string, 'null'] }
+        group_name: { type: string }
+        preset: { type: string }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        used_at: { type: [string, 'null'], format: date-time }
+        revoked_at: { type: [string, 'null'], format: date-time }
+        state: { type: string, enum: [active, used, expired, revoked] }
+    CreatedEnrollmentToken:
+      type: object
+      required: [id, token, expires_at, endpoints, install_command, root_fingerprint, pinned_web_key]
+      properties:
+        id: { type: string }
+        token: { type: string, description: Shown once. Carries the controller endpoints and the pinned Agent Root CA fingerprint. }
+        expires_at: { type: string, format: date-time }
+        endpoints: { type: array, items: { type: string } }
+        install_command: { type: string }
+        root_fingerprint: { type: string }
+        pinned_web_key: { type: string }
+    AgentIdentity:
+      type: object
+      required: [id, host_id, status, key_fingerprint, enrolled_at, cert_not_after, cert_renew_after, recovered_at, revoked_at, agent_version,
+                 protocol, protocol_min, protocol_max, compatible, hostname, os, arch, ceiling, effective, root_equivalent, manifest_version,
+                 epoch_reported, epoch_matches, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at]
+      properties:
+        id: { type: string }
+        host_id: { type: string }
+        status: { type: string, enum: [active, quarantined, revoked] }
+        key_fingerprint: { type: string }
+        enrolled_at: { type: string, format: date-time }
+        cert_not_after: { type: string, format: date-time }
+        cert_renew_after: { type: string }
+        recovered_at: { type: [string, 'null'], format: date-time }
+        revoked_at: { type: [string, 'null'], format: date-time }
+        revoke_reason: { type: string }
+        conflict:
+          type: object
+          properties:
+            detected_at: { type: string }
+            sessions:
+              type: array
+              items: { type: object, properties: { address: { type: string }, connected_at: { type: string }, hostname: { type: string }, machine_id: { type: string }, boot_id: { type: string }, agent_version: { type: string } } }
+        agent_version: { type: string }
+        protocol: { type: integer }
+        protocol_min: { type: integer }
+        protocol_max: { type: integer }
+        compatible: { type: boolean }
+        compat_reason: { type: string }
+        hostname: { type: string }
+        os: { type: string }
+        arch: { type: string }
+        ceiling: { $ref: '#/components/schemas/AgentCaps' }
+        effective: { $ref: '#/components/schemas/AgentCaps' }
+        root_equivalent: { type: array, items: { type: string } }
+        manifest_version: { type: integer }
+        epoch_reported: { type: string }
+        epoch_matches: { type: boolean }
+        last_seen_at: { type: [string, 'null'], format: date-time }
+        last_address: { type: string }
+        connected: { type: boolean }
+        update_state: { type: string }
+        update_version: { type: string }
+        update_detail: { type: string }
+        update_at: { type: [string, 'null'], format: date-time }
+    AgentSession:
+      type: object
+      required: [address, connected_at, last_seen, protocol, agent_version, quarantined]
+      properties:
+        address: { type: string }
+        connected_at: { type: string, format: date-time }
+        last_seen: { type: string, format: date-time }
+        protocol: { type: integer }
+        agent_version: { type: string }
+        quarantined: { type: boolean }
+    StateVersion:
+      type: object
+      required: [domain, epoch, revision, reported_epoch, reported_revision, status]
+      properties:
+        domain: { type: string }
+        epoch: { type: string }
+        revision: { type: integer }
+        reported_epoch: { type: string }
+        reported_revision: { type: integer }
+        status: { type: string, enum: [ok, host_ahead, epoch_mismatch] }
+    HostAgent:
+      type: object
+      required: [management, identity, sessions, state_versions, requested_caps, ssh_bypasses_ceiling]
+      properties:
+        management: { $ref: '#/components/schemas/Management' }
+        identity: { oneOf: [{ $ref: '#/components/schemas/AgentIdentity' }, { type: 'null' }] }
+        sessions: { type: array, items: { $ref: '#/components/schemas/AgentSession' } }
+        state_versions: { type: array, items: { $ref: '#/components/schemas/StateVersion' } }
+        requested_caps: { oneOf: [{ $ref: '#/components/schemas/AgentCaps' }, { type: 'null' }] }
+        ssh_bypasses_ceiling: { type: boolean, description: SSH fallback with root access exists; it is not limited by the agent's ceiling. }
+        update_available: { type: string }
+    AgentUpdatePolicy:
+      type: object
+      required: [policy, channel, version, canary, batch_size, max_failures, health_window_s]
+      properties:
+        policy: { type: string, enum: [manual, automatic] }
+        channel: { type: string }
+        version: { type: string }
+        canary: { type: integer }
+        batch_size: { type: integer }
+        max_failures: { type: integer }
+        health_window_s: { type: integer }
+    ReleaseKey:
+      type: object
+      required: [id, name, public_key, added_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        public_key: { type: string }
+        added_at: { type: string, format: date-time }
+    AgentRelease:
+      type: object
+      required: [id, version, channel, os, arch, protocol_min, protocol_max, sha256, size, key_id, created_at]
+      properties:
+        id: { type: string }
+        version: { type: string }
+        channel: { type: string }
+        os: { type: string }
+        arch: { type: string }
+        protocol_min: { type: integer }
+        protocol_max: { type: integer }
+        sha256: { type: string }
+        size: { type: integer }
+        key_id: { type: string }
+        created_at: { type: string, format: date-time }
+    AgentRollout:
+      type: object
+      required: [id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_at, updated_at]
+      properties:
+        id: { type: string }
+        version: { type: string }
+        status: { type: string, enum: [running, paused, completed, cancelled] }
+        canary: { type: integer }
+        batch_size: { type: integer }
+        max_failures: { type: integer }
+        health_window_s: { type: integer }
+        failures: { type: integer }
+        paused_reason: { type: string }
+        automatic: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        hosts:
+          type: array
+          items:
+            type: object
+            required: [host_id, host_name, wave, state, from_version, detail, offline, updated_at]
+            properties:
+              host_id: { type: string }
+              host_name: { type: string }
+              wave: { type: integer }
+              state: { type: string, enum: [pending, offered, staged, updating, healthy, rolled_back, failed, skipped] }
+              from_version: { type: string }
+              detail: { type: string }
+              offline: { type: boolean }
+              updated_at: { type: string, format: date-time }
+    EndpointMigration:
+      type: object
+      required: [id, endpoint, status, created_at, committed_at, confirmed, failed, committed, agents]
+      properties:
+        id: { type: string }
+        endpoint: { type: string }
+        status: { type: string, enum: [testing, committed, cancelled] }
+        created_at: { type: string, format: date-time }
+        committed_at: { type: [string, 'null'], format: date-time }
+        confirmed: { type: integer }
+        failed: { type: integer }
+        committed: { type: integer }
+        agents: { type: integer }
     Problem:
       type: object
       required: [type, title, status, code]
@@ -1435,7 +2004,7 @@ components:
       type: object
       required: [id, name, description, address, port, user, credential_id, become_method, become_credential_id,
                  needs_pty, jump_only, via_host_id, status, status_detail, last_probe_at, tags, group_ids,
-                 pinned_key, facts, health, created_at, updated_at]
+                 pinned_key, facts, health, management, created_at, updated_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -1467,6 +2036,7 @@ components:
           oneOf:
             - $ref: '#/components/schemas/Health'
             - type: 'null'
+        management: { $ref: '#/components/schemas/Management' }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 
@@ -1646,8 +2216,10 @@ components:
 
     JobHost:
       type: object
-      required: [host_id, host_name, state, current_step, attempt, exit_code, error_class, error_message, error_hint, started_at, finished_at]
+      required: [host_id, host_name, state, current_step, attempt, exit_code, error_class, error_message, error_hint, started_at, finished_at, transport, transport_note]
       properties:
+        transport: { type: string, description: 'Management path that ran it: agent, ssh, or empty.' }
+        transport_note: { type: string, description: 'Why, e.g. "SSH fallback: the agent is not connected".' }
         host_id: { type: string }
         host_name: { type: string }
         state: { $ref: '#/components/schemas/JobHostState' }

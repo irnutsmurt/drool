@@ -45,6 +45,31 @@ type Config struct {
 	Poller    Poller    `yaml:"poller"`
 	Retention Retention `yaml:"retention"`
 	Logging   Logging   `yaml:"logging"`
+	Agent     Agent     `yaml:"agent"`
+}
+
+// Agent configures the agent endpoint (ARCHITECTURE-ALPHA §23).
+type Agent struct {
+	// Enabled starts the gRPC agent endpoint.
+	Enabled bool `yaml:"enabled"`
+	// Port is the agent endpoint's listen port (DESIGN §22.2: 9443).
+	Port int `yaml:"port"`
+	// Bind is the agent endpoint's listen address; empty: server.bind.
+	Bind string `yaml:"bind"`
+	// Advertise is the address agents connect to (host or host:port),
+	// put into enrollment tokens. Empty: the host name the administrator
+	// uses for the web UI, with Port.
+	Advertise []string `yaml:"advertise"`
+	// CertLifetime of agent operational certificates (DESIGN §6.4: 30 days).
+	CertLifetime time.Duration `yaml:"cert_lifetime"`
+	// RecoveryGrace is how long after expiry a certificate can still be
+	// recovered with proof of the identity key (DESIGN §6.4: 180 days).
+	RecoveryGrace time.Duration `yaml:"recovery_grace"`
+	// TokenTTL is the default lifetime of enrollment tokens.
+	TokenTTL time.Duration `yaml:"token_ttl"`
+	// BinariesDir holds drool-agent-linux-<arch> binaries served to new
+	// hosts. Empty: next to the drool binary.
+	BinariesDir string `yaml:"binaries_dir"`
 }
 
 type Server struct {
@@ -145,6 +170,13 @@ func Defaults() Config {
 			Workers:         4,
 		},
 		Retention: Retention{JobsDays: 30},
+		Agent: Agent{
+			Enabled:       true,
+			Port:          9443,
+			CertLifetime:  30 * 24 * time.Hour,
+			RecoveryGrace: 180 * 24 * time.Hour,
+			TokenTTL:      time.Hour,
+		},
 		Logging: Logging{
 			Level:  "info",
 			Format: "json",
@@ -406,6 +438,12 @@ func (c Config) Validate() error {
 		}
 	default:
 		errs = append(errs, fmt.Errorf("server.tls.mode must be self_signed, provided or off (got %q)", c.Server.TLS.Mode))
+	}
+	if c.Agent.Port < 1 || c.Agent.Port > 65535 || c.Agent.Port == c.Server.WebPort {
+		errs = append(errs, fmt.Errorf("agent.port must be 1-65535 and differ from server.web_port: %d", c.Agent.Port))
+	}
+	if c.Agent.CertLifetime < time.Hour || c.Agent.RecoveryGrace < 0 || c.Agent.TokenTTL < time.Minute {
+		errs = append(errs, fmt.Errorf("agent.cert_lifetime must be at least 1h, agent.recovery_grace not negative, agent.token_ttl at least 1m"))
 	}
 	if c.Server.WebPort < 1 || c.Server.WebPort > 65535 {
 		errs = append(errs, fmt.Errorf("server.web_port out of range: %d", c.Server.WebPort))

@@ -1,6 +1,6 @@
 # DROOL Technical Alpha: Internal Architecture
 
-**v0.4 · 2026-10-06 (v0.1.0-alpha + M6)** · Implements the *Technical Alpha* slice of `DESIGN.md` v0.3 (§33), plus M6 file management and single-file deployment (DESIGN §13, SSH only).
+**v0.5 · 2026-10-06 (v0.1.0-alpha + M6 + M7)** · Implements the *Technical Alpha* slice of `DESIGN.md` (§33), M6 file management and single-file deployment (DESIGN §13), and M7, the DROOL agent and its lifecycle (DESIGN §4, §6, §8, §9, §28; §23 here).
 
 Sections 1–21 describe the implementation as built. Where an implementation decision superseded the original plan, the prose was updated and the decision and its reason are in §22.
 
@@ -23,8 +23,10 @@ This document is where we argue about concrete things: schema, operation semanti
 - Backup and restore
 - **M6:** file manager for one host (browse, upload, download, text edit, mkdir, rename/move, delete, chmod, chown; login user or explicit elevation) and managed single-file deployment to many hosts (preview, diff, validation, service action, history, rollback) from a content-addressed artifact store (§10.6, §10.7)
 
+- **M7:** the `drool-agent` binary and the agent Driver: enrollment, PKI with an offline-capable root and trust manifest, mTLS gRPC, certificate renewal/recovery/revocation, clone quarantine, local capability ceiling, state versioning, telemetry, agent-side audit, protocol negotiation, signed self-update with automatic rollback, staged rollouts, endpoint migration; Agent preferred / SSH fallback (§23)
+
 ### Out of scope (but the design must not block them)
-Agent, firewall, batch/canary rollouts, scheduling, templated files and directory sync, desired state, YAML editing, MFA, plugins, multi-hop jumps.
+Firewall, batch/canary rollouts, scheduling, templated files and directory sync, desired state, YAML editing, MFA, plugins, multi-hop jumps.
 
 ### Supported managed hosts
 Debian 12+, Ubuntu 22.04+, RHEL/Rocky/Alma 9+, current Fedora (dnf5). The integration matrix (§18) runs Debian 12 and 13, Ubuntu 24.04 and 26.04, Rocky 9 and 10, and Fedora 44.
@@ -920,7 +922,7 @@ Privileged containers are not used for testing (they interfered with the develop
 
 | Future | Alpha preparation |
 |---|---|
-| Agent (Alpha 2) | `Driver` interface over typed ops; `management_method` column; capability check hook in engine (no-op for SSH) |
+| Agent (Alpha 2) | **Done in M7** (§23) |
 | Agent file access | `files.FS` is the transport contract; `Caps.AllowedPaths` carries the agent's `files.allowed_paths` as a ceiling the controller may narrow, never widen; `Caps.RootEquivalent` drives the "root-equivalent" label for unrestricted access. `filedeploy` and the API depend only on `files.FS` |
 | Multi-hop | `host_hops` table; dialer recursion is written but limited to one hop |
 | Firewall Beta | `sshx.DialFresh()` (no pool, no reuse); `host_addresses` with `source`; reserved `state_versions` |
@@ -942,6 +944,7 @@ Privileged containers are not used for testing (they interfered with the develop
 | **M4 System ops** | APT + DNF backends, package / system_update / service / reboot ops |
 | **M5 Alpha release** | Backup/restore, integration matrix green, error explanations, docs, tag `v0.1.0-alpha` |
 | **M6 Files** | File manager, artifact store, managed file deployment with preview/validation/rollback (§10.6, §10.7) |
+| **M7 Agent** | `drool-agent`, enrollment, PKI, agent Driver and `files.FS`, management router with SSH fallback, lifecycle, self-update and rollouts (§23) |
 
 ---
 
@@ -1096,3 +1099,111 @@ Meaningful choices made during implementation, newest last.
 | M6 | `files.FS` + `Caps{AllowedPaths, RootEquivalent}` is the transport contract for the future agent; `filedeploy` and the API depend only on it. SSH sessions report `AllowedPaths = nil` (bounded by the login user and its sudo rules) and `RootEquivalent` when elevated | DESIGN §6/§13: the agent's `files.allowed_paths` is a ceiling the controller may narrow but never widen, and unrestricted file access must be labelled root-equivalent |
 | M6 | Temporary files are hidden and extension-less (`.drool-tmp-XXXXXXXXXX`) in the destination's directory | Include directories ignore them while they exist (`sudoers.d` and `cron.d` skip names with dots; `*.conf` globs don't match), and same-directory staging keeps the final rename atomic |
 | M6 | Usability pass (headless Chromium, all ten steps: browse, download, upload, edit, elevated `/etc` change, multi-host deploy, diff, validation, apply, rollback). Fixed: file row actions were `group-hover` only, which Tailwind v4 applies only on hover-capable devices, so touch devices (and the headless browser) never saw Download/Rename/Delete; actions are now always shown. Symlinks showed a meaningless `rwxrwxrwx 0777` (now "link (the target's permissions apply)"). Permissions get a one-line plain-language summary in the table, not only a tooltip. A permission-denied save offers an explicit **Save with administrator privileges** button instead of losing the edit. Preview labels use the requested state names (missing/different/inaccessible). The deployment preview rejected the UI's step (`unknown field "type"`): the endpoint now takes the same operation shape as a job step, with an API test. The sidebar showed `vv0.1.0-alpha` | |
+| M7 | Agent protocol bodies for operations and file requests are the canonical JSON already used by jobs (`model.Operation`, `files` requests) inside a small protobuf envelope; only lifecycle messages (hello, telemetry, renewal, updates, config) are typed protobuf | One canonical operation model (DESIGN §2.2); no second schema to keep in sync with the SSH driver |
+| M7 | The agent verifies the controller with `VerifyPeerCertificate` against its pinned root and the newest accepted trust manifest, not the system trust store. The controller requests (doesn't require) client certificates at the TLS layer and authenticates each RPC itself | Enrollment and recovery must run over the same port without a valid client certificate; browser HTTPS trust must never authenticate the controller to agents (DESIGN §4.4) |
+| M7 | All Agent CA keys are Ed25519 and sealed in the secret box (`agent_ca`); the root key can be exported and removed, leaving the root certificate. A persistent banner warns while the root key is online | DESIGN §4.3: offline root encouraged without making first setup harder (§2.5) |
+| M7 | Intermediate rotation with `revoke_old` doesn't strand agents: recovery accepts a certificate from a revoked intermediate, authenticated by identity-key proof of possession plus the identity record, and an agent recovers proactively when its issuer appears revoked in a new manifest | Found by the rotation test: the first version left every agent unable to reconnect after an emergency rotation |
+| M7 | Expired-certificate recovery is a separate RPC that only issues a certificate: challenge → signature with the identity key → checks (identity active, not revoked, not quarantined, expired less than `agent.recovery_grace` ago, 180 d default). Past the grace the agent must re-enroll | DESIGN §6.4 |
+| M7 | Clone detection: a second session for a connected identity probes the first (heartbeat request, 10 s). If both answer, the identity is quarantined, both sessions are kept for display, and only an administrator resolves it (keep one session, or revoke) | Never auto-decide (DESIGN §6.3); a probe avoids quarantining a plain reconnect after a half-open TCP connection |
+| M7 | Operations carry `op_id`, `issued_at`, `expires_at`, controller epoch and the relevant domain's state version. The agent admits in a fixed order (well-formed, duplicate, expired, future, epoch, stale, capability) and records acceptance in a durable ledger before replying "accepted" | Duplicates and replays are rejected durably, across agent restarts (DESIGN §9) |
+| M7 | A channel lost after dispatch is resolved with `QueryOp(abandon)`: the agent tombstones an op it never started, so a late arrival can't run it, and returns the result of one that finished; otherwise the step is `ConnectionError` "outcome unknown". The router pins the transport per step once dispatched | Never switch transports after dispatch; the "lost during operation" test checks exactly-once execution |
+| M7 | Fallback rules live in one place (`mgmt.Router.Decide`): revoked or quarantined → blocked, no fallback; not connected, incompatible protocol, epoch mismatch or not enrolled → SSH if a fallback is configured and SSH is set up; a `CapabilityError` is returned as is | A capability denial is the host owner's decision; SSH must not bypass it. Revocation must actually stop management through DROOL's agent path |
+| M7 | SSH bypasses the agent's ceiling when it's used as a fallback, and the UI says so (`ssh_bypasses_ceiling`) | The SSH account's own rights are its boundary; hiding this would be misleading. Hosts that need the ceiling to be absolute should use fallback "none" |
+| M7 | Typed host operations moved from `sshdriver` into `hostops` over a `hostexec.Runner`; the SSH driver and the agent both run the same code (packages, updates, services, reboot, simulate) | No second implementation of operation semantics; identical results and error classes on both transports |
+| M7 | The agent's `files.FS` (`agent/localfs`) resolves every path with `openat2(RESOLVE_BENEATH | RESOLVE_NO_MAGICLINKS)` from an `allowed_paths` root and writes with `RESOLVE_NO_SYMLINKS`; DROOL's own agent directories are never reachable, and setuid/setgid modes are refused unless files are unrestricted. Deployments reuse `filedeploy` through a controller-side proxy | Kernel-enforced containment instead of string prefix checks; one deployment implementation |
+| M7 | Agent file deployments bump the host's `files` state version; narrowing capabilities bumps `agent-config`. A host reporting a newer revision or another controller epoch is flagged `host_ahead` / `epoch_mismatch`, and versioned operations in that domain are refused until an administrator adopts the host's state | Minimal DESIGN §10.3 detection; full restore reconciliation is later work |
+| M7 | Agent telemetry writes facts with source `agent` and addresses with source `agent`; the poller skips SSH polling for hosts whose agent is connected and healthy, and stale data stays marked stale | DESIGN §5.2, §11.3 |
+| M7 | Protocol versions are integers independent of the product version (`agentrpc.ProtocolMin/Max`, currently 1–1). Hello carries both ranges; the highest common version wins. No overlap → `incompatible`, the session is refused, and SSH fallback applies | DESIGN §28; tested at both boundaries |
+| M7 | Release signing: Ed25519 key generated with `drool release keygen`, kept off the controller. The manifest (version, channel, OS, arch, protocol range, SHA-256, size, `min_upgrade_from`) is signed with a domain-separated signature. Agents trust only `/etc/drool/release-keys.d/*.pub` (root-owned) plus keys compiled into the binary; keys registered on the controller are only for upload checks and for the install-time `--trust-release-key` | A compromised controller can't make agents run unsigned code (DESIGN §4.4) |
+| M7 | Update install: `versions/<v>/` staged and verified (manifest, size, hash, `version` preflight of the new binary), `current`/`previous` symlinks swapped with rename, then a restart. A helper process from the old binary performs the switch; a guard run from `previous` (`ExecStartPre`, or the supervisor script without systemd) counts starts (max 3) and enforces the health deadline, and rolls back without executing the new binary. Health = the new agent completed a session with the controller | Rollback doesn't depend on the new binary; power loss leaves one complete version (DESIGN §28) |
+| M7 | Rollouts: canary first, then batches; a rollout pauses at `max_failures` and never continues on its own; offline hosts stay pending and are offered the update on reconnect; a host that rolled back is never re-offered the same version in that rollout | One host's failure must not become fleet-wide |
+| M7 | Endpoint migration: propose → each connected agent stores the candidate and test-connects with full verification → confirmations shown → admin commits → agents make it primary and keep the old endpoint as a fallback | Never strand agents (DESIGN §6.5) |
+| M7 | Without systemd (containers), `drool-agent install` starts a small supervisor shell script that mirrors the unit (restart on exit, guard before each start) | Agents in unprivileged containers are a real use case and the test environment |
+| M7 | The agent endpoint has its own `agent.bind` (default: all addresses) and port 9443; the integration tests bind it to the Docker network gateway only | Agents connect from other machines while the web UI may stay on loopback |
+| M7 | Backups include agent CA material (sealed), manifests, identities, enrollment records, release metadata and state versions. A root key that was removed is not in the database, so it can't come back from a backup; the manifest records whether the root key was included | DESIGN §10.1; DR needs the offline root for rotation (README) |
+
+| M7 | The agent is installed under `/usr/libexec/drool-agent` (`versions/<v>/`, `current`, `previous`), not `/usr/lib/drool-agent` | Found in the Rocky 9 VM test: with SELinux enforcing, systemd ran the `lib_t` binary in the confined `init_t` domain and every connection to the controller failed with "permission denied". `/usr/libexec` is `bin_t`, so the service runs as `unconfined_service_t` like packaged services, and staged updates inherit the label |
+| M7 | An update's outcome (`result.json`) is written before `pending.json` is removed; the new agent reports the committed outcome on its live session, not only in the next hello | Found in the container tests: the healthy report never reached the controller (rollouts stayed open), and in the usability pass a reader could see "no pending update" next to the previous update's outcome |
+| M7 | Update reports without a version (refused before the manifest was trusted) are resolved through the release id and applied only to the rollout for that version; the host page doesn't offer a version that failed or rolled back on that host again | Found in the usability pass: one refusal failed every open rollout for the host, and the host page kept offering the broken release |
+| M7 | `drool-agent install --token` on an enrolled host enrolls again: the new identity is created beside the old one and only swapped in after enrollment succeeded; the old identity is moved to `replaced-<time>/`, never deleted. Without systemd, install stops a previous supervisor and agent first | Found in the usability pass: re-installing after a revocation kept the revoked identity, and a second supervisor ran next to the first |
+| M7 | Usability pass (headless Chromium, all eight steps on an SSH host: install from the host page, Agent preferred / SSH fallback, command/package/service/files through the agent, agent stopped → SSH fallback shown per job, local ceiling change → CapabilityError with no fallback and the UI unable to widen it, signed update, broken signed update → automatic rollback and paused rollout, revocation → management blocked). Also fixed: preset cards' content was vertically centered; the CapabilityError text said the same thing three times; `AuthorizationError` was explained as "sudo refused" for blocked management; log and CLI messages pointed to a nonexistent "Settings → Agents"; agents and files pages load on demand (main bundle 539 → 358 KB) | M7 usability goal |
+| M7 | APT's "Package 'x' has no installation candidate" is classified like "Unable to locate package" (`package not found`), so named package operations refresh metadata once and retry | Found in the Debian 12 VM test: a fresh cloud image with stale lists couldn't install `cron` (the same class of problem as the M5 fix) |
+---
+
+## 23. Agent (M7)
+
+### 23.1 Components
+
+| Package | Role |
+|---|---|
+| `cmd/drool-agent` | The agent binary: `install`, `enroll`, `run`, `status`, `presets`, `trust-release-key`, `version`, and the internal `update-apply` / `update-guard` |
+| `internal/agent` | Agent runtime: state store, durable op ledger, op log, admission, execution, file server, session, telemetry, renewal, updates |
+| `internal/agent/localfs` | `files.FS` on the host, confined by `openat2` |
+| `internal/agentrpc` (+ `api/agent/v1/agent.proto`) | Wire types, protocol range and negotiation, enrollment bundle |
+| `internal/agentpki` | Root / intermediate / leaf certificates, trust manifests |
+| `internal/agentcaps` | Capability model, presets, ceiling parsing, narrowing (`Intersect`), checks |
+| `internal/agentsvc` | Controller side: PKI store, gRPC service, enrollment, sessions, agent Driver, `files.FS` proxy, updates and rollouts, endpoint migration, install over SSH |
+| `internal/mgmt` | Management router: picks agent or SSH per step |
+| `internal/hostops`, `internal/hostexec` | Typed operations shared by both transports |
+| `internal/release` | Release signing and verification |
+
+### 23.2 Trust
+
+```
+Agent Root CA (offline after setup)   ── signs ──>  trust manifest v1, v2, …  (allowed + revoked intermediates)
+   └─ Controller Intermediate (online, sealed)
+        ├─ controller server cert  (URI urn:drool:controller)
+        └─ agent leaf certs, 30 d  (URI urn:drool:agent:<identity>, key = agent identity key)
+Release-signing key (never on the controller)  ── signs ──>  agent release manifests
+```
+
+Agents pin the root (fingerprint in the enrollment bundle, certificate fetched over the agent port and checked against it). They store the highest manifest version and reject older ones. On reconnect the controller sends the newest manifest before anything else. Keys are separate: Agent CA, release signing, browser HTTPS and the future OpenSSH CA.
+
+CLI: `drool agent-ca status | export-root | remove-root | rotate | sign-manifest | import-manifest`, `drool release keygen | sign | verify`.
+
+### 23.3 Enrollment
+
+1. An admin creates a token (UI or API): random, hashed at rest, 1 h default TTL, single use, revocable, optionally bound to a host or a group, with a capability preset. The bundle `drool-enroll-1.<base64url>` carries endpoints, the root fingerprint and the token.
+2. The agent generates its Ed25519 identity key locally, fetches and checks the trust material, and sends a CSR-equivalent signed with the identity key.
+3. In one transaction the controller consumes the token, creates the host (or attaches to the token's host), creates the identity and issues the certificate. A hostname or IP that matches an existing host is never used to associate.
+
+Install paths: `curl … /agent/install.sh` (pinned with `--pinnedpubkey` against the web certificate), **Install DROOL Agent** on an SSH host (binary and script over the pinned SSH connection, token on stdin), or manual (`drool-agent install --token-file -`).
+
+### 23.4 Management model
+
+`hosts.management_method` (`ssh` | `agent`) is the preferred path, `management_fallback` (`none` | `ssh`), `ssh_configured`. The API's `management` object reports preferred, fallback, active path, agent state and reason. Job hosts record `transport` and `transport_note` ("agent not connected; SSH fallback before dispatch").
+
+### 23.5 Capabilities
+
+`/etc/drool/agent.yaml` (root:root 0600) is the ceiling; the controller's requested set is intersected with it and can only narrow. Capabilities: `monitoring`, `shell`, `packages` (`configured_repos_only`), `services` (`allow` list), `reboot`, `files` (`allowed_paths`, `restricted`), reserved `firewall`, `users`. Root-equivalent capabilities (shell, unrestricted files, package installs, unrestricted services) are labelled in the UI. Presets: Monitor Only, Managed, Full; `drool-agent presets` prints exactly what each enables. Denials are `CapabilityError` (HTTP 403 for file requests).
+
+### 23.6 Lifecycle
+
+| Event | Behaviour |
+|---|---|
+| Renewal | At 2/3 of the 30-day lifetime, over the session, with a new certificate for the same key |
+| Expiry | Recovery RPC within `agent.recovery_grace` (180 d) |
+| Revocation | Identity revoked → sessions closed, renewal and recovery refused, management blocked without fallback |
+| Conflict | Quarantine; both sessions shown; admin keeps one or revokes |
+| Controller offline | The agent keeps its last committed state and retries with backoff |
+
+### 23.7 Updates
+
+On the host: `/usr/libexec/drool-agent/versions/<v>/drool-agent` with `current` and `previous` symlinks, state in `/var/lib/drool-agent` (identity, certificates, manifest, ledger, `update/`), ceiling in `/etc/drool/agent.yaml`, release keys in `/etc/drool/release-keys.d/`, logs in `/var/log/drool-agent/`. None of these directories is reachable through the agent's file operations.
+
+States per host: current, update available, staged, updating, healthy, rolled back, failed, offline. Policy: manual or automatic (channel or exact version), canary size, batch size, max failures, health window. Release upload requires a registered release key; `min_upgrade_from` and version comparison refuse unsupported downgrades.
+
+### 23.8 Agent-side audit
+
+`/var/log/drool-agent/operations.log`: JSON lines (op id, type, controller identity, timestamps, outcome, error class), 0600, rotated at 10 MB × 10 compressed. No command text, file contents or secrets. The controller has no API to change it.
+
+### 23.9 API, RBAC, UI
+
+New permissions: `agents.read` (all roles), `agents.enroll`, `agents.manage`, `agents.pki` (admin). Routes under `/api/v1/agents/…` and `/api/v1/hosts/{id}/agent…` (see `api/openapi.yaml`); public `/agent/install.sh` and `/agent/download/{platform}`. UI: an Agents page (fleet, tokens, PKI, releases, rollouts, endpoints), a management card on the host page, "Managed via" on the hosts list, "Via" on job results.
+
+### 23.10 Testing
+
+- **Unit:** PKI and manifests (pinning, rollback, rotation, revocation), release signing (altered manifest, altered binary, wrong key, platform, protocol, downgrade), capabilities and narrowing, `localfs` confinement, admission (duplicate, expired, future, stale, foreign epoch, capability), durable ledger and abandon, op log without secrets, staging (interrupted download resumes; a corrupted partial is discarded), apply/guard (healthy commit, crash loop, deadline, interruption before and after the switch, atomic links).
+- **In-process end to end** (`internal/api`, real gRPC and mTLS): enroll/operate/fallback/revoke, token expiry/reuse/revocation, renewal and recovery inside and outside the grace, clone quarantine, manifest rotation, planned rotation, protocol compatibility at both boundaries, loss during an operation (exactly one execution), endpoint migration.
+- **Containers, real binaries** (`test/integration/agent_test.go`, all seven distros): install over SSH, commands, packages, services, files and deployment through the agent, the op log, SSH fallback with the agent stopped, a local ceiling change that SSH must not bypass, manual enrollment with a token on stdin, token reuse, agent-observed addresses; updates: signed update with health confirmation, offline catch-up, a broken signed release rolled back with the rollout paused at the canary, an untrusted signing key refused by the agent, an unsigned binary refused by the controller.
+- **VMs with real systemd** (`vm_agent_test.go`, Debian 12, Ubuntu 24.04, Rocky 9 with SELinux enforcing): the unit with its `ExecStartPre` guard, services, packages, a real update and an automatic rollback through systemd, reboot through the agent, revocation.

@@ -24,6 +24,9 @@ const (
 	ClassCancelled      ErrorClass = "CancelledError"
 	ClassLock           ErrorClass = "LockTimeoutError"
 	ClassInternal       ErrorClass = "InternalError"
+	// ClassCapability: the agent's local capability ceiling forbids the
+	// operation. Never retried and never sent through another transport.
+	ClassCapability ErrorClass = "CapabilityError"
 )
 
 // OpError is an error with a class, whether retrying may help, and an
