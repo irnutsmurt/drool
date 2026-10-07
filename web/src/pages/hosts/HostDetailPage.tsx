@@ -11,6 +11,7 @@ import { HostStatusBadge } from "@/components/hosts/HostStatusBadge";
 import { statusHelp } from "@/components/hosts/statusHelp";
 import { FactsCard, HealthCard, NetworkCard, ServicesCard } from "@/components/hosts/InventoryCards";
 import { ProbeSteps } from "@/components/hosts/ProbeSteps";
+import { ManagedFilesCard } from "@/components/files/ManagedFilesCard";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -91,6 +92,7 @@ export function HostDetailPage() {
             {can("jobs.execute") && !h.jump_only && (
               <>
                 <Button onClick={() => navigate(`/jobs/new?hosts=${h.id}`)}>Run command</Button>
+                {can("files.read") && <Button onClick={() => navigate(`/hosts/${h.id}/files`)}>Files</Button>}
                 <Button onClick={() => navigate(`/jobs/new?hosts=${h.id}&op=system_update`)}>Install updates</Button>
                 <Button onClick={() => navigate(`/jobs/new?hosts=${h.id}&op=reboot`)}>Reboot</Button>
               </>
@@ -158,6 +160,7 @@ export function HostDetailPage() {
             <HealthCard host={h} />
             <div className="lg:col-span-2"><NetworkCard host={h} /></div>
             <div className="lg:col-span-2"><ServicesCard host={h} /></div>
+            {can("files.read") && <div className="lg:col-span-2"><ManagedFilesCard hostId={h.id} /></div>}
           </>
         )}
 

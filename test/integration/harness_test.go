@@ -655,3 +655,16 @@ func expect(t *testing.T, cond bool, format string, args ...any) {
 		t.Errorf(format, args...)
 	}
 }
+
+// raw sends a non-JSON request (uploads, downloads) with the session.
+func (c *controller) raw(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.base()+path, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	if c.csrf != "" {
+		req.Header.Set("X-DROOL-CSRF", c.csrf)
+	}
+	return c.client.Do(req)
+}

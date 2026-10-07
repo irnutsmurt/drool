@@ -15,10 +15,12 @@ import (
 	"log/slog"
 	"os"
 	"os/user"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"drool/internal/artifacts"
 	"drool/internal/audit"
 	"drool/internal/config"
 	"drool/internal/secrets"
@@ -239,7 +241,8 @@ func extract(r io.Reader, dataDir string) (*staged, error) {
 			return st, invalid("archive is truncated or corrupt (%v)", err)
 		}
 		name := h.Name
-		if !knownNames[name] {
+		artifact := isArtifactMember(name)
+		if !knownNames[name] && !artifact {
 			return st, invalid("unexpected file %q in archive", name)
 		}
 		if h.Typeflag != tar.TypeReg {
@@ -248,7 +251,7 @@ func extract(r io.Reader, dataDir string) (*staged, error) {
 		if st.has[name] {
 			return st, invalid("%s appears twice", name)
 		}
-		if name != nameDB && h.Size > maxSmallFile {
+		if name != nameDB && !artifact && h.Size > maxSmallFile {
 			return st, invalid("%s is unexpectedly large (%d bytes)", name, h.Size)
 		}
 		st.has[name] = true
@@ -275,6 +278,9 @@ func extract(r io.Reader, dataDir string) (*staged, error) {
 			return st, invalid("archive is truncated or corrupt while reading %s (%v)", name, err)
 		}
 		sums[name] = FileEntry{Name: name, Size: n, SHA256: hex.EncodeToString(hsh.Sum(nil))}
+		if artifact && sums[name].SHA256 != path.Base(name) {
+			return st, invalid("stored artifact %s does not match its checksum; the backup is corrupt", path.Base(name))
+		}
 	}
 	if manifestData == nil {
 		return st, invalid("no manifest.json; this is not a DROOL backup")
@@ -459,6 +465,18 @@ func swap(cfg *config.Loaded, st *staged, keyData []byte, res *RestoreResult) (e
 			if err := mv(p, filepath.Join(prev, name)); err != nil {
 				return err
 			}
+		}
+	}
+	// Deployment artifacts: the restored set replaces the current one.
+	artDir := filepath.Join(cfg.DataDir, artifacts.DirName)
+	if _, err := os.Stat(artDir); err == nil {
+		if err := mv(artDir, filepath.Join(prev, artifacts.DirName)); err != nil {
+			return err
+		}
+	}
+	if _, err := os.Stat(filepath.Join(st.dir, artifacts.DirName)); err == nil {
+		if err := mv(filepath.Join(st.dir, artifacts.DirName), artDir); err != nil {
+			return err
 		}
 	}
 	if st.has[nameTLSCert] {

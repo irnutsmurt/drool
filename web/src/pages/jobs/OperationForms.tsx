@@ -8,7 +8,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { errorMessage } from "@/lib/format";
 import { ChangeList } from "./StepResult";
 
-export type OpKind = "command" | "script" | "package" | "system_update" | "service" | "reboot";
+export type OpKind = "command" | "script" | "package" | "system_update" | "service" | "reboot" | "file_deploy";
 
 export const opKinds: { kind: OpKind; label: string }[] = [
   { kind: "command", label: "Command" },
@@ -17,10 +17,11 @@ export const opKinds: { kind: OpKind; label: string }[] = [
   { kind: "system_update", label: "System update" },
   { kind: "service", label: "Service" },
   { kind: "reboot", label: "Reboot" },
+  { kind: "file_deploy", label: "Deploy file" },
 ];
 
 export const defaultTimeouts: Record<OpKind, number> = {
-  command: 300, script: 600, package: 1800, system_update: 3600, service: 120, reboot: 900,
+  command: 300, script: 600, package: 1800, system_update: 3600, service: 120, reboot: 900, file_deploy: 600,
 };
 
 export interface PackageState { action: "install" | "remove" | "upgrade"; names: string; allowRemovals: boolean }

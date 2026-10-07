@@ -4,6 +4,8 @@ package api
 
 import (
 	"context"
+	"drool/internal/artifacts"
+	"drool/internal/files"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -44,6 +46,8 @@ type Deps struct {
 	Engine    *engine.Engine
 	Poller    *poller.Poller // may be nil (tests)
 	Simulator *sshdriver.Executor
+	Files     files.Opener     // file manager and deployment previews; nil disables them
+	Artifacts *artifacts.Store // deployment artifacts
 	// StaleAfter is how old a status check may be before it is shown as stale.
 	StaleAfter time.Duration
 }
@@ -124,6 +128,27 @@ func (s *Server) routes() []route {
 		{method: "POST", path: APIPrefix + "/hosts/{id}/probe", auth: authed, perm: auth.PermJobsExecute, h: s.handleProbeHost},
 		{method: "POST", path: APIPrefix + "/hosts/{id}/refresh", auth: authed, perm: auth.PermJobsExecute, h: s.handleRefreshHost},
 		{method: "GET", path: APIPrefix + "/hosts/{id}/facts", auth: authed, perm: auth.PermHostsRead, h: s.handleHostFacts},
+
+		{method: "GET", path: APIPrefix + "/hosts/{id}/files", auth: authed, perm: auth.PermFilesRead, h: s.handleFilesList},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/files/stat", auth: authed, perm: auth.PermFilesRead, h: s.handleFileStat},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/files/content", auth: authed, perm: auth.PermFilesRead, h: s.handleFileDownload},
+		{method: "PUT", path: APIPrefix + "/hosts/{id}/files/content", auth: authed, perm: auth.PermFilesWrite, h: s.handleFileUpload},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/files/text", auth: authed, perm: auth.PermFilesRead, h: s.handleFileText},
+		{method: "PUT", path: APIPrefix + "/hosts/{id}/files/text", auth: authed, perm: auth.PermFilesWrite, h: s.handleFileSaveText},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/files/mkdir", auth: authed, perm: auth.PermFilesWrite, h: s.handleFileChange("mkdir")},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/files/rename", auth: authed, perm: auth.PermFilesWrite, h: s.handleFileChange("rename")},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/files/delete", auth: authed, perm: auth.PermFilesWrite, h: s.handleFileChange("delete")},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/files/chmod", auth: authed, perm: auth.PermFilesWrite, h: s.handleFileChange("chmod")},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/files/chown", auth: authed, perm: auth.PermFilesWrite, h: s.handleFileChange("chown")},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/managed-files", auth: authed, perm: auth.PermFilesRead, h: s.handleManagedFiles},
+
+		{method: "POST", path: APIPrefix + "/artifacts", auth: authed, perm: auth.PermFilesDeploy, h: s.handleArtifactUpload},
+		{method: "GET", path: APIPrefix + "/artifacts/{sha}", auth: authed, perm: auth.PermFilesDeploy, h: s.handleArtifactGet},
+		{method: "GET", path: APIPrefix + "/artifacts/{sha}/content", auth: authed, perm: auth.PermFilesRead, h: s.handleArtifactContent},
+		{method: "POST", path: APIPrefix + "/file-deployments/preview", auth: authed, perm: auth.PermFilesDeploy, h: s.handleDeployPreview},
+		{method: "GET", path: APIPrefix + "/file-deployments", auth: authed, perm: auth.PermFilesRead, h: s.handleListFileDeployments},
+		{method: "GET", path: APIPrefix + "/file-deployments/{id}", auth: authed, perm: auth.PermFilesRead, h: s.handleGetFileDeployment},
+		{method: "POST", path: APIPrefix + "/file-deployments/{id}/rollback", auth: authed, perm: auth.PermJobsExecute, h: s.handleRollbackFileDeployment},
 
 		{method: "GET", path: APIPrefix + "/groups", auth: authed, perm: auth.PermHostsRead, h: s.handleListGroups},
 		{method: "POST", path: APIPrefix + "/groups", auth: authed, perm: auth.PermHostsWrite, h: s.handleCreateGroup},

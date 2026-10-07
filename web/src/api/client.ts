@@ -12,6 +12,11 @@ export function setCsrfToken(token: string | undefined) {
   csrfToken = token;
 }
 
+/** The current CSRF token, for requests made outside the API client (uploads). */
+export function getCsrfToken(): string | undefined {
+  return csrfToken;
+}
+
 /** Called when any request returns 401 (session expired or revoked). */
 export function setUnauthenticatedHandler(fn: () => void) {
   onUnauthenticated = fn;

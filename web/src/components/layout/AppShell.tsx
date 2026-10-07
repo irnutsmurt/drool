@@ -40,7 +40,7 @@ export function AppShell() {
             ))}
         </nav>
         <div className="border-t border-line px-4 py-3 text-xs text-muted">
-          {info.data ? `v${info.data.version}` : ""}
+          {info.data ? info.data.version.replace(/^v?/, "v") : ""}
         </div>
       </aside>
 

@@ -25,6 +25,9 @@ Linux is the product scope.
 
 ## Status: v0.1.0-alpha (Technical Alpha)
 
+`main` additionally contains file management and file deployment ([Files](#files)), which are not
+part of a tagged release yet.
+
 "Technical Alpha" means: the core works end to end and has been tested against real
 distributions, but DROOL is young. Expect rough edges, plain visuals, and breaking changes before
 a beta. Run it where a mistake is recoverable, keep backups, and read the
@@ -48,6 +51,11 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
 - **Services and reboots:** start, stop, restart, reload, enable and disable systemd services, with
   the result verified; reboots that wait for the host to come back with its trusted key and a new
   boot id.
+- **Files** (on `main`, after v0.1.0-alpha): browse a host's files, upload, download, edit text
+  files, rename, move, delete, change permissions and owners, as the login user or explicitly
+  with administrator privileges. **File deployment** sends one file to many hosts with a per-host
+  preview and diff, an optional validation command, an optional service reload or restart, and
+  one-click rollback.
 - **Accounts and audit:** local users with roles (admin, operator, auditor, viewer), API tokens,
   credentials encrypted at rest, an append-only audit log of every change.
 - **Backup and restore** from the command line.
@@ -60,7 +68,8 @@ These are planned (see `DESIGN.md`) but **do not exist yet**:
 - firewall management and network intent
 - scheduling (jobs run when you start them)
 - desired state / drift detection
-- managed files, file deployment, and the file manager
+- templated files, directory sync, desired-state file baselines (file management and single-file
+  deployment exist on `main`; see [Files](#files))
 - plugins
 - batch/canary rollouts, workflows, MFA, single sign-on, high availability, Windows
 
@@ -171,6 +180,72 @@ An optional config file goes in `/etc/drool/config.yaml`.
   DROOL's runs). Services keep using old library versions until they are restarted or the host
   reboots; use a reboot afterwards (or restart the affected services) when an update says so.
 
+## Files
+
+### File manager
+
+*Hosts → (host) → Files* browses one host's filesystem. The current remote path is always shown;
+type a path to jump there.
+
+- **Who you are on the host.** By default every action runs as the host's **login user** over
+  SFTP, with that user's permissions. To read or change files the login user can't (for example
+  in `/etc`), turn on **Use administrator privileges**. The page then shows a warning banner, and
+  every action runs through the host's sudo setting. DROOL never switches to root on its own.
+- **Upload and download** stream; nothing is held in the controller's memory, so large files work.
+  An upload goes to a temporary file next to the destination and only replaces the destination
+  once the whole file arrived and its checksum matched. A cancelled upload or a lost connection
+  leaves the destination as it was.
+- **Edit** UTF-8 text files up to 1 MiB in the browser. Larger or binary files are downloaded
+  instead. If the file changes on the host after you opened it, saving is refused: *"This file
+  changed on the host after you opened it. Reload it or explicitly overwrite the newer version."*
+- **Permissions** are shown as `rw-r--r--` and `0644` with a plain-language description on hover
+  ("Owner: read, write · Group: read · Everyone else: read"). The permission editor uses
+  checkboxes.
+- **Symlinks** are shown with their target and opened only when you click them. Deleting a
+  symlink removes the link, never its target, and DROOL never writes, changes permissions on or
+  replaces something through a symlink.
+- With administrator privileges, DROOL refuses to write into a directory that a non-root user
+  could modify (for example `/tmp` or a world-writable directory), because another user could
+  swap files there while root is writing.
+- Deleting asks once; recursive delete of top-level directories (`/etc`, `/home`, …) is refused.
+
+### File deployment
+
+*Jobs → New job → Deploy file* puts one file on many hosts (by host, group or tag):
+
+1. Upload the file. DROOL stores it once, identified by its SHA-256 checksum.
+2. Choose the destination path, whether to replace an existing file or only create a missing
+   one, and optionally owner, group and permissions (empty keeps the existing file's, or
+   `root:root 0644` / the login user's for new files).
+3. **Preview** shows each host's state (*missing: would create*, *identical*, *different: would
+   replace*, *only owner/permissions change*, *inaccessible*) and a diff for text files. Nothing is changed.
+4. Optional **validation command**, run on the new file before it replaces the old one, with
+   `{path}` standing for the new file, e.g. `nginx -t -c {path}` or `visudo -cf {path}`. If it
+   fails, the live file is not touched.
+5. Optional **service reload or restart** after the file was installed. If that fails, the job
+   says the file was installed but the service action failed, so you know what state the host is
+   in.
+
+Hosts that already have identical content are a no-op (*no change*). For every changed file DROOL
+keeps the previous version (up to 64 MiB) with its owner, group and permissions. The host page
+lists *Files deployed by DROOL*; each deployment shows before/after checksums, the diff,
+validation output and a **Roll back** button. A rollback is itself an audited job, restores
+content and permissions, and is refused if the file was changed again since that deployment.
+
+### Permissions
+
+| Permission | Allows | admin | operator | auditor | viewer |
+|---|---|---|---|---|---|
+| `files.read` | browse, download, view text, deployment history | ✓ | ✓ | | |
+| `files.write` | upload, edit, mkdir, rename, move, delete, chmod, chown | ✓ | ✓ | | |
+| `files.deploy` | upload deployment files, preview and run deployments | ✓ | ✓ | | |
+| `files.elevate` | anything above with administrator privileges | ✓ | ✓ | | |
+
+Auditors and viewers get no file access, because file contents (keys, configs) are often
+secrets. Every change is audited with host, path, action, result, checksums before and after,
+owner, group and permissions; file contents never go into the audit log. Reads with
+administrator privileges are audited too.
+
 ## Backup and restore
 
 ```sh
@@ -258,6 +333,12 @@ plain HTTP to the network by accident.
 - **No `--no-install-recommends` option:** package installs follow APT's default for recommended
   packages.
 - **Hosts without systemd** can't use service management or reboots.
+- **Files:** with administrator privileges, listings and reads run as typed commands through sudo
+  (`find`, `cat`) rather than SFTP, which is slower. Text editing is limited to 1 MiB; the
+  previous version of a deployed file is kept only up to 64 MiB (larger files can't be rolled
+  back); deployment files are limited to 1 GiB. No recursive upload or download of directories,
+  no templating. Rollback restores content, owner, group and permissions, not ACLs, SELinux labels
+  or extended attributes (new files get the label their directory's policy assigns).
 - **Local accounts only;** no MFA or single sign-on yet.
 - **Backup and restore are command-line only** (Settings → System shows the commands).
 - The **web UI is functional, not polished**; a visual design pass comes later.

@@ -276,6 +276,48 @@ systemctl mask drool-masked.service
 		expect(t, strings.Contains(output(t, id, h.ID), "drool-fail.service"), "failing unit output should include systemctl status")
 	})
 
+	t.Run("file deployment with service actions", func(t *testing.T) {
+		deploy := func(content string, extra map[string]any) (string, jobHost) {
+			s := map[string]any{"artifact": putArtifact(t, "50-drool.conf", content), "path": "/etc/ssh/sshd_config.d/50-drool.conf",
+				"elevated": true, "mode": "0600", "validate": "sshd -t -f {path}"}
+			for k, v := range extra {
+				s[k] = v
+			}
+			id := deployJob(t, map[string]any{"hosts": []string{h.ID}}, s)
+			return id, getJobHost(t, id, h.ID)
+		}
+		sshd := map[string]any{"service": map[string]any{"name": def.SSHUnit, "action": "reload"}}
+		// Validation catches a broken sshd config before sshd ever sees it.
+		_, jh := deploy("NoSuchDirective yes\n", sshd)
+		expect(t, jh.State == "failed" && strings.Contains(jh.ErrorMessage, "validation failed"), "invalid sshd config: %v", jh)
+		_, jh = deploy("ClientAliveInterval 120\n", sshd)
+		expect(t, jh.State == "succeeded", "deploy + reload sshd: %v", jh)
+		if s, _ := result(jh)["service"].(map[string]any); s == nil || s["ok"] != true {
+			t.Errorf("service result: %v", result(jh))
+		}
+		eff := submit(t, []string{h.ID}, cmd("sshd -T | grep -i '^clientaliveinterval'", true))
+		waitJob(t, eff, 5*time.Minute)
+		expect(t, strings.Contains(output(t, eff, h.ID), "clientaliveinterval 120"), "sshd effective config: %q", output(t, eff, h.ID))
+
+		// Restart a unit after installing its drop-in.
+		_, jh = deploy("# drop-in\n", map[string]any{"path": "/etc/systemd/system/drool-test.service.d/x.conf", "validate": "",
+			"mode": "0644", "service": map[string]any{"name": "drool-test", "action": "restart"}})
+		expect(t, jh.State == "failed" && jh.ErrorClass == "ExecutionError" && strings.Contains(jh.ErrorMessage, "does not exist"),
+			"drop-in without its directory: %v", jh)
+		run(t, h.ID, cmd("mkdir -p /etc/systemd/system/drool-test.service.d", true))
+		_, jh = deploy("[Service]\nEnvironment=DROOL=1\n", map[string]any{"path": "/etc/systemd/system/drool-test.service.d/x.conf",
+			"validate": "", "mode": "0644", "service": map[string]any{"name": "drool-test", "action": "restart"}})
+		expect(t, jh.State == "succeeded", "deploy + restart: %v", jh)
+
+		// The file is installed even when the service then fails, and the job says so.
+		_, jh = deploy("# fails\n", map[string]any{"path": "/etc/drool-fail.conf", "validate": "", "mode": "0644",
+			"service": map[string]any{"name": "drool-fail", "action": "restart"}})
+		expect(t, jh.State == "failed" && jh.ErrorClass == "ServiceError" && strings.Contains(jh.ErrorMessage, "file was installed"),
+			"service failure after install: %v", jh)
+		chk := run(t, h.ID, cmd("cat /etc/drool-fail.conf", true))
+		expect(t, chk.State == "succeeded", "file present after the service failure: %v", chk)
+	})
+
 	if def.Name == "ubuntu-24.04" {
 		t.Run("unattended-upgrades holds the lock", func(t *testing.T) {
 			// Start the real unattended-upgrades run, then install right away.

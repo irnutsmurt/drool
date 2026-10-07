@@ -8,6 +8,8 @@
 //	tls/self-signed.key
 //	config/drool.yaml      the config file in use, if any (setup secret removed)
 //	master.key             only with --include-master-key
+//	artifacts/sha256/..    stored deployment artifacts (content-addressed;
+//	                       history and rollback need them)
 //
 // Credentials in the database are encrypted with the master key. A backup
 // without the key restores everything else, but credentials only work if the
@@ -27,10 +29,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 
+	"drool/internal/artifacts"
 	"drool/internal/config"
 	"drool/internal/secrets"
 	"drool/internal/store"
@@ -96,7 +100,7 @@ func (m *Manifest) Complete() bool { return m.IncludesMasterKey || m.Credentials
 
 // countedTables are summarized in the manifest and after a restore.
 var countedTables = []string{"users", "api_tokens", "hosts", "ssh_host_keys", "secrets", "groups", "host_tags",
-	"host_facts", "jobs", "job_output", "audit_events"}
+	"host_facts", "jobs", "job_output", "audit_events", "artifacts", "file_deployments"}
 
 // Options controls Create.
 type Options struct {
@@ -109,6 +113,20 @@ type Result struct {
 	// KeyWarning is set when the master key could not be checked against
 	// the stored credentials.
 	KeyWarning string
+	Warnings   []string
+}
+
+// artifactMember is an artifact's name inside the archive.
+func artifactMember(sha string) string { return "artifacts/sha256/" + sha[:2] + "/" + sha }
+
+// isArtifactMember reports whether name is a well-formed artifact member.
+func isArtifactMember(name string) bool {
+	rest, ok := strings.CutPrefix(name, "artifacts/sha256/")
+	if !ok {
+		return false
+	}
+	dir, sha, ok := strings.Cut(rest, "/")
+	return ok && artifacts.ValidHash(sha) && dir == sha[:2]
 }
 
 // Create writes a backup of the controller described by cfg to w. It is safe
@@ -141,6 +159,20 @@ func Create(ctx context.Context, cfg *config.Loaded, w io.Writer, opts Options) 
 		return nil, err
 	}
 	m.SchemaVersion, m.Counts, err = describe(ctx, sdb)
+	var artHashes []string
+	if err == nil {
+		// Stored deployment artifacts (M6): deployment history and rollbacks
+		// need them. Absent before schema 6.
+		if rows, qerr := sdb.QueryContext(ctx, `SELECT sha256 FROM artifacts ORDER BY sha256`); qerr == nil {
+			for rows.Next() {
+				var h string
+				if rows.Scan(&h) == nil && artifacts.ValidHash(h) {
+					artHashes = append(artHashes, h)
+				}
+			}
+			rows.Close()
+		}
+	}
 	if err != nil {
 		sdb.Close()
 		return nil, err
@@ -201,6 +233,14 @@ func Create(ctx context.Context, cfg *config.Loaded, w io.Writer, opts Options) 
 	}
 	if opts.IncludeMasterKey {
 		members = append(members, member{name: nameKey, data: keyData})
+	}
+	for _, h := range artHashes {
+		local := filepath.Join(cfg.DataDir, artifacts.RelPath(h))
+		if fileExists(local) {
+			members = append(members, member{name: artifactMember(h), path: local})
+		} else {
+			res.Warnings = append(res.Warnings, "stored artifact "+h+" is missing from "+filepath.Join(cfg.DataDir, artifacts.DirName))
+		}
 	}
 
 	for _, mb := range members {

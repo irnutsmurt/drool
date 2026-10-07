@@ -399,9 +399,18 @@ func (c *Client) newSession(ctx context.Context) (*ssh.Session, error) {
 	case r := <-ch:
 		return r.s, r.err
 	case <-ctx.Done():
-		c.Close()
-		if r := <-ch; r.s != nil {
-			r.s.Close()
+		// A healthy connection answers promptly; only a silent one is closed
+		// (a cancelled request must not tear down a shared connection).
+		select {
+		case r := <-ch:
+			if r.s != nil {
+				r.s.Close()
+			}
+		case <-time.After(unresponsiveGrace):
+			c.Close()
+			if r := <-ch; r.s != nil {
+				r.s.Close()
+			}
 		}
 		return nil, ctx.Err()
 	}

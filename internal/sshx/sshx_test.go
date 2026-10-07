@@ -381,3 +381,25 @@ func TestRunReturnsWhenConnectionGoesSilent(t *testing.T) {
 		t.Fatal("opening a session hung on a silent connection")
 	}
 }
+
+// Cancelling a command must not close a healthy (shared) connection.
+func TestCancelKeepsHealthyConnection(t *testing.T) {
+	hostKey := sshtest.NewEd25519Signer(t)
+	srv := sshtest.Start(t, hostKey)
+	client := sshtest.NewEd25519Signer(t)
+	srv.Authorize(client.PublicKey())
+	srv.SetExec(func(string, []byte) (string, string, int) { return "ok", "", 0 })
+	c, err := (&Dialer{}).Dial(context.Background(), target(t, srv, "h", client, hostKey.PublicKey()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := c.Run(ctx, "true", RunOptions{}); err == nil {
+		t.Fatal("cancelled run succeeded")
+	}
+	if r, err := c.Run(context.Background(), "true", RunOptions{}); err != nil || string(r.Stdout) != "ok" {
+		t.Fatalf("connection unusable after a cancelled command: %v", err)
+	}
+}

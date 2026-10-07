@@ -680,6 +680,321 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/hosts/{id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description List a directory on the host. With no `path`, the login user's home. The response's `path`
+         *     is the real location (symlinked directories are resolved): changes always apply there.
+         *     `elevated` lists as root and needs `files.elevate`.
+         */
+        get: operations["listFiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/files/stat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One entry's metadata. Symlinks are not followed. */
+        get: operations["statFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/files/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Stream a regular file (never a symlink). Elevated reads are audited. */
+        get: operations["downloadFile"];
+        /**
+         * @description Stream the request body to `path`. It goes to a private temporary file next to the
+         *     destination and is installed (atomic rename) only once complete; an interrupted upload
+         *     never leaves a truncated file. Without `overwrite=true` an existing file is not replaced.
+         *     An existing file's owner, group and mode are kept. Requires `files.write`.
+         */
+        put: operations["uploadFile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/files/text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A UTF-8 text file of at most 1 MiB, with the SHA-256 to send back when saving. */
+        get: operations["readTextFile"];
+        /**
+         * @description Save text. `expect_sha256` is the version that was opened: if the file changed on the host
+         *     since, the save is refused with 409 `file_changed` unless `force` is true. An empty
+         *     `expect_sha256` creates a new file and refuses to replace an existing one.
+         */
+        put: operations["saveTextFile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/files/mkdir": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Create a directory (`mode`, default 0755). Audited. Requires `files.write` (and `files.elevate` with `elevated`). */
+        post: operations["fileMkdir"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/files/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Rename or move `path` to `to`. Never replaces an existing entry. Audited. Requires `files.write` (and `files.elevate` with `elevated`). */
+        post: operations["fileRename"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/files/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Delete a file, a symlink (never its target) or an empty directory; `recursive` deletes a directory tree (refused for top-level directories). Audited. Requires `files.write` (and `files.elevate` with `elevated`). */
+        post: operations["fileDelete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/files/chmod": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Change permissions (`mode`, octal). Refused on symlinks; as root, refused in directories other users can modify. Audited. Requires `files.write` (and `files.elevate` with `elevated`). */
+        post: operations["fileChmod"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/files/chown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Change `owner` and/or `group` without following symlinks. Audited. Requires `files.write` (and `files.elevate` with `elevated`). */
+        post: operations["fileChown"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/managed-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The latest deployment of every path DROOL has deployed to on this host. */
+        get: operations["listManagedFiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/artifacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Store a file on the controller for deployment (content-addressed; the same content is
+         *     stored once, at most 1 GiB). Requires `files.deploy`.
+         */
+        post: operations["uploadArtifact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/artifacts/{sha}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getArtifact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/artifacts/{sha}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The stored content (e.g. a previous version kept for rollback). Requires `files.read`. */
+        get: operations["downloadArtifact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/file-deployments/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description What a file deployment would do on each target, without changing anything: create,
+         *     replace (with a text diff), identical, owner/group/mode change only, keep (create only)
+         *     or an error such as "inaccessible". Audited (it reads files, as root when elevated).
+         */
+        post: operations["previewFileDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/file-deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Deployment history (one row per host), newest first. */
+        get: operations["listFileDeployments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/file-deployments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One host's deployment, with a text diff of before and after when both are kept and are text. */
+        get: operations["getFileDeployment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/file-deployments/{id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Start a job that restores what was there before this deployment: the previous content,
+         *     owner, group and mode, or removes the file if it didn't exist. Applied only while the file
+         *     still has the content this deployment installed. Audited. Requires `jobs.execute` and
+         *     `files.deploy` (and `files.elevate` for an elevated deployment).
+         */
+        post: operations["rollbackFileDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -948,7 +1263,7 @@ export interface components {
             host_ids?: string[];
         };
         /** @description One typed step. Discriminated by `type`. */
-        Operation: components["schemas"]["CommandOp"] | components["schemas"]["ScriptOp"] | components["schemas"]["PackageOp"] | components["schemas"]["SystemUpdateOp"] | components["schemas"]["ServiceOp"] | components["schemas"]["RebootOp"];
+        Operation: components["schemas"]["CommandOp"] | components["schemas"]["ScriptOp"] | components["schemas"]["PackageOp"] | components["schemas"]["SystemUpdateOp"] | components["schemas"]["ServiceOp"] | components["schemas"]["RebootOp"] | components["schemas"]["FileDeployOp"];
         CommandOp: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1252,6 +1567,173 @@ export interface components {
                 extra_removals: components["schemas"]["PackageChange"][];
             }[];
         };
+        FileInfo: {
+            name: string;
+            path: string;
+            /** @enum {string} */
+            kind: "file" | "dir" | "symlink" | "other";
+            size: number;
+            /** @description Permission bits including setuid/setgid/sticky (e.g. 420 = 0644) */
+            mode: number;
+            uid: number;
+            gid: number;
+            owner: string;
+            group: string;
+            /** Format: date-time */
+            mtime: string;
+            /** @description Symlink target as stored in the link */
+            target?: string;
+        };
+        FileCaps: {
+            /** @description sftp (login user), ssh-sudo (elevated), later agent */
+            transport: string;
+            elevated: boolean;
+            /** @description null: unrestricted (bounded by the account) */
+            allowed_paths: string[] | null;
+            /** @description The session can write anywhere as root */
+            root_equivalent: boolean;
+        };
+        FileListing: {
+            /** @description Real path of the directory */
+            path: string;
+            requested: string;
+            parent: string;
+            entries: components["schemas"]["FileInfo"][];
+            caps: components["schemas"]["FileCaps"];
+        };
+        FileWriteResult: {
+            path: string;
+            sha256: string;
+            info: components["schemas"]["FileInfo"];
+        };
+        TextFile: {
+            path: string;
+            content: string;
+            sha256: string;
+            info: components["schemas"]["FileInfo"];
+        };
+        FileChangeRequest: {
+            path: string;
+            /** @description rename/move destination */
+            to?: string;
+            /** @description octal, e.g. "0644" (mkdir, chmod) */
+            mode?: string;
+            owner?: string;
+            group?: string;
+            /** @description delete a directory tree */
+            recursive?: boolean;
+            elevated?: boolean;
+        };
+        Artifact: {
+            sha256: string;
+            size: number;
+            name: string;
+            is_text: boolean;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /**
+         * @description Deploy a stored artifact: stage, validate, keep the previous version, install atomically,
+         *     verify, optionally reload/restart a service. Rollback fields are set by the controller.
+         */
+        FileDeployOp: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "file_deploy";
+            /** @description SHA-256 of an uploaded artifact */
+            artifact?: string;
+            path: string;
+            /**
+             * @default replace
+             * @enum {string}
+             */
+            overwrite?: "replace" | "create_only";
+            owner?: string;
+            group?: string;
+            /** @description octal; empty keeps the current mode (0644 for new files) */
+            mode?: string;
+            elevated?: boolean;
+            /** @description Command run on the staged file before install; {path} is replaced by its path */
+            validate?: string;
+            service?: {
+                name: string;
+                /** @enum {string} */
+                action: "reload" | "restart";
+            };
+            /** @default 600 */
+            timeout_s?: number;
+            when?: components["schemas"]["When"];
+            rollback_of?: string;
+            remove?: boolean;
+            expect_current?: string;
+        };
+        FileMeta: {
+            owner?: string;
+            group?: string;
+            mode?: string;
+            size?: number;
+        };
+        FileDeployPreview: {
+            hosts: {
+                host_id: string;
+                host_name: string;
+                skipped?: string;
+                error?: {
+                    class: string;
+                    message: string;
+                    hint?: string;
+                };
+                preview?: {
+                    /** @enum {string} */
+                    state: "create" | "identical" | "replace" | "metadata" | "keep" | "remove";
+                    current?: {
+                        exists?: boolean;
+                        sha256?: string;
+                        owner?: string;
+                        group?: string;
+                        mode?: string;
+                        size?: number;
+                    };
+                    desired: components["schemas"]["FileMeta"];
+                    diff?: string;
+                    diff_note?: string;
+                };
+            }[];
+        };
+        FileDeployment: {
+            id: string;
+            job_id?: string;
+            host_id: string;
+            host_name: string;
+            path: string;
+            /** @enum {string} */
+            kind: "deploy" | "rollback";
+            rollback_of?: string;
+            /** @enum {string} */
+            outcome: "installed" | "unchanged" | "removed" | "validation_failed" | "failed";
+            /** @description exists, sha256, owner, group, mode, size, kept (content kept for rollback) */
+            before: {
+                [key: string]: unknown;
+            };
+            after: {
+                [key: string]: unknown;
+            };
+            validation: {
+                [key: string]: unknown;
+            };
+            service: {
+                [key: string]: unknown;
+            };
+            error?: string;
+            created_by?: string;
+            /** Format: date-time */
+            created_at: string;
+            can_rollback: boolean;
+            diff?: string;
+            diff_note?: string;
+        };
     };
     responses: {
         /** @description Error. */
@@ -1264,7 +1746,11 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        HostId: string;
+        /** @description Use administrator privileges (root via the host's sudo setting). Requires `files.elevate`. */
+        Elevated: boolean;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -2517,6 +3003,519 @@ export interface operations {
                 };
             };
             422: components["responses"]["Problem"];
+        };
+    };
+    listFiles: {
+        parameters: {
+            query?: {
+                path?: string;
+                /** @description Use administrator privileges (root via the host's sudo setting). Requires `files.elevate`. */
+                elevated?: components["parameters"]["Elevated"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Directory listing. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileListing"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    statFile: {
+        parameters: {
+            query: {
+                path: string;
+                /** @description Use administrator privileges (root via the host's sudo setting). Requires `files.elevate`. */
+                elevated?: components["parameters"]["Elevated"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileInfo"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    downloadFile: {
+        parameters: {
+            query: {
+                path: string;
+                /** @description Use administrator privileges (root via the host's sudo setting). Requires `files.elevate`. */
+                elevated?: components["parameters"]["Elevated"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file's content. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    uploadFile: {
+        parameters: {
+            query: {
+                path: string;
+                overwrite?: boolean;
+                /** @description Use administrator privileges (root via the host's sudo setting). Requires `files.elevate`. */
+                elevated?: components["parameters"]["Elevated"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Installed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileWriteResult"];
+                };
+            };
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    readTextFile: {
+        parameters: {
+            query: {
+                path: string;
+                /** @description Use administrator privileges (root via the host's sudo setting). Requires `files.elevate`. */
+                elevated?: components["parameters"]["Elevated"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Content. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextFile"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    saveTextFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    path: string;
+                    content: string;
+                    elevated?: boolean;
+                    expect_sha256?: string;
+                    force?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileWriteResult"];
+                };
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    fileMkdir: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description The entry afterwards. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileInfo"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    fileRename: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description The entry afterwards. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileInfo"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    fileDelete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    fileChmod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description The entry afterwards. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileInfo"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    fileChown: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description The entry afterwards. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileInfo"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    listManagedFiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Managed files. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FileDeployment"][];
+                    };
+                };
+            };
+        };
+    };
+    uploadArtifact: {
+        parameters: {
+            query?: {
+                /** @description Original file name (informational) */
+                name?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Artifact"];
+                };
+            };
+            413: components["responses"]["Problem"];
+        };
+    };
+    getArtifact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sha: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Artifact"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    downloadArtifact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sha: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Content. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    previewFileDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    targets: components["schemas"]["TargetSpec"];
+                    step: components["schemas"]["FileDeployOp"];
+                };
+            };
+        };
+        responses: {
+            /** @description Per-host preview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileDeployPreview"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    listFileDeployments: {
+        parameters: {
+            query?: {
+                host?: string;
+                path?: string;
+                job?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description History. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FileDeployment"][];
+                    };
+                };
+            };
+        };
+    };
+    getFileDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deployment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileDeployment"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    rollbackFileDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rollback job. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            409: components["responses"]["Problem"];
         };
     };
 }

@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -23,11 +24,13 @@ import (
 	"golang.org/x/term"
 
 	"drool/internal/api"
+	"drool/internal/artifacts"
 	"drool/internal/audit"
 	"drool/internal/auth"
 	"drool/internal/config"
 	"drool/internal/driver/sshdriver"
 	"drool/internal/engine"
+	"drool/internal/filedeploy"
 	"drool/internal/inventory"
 	"drool/internal/logging"
 	"drool/internal/poller"
@@ -309,7 +312,12 @@ func cmdServe(path string, explicit bool) error {
 	pool := sshx.NewPool(dialer)
 	defer pool.Close()
 	inv := inventory.NewService(st, secretSvc, dialer, pool)
-	executor := &sshdriver.Executor{Pool: pool}
+	arts, err := artifacts.Open(cfg.DataDir, st)
+	if err != nil {
+		return err
+	}
+	executor := &sshdriver.Executor{Pool: pool, Files: &sshdriver.FileDeps{
+		Source: arts, Recorder: &filedeploy.StoreRecorder{Store: st, Audit: auditW}}}
 	eng := engine.New(st, inv, executor, auditW, logs.Job, engine.Config{
 		GlobalConcurrency:  cfg.Engine.GlobalConcurrency,
 		PerJumpConcurrency: cfg.Engine.PerJumpHostConcurrency,
@@ -329,12 +337,13 @@ func cmdServe(path string, explicit bool) error {
 	poll := poller.New(st, inv, eng.Locks(), eng.Saturated, logs.App, pollCfg)
 	eng.OnHostChanged(poll.RunNow)
 	go poll.Run(ctx)
+	go artifactGC(ctx, arts, log)
 
 	srv, err := api.New(api.Deps{
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
 		UI: web.Dist(), Registry: reg, TLSMode: tlsRes.Mode,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
-		Poller: poll, StaleAfter: pollCfg.StaleAfter(), Simulator: executor,
+		Poller: poll, StaleAfter: pollCfg.StaleAfter(), Simulator: executor, Files: inv, Artifacts: arts,
 	})
 	if err != nil {
 		return err
@@ -429,4 +438,23 @@ everything except the stored credentials with:
 			cfg.MasterKeyPath(), box.KeyID(), err, recovery)
 	}
 	return box, created, insecure, nil
+}
+
+// artifactGC removes stored files nothing refers to any more (not part of a
+// deployment's history, not named by a job still kept) after a day unused.
+func artifactGC(ctx context.Context, arts *artifacts.Store, log *slog.Logger) {
+	t := time.NewTicker(time.Hour)
+	defer t.Stop()
+	for {
+		if n, err := arts.GC(ctx, 24*time.Hour); err != nil {
+			log.Error("artifact garbage collection", "err", err)
+		} else if n > 0 {
+			log.Info("removed unreferenced artifacts", "count", n)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
 }

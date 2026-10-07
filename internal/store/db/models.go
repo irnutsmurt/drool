@@ -18,6 +18,16 @@ type ApiToken struct {
 	ExpiresAt  sql.NullInt64
 }
 
+type Artifact struct {
+	Sha256     string
+	Size       int64
+	Name       string
+	IsText     int64
+	CreatedBy  sql.NullString
+	CreatedAt  int64
+	LastUsedAt int64
+}
+
 type AuditEvent struct {
 	ID          string
 	Ts          int64
@@ -32,6 +42,29 @@ type AuditEvent struct {
 	RequestID   string
 	DetailsJson string
 	PrevHash    []byte
+}
+
+type FileDeployment struct {
+	ID             string
+	JobID          sql.NullString
+	HostID         string
+	Path           string
+	Kind           string
+	RollbackOf     sql.NullString
+	Outcome        string
+	BeforeExists   int64
+	BeforeSha256   string
+	BeforeArtifact sql.NullString
+	BeforeMeta     string
+	AfterSha256    string
+	AfterArtifact  sql.NullString
+	AfterMeta      string
+	Validation     string
+	Service        string
+	Error          string
+	OpJson         string
+	CreatedBy      sql.NullString
+	CreatedAt      int64
 }
 
 type Group struct {

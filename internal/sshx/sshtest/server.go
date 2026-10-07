@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -234,6 +235,18 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 		switch r.Type {
 		case "pty-req", "env":
 			r.Reply(true, nil)
+		case "subsystem":
+			if len(r.Payload) < 4 || string(r.Payload[4:]) != "sftp" {
+				r.Reply(false, nil)
+				return
+			}
+			r.Reply(true, nil)
+			// SFTP on the local filesystem, as the test process's user.
+			if srv, err := sftp.NewServer(ch); err == nil {
+				srv.Serve()
+				srv.Close()
+			}
+			return
 		case "exec":
 			if len(r.Payload) < 4 {
 				r.Reply(false, nil)

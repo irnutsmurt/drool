@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"drool/internal/driver"
+	"drool/internal/filedeploy"
 	"drool/internal/model"
 	"drool/internal/sshx"
 )
@@ -19,6 +20,15 @@ import (
 // Executor runs operations over pooled SSH connections.
 type Executor struct {
 	Pool *sshx.Pool
+	// Files is needed for file deployments: the artifact store and where
+	// deployment history is recorded.
+	Files *FileDeps
+}
+
+// FileDeps are what file deployments need from the controller.
+type FileDeps struct {
+	Source   filedeploy.Source
+	Recorder filedeploy.Recorder
 }
 
 // Remote execution conventions (ARCHITECTURE-ALPHA §9, decision D5).
@@ -55,6 +65,8 @@ func (x *Executor) Execute(ctx context.Context, t *sshx.Target, b Become, op mod
 	switch op.Type {
 	case model.OpPackage, model.OpSystemUpdate, model.OpService, model.OpReboot:
 		return x.executeTyped(ctx, t, b, op, out, started)
+	case model.OpFileDeploy:
+		return x.executeFileDeploy(ctx, t, b, op.FileDeploy, out, started)
 	}
 	var interp, body string
 	var become bool

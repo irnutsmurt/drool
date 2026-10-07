@@ -19,6 +19,14 @@ const (
 	PermUsersManage       Permission = "users.manage"
 	PermSettingsRead      Permission = "settings.read"
 	PermSettingsWrite     Permission = "settings.write"
+
+	// Files (M6). Reading as the login user can expose secrets (keys,
+	// tokens in home directories), so auditors and viewers don't get it.
+	// Elevation is separate and never implied.
+	PermFilesRead    Permission = "files.read"    // browse, download, view text, deployment history and diffs
+	PermFilesWrite   Permission = "files.write"   // upload, edit, mkdir, rename/move, delete, chmod, chown
+	PermFilesDeploy  Permission = "files.deploy"  // upload deployment artifacts, preview, deploy, roll back
+	PermFilesElevate Permission = "files.elevate" // any of the above as root (sudo)
 )
 
 // Role names stored in users.role.
@@ -37,9 +45,13 @@ var rolePermissions = map[string][]Permission{
 		PermJobsRead, PermJobsExecute,
 		PermCredentialsUse, PermCredentialsManage,
 		PermAuditRead, PermUsersManage, PermSettingsRead, PermSettingsWrite,
+		PermFilesRead, PermFilesWrite, PermFilesDeploy, PermFilesElevate,
 	},
+	// Operators can already run commands as root (jobs.execute), so file
+	// elevation adds no power they don't have.
 	RoleOperator: {
 		PermHostsRead, PermJobsRead, PermJobsExecute, PermCredentialsUse,
+		PermFilesRead, PermFilesWrite, PermFilesDeploy, PermFilesElevate,
 	},
 	RoleAuditor: {
 		PermHostsRead, PermJobsRead, PermAuditRead, PermSettingsRead,

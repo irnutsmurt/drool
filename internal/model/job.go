@@ -36,6 +36,7 @@ type Operation struct {
 	SystemUpdate *SystemUpdateOp
 	Service      *ServiceOp
 	Reboot       *RebootOp
+	FileDeploy   *FileDeployOp
 }
 
 // CommandOp runs a single shell command line.
@@ -99,6 +100,11 @@ func (o Operation) MarshalJSON() ([]byte, error) {
 			Type string `json:"type"`
 			*RebootOp
 		}{o.Type, o.Reboot}
+	case OpFileDeploy:
+		body = struct {
+			Type string `json:"type"`
+			*FileDeployOp
+		}{o.Type, o.FileDeploy}
 	default:
 		return nil, fmt.Errorf("unknown operation type %q", o.Type)
 	}
@@ -144,10 +150,13 @@ func (o *Operation) UnmarshalJSON(data []byte) error {
 	case OpReboot:
 		o.Reboot = &RebootOp{}
 		return strict(o.Reboot)
+	case OpFileDeploy:
+		o.FileDeploy = &FileDeployOp{}
+		return strict(o.FileDeploy)
 	case "":
 		return errors.New("operation type is required")
 	default:
-		return fmt.Errorf("unknown operation type %q (supported: command, script, package, system_update, service, reboot)", head.Type)
+		return fmt.Errorf("unknown operation type %q (supported: command, script, package, system_update, service, reboot, file_deploy)", head.Type)
 	}
 }
 
@@ -190,6 +199,8 @@ func (o *Operation) Normalize() error {
 		return o.Service.normalize()
 	case OpReboot:
 		return o.Reboot.normalize()
+	case OpFileDeploy:
+		return o.FileDeploy.normalize()
 	}
 	return fmt.Errorf("unknown operation type %q", o.Type)
 }
@@ -236,6 +247,11 @@ func (o Operation) Meta() Meta {
 		return Meta{Lock: LockExclusive, Idempotent: idem, Become: true, TimeoutS: o.Service.TimeoutS}
 	case OpReboot:
 		return Meta{Lock: LockExclusive, Become: true, TimeoutS: o.Reboot.TimeoutS}
+	case OpFileDeploy:
+		// Deploying the same content again is a no-op; a service restart
+		// is not, so only then is a retry unsafe.
+		idem := o.FileDeploy.Service == nil || o.FileDeploy.Service.Action == "reload"
+		return Meta{Lock: LockExclusive, Idempotent: idem, Become: o.FileDeploy.Elevated, TimeoutS: o.FileDeploy.TimeoutS}
 	}
 	return Meta{Lock: LockExclusive}
 }
@@ -281,6 +297,14 @@ func (o Operation) Summary() string {
 		return strings.Join(parts, " + ") + " " + o.Service.Name
 	case OpReboot:
 		return "Reboot"
+	case OpFileDeploy:
+		switch {
+		case o.FileDeploy.RollbackOf != "" && o.FileDeploy.Remove:
+			return "Roll back " + o.FileDeploy.Path + " (remove)"
+		case o.FileDeploy.RollbackOf != "":
+			return "Roll back " + o.FileDeploy.Path
+		}
+		return "Deploy " + o.FileDeploy.Path
 	}
 	return o.Type
 }

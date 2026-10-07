@@ -5,6 +5,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -12,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"drool/internal/artifacts"
 	"drool/internal/config"
 	"drool/internal/secrets"
 	"drool/internal/store"
@@ -354,4 +358,61 @@ func gunzip(t *testing.T, b []byte) []byte {
 	}
 	out, _ := io.ReadAll(gz)
 	return out
+}
+
+func TestArtifactsRoundTripAndTamperDetection(t *testing.T) {
+	src := controller(t)
+	ctx := context.Background()
+	st, _ := store.Open(filepath.Join(src.DataDir, store.FileName))
+	arts, err := artifacts.Open(src.DataDir, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := arts.Put(ctx, strings.NewReader("listen 80;\n"), "nginx.conf", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Writer.Exec(`INSERT INTO file_deployments (id, host_id, path, kind, outcome, before_exists, after_sha256, after_artifact, created_at)
+		VALUES ('fd1','h1','/etc/nginx/nginx.conf','deploy','installed',0,?,?,0)`, a.SHA256, a.SHA256)
+	st.Close()
+
+	archive := makeBackup(t, src, true)
+	if !bytes.Contains(gunzip(t, archive), []byte("artifacts/sha256/"+a.SHA256[:2]+"/"+a.SHA256)) {
+		t.Fatal("artifact not in the backup")
+	}
+	dst := fresh(t)
+	res, err := Restore(ctx, dst, bytes.NewReader(archive), RestoreOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Counts["artifacts"] != 1 || res.Counts["file_deployments"] != 1 {
+		t.Fatalf("counts %v", res.Counts)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dst.DataDir, artifacts.RelPath(a.SHA256))); string(b) != "listen 80;\n" {
+		t.Fatalf("artifact not restored: %q", b)
+	}
+
+	// An artifact whose content doesn't match its name (and the manifest
+	// updated to match) is still refused.
+	evil := rewrite(t, archive, func(n string, d []byte) []byte {
+		if strings.HasPrefix(n, "artifacts/") {
+			return []byte("listen 6666;\n")
+		}
+		if n == nameManifest {
+			var m Manifest
+			json.Unmarshal(d, &m)
+			for i := range m.Files {
+				if strings.HasPrefix(m.Files[i].Name, "artifacts/") {
+					sum := sha256.Sum256([]byte("listen 6666;\n"))
+					m.Files[i].SHA256, m.Files[i].Size = hex.EncodeToString(sum[:]), 13
+				}
+			}
+			out, _ := json.Marshal(m)
+			return out
+		}
+		return d
+	}, nil)
+	if _, err := Restore(ctx, fresh(t), bytes.NewReader(evil), RestoreOptions{}); err == nil || !strings.Contains(err.Error(), "artifact") {
+		t.Fatalf("tampered artifact accepted: %v", err)
+	}
 }

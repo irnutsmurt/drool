@@ -133,6 +133,19 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, p)
 		return
 	}
+	// File steps are normalized here (idempotent) so their permissions and
+	// artifacts can be checked; other errors are reported by the engine.
+	for i := range spec.Steps {
+		if spec.Steps[i].Type == model.OpFileDeploy && spec.Steps[i].FileDeploy != nil {
+			if err := spec.Steps[i].Normalize(); err != nil {
+				writeProblem(w, r, errValidation(fmt.Sprintf("step %d: %v", i+1, err)))
+				return
+			}
+		}
+	}
+	if !s.checkFileSteps(w, r, spec, false) {
+		return
+	}
 	s.submitJob(w, r, spec, "")
 }
 
@@ -151,11 +164,20 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request, spec model.Jo
 			return audit.Event{}, err
 		}
 		steps := make([]string, len(spec.Steps))
+		var fileSteps []map[string]any
 		for i, st := range spec.Steps {
 			steps[i] = st.Type
+			if st.Type == model.OpFileDeploy && st.FileDeploy != nil {
+				f := st.FileDeploy // what will change; never the content itself
+				fileSteps = append(fileSteps, map[string]any{"path": f.Path, "artifact": f.Artifact, "elevated": f.Elevated,
+					"owner": f.Owner, "group": f.Group, "mode": f.Mode, "rollback_of": f.RollbackOf, "remove": f.Remove})
+			}
 		}
-		return audit.Event{Action: "job.create", TargetType: "job", TargetID: sub.Job.ID,
-			Details: map[string]any{"name": sub.Job.Name, "steps": steps, "hosts": len(sub.Hosts), "rerun_of": rerunOf}}, nil
+		details := map[string]any{"name": sub.Job.Name, "steps": steps, "hosts": len(sub.Hosts), "rerun_of": rerunOf}
+		if fileSteps != nil {
+			details["files"] = fileSteps
+		}
+		return audit.Event{Action: "job.create", TargetType: "job", TargetID: sub.Job.ID, Details: details}, nil
 	})
 	if errors.Is(err, engine.ErrJobIdempotent) {
 		writeJSON(w, http.StatusOK, s.toJobJSON(r, sub.Job))
@@ -503,5 +525,8 @@ func (s *Server) handleRerunJob(w http.ResponseWriter, r *http.Request) {
 	spec.Targets = model.TargetSpec{Hosts: targets}
 	spec.Name = strings.TrimPrefix(spec.Name, "Re-run: ")
 	spec.Name = "Re-run: " + spec.Name
+	if !s.checkFileSteps(w, r, spec, true) {
+		return
+	}
 	s.submitJob(w, r, spec, j.ID)
 }

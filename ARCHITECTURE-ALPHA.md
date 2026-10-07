@@ -1,6 +1,6 @@
 # DROOL Technical Alpha: Internal Architecture
 
-**v0.3 · 2026-10-06 (v0.1.0-alpha)** · Implements the *Technical Alpha* slice of `DESIGN.md` v0.3 (§33).
+**v0.4 · 2026-10-06 (v0.1.0-alpha + M6)** · Implements the *Technical Alpha* slice of `DESIGN.md` v0.3 (§33), plus M6 file management and single-file deployment (DESIGN §13, SSH only).
 
 Sections 1–21 describe the implementation as built. Where an implementation decision superseded the original plan, the prose was updated and the decision and its reason are in §22.
 
@@ -21,9 +21,10 @@ This document is where we argue about concrete things: schema, operation semanti
 - Append-only audit log, structured logging with rotation and redaction
 - SQLite, REST API, embedded React web UI
 - Backup and restore
+- **M6:** file manager for one host (browse, upload, download, text edit, mkdir, rename/move, delete, chmod, chown; login user or explicit elevation) and managed single-file deployment to many hosts (preview, diff, validation, service action, history, rollback) from a content-addressed artifact store (§10.6, §10.7)
 
 ### Out of scope (but the design must not block them)
-Agent, firewall, batch/canary rollouts, scheduling, file deployment, desired state, YAML editing, MFA, plugins, multi-hop jumps.
+Agent, firewall, batch/canary rollouts, scheduling, templated files and directory sync, desired state, YAML editing, MFA, plugins, multi-hop jumps.
 
 ### Supported managed hosts
 Debian 12+, Ubuntu 22.04+, RHEL/Rocky/Alma 9+, current Fedora (dnf5). The integration matrix (§18) runs Debian 12 and 13, Ubuntu 24.04 and 26.04, Rocky 9 and 10, and Fedora 44.
@@ -156,6 +157,16 @@ Defined as Go types in `internal/model`. JSON Schema is generated from them and 
 // reboot
 { "type": "reboot", "wait": true, "timeout_s": 900 }
 
+// file_deploy (M6, §10.7): content is referenced by SHA-256, never embedded
+{ "type": "file_deploy", "artifact": "<sha256>", "path": "/etc/nginx/conf.d/app.conf",
+  "overwrite": "replace" | "create_only",
+  "owner": "root", "group": "root", "mode": "0644",   // empty: keep existing / default
+  "elevated": true,                                     // as root via the host's sudo
+  "validate": "nginx -t -c {path}",                     // runs on the staged file
+  "service": { "name": "nginx", "action": "reload" | "restart" },
+  "timeout_s": 600 }
+// rollback_of / remove / expect_current are set only by the controller's rollback endpoint
+
 ```
 
 Discovery is not a job step: it is an inventory operation run by the poller and by `POST /hosts/{id}/refresh` (§22, M3).
@@ -169,6 +180,7 @@ Each operation type declares static metadata used by the engine:
 | system_update | exclusive | yes | yes | 3600 s |
 | service | exclusive | yes (except restarted/reloaded) | yes | 120 s |
 | reboot | exclusive | no | yes | 900 s |
+| file_deploy | exclusive | yes (except with a service restart) | if `elevated` (service actions always) | 600 s |
 | discover (inventory, not a job step) | shared, never waits | yes | no | 120 s |
 
 ### 5.2 Targets and strategy
@@ -420,6 +432,8 @@ CREATE TABLE settings (
 );
 ```
 
+M6 (`0006_files.sql`) adds `artifacts` (content-addressed index: sha256, size, name, is_text, created_by, created_at, last_used_at) and `file_deployments` (one row per host per deployment or rollback: job, host, path, kind, rollback_of, outcome, before/after sha256, artifact reference and owner/group/mode, validation and service results, error, the operation's settings without content). Deployment rows are not pruned with jobs (`job_id` becomes NULL); they are the managed file's history and keep previous versions referenced.
+
 Retention (by setting): `job_output` and finished jobs are pruned after 30 days by default, and audit is kept indefinitely. Audit retention pruning (1.0) will go through a dedicated, audited maintenance path that temporarily drops the triggers. Reserved for later migrations: `state_versions`, `agents`, `trust_manifests`.
 
 ---
@@ -563,6 +577,33 @@ Reads `systemctl show -p LoadState,ActiveState,SubState,UnitFileState,CanReload 
 - OS-specific bodies (`body: {debian: ..., redhat: ...}`) pick the body by `os_family`. No match → `skipped`.
 - Never retried on `ExecutionError`. Retried only on `ConnectionError` raised **before** the command started.
 
+### 10.6 Files: transport and file manager (M6)
+
+**Interface.** `internal/files` defines a transport-neutral `FS` (Caps, Home, RealPath, Stat, List, Open, Hash, Stage, Mkdir, Rename, Remove, Chmod, Chown) with typed errors (`not_found`, `permission_denied`, `exists`, `symlink`, `changed`, `unsafe_directory`, `integrity`, …). Writes are two-phase: `Stage` streams content into a private temporary file and checks its SHA-256; `Staged.Validate` runs a command on it; `Staged.Install(Precondition)` atomically replaces the destination only if it still has the expected checksum (or still doesn't exist); `Discard` removes it. `Caps` reports the transport, whether the session is elevated, `AllowedPaths` (nil = unrestricted) and `RootEquivalent`. An agent will implement the same interface (§19).
+
+**SSH implementation** (`sshdriver.FileSystem`), always on the pooled, pinned `sshx` connection (jump host included):
+- **Login user:** SFTP (`github.com/pkg/sftp`) over the existing client. No second SSH stack, no separate trust path.
+- **Elevated** ("Use administrator privileges"): there is **no root SFTP server**. Each action is a small typed POSIX `sh` script run through the host's become setting (`sudo -n`, or `sudo -S` with the stored password on stdin; root logins run it directly). Scripts take paths as positional arguments, never interpolated, and report `@@ERR <code> <message>` markers. Listings use `find -P -printf` with NUL-separated fields; reads stream `sudo cat`. Content never shares stdin with the sudo password: uploads go by SFTP as the login user into a private `mktemp -d` directory (`${TMPDIR:-/var/tmp}`, 0700), and the root script copies it next to the destination.
+- **Writes:** temporary file `.drool-tmp-*` created with `O_EXCL` in the destination's directory → full content → checksum verified → owner/group/mode set → optional validation → precondition checked (`changed` if the destination moved on) → `mv -f`/rename (atomic, same filesystem) → re-stat and re-hash to verify. A cancelled request, a dropped connection or a failed check leaves the destination untouched and removes the temporary file (stale `.drool-tmp-*` older than 24 h are removed by later elevated writes). Replacing a file keeps its owner, group and mode unless new ones are given; new files get 0644 and the session's user.
+- **Symlinks:** listed with their target; never followed by a destructive or privileged action. Elevated scripts refuse a final-component symlink and resolve the parent with `cd -P`/`pwd -P`, refusing when it differs from the requested path (a symlinked directory). Delete removes the link, not the target. Download refuses symlinks; the UI navigates to the target explicitly.
+- **Unsafe directories:** elevated writes, chmod and chown are refused (`unsafe_directory`) in a directory not owned by root or the login user, or writable by group/others (e.g. `/tmp`), where another user could race the operation.
+- Recursive delete of `/` and top-level directories is refused. Rename never overwrites an existing destination.
+- **Locks:** interactive changes take the host lock shared without waiting (409 `host_busy` while a job holds it exclusively); reads take no lock.
+
+**API** (§13): list, stat, download (streamed, `Content-Disposition`), upload (streamed `PUT`; the server's 60 s read timeout is lifted for that request only; `overwrite=false` fails on an existing file), text view/save (UTF-8 without NUL, ≤ 1 MiB; save carries `expect_sha256` and fails with 409 `file_changed` unless `force`), and mkdir/rename/delete/chmod/chown. Paths must be absolute and are cleaned; the API never touches controller-local paths. Elevation is a per-request flag that needs `files.elevate` in addition to the route's permission.
+
+**Audit:** every change records host, path, action, result, before/after SHA-256, owner/group/mode and whether it was elevated. Elevated listings and reads are audited too. File content never enters the audit log.
+
+### 10.7 File deployment and artifacts (M6)
+
+**Artifact store** (`internal/artifacts`): `<data_dir>/artifacts/sha256/<ab>/<sha256>`, 0600, written via a temporary file and renamed under its checksum (≤ 1 GiB). Reads verify the checksum while streaming. Job specs and audit entries reference artifacts by hash only. Hourly GC deletes artifacts that no `file_deployments` row and no job spec references and that weren't used for 24 h.
+
+**Sequence** (`internal/filedeploy`, transport-neutral, per host): inspect destination (refuse symlinks and non-regular files) → for rollbacks, check the file still has the content the deployment installed → identical content and metadata: `unchanged`, `changed: false` → capture the current version into the artifact store (≤ 64 MiB; larger files are deployed but can't be rolled back) → stage from the artifact → validate (`{path}` = staged file; failure → `validation_failed`, live file untouched) → install with precondition → verify → optional service reload/restart (through the service operation of §10.3, always as root). A service failure after a successful install is a `ServiceError` stating that the file was installed. Each host's result is a `file_deployments` row plus a `file.deploy`/`file.rollback` audit event written in one transaction.
+
+**Preview** (`POST /file-deployments/preview`, ≤ 8 hosts at a time, 3-minute budget, shared lock without waiting, audited): per host `create`, `identical`, `replace`, `metadata`, `keep` (create-only) or `remove`, or an error (*inaccessible*, including a missing parent directory), with a unified diff for text up to 1 MiB.
+
+**Rollback** (`POST /file-deployments/{id}/rollback`): a new audited job that restores the captured previous content with its owner, group and mode (or removes a file the deployment created), reusing the original elevation, validation and service settings; it fails if the file no longer has the deployed content.
+
 ---
 
 ## 11. Operation Engine
@@ -660,6 +701,12 @@ On startup, every job in `running`/`pending` and every host in a non-terminal st
 | credentials.manage | ✓ | | | |
 | audit.read | ✓ | | ✓ | |
 | users.manage, settings.write | ✓ | | | |
+| files.read (browse, download, view text, deployment history) | ✓ | ✓ | | |
+| files.write (upload, edit, mkdir, rename, delete, chmod, chown) | ✓ | ✓ | | |
+| files.deploy (artifacts, deployment preview; running one also needs jobs.execute) | ✓ | ✓ | | |
+| files.elevate (any file action with administrator privileges) | ✓ | ✓ | | |
+
+File access is withheld from auditor and viewer because file contents are frequently secrets. Rollback needs `jobs.execute` plus `files.deploy` (and `files.elevate` for elevated deployments), checked on the generated job like any other.
 
 Checks are written against permissions, not role names, so custom roles later are a data change only.
 
@@ -743,6 +790,22 @@ Jobs
   POST   /jobs/{id}/resume
   POST   /jobs/{id}/rerun            {hosts: "failed" | "interrupted" | [ids]}
 
+Files (M6; ?elevated=true needs files.elevate)
+  GET    /hosts/{id}/files                 ?path=  → real path, parent, entries, caps
+  GET    /hosts/{id}/files/stat            ?path=
+  GET    /hosts/{id}/files/content         ?path=  streamed download
+  PUT    /hosts/{id}/files/content         ?path= &overwrite=  streamed upload (octet-stream)
+  GET    /hosts/{id}/files/text            ?path=  → content + sha256 (UTF-8, ≤ 1 MiB)
+  PUT    /hosts/{id}/files/text            {path, content, expect_sha256, force}
+  POST   /hosts/{id}/files/mkdir|rename|delete|chmod|chown
+  GET    /hosts/{id}/managed-files         latest deployment per path
+  POST   /artifacts                        ?name=  streamed body → {sha256, size, is_text}
+  GET    /artifacts/{sha}  ·  GET /artifacts/{sha}/content
+  POST   /file-deployments/preview         {targets, step} → per-host state + diff
+  GET    /file-deployments                 ?host= &path= &job=
+  GET    /file-deployments/{id}            with diff, can_rollback
+  POST   /file-deployments/{id}/rollback   → job
+
 Audit / system
   GET    /audit                      ?actor= &action= &target= &since=
   GET    /system/info                version, schema version, config sources
@@ -766,6 +829,8 @@ GET /health  GET /ready  GET /metrics   (unversioned)
 | Add host (wizard) | 1) address, port, user, jump host · 2) credential (shows controller public key + copy snippet) · 3) **host key scan → compare fingerprint → approve** · 4) probe with step-by-step results · 5) discover |
 | Host detail | Facts, addresses, status, pinned key (+ rotate flow), tags and groups, job history, actions |
 | Groups | CRUD, membership |
+| Files (M6) | Per host: current path and breadcrumbs, go-to-path, **Use administrator privileges** toggle with a warning banner, table (name/type, size, owner:group, `rw-r--r--` + `0644` with a plain-language tooltip, modified), upload with progress and cancel, download, new folder, rename/move, delete (one confirmation), permissions editor (checkboxes + octal + description), owner/group; text editor with conflict handling |
+| Deploy file (M6) | New-job kind: upload artifact, destination, overwrite policy, owner/group/mode, elevation, validation, service action; per-host preview with diffs; results with before/after, validation, separate service result and Roll back; host page lists files deployed by DROOL |
 | New job | Command / Script / Packages / System update / Service / Reboot forms, "Preview changes" for package operations, targets with a live preview (skips shown), rollout settings, **one confirmation stating the target count and the consequence** (removals, reboots). Host pages link here pre-filled (Install updates, Reboot, Restart a service) |
 | Job detail | Summary bar (succeeded / failed / skipped / ...), per-host table updating live, host drawer with step results, stdout/stderr tabs, truncation notice, error class explanation and retry hint; Cancel / Resume / Re-run failed |
 | Credentials | List (metadata), add SSH key / password / sudo password, controller public key |
@@ -825,6 +890,7 @@ Environment overrides: `DROOL_SERVER_WEB_PORT`, and so on (path → upper snake 
   - `tls/self-signed.*` when the self-signed TLS mode is used (provided certificates are the operator's files and are not copied; the manifest says so)
   - `config/drool.yaml`: the config file in use, if any, with `setup.secret` blanked
   - `master.key` only with `--include-master-key`
+  - `artifacts/sha256/<ab>/<sha256>` (M6): every stored artifact, so deployment history and rollbacks survive a restore. Restore checks each artifact's content against its name and swaps the whole `artifacts/` directory (the previous one goes to `pre-restore-<time>/`). A backup reports artifacts it couldn't read as warnings
   The default output is `<data_dir>/backups/drool-backup-<time>.tar.gz` (0600); `-o -` writes to stdout. The CLI states plainly whether the backup is self-contained: without the key it is **not** a complete disaster-recovery backup, and it says which key file must be kept with it. It also checks that the installed key actually opens the stored credentials.
 - `drool restore FILE` (`-` reads stdin) refuses to run while the controller holds the data-directory lock. It extracts into a staging directory and validates before touching anything: known member names only, regular files only, checksums and sizes against the manifest, format version, SQLite `integrity_check`, schema version (newer than the binary → refused), then runs migrations forward on the staged copy. It finds a master key that opens every stored credential (the backup's, `--master-key FILE`, or the one already installed) or refuses with an explanation; `--discard-credentials` instead restores everything else and deletes the credentials (hosts keep their keys and history and need a credential assigned again). Sessions and setup codes are cleared, the restore is recorded in the restored audit log, and only then are the live files moved to `<data_dir>/pre-restore-<time>/` and the restored ones moved in; a failure while swapping puts the previous files back.
 - `serve` refuses to start when `master.key` is missing but the database holds credentials, or when the key doesn't open them, instead of silently generating a new key. The error explains the recovery path.
@@ -843,6 +909,7 @@ Environment overrides: `DROOL_SERVER_WEB_PORT`, and so on (path → upper snake 
 | API | Conformance against `openapi.yaml`; authorization matrix (every route × anonymous and every role, CSRF on every state-changing route, session-only routes reject tokens); token ownership |
 | Integration (`make test-integration`) | The real `drool` binary driven over its REST API against unprivileged containers (sshd only): Debian 12/13, Ubuntu 24.04/26.04, Rocky 9/10, Fedora 44. Connection test, discovery, commands and scripts, passwordless/password/wrong-password sudo, package operations and their errors, dpkg lock, interrupted dpkg, system updates, jump host (key approval, operations, cancellation, changed jump key) |
 | Fault injection | Host down before the operation, connection lost during it, cancellation of root processes, output beyond the cap, controller crash mid-job, authentication failure, changed host key |
+| Files (M6) | Unit: path/mode/diff helpers, artifact store (integrity, GC), filedeploy sequence with a fake FS, SFTP and elevated scripts against the in-process SSH server (atomic writes, zero bytes, 24 MiB, cancel and broken uploads, conflicts, symlinks, unsafe directories, validation). Integration on Debian and Rocky containers: browse, upload/download incl. zero-byte and 256 MiB with a controller memory check, cancelled upload and killed host mid-upload (destination unchanged), mkdir/rename/move/delete/chmod, symlink refusal, permission denied, NOPASSWD/password/wrong-password sudo, unsafe directory, text-edit conflict, jump host, changed host key, audit without content; deployment by tag and group with mixed success, no-op, preview states, validation pass/fail, rollback (content and metadata, refused after a later change, removal of a created file), service failure after install. VM: deployment + sshd reload and unit restart on real systemd |
 | systemd and reboots (`-vm`) | Cloud-image VMs under qemu with software emulation (TCG) inside an unprivileged container (no `--privileged`, no `/dev/kvm`): real service operations and their errors, reboots (direct, through a jump host, onto a changed host key), reboot-required after a kernel install, needrestart, cancelling a live transaction, unattended-upgrades contention |
 
 Privileged containers are not used for testing (they interfered with the developer's desktop session; §22, M3).
@@ -854,6 +921,7 @@ Privileged containers are not used for testing (they interfered with the develop
 | Future | Alpha preparation |
 |---|---|
 | Agent (Alpha 2) | `Driver` interface over typed ops; `management_method` column; capability check hook in engine (no-op for SSH) |
+| Agent file access | `files.FS` is the transport contract; `Caps.AllowedPaths` carries the agent's `files.allowed_paths` as a ceiling the controller may narrow, never widen; `Caps.RootEquivalent` drives the "root-equivalent" label for unrestricted access. `filedeploy` and the API depend only on `files.FS` |
 | Multi-hop | `host_hops` table; dialer recursion is written but limited to one hop |
 | Firewall Beta | `sshx.DialFresh()` (no pool, no reuse); `host_addresses` with `source`; reserved `state_versions` |
 | Desired state | Idempotent ops already return `Changed` with before/after states |
@@ -873,6 +941,7 @@ Privileged containers are not used for testing (they interfered with the develop
 | **M3 Inventory** | discover op, facts and addresses, status poller, dashboard |
 | **M4 System ops** | APT + DNF backends, package / system_update / service / reboot ops |
 | **M5 Alpha release** | Backup/restore, integration matrix green, error explanations, docs, tag `v0.1.0-alpha` |
+| **M6 Files** | File manager, artifact store, managed file deployment with preview/validation/rollback (§10.6, §10.7) |
 
 ---
 
@@ -1009,3 +1078,21 @@ Meaningful choices made during implementation, newest last.
 | M5 | A kernel install that outlived its step timeout was killed with its process group and left dpkg interrupted; the next operation reported `PackageManagerError` with the `dpkg --configure -a` hint instead of repairing it. A VM whose new kernel panicked on boot left the reboot in `waiting_host` until its timeout | Observed during VM testing; behavior as designed |
 | M5 | Commands on a connection that goes silent (the host vanished without closing TCP) return at their timeout: opening a session and waiting for a closed session are bounded, and after a 5 s grace the connection is closed to unblock | Found in the VM tests: a reboot poll hit the moment the guest powered off and hung forever, leaving the reboot "waiting for host" though the host was back. Fresh connections (reboot polls) have no keepalive to rescue them; pooled ones were only rescued by keepalive |
 | M5 | `drool backup` records its audit event in the database only, like the other CLI commands | Found by the clean-install test of the release image: with stdout logging (the container default) the audit log line was appended to `backup -o -` archives, which other tools then rejected |
+| M6 | File access for the login user uses SFTP on the existing pooled `sshx` connection; elevated access uses small typed `sh` scripts through the existing become path. There is no root SFTP server and no `sudo sftp-server` | Requirement: no fake sudo-SFTP and no second trust path. Typed scripts keep each root action narrow and auditable, and work with password sudo (a root SFTP server would need the password on the same channel as the protocol) |
+| M6 | Elevated uploads first go by SFTP as the login user into a private `mktemp -d` directory, then a root script copies them next to the destination | File content never shares stdin with the sudo password, and a broken upload never reaches the destination's directory |
+| M6 | Root writes, chmod and chown are refused in directories not owned by root or the login user, or writable by group/others (`unsafe_directory`) | Another user could swap the temporary file or the parent for a symlink between checks; refusing is simpler and safer than trying to make every step race-free there |
+| M6 | Destructive and privileged actions never follow symlinks: a final-component symlink is refused, a path whose parent resolves elsewhere (`pwd -P`) is refused, chown uses `-h`, delete removes the link. The UI follows a symlink only on an explicit click | Requirement: no silent symlink following in destructive or privileged operations |
+| M6 | Elevated scripts report errors as `@@ERR code message` lines and capture command errors with `$(...)`; no files at predictable paths | Found in review: the first version wrote chown errors as root to `/tmp/.drool-err-$$`, a symlink attack |
+| M6 | Previous versions are captured into the controller's artifact store (≤ 64 MiB) instead of `.bak` files on the host | Backup files on the host would be picked up by include directories (`sudoers.d`, `cron.d`, `conf.d`) and leak old secrets; the controller copy is checksummed, survives host changes, and is in DROOL backups |
+| M6 | Artifacts are content-addressed by SHA-256, capped at 1 GiB, verified on every read; GC removes artifacts unreferenced by any deployment row or job spec and unused for 24 h | Job JSON and audit carry hashes only (requirement); the 24 h grace covers an upload whose job hasn't been submitted yet |
+| M6 | `file_deployments` rows are not deleted with pruned jobs; they store the deployment's settings (`op_json`, no content) so a rollback reuses its elevation, validation and service action | They are the managed file's history and keep rollback targets referenced |
+| M6 | Rollback is a new job with `expect_current` = the deployed checksum; if the file changed since, it fails without touching it. A deployment that created the file rolls back by removing it | Rolling back over someone's later edit would silently destroy it |
+| M6 | A service action failing after a successful install is a `ServiceError` with "the file was installed, but …", and the deployment row records `installed` plus the service result | Requirement: the user must know the live file changed even though the job failed |
+| M6 | A deployment preview whose destination directory doesn't exist reports the host as inaccessible ("the directory … does not exist"); deployments never create directories. Filesystem errors in a deployment are `ExecutionError` (`AuthorizationError` for permission denied) | Found in the integration tests: the preview promised "would create" and the job then failed as `InternalError` |
+| M6 | Auditor and viewer roles get no `files.*` permissions; elevated listings, reads and previews are audited, not only changes | File contents (keys, configs) are often secrets; reading them as root is a privileged act |
+| M6 | Interactive file changes take the host lock in shared mode without waiting (409 `host_busy`); reads take none | Don't interleave with an exclusive job such as a package upgrade, but never block the browser |
+| M6 | Uploads lift the HTTP server's 60 s read timeout for that request only (`http.ResponseController`) | Large uploads would otherwise be cut off; the global timeout still protects every other route |
+| M6 | Cancelling an SSH session request no longer closes a healthy pooled connection immediately; it waits the 5 s unresponsive grace first | Found by the large-upload test: a cancelled request tore down the shared connection under concurrent SFTP transfers |
+| M6 | `files.FS` + `Caps{AllowedPaths, RootEquivalent}` is the transport contract for the future agent; `filedeploy` and the API depend only on it. SSH sessions report `AllowedPaths = nil` (bounded by the login user and its sudo rules) and `RootEquivalent` when elevated | DESIGN §6/§13: the agent's `files.allowed_paths` is a ceiling the controller may narrow but never widen, and unrestricted file access must be labelled root-equivalent |
+| M6 | Temporary files are hidden and extension-less (`.drool-tmp-XXXXXXXXXX`) in the destination's directory | Include directories ignore them while they exist (`sudoers.d` and `cron.d` skip names with dots; `*.conf` globs don't match), and same-directory staging keeps the final rename atomic |
+| M6 | Usability pass (headless Chromium, all ten steps: browse, download, upload, edit, elevated `/etc` change, multi-host deploy, diff, validation, apply, rollback). Fixed: file row actions were `group-hover` only, which Tailwind v4 applies only on hover-capable devices, so touch devices (and the headless browser) never saw Download/Rename/Delete; actions are now always shown. Symlinks showed a meaningless `rwxrwxrwx 0777` (now "link (the target's permissions apply)"). Permissions get a one-line plain-language summary in the table, not only a tooltip. A permission-denied save offers an explicit **Save with administrator privileges** button instead of losing the edit. Preview labels use the requested state names (missing/different/inaccessible). The deployment preview rejected the UI's step (`unknown field "type"`): the endpoint now takes the same operation shape as a job step, with an API test. The sidebar showed `vv0.1.0-alpha` | |

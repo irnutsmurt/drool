@@ -95,6 +95,9 @@ func cmdBackup(path string, explicit bool, args []string) error {
 	if res.KeyWarning != "" {
 		fmt.Fprintf(msg, "\nWARNING: %s.\n", res.KeyWarning)
 	}
+	for _, w := range res.Warnings {
+		fmt.Fprintf(msg, "WARNING: %s.\n", w)
+	}
 	switch {
 	case m.IncludesMasterKey:
 		fmt.Fprint(msg, `

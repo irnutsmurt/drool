@@ -260,10 +260,11 @@ func (e *Engine) SubmitTx(ctx context.Context, q *db.Queries, spec model.JobSpec
 
 // jobRun is the in-memory state of a running job.
 type jobRun struct {
-	id     string
-	spec   model.JobSpec
-	ctx    context.Context
-	cancel context.CancelFunc
+	id        string
+	createdBy string
+	spec      model.JobSpec
+	ctx       context.Context
+	cancel    context.CancelFunc
 
 	mu              sync.Mutex
 	paused          bool
@@ -406,6 +407,7 @@ func (e *Engine) runJob(jr *jobRun) error {
 	if err := json.Unmarshal([]byte(j.SpecJson), &jr.spec); err != nil {
 		return fmt.Errorf("decode spec: %w", err)
 	}
+	jr.createdBy = j.CreatedBy
 	hosts, err := e.st.R.ListJobHosts(ctx, jr.id)
 	if err != nil {
 		return err
@@ -612,6 +614,7 @@ func (e *Engine) runHost(jr *jobRun, h db.JobHost) {
 				out.Note(fmt.Sprintf("attempt %d of %d", attempt, e.cfg.RetryAttempts))
 			}
 			sctx, cancel := context.WithTimeout(ctx, time.Duration(meta.TimeoutS)*time.Second)
+			sctx = driver.WithStepInfo(sctx, driver.StepInfo{JobID: jr.id, HostID: h.HostID, UserID: jr.createdBy})
 			res, err := e.exec.Execute(sctx, conn.Target, conn.Become, step, out,
 				func() { e.setState(jr.id, h, HostRunning, i, attempt, nil) })
 			cancel()

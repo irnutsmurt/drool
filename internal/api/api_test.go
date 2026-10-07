@@ -18,11 +18,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
 
+	"drool/internal/artifacts"
 	"drool/internal/audit"
 	"drool/internal/auth"
 	"drool/internal/config"
 	"drool/internal/driver/sshdriver"
 	"drool/internal/engine"
+	"drool/internal/filedeploy"
 	"drool/internal/inventory"
 	"drool/internal/logging"
 	"drool/internal/secrets"
@@ -67,14 +69,19 @@ func newHarness(t *testing.T) *harness {
 	pool := sshx.NewPool(dialer)
 	t.Cleanup(pool.Close)
 	inv := inventory.NewService(st, secretSvc, dialer, pool)
-	executor := &sshdriver.Executor{Pool: pool}
+	arts, err := artifacts.Open(t.TempDir(), st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor := &sshdriver.Executor{Pool: pool, Files: &sshdriver.FileDeps{
+		Source: arts, Recorder: &filedeploy.StoreRecorder{Store: st, Audit: auditW}}}
 	eng := engine.New(st, inv, executor, auditW, logs.Job, engine.Config{RetryDelay: 10 * time.Millisecond})
 	if err := eng.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	srv, err := New(Deps{
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
-		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng, Simulator: executor,
+		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng, Simulator: executor, Files: inv, Artifacts: arts,
 		UI: fstest.MapFS{
 			"index.html":    {Data: []byte("<!doctype html><title>ui</title>")},
 			"assets/app.js": {Data: []byte("console.log(1)")},

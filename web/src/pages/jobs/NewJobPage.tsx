@@ -16,6 +16,7 @@ import {
   type OpKind, type PackageState, type RebootState, type ServiceAction, type ServiceState, type SystemUpdateState,
 } from "./OperationForms";
 import { describeStep } from "./StepResult";
+import { DeployPreviewPanel, FileDeployForm, emptyFileDeploy, fileDeployStep, type FileDeployState } from "../files/FileDeployForm";
 
 type TargetSpec = Schemas["TargetSpec"];
 
@@ -51,6 +52,7 @@ export function NewJobPage() {
     action: serviceActions.some((a) => a.value === params.get("action")) ? params.get("action") as ServiceAction : "restart",
   }));
   const [rb, setRb] = useState<RebootState>({ wait: true });
+  const [fd, setFd] = useState<FileDeployState>(() => ({ ...emptyFileDeploy, path: params.get("path") ?? "" }));
   const setPkgAllow = useCallback((allowRemovals: boolean) => setPkg((v) => ({ ...v, allowRemovals })), []);
   const setSysAllow = useCallback((allowRemovals: boolean) => setSys((v) => ({ ...v, allowRemovals })), []);
   const [variants, setVariants] = useState<Record<"debian" | "redhat" | "default", string>>({ debian: "", redhat: "", default: "" });
@@ -76,12 +78,14 @@ export function NewJobPage() {
       }
       case "reboot":
         return { type: "reboot", wait: rb.wait, timeout_s, when };
+      case "file_deploy":
+        return fileDeployStep(fd, timeout_s, when);
     }
     const body = perOS
       ? Object.fromEntries(Object.entries(variants).filter(([, v]) => v.trim() !== ""))
       : script;
     return { type: "script", body, interpreter, become, read_only: readOnly, timeout_s, when };
-  }, [kind, command, script, interpreter, become, readOnly, timeout, onlyOn, perOS, variants, pkg, sys, svc, rb]);
+  }, [kind, command, script, interpreter, become, readOnly, timeout, onlyOn, perOS, variants, pkg, sys, svc, rb, fd]);
   const conditional = onlyOn.length > 0 || (kind === "script" && perOS);
   const stepReady = {
     command: command.trim() !== "",
@@ -90,6 +94,7 @@ export function NewJobPage() {
     system_update: true,
     service: svc.name.trim() !== "",
     reboot: true,
+    file_deploy: !!fd.artifact && fd.path.trim().startsWith("/") && (!fd.serviceAction || fd.serviceName.trim() !== ""),
   }[kind];
 
   const preview = useQuery({
@@ -133,6 +138,12 @@ export function NewJobPage() {
       case "reboot":
         question = `Reboot ${n}? Everything running on ${count === 1 ? "it" : "them"} stops until ${count === 1 ? "it comes" : "they come"} back.`;
         break;
+      case "file_deploy":
+        question = `Deploy ${fd.artifact?.name || "this file"} to ${fd.path} on ${n}${fd.elevated ? " as root" : ""}?` +
+          (fd.overwrite === "replace" ? "\nExisting files are replaced; their previous versions are kept for rollback." : "\nExisting files are left alone.") +
+          (fd.validate ? "\nThe new file is validated first; hosts where validation fails are not changed." : "") +
+          (fd.serviceAction ? `\nThen ${fd.serviceAction} ${fd.serviceName} where the file changed.` : "");
+        break;
       case "system_update":
         question = `${describeStep(step)}\n\nRun on ${n}?` +
           (sys.allowRemovals ? "\nPackages may be removed where an upgrade needs it." : "") +
@@ -169,6 +180,7 @@ export function NewJobPage() {
               : kind === "system_update" ? <SystemUpdateForm v={sys} set={setSys} />
               : kind === "service" ? <ServiceForm v={svc} set={setSvc} />
               : kind === "reboot" ? <RebootForm v={rb} set={setRb} />
+              : kind === "file_deploy" ? <FileDeployForm v={fd} set={setFd} />
               : kind === "command" ? (
                 <Field label="Command">
                   <Input className="font-mono" value={command} required autoFocus placeholder="df -h"
@@ -215,10 +227,13 @@ export function NewJobPage() {
                     <Checkbox checked={readOnly} onChange={setReadOnly} label="Read-only"
                       hint="Doesn't change the host, so it may run alongside other jobs on the same host." />
                   </>
-                ) : (
+                ) : kind === "file_deploy" ? null : (
                   <p className="text-xs text-muted">Runs as root (directly or via the host's sudo setting).</p>
                 )}
               </div>
+              {kind === "file_deploy" && stepReady && step.type === "file_deploy" && (
+                <DeployPreviewPanel targets={targets} step={step} hasTargets={hasTargets} />
+              )}
               {(kind === "package" || kind === "system_update") && stepReady && (
                 <SimulatePanel targets={targets} step={step} hasTargets={hasTargets}
                   allow={kind === "package" ? pkg.allowRemovals : sys.allowRemovals}

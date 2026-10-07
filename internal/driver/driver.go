@@ -4,6 +4,7 @@
 package driver
 
 import (
+	"context"
 	"errors"
 	"io"
 )
@@ -79,4 +80,25 @@ func SetPhase(out OutputSink, state string) {
 	if p, ok := out.(PhaseSink); ok {
 		p.Phase(state)
 	}
+}
+
+// StepInfo identifies the job step an operation runs for, for operations
+// that record their own history (file deployments).
+type StepInfo struct {
+	JobID  string
+	HostID string
+	UserID string // who created the job
+}
+
+type stepInfoKey struct{}
+
+// WithStepInfo attaches step identity to ctx.
+func WithStepInfo(ctx context.Context, s StepInfo) context.Context {
+	return context.WithValue(ctx, stepInfoKey{}, s)
+}
+
+// StepInfoFrom returns the step identity attached to ctx, if any.
+func StepInfoFrom(ctx context.Context) StepInfo {
+	s, _ := ctx.Value(stepInfoKey{}).(StepInfo)
+	return s
 }

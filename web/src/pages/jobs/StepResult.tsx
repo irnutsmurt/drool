@@ -1,6 +1,7 @@
 import type { Schemas } from "@/api/client";
 import { Badge } from "@/components/ui/Badge";
 import { cx } from "@/components/ui/cx";
+import { FileDeployResult, type DeployResult } from "@/components/files/FileDeployResult";
 
 type Change = Schemas["PackageChange"];
 type Plan = Schemas["PackagePlan"];
@@ -43,6 +44,12 @@ export function describeStep(s: Schemas["Operation"]): string {
     }
     case "reboot":
       return s.wait === false ? "Reboot (don't wait)" : `Reboot and wait up to ${s.timeout_s ?? 900}s for the host`;
+    case "file_deploy":
+      if (s.rollback_of) return s.remove ? `Roll back ${s.path} (remove it)` : `Roll back ${s.path} to its previous version`;
+      return [`Deploy ${s.path}`, s.elevated ? "as root" : "", s.owner || s.group ? `owner ${s.owner ?? "keep"}:${s.group ?? "keep"}` : "",
+        s.mode ? `mode ${s.mode}` : "", s.validate ? `validate: ${s.validate}` : "",
+        s.service ? `then ${s.service.action} ${s.service.name}` : "", s.overwrite === "create_only" ? "only if missing" : ""]
+        .filter(Boolean).join(" · ");
     default:
       return "";
   }
@@ -67,6 +74,7 @@ function RebootSummary({ r }: { r: RebootResult }) {
 export function StepResult({ step }: { step: Schemas["JobStep"] }) {
   const r = step.result as Record<string, unknown> | undefined;
   if (!r || Object.keys(r).length === 0) return null;
+  if (step.type === "file_deploy") return <FileDeployResult r={r as unknown as DeployResult} />;
   const plan = r.plan as Plan | undefined;
   const changes = r.changes as Change[] | undefined;
   const before = r.before as UnitState | undefined;

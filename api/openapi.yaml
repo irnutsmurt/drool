@@ -815,10 +815,381 @@ paths:
               schema: { $ref: '#/components/schemas/Job' }
         '422': { $ref: '#/components/responses/Problem' }
 
+  /hosts/{id}/files:
+    get:
+      operationId: listFiles
+      tags: [files]
+      description: |
+        List a directory on the host. With no `path`, the login user's home. The response's `path`
+        is the real location (symlinked directories are resolved): changes always apply there.
+        `elevated` lists as root and needs `files.elevate`.
+      parameters:
+        - { $ref: '#/components/parameters/HostId' }
+        - { name: path, in: query, schema: { type: string } }
+        - { $ref: '#/components/parameters/Elevated' }
+      responses:
+        '200':
+          description: Directory listing.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileListing' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/files/stat:
+    get:
+      operationId: statFile
+      tags: [files]
+      description: One entry's metadata. Symlinks are not followed.
+      parameters:
+        - { $ref: '#/components/parameters/HostId' }
+        - { name: path, in: query, required: true, schema: { type: string } }
+        - { $ref: '#/components/parameters/Elevated' }
+      responses:
+        '200':
+          description: Metadata.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileInfo' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/files/content:
+    get:
+      operationId: downloadFile
+      tags: [files]
+      description: Stream a regular file (never a symlink). Elevated reads are audited.
+      parameters:
+        - { $ref: '#/components/parameters/HostId' }
+        - { name: path, in: query, required: true, schema: { type: string } }
+        - { $ref: '#/components/parameters/Elevated' }
+      responses:
+        '200':
+          description: The file's content.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+    put:
+      operationId: uploadFile
+      tags: [files]
+      description: |
+        Stream the request body to `path`. It goes to a private temporary file next to the
+        destination and is installed (atomic rename) only once complete; an interrupted upload
+        never leaves a truncated file. Without `overwrite=true` an existing file is not replaced.
+        An existing file's owner, group and mode are kept. Requires `files.write`.
+      parameters:
+        - { $ref: '#/components/parameters/HostId' }
+        - { name: path, in: query, required: true, schema: { type: string } }
+        - { name: overwrite, in: query, schema: { type: boolean } }
+        - { $ref: '#/components/parameters/Elevated' }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: Installed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileWriteResult' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/files/text:
+    get:
+      operationId: readTextFile
+      tags: [files]
+      description: A UTF-8 text file of at most 1 MiB, with the SHA-256 to send back when saving.
+      parameters:
+        - { $ref: '#/components/parameters/HostId' }
+        - { name: path, in: query, required: true, schema: { type: string } }
+        - { $ref: '#/components/parameters/Elevated' }
+      responses:
+        '200':
+          description: Content.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TextFile' }
+        '422': { $ref: '#/components/responses/Problem' }
+    put:
+      operationId: saveTextFile
+      tags: [files]
+      description: |
+        Save text. `expect_sha256` is the version that was opened: if the file changed on the host
+        since, the save is refused with 409 `file_changed` unless `force` is true. An empty
+        `expect_sha256` creates a new file and refuses to replace an existing one.
+      parameters:
+        - { $ref: '#/components/parameters/HostId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path, content]
+              additionalProperties: false
+              properties:
+                path: { type: string }
+                content: { type: string }
+                elevated: { type: boolean }
+                expect_sha256: { type: string }
+                force: { type: boolean }
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileWriteResult' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/files/mkdir:
+    post:
+      operationId: fileMkdir
+      tags: [files]
+      description: Create a directory (`mode`, default 0755). Audited. Requires `files.write` (and `files.elevate` with `elevated`).
+      parameters:
+        - { $ref: '#/components/parameters/HostId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FileChangeRequest' }
+      responses:
+        '200':
+          description: The entry afterwards.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileInfo' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/files/rename:
+    post:
+      operationId: fileRename
+      tags: [files]
+      description: Rename or move `path` to `to`. Never replaces an existing entry. Audited. Requires `files.write` (and `files.elevate` with `elevated`).
+      parameters:
+        - { $ref: '#/components/parameters/HostId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FileChangeRequest' }
+      responses:
+        '200':
+          description: The entry afterwards.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileInfo' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/files/delete:
+    post:
+      operationId: fileDelete
+      tags: [files]
+      description: Delete a file, a symlink (never its target) or an empty directory; `recursive` deletes a directory tree (refused for top-level directories). Audited. Requires `files.write` (and `files.elevate` with `elevated`).
+      parameters:
+        - { $ref: '#/components/parameters/HostId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FileChangeRequest' }
+      responses:
+        '204': { description: Deleted. }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/files/chmod:
+    post:
+      operationId: fileChmod
+      tags: [files]
+      description: Change permissions (`mode`, octal). Refused on symlinks; as root, refused in directories other users can modify. Audited. Requires `files.write` (and `files.elevate` with `elevated`).
+      parameters:
+        - { $ref: '#/components/parameters/HostId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FileChangeRequest' }
+      responses:
+        '200':
+          description: The entry afterwards.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileInfo' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/files/chown:
+    post:
+      operationId: fileChown
+      tags: [files]
+      description: Change `owner` and/or `group` without following symlinks. Audited. Requires `files.write` (and `files.elevate` with `elevated`).
+      parameters:
+        - { $ref: '#/components/parameters/HostId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FileChangeRequest' }
+      responses:
+        '200':
+          description: The entry afterwards.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileInfo' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/managed-files:
+    get:
+      operationId: listManagedFiles
+      tags: [files]
+      description: The latest deployment of every path DROOL has deployed to on this host.
+      parameters:
+        - { $ref: '#/components/parameters/HostId' }
+      responses:
+        '200':
+          description: Managed files.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/FileDeployment' } }
+  /artifacts:
+    post:
+      operationId: uploadArtifact
+      tags: [files]
+      description: |
+        Store a file on the controller for deployment (content-addressed; the same content is
+        stored once, at most 1 GiB). Requires `files.deploy`.
+      parameters:
+        - { name: name, in: query, description: Original file name (informational), schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '201':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Artifact' }
+        '413': { $ref: '#/components/responses/Problem' }
+  /artifacts/{sha}:
+    get:
+      operationId: getArtifact
+      tags: [files]
+      parameters:
+        - { name: sha, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Metadata.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Artifact' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /artifacts/{sha}/content:
+    get:
+      operationId: downloadArtifact
+      tags: [files]
+      description: The stored content (e.g. a previous version kept for rollback). Requires `files.read`.
+      parameters:
+        - { name: sha, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Content.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/Problem' }
+  /file-deployments/preview:
+    post:
+      operationId: previewFileDeployment
+      tags: [files]
+      description: |
+        What a file deployment would do on each target, without changing anything: create,
+        replace (with a text diff), identical, owner/group/mode change only, keep (create only)
+        or an error such as "inaccessible". Audited (it reads files, as root when elevated).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targets, step]
+              properties:
+                targets: { $ref: '#/components/schemas/TargetSpec' }
+                step: { $ref: '#/components/schemas/FileDeployOp' }
+      responses:
+        '200':
+          description: Per-host preview.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileDeployPreview' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /file-deployments:
+    get:
+      operationId: listFileDeployments
+      tags: [files]
+      description: Deployment history (one row per host), newest first.
+      parameters:
+        - { name: host, in: query, schema: { type: string } }
+        - { name: path, in: query, schema: { type: string } }
+        - { name: job, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        '200':
+          description: History.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/FileDeployment' } }
+  /file-deployments/{id}:
+    get:
+      operationId: getFileDeployment
+      tags: [files]
+      description: One host's deployment, with a text diff of before and after when both are kept and are text.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Deployment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileDeployment' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /file-deployments/{id}/rollback:
+    post:
+      operationId: rollbackFileDeployment
+      tags: [files]
+      description: |
+        Start a job that restores what was there before this deployment: the previous content,
+        owner, group and mode, or removes the file if it didn't exist. Applied only while the file
+        still has the content this deployment installed. Audited. Requires `jobs.execute` and
+        `files.deploy` (and `files.elevate` for an elevated deployment).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '201':
+          description: The rollback job.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '409': { $ref: '#/components/responses/Problem' }
 components:
   securitySchemes:
     session: { type: apiKey, in: cookie, name: drool_session }
     bearer: { type: http, scheme: bearer }
+
+  parameters:
+    HostId: { name: id, in: path, required: true, schema: { type: string } }
+    Elevated:
+      name: elevated
+      in: query
+      description: Use administrator privileges (root via the host's sudo setting). Requires `files.elevate`.
+      schema: { type: boolean }
 
   responses:
     Problem:
@@ -1164,6 +1535,7 @@ components:
         - $ref: '#/components/schemas/SystemUpdateOp'
         - $ref: '#/components/schemas/ServiceOp'
         - $ref: '#/components/schemas/RebootOp'
+        - $ref: '#/components/schemas/FileDeployOp'
       discriminator:
         propertyName: type
         mapping:
@@ -1173,6 +1545,7 @@ components:
           system_update: '#/components/schemas/SystemUpdateOp'
           service: '#/components/schemas/ServiceOp'
           reboot: '#/components/schemas/RebootOp'
+          file_deploy: '#/components/schemas/FileDeployOp'
 
     CommandOp:
       type: object
@@ -1497,3 +1870,176 @@ components:
               package_manager: { type: string }
               plan: { $ref: '#/components/schemas/PackagePlan' }
               extra_removals: { type: array, items: { $ref: '#/components/schemas/PackageChange' } }
+
+    FileInfo:
+      type: object
+      required: [name, path, kind, size, mode, uid, gid, owner, group, mtime]
+      properties:
+        name: { type: string }
+        path: { type: string }
+        kind: { type: string, enum: [file, dir, symlink, other] }
+        size: { type: integer }
+        mode: { type: integer, description: Permission bits including setuid/setgid/sticky (e.g. 420 = 0644) }
+        uid: { type: integer }
+        gid: { type: integer }
+        owner: { type: string }
+        group: { type: string }
+        mtime: { type: string, format: date-time }
+        target: { type: string, description: Symlink target as stored in the link }
+
+    FileCaps:
+      type: object
+      required: [transport, elevated, allowed_paths, root_equivalent]
+      properties:
+        transport: { type: string, description: 'sftp (login user), ssh-sudo (elevated), later agent' }
+        elevated: { type: boolean }
+        allowed_paths: { type: [array, 'null'], items: { type: string }, description: 'null: unrestricted (bounded by the account)' }
+        root_equivalent: { type: boolean, description: The session can write anywhere as root }
+
+    FileListing:
+      type: object
+      required: [path, requested, parent, entries, caps]
+      properties:
+        path: { type: string, description: Real path of the directory }
+        requested: { type: string }
+        parent: { type: string }
+        entries: { type: array, items: { $ref: '#/components/schemas/FileInfo' } }
+        caps: { $ref: '#/components/schemas/FileCaps' }
+
+    FileWriteResult:
+      type: object
+      required: [path, sha256, info]
+      properties:
+        path: { type: string }
+        sha256: { type: string }
+        info: { $ref: '#/components/schemas/FileInfo' }
+
+    TextFile:
+      type: object
+      required: [path, content, sha256, info]
+      properties:
+        path: { type: string }
+        content: { type: string }
+        sha256: { type: string }
+        info: { $ref: '#/components/schemas/FileInfo' }
+
+    FileChangeRequest:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+        to: { type: string, description: rename/move destination }
+        mode: { type: string, description: 'octal, e.g. "0644" (mkdir, chmod)' }
+        owner: { type: string }
+        group: { type: string }
+        recursive: { type: boolean, description: delete a directory tree }
+        elevated: { type: boolean }
+
+    Artifact:
+      type: object
+      required: [sha256, size, name, is_text, created_at]
+      properties:
+        sha256: { type: string }
+        size: { type: integer }
+        name: { type: string }
+        is_text: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    FileDeployOp:
+      type: object
+      required: [type, path]
+      additionalProperties: false
+      description: |
+        Deploy a stored artifact: stage, validate, keep the previous version, install atomically,
+        verify, optionally reload/restart a service. Rollback fields are set by the controller.
+      properties:
+        type: { type: string, enum: [file_deploy] }
+        artifact: { type: string, description: SHA-256 of an uploaded artifact }
+        path: { type: string }
+        overwrite: { type: string, enum: [replace, create_only], default: replace }
+        owner: { type: string }
+        group: { type: string }
+        mode: { type: string, description: 'octal; empty keeps the current mode (0644 for new files)' }
+        elevated: { type: boolean }
+        validate: { type: string, description: 'Command run on the staged file before install; {path} is replaced by its path' }
+        service:
+          type: object
+          required: [name, action]
+          properties:
+            name: { type: string }
+            action: { type: string, enum: [reload, restart] }
+        timeout_s: { type: integer, minimum: 1, maximum: 86400, default: 600 }
+        when: { $ref: '#/components/schemas/When' }
+        rollback_of: { type: string }
+        remove: { type: boolean }
+        expect_current: { type: string }
+
+    FileMeta:
+      type: object
+      properties:
+        owner: { type: string }
+        group: { type: string }
+        mode: { type: string }
+        size: { type: integer }
+
+    FileDeployPreview:
+      type: object
+      required: [hosts]
+      properties:
+        hosts:
+          type: array
+          items:
+            type: object
+            required: [host_id, host_name]
+            properties:
+              host_id: { type: string }
+              host_name: { type: string }
+              skipped: { type: string }
+              error:
+                type: object
+                required: [class, message]
+                properties:
+                  class: { type: string }
+                  message: { type: string }
+                  hint: { type: string }
+              preview:
+                type: object
+                required: [state, desired]
+                properties:
+                  state: { type: string, enum: [create, identical, replace, metadata, keep, remove] }
+                  current:
+                    type: object
+                    properties:
+                      exists: { type: boolean }
+                      sha256: { type: string }
+                      owner: { type: string }
+                      group: { type: string }
+                      mode: { type: string }
+                      size: { type: integer }
+                  desired: { $ref: '#/components/schemas/FileMeta' }
+                  diff: { type: string }
+                  diff_note: { type: string }
+
+    FileDeployment:
+      type: object
+      required: [id, host_id, host_name, path, kind, outcome, before, after, validation, service, created_at, can_rollback]
+      properties:
+        id: { type: string }
+        job_id: { type: string }
+        host_id: { type: string }
+        host_name: { type: string }
+        path: { type: string }
+        kind: { type: string, enum: [deploy, rollback] }
+        rollback_of: { type: string }
+        outcome: { type: string, enum: [installed, unchanged, removed, validation_failed, failed] }
+        before: { type: object, additionalProperties: true, description: 'exists, sha256, owner, group, mode, size, kept (content kept for rollback)' }
+        after: { type: object, additionalProperties: true }
+        validation: { type: object, additionalProperties: true }
+        service: { type: object, additionalProperties: true }
+        error: { type: string }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        can_rollback: { type: boolean }
+        diff: { type: string }
+        diff_note: { type: string }

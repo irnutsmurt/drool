@@ -72,10 +72,15 @@ const maxBodyBytes = 1 << 20
 
 // decodeJSON strictly decodes a request body into v.
 func decodeJSON(w http.ResponseWriter, r *http.Request, v any) *Problem {
+	return decodeJSONLimit(w, r, v, maxBodyBytes)
+}
+
+// decodeJSONLimit is decodeJSON with a different size limit.
+func decodeJSONLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) *Problem {
 	if ct := r.Header.Get("Content-Type"); ct != "" && !strings.HasPrefix(ct, "application/json") {
 		return problem(http.StatusUnsupportedMediaType, "unsupported_media_type", "Content-Type must be application/json")
 	}
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		var mbe *http.MaxBytesError
