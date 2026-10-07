@@ -214,6 +214,116 @@ type FileDeployment struct {
 	CreatedAt      int64
 }
 
+type FwGroupConfig struct {
+	GroupID          string
+	RollbackTimeoutS sql.NullInt64
+	UpdatedAt        int64
+}
+
+type FwHostConfig struct {
+	HostID           string
+	Mode             string
+	Outbound         string
+	RollbackTimeoutS sql.NullInt64
+	UpdatedAt        int64
+}
+
+type FwHostState struct {
+	HostID                string
+	EnvJson               string
+	EligibilityJson       string
+	EnvCheckedAt          sql.NullInt64
+	StatusJson            string
+	StatusAt              sql.NullInt64
+	Enforced              int64
+	AppliedRevision       int64
+	AppliedRulesHash      string
+	AppliedFullHash       string
+	AppliedSetsHash       string
+	AppliedPolicyJson     string
+	OverrideMgmt          int64
+	SetsGeneration        int64
+	SetsGenerationApplied int64
+	SetsError             string
+	SetsAt                sql.NullInt64
+	Drift                 string
+	UpdatedAt             int64
+}
+
+type FwMgmtObservation struct {
+	HostID     string
+	Kind       string
+	Address    string
+	Port       int64
+	ObservedAt int64
+}
+
+type FwObservation struct {
+	HostID    string
+	Direction string
+	Protocol  string
+	Port      int64
+	Peer      string
+	Source    string
+	Count     int64
+	FirstSeen int64
+	LastSeen  int64
+}
+
+type FwPolicy struct {
+	ID           string
+	Name         string
+	Description  string
+	Enabled      int64
+	Action       string
+	FromJson     string
+	ToJson       string
+	ServicesJson string
+	Position     int64
+	CreatedBy    sql.NullString
+	CreatedAt    int64
+	UpdatedAt    int64
+}
+
+type FwService struct {
+	ID          string
+	Name        string
+	Description string
+	EntriesJson string
+	CreatedAt   int64
+	UpdatedAt   int64
+}
+
+type FwTransaction struct {
+	ID              string
+	HostID          string
+	JobID           sql.NullString
+	Kind            string
+	State           string
+	Transport       string
+	Epoch           string
+	Revision        int64
+	PreviousHash    string
+	CandidateHash   string
+	RulesHash       string
+	SetsHash        string
+	TimeoutS        int64
+	Deadline        sql.NullInt64
+	MeasuredMs      int64
+	OverrideMgmt    int64
+	OverrideTimeout int64
+	AllowDrift      int64
+	Detail          string
+	ErrorClass      string
+	Candidate       string
+	PolicyJson      string
+	StepsJson       string
+	CreatedBy       sql.NullString
+	CreatedAt       int64
+	UpdatedAt       int64
+	FinishedAt      sql.NullInt64
+}
+
 type Group struct {
 	ID          string
 	Name        string

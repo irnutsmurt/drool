@@ -164,7 +164,10 @@ func setup(m *testing.M) (int, error) {
 		fmt.Sprintf("DROOL_AGENT_PORT=%d", agentPort),
 		fmt.Sprintf("DROOL_AGENT_ADVERTISE=%s:%d", agentGateway, agentPort),
 		"DROOL_AGENT_BINARIES_DIR=" + agentDir,
+		// Per-host firewall test control (delay or skip commits; M8 tests).
+		"DROOL_TEST_FW_CONTROL=" + filepath.Join(work, "fw-control"),
 	}}
+	fwControlFile = filepath.Join(work, "fw-control")
 	if err := ctl.start(); err != nil {
 		return 0, err
 	}
@@ -607,6 +610,7 @@ type jobHost struct {
 	ErrorClass   string `json:"error_class"`
 	ErrorMessage string `json:"error_message"`
 	ErrorHint    string `json:"error_hint"`
+	Transport    string `json:"transport"`
 	Steps        []struct {
 		Attempt   int            `json:"attempt"`
 		State     string         `json:"state"`

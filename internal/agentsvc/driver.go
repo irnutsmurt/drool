@@ -137,6 +137,9 @@ func (s *Service) usable(ctx context.Context, hostID string) (*Session, error) {
 	if se == nil {
 		return nil, notConnected("the DROOL agent is not connected")
 	}
+	if after, ok := sessionAfter(ctx); ok && !se.connectedAt.After(after) {
+		return nil, notConnected("the agent has not reconnected over a new connection yet")
+	}
 	if !single {
 		return nil, &model.OpError{Class: model.ClassAuthorization, Message: "agent identity conflict: management is quarantined",
 			Hint: "Two machines present this host's agent identity (a cloned VM?). Resolve the conflict on the host page."}

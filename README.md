@@ -25,8 +25,9 @@ Linux is the product scope.
 
 ## Status: v0.1.0-alpha (Technical Alpha)
 
-`main` additionally contains file management and file deployment ([Files](#files)) and the
-[DROOL agent](#the-drool-agent), which are not part of a tagged release yet.
+`main` additionally contains file management and file deployment ([Files](#files)), the
+[DROOL agent](#the-drool-agent) and the [firewall](#firewall), which are not part of a tagged
+release yet.
 
 "Technical Alpha" means: the core works end to end and has been tested against real
 distributions, but DROOL is young. Expect rough edges, plain visuals, and breaking changes before
@@ -60,6 +61,10 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
   over mutually authenticated TLS. It runs the same operations as SSH, within limits set on the
   host itself, and falls back to SSH safely when it's offline. It updates itself from signed
   releases and rolls back automatically.
+- **Firewall** (on `main`): policies from hosts, groups and services ("web may reach database on
+  PostgreSQL"), compiled to nftables, explained per host, simulated ("can A reach B?"), and applied
+  as dead-man transactions that roll back on their own if DROOL loses the host. Plain-nftables
+  hosts only; Docker, firewalld, UFW and Tailscale are detected and refused.
 - **Accounts and audit:** local users with roles (admin, operator, auditor, viewer), API tokens,
   credentials encrypted at rest, an append-only audit log of every change.
 - **Backup and restore** from the command line.
@@ -68,7 +73,7 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
 
 These are planned (see `DESIGN.md`) but **do not exist yet**:
 
-- firewall management and network intent
+- firewall support for Docker and container networks, WireGuard identity networking
 - scheduling (jobs run when you start them)
 - desired state / drift detection
 - templated files, directory sync, desired-state file baselines (file management and single-file
@@ -406,6 +411,115 @@ isn't used, and hosts with an SSH fallback keep working over SSH.
 *Agents → Controller address* proposes a new address. Every connected agent tests it first. Commit
 once enough agents have confirmed. Agents keep the old address as a fallback, so none are stranded.
 
+## Firewall
+
+DROOL manages host firewalls from **network intent**: you say who may reach whom over which
+services ("the `web` group may reach the `database` group on PostgreSQL"), and DROOL compiles that
+into nftables rules for every affected host. It explains the result, and applies it so that a
+mistake can't lock you out.
+
+### Where enforcement works
+
+Enforcement needs **systemd** and **nftables** (`nft`). DROOL refuses to enforce, and says why, when
+another firewall manager is in charge:
+
+| Environment | Enforcement |
+|---|---|
+| Plain nftables, no other firewall manager | **Supported** |
+| Docker (either backend), firewalld, UFW (active), Tailscale | Refused |
+| Legacy iptables rules, or other nftables rules (including iptables-nft, libvirt, Podman, Kubernetes) | Refused |
+| No systemd (e.g. containers), or no `nft` installed | Refused |
+
+On a refused host you can still check the environment, observe connections, simulate and use
+Explain. If another firewall appears after DROOL enforced (Docker installed, UFW enabled), you can
+still **Remove DROOL policy**: removal only needs systemd and `nft`. After `ufw disable`, UFW's rules
+stay loaded until a reboot, so DROOL keeps refusing until then (it says so). DROOL only ever touches its own table (`inet drool`), its files in
+`/var/lib/drool/firewall` and `/usr/libexec/drool-firewall`, and its boot unit
+`drool-firewall.service`. It never runs `nft flush ruleset` and never edits `/etc/nftables.conf`.
+
+Minimal cloud images (Debian 12 genericcloud, for example) don't include nftables: install the
+`nftables` package first (a DROOL package job works).
+
+### Getting started
+
+1. On a host page, open the **Firewall** card and click **Check** to inspect the host. Check also
+   records DROOL's management path, so **Effective policy** shows it from the start.
+2. Choose a mode:
+   - **Monitor** observes connections and explains what a policy would do.
+   - **Guided** also suggests policies from what it saw.
+   - **Enforce** applies the policy.
+3. Under **Firewall → Policies**, create policies from hosts, groups and services. Use **internal
+   networks**, **the internet** (everything outside the internal ranges), **anywhere** or a CIDR for
+   other peers.
+4. Check the result: the host's **Effective policy** tab lists every allowance with its reason, and
+   **Firewall → Can A reach B?** answers questions like "can web01 reach database01 on TCP 5432?".
+5. Click **Apply policy** on the host, or select hosts under **Firewall → Hosts**.
+
+Inbound traffic is denied unless a policy, or the management path, allows it. Outbound traffic is
+allowed unless you set the host's outbound mode to **restrict**. Deny policies always apply and win
+over allows.
+
+Built-in services: ssh, dns (UDP **and** TCP 53), http, https, ntp, postgres, mysql, redis, smtp,
+submission, imap, smb, nfs, ping, mdns, mqtt, wireguard. Add your own under **Firewall →
+Services**. Internal ranges (RFC 1918, CGNAT/Tailscale, IPv6 ULA, link-local, loopback) are editable
+under **Firewall → Settings**. Add your routed LANs, VLANs and VPNs there.
+
+### How applying works (you can't lock yourself out)
+
+Each host gets a **dead-man transaction**:
+
+1. DROOL measures a brand-new management connection to the host.
+2. The host writes a durable journal and arms a rollback timer (default **120 s**, configurable per
+   host or group). Only then does it apply the new rules, atomically.
+3. DROOL must then reach the host over a completely **new** connection to commit: a new agent
+   connection, or a new SSH connection through every jump host. An old connection proves nothing,
+   because firewalls keep established connections open.
+4. Without that commit, the host restores its previous policy on its own: by the timer, or at boot if
+   it restarted. This covers a policy that cuts the path, a controller that died, a crashed agent and
+   a reboot. DROOL then shows the transaction as **rolled back** with the reason.
+
+While a transaction is pending, DROOL refuses reboots, system updates and restarts of network
+services on that host.
+
+Policies that would remove DROOL's own management path (SSH from the controller or jump host, the
+agent's connection to the controller) are **refused** with the reason. An administrator can use the
+audited **emergency override** with a written reason. The dead-man rollback still applies.
+
+### Address changes
+
+Groups and hosts become nftables sets. When a host gets a new address, DROOL updates only the set
+elements on the hosts that refer to it. That's one atomic nftables update per host, without a new
+transaction. The Firewall page shows "Policy propagation incomplete" until every host is current.
+
+### Drift, removal and recovery
+
+- **Drift:** if someone edits DROOL's table by hand, the host shows **drift**. The next apply refuses
+  until an administrator chooses to replace the drifted rules.
+- **Remove DROOL policy** (host card) takes DROOL's rules off the host, using a transaction as well.
+- **Locked out anyway?** On the host's console, run:
+  ```sh
+  sudo /usr/libexec/drool-firewall/drool-fw rollback   # restores the last committed policy, if a transaction is pending
+  sudo nft delete table inet drool                     # removes DROOL's rules entirely
+  sudo systemctl disable drool-firewall.service        # stops DROOL's rules loading at boot
+  ```
+
+### Observations
+
+- **Agent hosts** sample their connections continuously in Monitor, Guided and Enforce mode, and
+  report aggregated flows: who connected to which port, and how often.
+- **SSH hosts** only get on-demand snapshots (**Take snapshot now**). They are not "learning".
+
+Flows that no policy covers are marked **unclassified**. In Guided mode they become suggested
+policies, which you review before anything is created.
+
+### Permissions
+
+| Permission | Roles | Allows |
+|---|---|---|
+| `firewall.read` | every role | Viewing |
+| `firewall.write` | administrators | Policies, modes, checks and applying |
+| `firewall.override` | administrators | Emergency override, short timeouts, replacing drift |
+
 ## Backup and restore
 
 ```sh
@@ -418,8 +532,11 @@ sudo -u drool drool backup             # → /var/lib/drool/backups/drool-backup
 ```
 
 A backup contains the database (hosts, pinned host keys, groups, users, credentials in encrypted
-form, job history and output, audit log), the self-signed TLS certificate, and the config file if
-you use one.
+form, job history and output, audit log, firewall policies, services, settings and transaction
+history), the self-signed TLS certificate, and the config file if you use one. Hosts keep their
+committed firewall policy whatever happens to the controller. After restoring an older backup, a
+host whose firewall revision is newer than the controller's is flagged; adopt its state on the host
+page before applying again.
 
 **The master key.** Stored credentials (SSH keys, passwords) are encrypted with
 `master.key`, which is **not** included unless you ask for it:
@@ -507,6 +624,17 @@ plain HTTP to the network by accident.
   back); deployment files are limited to 1 GiB. No recursive upload or download of directories,
   no templating. Rollback restores content, owner, group and permissions, not ACLs, SELinux labels
   or extended attributes (new files get the label their directory's policy assigns).
+- **Firewall:**
+  - Enforcement only on plain-nftables hosts with systemd. Docker, firewalld, UFW, Tailscale,
+    legacy iptables and any other nftables rules are refused.
+  - IP addresses stand for identities: on a network where another machine can take an authorized
+    address, segmentation is only as strong as address assignment (DESIGN §4.5). Use static
+    addresses or DHCP reservations for important hosts.
+  - The SSH management path is allowed from the address the host saw at the last transaction. If
+    the controller or jump host changes address, apply again before relying on the new one.
+  - Reloading `nftables.service` with a config that flushes the ruleset removes DROOL's rules
+    until the next apply or boot; DROOL reports it as drift.
+  - Agents sample connections every 30 seconds, so very short-lived connections can be missed.
 - **Local accounts only;** no MFA or single sign-on yet.
 - **Backup and restore are command-line only** (Settings → System shows the commands).
 - The **web UI is functional, not polished**; a visual design pass comes later.

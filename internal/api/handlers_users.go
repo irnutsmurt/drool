@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -45,6 +46,17 @@ func nullMsTime(v sql.NullInt64) *string {
 type listResponse[T any] struct {
 	Items      []T    `json:"items"`
 	NextCursor string `json:"next_cursor,omitempty"`
+}
+
+// MarshalJSON always sends items as an array, never null.
+func (l listResponse[T]) MarshalJSON() ([]byte, error) {
+	if l.Items == nil {
+		l.Items = []T{}
+	}
+	return json.Marshal(struct {
+		Items      []T    `json:"items"`
+		NextCursor string `json:"next_cursor,omitempty"`
+	}{l.Items, l.NextCursor})
 }
 
 func (s *Server) userError(err error) *Problem {

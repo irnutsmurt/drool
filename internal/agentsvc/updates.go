@@ -366,6 +366,9 @@ func (s *Service) offer(ctx context.Context, r db.AgentRollout, hostID string) {
 	if !ok {
 		return
 	}
+	if fh := s.firewallHooks(); fh != nil && fh.UpdateBlocked(hostID) != "" {
+		return // a firewall transaction is pending: the update waits (DESIGN §17.3)
+	}
 	info := se.info()
 	if release.CompareVersions(info.AgentVersion, r.Version) == 0 {
 		s.setHostState(ctx, r.ID, hostID, "healthy", "already running "+r.Version)

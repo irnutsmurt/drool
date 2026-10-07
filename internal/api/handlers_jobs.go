@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"drool/internal/audit"
+	"drool/internal/auth"
 	"drool/internal/engine"
+	"drool/internal/mgmt"
 	"drool/internal/model"
 	"drool/internal/store/db"
 )
@@ -155,6 +157,41 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) submitJob(w http.ResponseWriter, r *http.Request, spec model.JobSpec, rerunOf string) {
 	ctx := r.Context()
+	// Reboots, system updates and network restarts are refused at once
+	// (not queued behind the transaction's host lock) while a firewall
+	// transaction is pending on a target (DESIGN §17.3).
+	if s.d.Firewall != nil {
+		disrupts := false
+		for _, st := range spec.Steps {
+			disrupts = disrupts || mgmt.DisruptsFirewall(st)
+		}
+		if disrupts {
+			if hosts, _, err := engine.ResolveTargets(ctx, s.d.Store.R, spec.Targets); err == nil {
+				for _, h := range hosts {
+					if why := s.d.Firewall.PendingReason(ctx, h.ID); why != "" {
+						writeProblem(w, r, errConflict("firewall_pending", h.Name+": "+why+"; reboots, system updates and network restarts wait until it commits or rolls back"))
+						return
+					}
+				}
+			}
+		}
+	}
+	// Firewall transactions need firewall permissions whichever route
+	// submits them (jobs.execute alone is not enough).
+	for _, st := range spec.Steps {
+		if st.Type != model.OpFirewallApply || st.FirewallApply == nil {
+			continue
+		}
+		p := principalFrom(ctx)
+		if !p.Can(auth.PermFirewallWrite) {
+			writeProblem(w, r, errForbidden("applying firewall policy requires firewall.write"))
+			return
+		}
+		if f := st.FirewallApply; (f.OverrideMgmt || f.OverrideTimeout || f.AllowDrift) && !p.Can(auth.PermFirewallOverride) {
+			writeProblem(w, r, errForbidden("overrides require firewall.override"))
+			return
+		}
+	}
 	key := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
 	if len(key) > 200 {
 		writeProblem(w, r, errValidation("Idempotency-Key is too long"))

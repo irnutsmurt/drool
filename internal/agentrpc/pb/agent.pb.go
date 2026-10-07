@@ -871,6 +871,7 @@ type ControllerMessage struct {
 	//	*ControllerMessage_Disconnect
 	//	*ControllerMessage_RequestTelemetry
 	//	*ControllerMessage_Config
+	//	*ControllerMessage_FirewallConfig
 	Msg           isControllerMessage_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1030,6 +1031,15 @@ func (x *ControllerMessage) GetConfig() *ConfigPush {
 	return nil
 }
 
+func (x *ControllerMessage) GetFirewallConfig() *FirewallConfig {
+	if x != nil {
+		if x, ok := x.Msg.(*ControllerMessage_FirewallConfig); ok {
+			return x.FirewallConfig
+		}
+	}
+	return nil
+}
+
 type isControllerMessage_Msg interface {
 	isControllerMessage_Msg()
 }
@@ -1086,6 +1096,10 @@ type ControllerMessage_Config struct {
 	Config *ConfigPush `protobuf:"bytes,13,opt,name=config,proto3,oneof"`
 }
 
+type ControllerMessage_FirewallConfig struct {
+	FirewallConfig *FirewallConfig `protobuf:"bytes,14,opt,name=firewall_config,json=firewallConfig,proto3,oneof"`
+}
+
 func (*ControllerMessage_HelloAck) isControllerMessage_Msg() {}
 
 func (*ControllerMessage_Ping) isControllerMessage_Msg() {}
@@ -1112,6 +1126,8 @@ func (*ControllerMessage_RequestTelemetry) isControllerMessage_Msg() {}
 
 func (*ControllerMessage_Config) isControllerMessage_Msg() {}
 
+func (*ControllerMessage_FirewallConfig) isControllerMessage_Msg() {}
+
 type Hello struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Info             *AgentInfo             `protobuf:"bytes,1,opt,name=info,proto3" json:"info,omitempty"`
@@ -1124,6 +1140,8 @@ type Hello struct {
 	Update           *UpdateReport          `protobuf:"bytes,8,opt,name=update,proto3" json:"update,omitempty"` // outcome of a pending/finished update
 	Endpoints        []string               `protobuf:"bytes,9,rep,name=endpoints,proto3" json:"endpoints,omitempty"`
 	ControllerEpoch  string                 `protobuf:"bytes,10,opt,name=controller_epoch,json=controllerEpoch,proto3" json:"controller_epoch,omitempty"` // the epoch the agent was enrolled with
+	FirewallJson     []byte                 `protobuf:"bytes,11,opt,name=firewall_json,json=firewallJson,proto3" json:"firewall_json,omitempty"`          // drool-fw status and resolved endpoints (M8)
+	Features         []string               `protobuf:"bytes,12,rep,name=features,proto3" json:"features,omitempty"`                                      // optional capabilities of this agent build, e.g. "firewall-1"
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -1226,6 +1244,20 @@ func (x *Hello) GetControllerEpoch() string {
 		return x.ControllerEpoch
 	}
 	return ""
+}
+
+func (x *Hello) GetFirewallJson() []byte {
+	if x != nil {
+		return x.FirewallJson
+	}
+	return nil
+}
+
+func (x *Hello) GetFeatures() []string {
+	if x != nil {
+		return x.Features
+	}
+	return nil
 }
 
 type StateReport struct {
@@ -2401,6 +2433,60 @@ func (x *ConfigPush) GetVersion() *DomainState {
 	return nil
 }
 
+// FirewallConfig turns continuous connection learning on or off (DESIGN
+// 19.1). Not versioned state: it is re-sent on every session.
+type FirewallConfig struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Learning      bool                   `protobuf:"varint,1,opt,name=learning,proto3" json:"learning,omitempty"`
+	SampleSeconds uint32                 `protobuf:"varint,2,opt,name=sample_seconds,json=sampleSeconds,proto3" json:"sample_seconds,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FirewallConfig) Reset() {
+	*x = FirewallConfig{}
+	mi := &file_agent_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FirewallConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FirewallConfig) ProtoMessage() {}
+
+func (x *FirewallConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FirewallConfig.ProtoReflect.Descriptor instead.
+func (*FirewallConfig) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *FirewallConfig) GetLearning() bool {
+	if x != nil {
+		return x.Learning
+	}
+	return false
+}
+
+func (x *FirewallConfig) GetSampleSeconds() uint32 {
+	if x != nil {
+		return x.SampleSeconds
+	}
+	return 0
+}
+
 type ConfigAck struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Version       *DomainState           `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
@@ -2413,7 +2499,7 @@ type ConfigAck struct {
 
 func (x *ConfigAck) Reset() {
 	*x = ConfigAck{}
-	mi := &file_agent_proto_msgTypes[33]
+	mi := &file_agent_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2425,7 +2511,7 @@ func (x *ConfigAck) String() string {
 func (*ConfigAck) ProtoMessage() {}
 
 func (x *ConfigAck) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[33]
+	mi := &file_agent_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2438,7 +2524,7 @@ func (x *ConfigAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigAck.ProtoReflect.Descriptor instead.
 func (*ConfigAck) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{33}
+	return file_agent_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ConfigAck) GetVersion() *DomainState {
@@ -2479,7 +2565,7 @@ type Disconnect struct {
 
 func (x *Disconnect) Reset() {
 	*x = Disconnect{}
-	mi := &file_agent_proto_msgTypes[34]
+	mi := &file_agent_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2491,7 +2577,7 @@ func (x *Disconnect) String() string {
 func (*Disconnect) ProtoMessage() {}
 
 func (x *Disconnect) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[34]
+	mi := &file_agent_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2504,7 +2590,7 @@ func (x *Disconnect) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Disconnect.ProtoReflect.Descriptor instead.
 func (*Disconnect) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{34}
+	return file_agent_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *Disconnect) GetReason() string {
@@ -2530,7 +2616,7 @@ type RequestTelemetry struct {
 
 func (x *RequestTelemetry) Reset() {
 	*x = RequestTelemetry{}
-	mi := &file_agent_proto_msgTypes[35]
+	mi := &file_agent_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2542,7 +2628,7 @@ func (x *RequestTelemetry) String() string {
 func (*RequestTelemetry) ProtoMessage() {}
 
 func (x *RequestTelemetry) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[35]
+	mi := &file_agent_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2555,7 +2641,7 @@ func (x *RequestTelemetry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestTelemetry.ProtoReflect.Descriptor instead.
 func (*RequestTelemetry) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{35}
+	return file_agent_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *RequestTelemetry) GetKind() string {
@@ -2577,7 +2663,7 @@ type Frame struct {
 
 func (x *Frame) Reset() {
 	*x = Frame{}
-	mi := &file_agent_proto_msgTypes[36]
+	mi := &file_agent_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2589,7 +2675,7 @@ func (x *Frame) String() string {
 func (*Frame) ProtoMessage() {}
 
 func (x *Frame) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[36]
+	mi := &file_agent_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2602,7 +2688,7 @@ func (x *Frame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Frame.ProtoReflect.Descriptor instead.
 func (*Frame) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{36}
+	return file_agent_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *Frame) GetChannelId() string {
@@ -2643,7 +2729,7 @@ type FetchReleaseRequest struct {
 
 func (x *FetchReleaseRequest) Reset() {
 	*x = FetchReleaseRequest{}
-	mi := &file_agent_proto_msgTypes[37]
+	mi := &file_agent_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2655,7 +2741,7 @@ func (x *FetchReleaseRequest) String() string {
 func (*FetchReleaseRequest) ProtoMessage() {}
 
 func (x *FetchReleaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[37]
+	mi := &file_agent_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2668,7 +2754,7 @@ func (x *FetchReleaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchReleaseRequest.ProtoReflect.Descriptor instead.
 func (*FetchReleaseRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{37}
+	return file_agent_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *FetchReleaseRequest) GetReleaseId() string {
@@ -2694,7 +2780,7 @@ type Chunk struct {
 
 func (x *Chunk) Reset() {
 	*x = Chunk{}
-	mi := &file_agent_proto_msgTypes[38]
+	mi := &file_agent_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2706,7 +2792,7 @@ func (x *Chunk) String() string {
 func (*Chunk) ProtoMessage() {}
 
 func (x *Chunk) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[38]
+	mi := &file_agent_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2719,7 +2805,7 @@ func (x *Chunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Chunk.ProtoReflect.Descriptor instead.
 func (*Chunk) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{38}
+	return file_agent_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *Chunk) GetData() []byte {
@@ -2795,7 +2881,7 @@ const file_agent_proto_rawDesc = "" +
 	"\n" +
 	"config_ack\x18\n" +
 	" \x01(\v2\x19.drool.agent.v1.ConfigAckH\x00R\tconfigAckB\x05\n" +
-	"\x03msg\"\xcb\x06\n" +
+	"\x03msg\"\x96\a\n" +
 	"\x11ControllerMessage\x127\n" +
 	"\thello_ack\x18\x01 \x01(\v2\x18.drool.agent.v1.HelloAckH\x00R\bhelloAck\x12*\n" +
 	"\x04ping\x18\x02 \x01(\v2\x14.drool.agent.v1.PingH\x00R\x04ping\x12@\n" +
@@ -2812,8 +2898,9 @@ const file_agent_proto_rawDesc = "" +
 	"disconnect\x18\v \x01(\v2\x1a.drool.agent.v1.DisconnectH\x00R\n" +
 	"disconnect\x12O\n" +
 	"\x11request_telemetry\x18\f \x01(\v2 .drool.agent.v1.RequestTelemetryH\x00R\x10requestTelemetry\x124\n" +
-	"\x06config\x18\r \x01(\v2\x1a.drool.agent.v1.ConfigPushH\x00R\x06configB\x05\n" +
-	"\x03msg\"\xb1\x03\n" +
+	"\x06config\x18\r \x01(\v2\x1a.drool.agent.v1.ConfigPushH\x00R\x06config\x12I\n" +
+	"\x0ffirewall_config\x18\x0e \x01(\v2\x1e.drool.agent.v1.FirewallConfigH\x00R\x0efirewallConfigB\x05\n" +
+	"\x03msg\"\xf2\x03\n" +
 	"\x05Hello\x12-\n" +
 	"\x04info\x18\x01 \x01(\v2\x19.drool.agent.v1.AgentInfoR\x04info\x12#\n" +
 	"\rsession_nonce\x18\x02 \x01(\tR\fsessionNonce\x12!\n" +
@@ -2825,7 +2912,9 @@ const file_agent_proto_rawDesc = "" +
 	"\x06update\x18\b \x01(\v2\x1c.drool.agent.v1.UpdateReportR\x06update\x12\x1c\n" +
 	"\tendpoints\x18\t \x03(\tR\tendpoints\x12)\n" +
 	"\x10controller_epoch\x18\n" +
-	" \x01(\tR\x0fcontrollerEpoch\"D\n" +
+	" \x01(\tR\x0fcontrollerEpoch\x12#\n" +
+	"\rfirewall_json\x18\v \x01(\fR\ffirewallJson\x12\x1a\n" +
+	"\bfeatures\x18\f \x03(\tR\bfeatures\"D\n" +
 	"\vStateReport\x125\n" +
 	"\adomains\x18\x01 \x03(\v2\x1b.drool.agent.v1.DomainStateR\adomains\"z\n" +
 	"\vDomainState\x12\x16\n" +
@@ -2910,7 +2999,10 @@ const file_agent_proto_rawDesc = "" +
 	"\n" +
 	"ConfigPush\x12.\n" +
 	"\x13requested_caps_json\x18\x01 \x01(\fR\x11requestedCapsJson\x125\n" +
-	"\aversion\x18\x02 \x01(\v2\x1b.drool.agent.v1.DomainStateR\aversion\"\x99\x01\n" +
+	"\aversion\x18\x02 \x01(\v2\x1b.drool.agent.v1.DomainStateR\aversion\"S\n" +
+	"\x0eFirewallConfig\x12\x1a\n" +
+	"\blearning\x18\x01 \x01(\bR\blearning\x12%\n" +
+	"\x0esample_seconds\x18\x02 \x01(\rR\rsampleSeconds\"\x99\x01\n" +
 	"\tConfigAck\x125\n" +
 	"\aversion\x18\x01 \x01(\v2\x1b.drool.agent.v1.DomainStateR\aversion\x12\x18\n" +
 	"\aapplied\x18\x02 \x01(\bR\aapplied\x12\x14\n" +
@@ -2955,7 +3047,7 @@ func file_agent_proto_rawDescGZIP() []byte {
 	return file_agent_proto_rawDescData
 }
 
-var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
+var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
 var file_agent_proto_goTypes = []any{
 	(*GetTrustRequest)(nil),           // 0: drool.agent.v1.GetTrustRequest
 	(*TrustBundle)(nil),               // 1: drool.agent.v1.TrustBundle
@@ -2990,12 +3082,13 @@ var file_agent_proto_goTypes = []any{
 	(*UpdateReport)(nil),              // 30: drool.agent.v1.UpdateReport
 	(*ManifestAck)(nil),               // 31: drool.agent.v1.ManifestAck
 	(*ConfigPush)(nil),                // 32: drool.agent.v1.ConfigPush
-	(*ConfigAck)(nil),                 // 33: drool.agent.v1.ConfigAck
-	(*Disconnect)(nil),                // 34: drool.agent.v1.Disconnect
-	(*RequestTelemetry)(nil),          // 35: drool.agent.v1.RequestTelemetry
-	(*Frame)(nil),                     // 36: drool.agent.v1.Frame
-	(*FetchReleaseRequest)(nil),       // 37: drool.agent.v1.FetchReleaseRequest
-	(*Chunk)(nil),                     // 38: drool.agent.v1.Chunk
+	(*FirewallConfig)(nil),            // 33: drool.agent.v1.FirewallConfig
+	(*ConfigAck)(nil),                 // 34: drool.agent.v1.ConfigAck
+	(*Disconnect)(nil),                // 35: drool.agent.v1.Disconnect
+	(*RequestTelemetry)(nil),          // 36: drool.agent.v1.RequestTelemetry
+	(*Frame)(nil),                     // 37: drool.agent.v1.Frame
+	(*FetchReleaseRequest)(nil),       // 38: drool.agent.v1.FetchReleaseRequest
+	(*Chunk)(nil),                     // 39: drool.agent.v1.Chunk
 }
 var file_agent_proto_depIdxs = []int32{
 	2,  // 0: drool.agent.v1.TrustBundle.manifest:type_name -> drool.agent.v1.SignedManifest
@@ -3010,7 +3103,7 @@ var file_agent_proto_depIdxs = []int32{
 	30, // 9: drool.agent.v1.AgentMessage.update:type_name -> drool.agent.v1.UpdateReport
 	31, // 10: drool.agent.v1.AgentMessage.manifest_ack:type_name -> drool.agent.v1.ManifestAck
 	22, // 11: drool.agent.v1.AgentMessage.channel_failed:type_name -> drool.agent.v1.ChannelFailed
-	33, // 12: drool.agent.v1.AgentMessage.config_ack:type_name -> drool.agent.v1.ConfigAck
+	34, // 12: drool.agent.v1.AgentMessage.config_ack:type_name -> drool.agent.v1.ConfigAck
 	15, // 13: drool.agent.v1.ControllerMessage.hello_ack:type_name -> drool.agent.v1.HelloAck
 	17, // 14: drool.agent.v1.ControllerMessage.ping:type_name -> drool.agent.v1.Ping
 	21, // 15: drool.agent.v1.ControllerMessage.open_channel:type_name -> drool.agent.v1.OpenChannel
@@ -3021,34 +3114,35 @@ var file_agent_proto_depIdxs = []int32{
 	28, // 20: drool.agent.v1.ControllerMessage.endpoint_commit:type_name -> drool.agent.v1.EndpointCommit
 	29, // 21: drool.agent.v1.ControllerMessage.update_offer:type_name -> drool.agent.v1.UpdateOffer
 	2,  // 22: drool.agent.v1.ControllerMessage.manifest:type_name -> drool.agent.v1.SignedManifest
-	34, // 23: drool.agent.v1.ControllerMessage.disconnect:type_name -> drool.agent.v1.Disconnect
-	35, // 24: drool.agent.v1.ControllerMessage.request_telemetry:type_name -> drool.agent.v1.RequestTelemetry
+	35, // 23: drool.agent.v1.ControllerMessage.disconnect:type_name -> drool.agent.v1.Disconnect
+	36, // 24: drool.agent.v1.ControllerMessage.request_telemetry:type_name -> drool.agent.v1.RequestTelemetry
 	32, // 25: drool.agent.v1.ControllerMessage.config:type_name -> drool.agent.v1.ConfigPush
-	3,  // 26: drool.agent.v1.Hello.info:type_name -> drool.agent.v1.AgentInfo
-	13, // 27: drool.agent.v1.Hello.state:type_name -> drool.agent.v1.StateReport
-	30, // 28: drool.agent.v1.Hello.update:type_name -> drool.agent.v1.UpdateReport
-	14, // 29: drool.agent.v1.StateReport.domains:type_name -> drool.agent.v1.DomainState
-	14, // 30: drool.agent.v1.ConfigPush.version:type_name -> drool.agent.v1.DomainState
-	14, // 31: drool.agent.v1.ConfigAck.version:type_name -> drool.agent.v1.DomainState
-	0,  // 32: drool.agent.v1.Agent.GetTrust:input_type -> drool.agent.v1.GetTrustRequest
-	4,  // 33: drool.agent.v1.Agent.Enroll:input_type -> drool.agent.v1.EnrollRequest
-	6,  // 34: drool.agent.v1.Agent.RecoveryChallenge:input_type -> drool.agent.v1.RecoveryChallengeRequest
-	8,  // 35: drool.agent.v1.Agent.Recover:input_type -> drool.agent.v1.RecoverRequest
-	10, // 36: drool.agent.v1.Agent.Session:input_type -> drool.agent.v1.AgentMessage
-	36, // 37: drool.agent.v1.Agent.Channel:input_type -> drool.agent.v1.Frame
-	37, // 38: drool.agent.v1.Agent.FetchRelease:input_type -> drool.agent.v1.FetchReleaseRequest
-	1,  // 39: drool.agent.v1.Agent.GetTrust:output_type -> drool.agent.v1.TrustBundle
-	5,  // 40: drool.agent.v1.Agent.Enroll:output_type -> drool.agent.v1.EnrollResponse
-	7,  // 41: drool.agent.v1.Agent.RecoveryChallenge:output_type -> drool.agent.v1.RecoveryChallengeResponse
-	9,  // 42: drool.agent.v1.Agent.Recover:output_type -> drool.agent.v1.RecoverResponse
-	11, // 43: drool.agent.v1.Agent.Session:output_type -> drool.agent.v1.ControllerMessage
-	36, // 44: drool.agent.v1.Agent.Channel:output_type -> drool.agent.v1.Frame
-	38, // 45: drool.agent.v1.Agent.FetchRelease:output_type -> drool.agent.v1.Chunk
-	39, // [39:46] is the sub-list for method output_type
-	32, // [32:39] is the sub-list for method input_type
-	32, // [32:32] is the sub-list for extension type_name
-	32, // [32:32] is the sub-list for extension extendee
-	0,  // [0:32] is the sub-list for field type_name
+	33, // 26: drool.agent.v1.ControllerMessage.firewall_config:type_name -> drool.agent.v1.FirewallConfig
+	3,  // 27: drool.agent.v1.Hello.info:type_name -> drool.agent.v1.AgentInfo
+	13, // 28: drool.agent.v1.Hello.state:type_name -> drool.agent.v1.StateReport
+	30, // 29: drool.agent.v1.Hello.update:type_name -> drool.agent.v1.UpdateReport
+	14, // 30: drool.agent.v1.StateReport.domains:type_name -> drool.agent.v1.DomainState
+	14, // 31: drool.agent.v1.ConfigPush.version:type_name -> drool.agent.v1.DomainState
+	14, // 32: drool.agent.v1.ConfigAck.version:type_name -> drool.agent.v1.DomainState
+	0,  // 33: drool.agent.v1.Agent.GetTrust:input_type -> drool.agent.v1.GetTrustRequest
+	4,  // 34: drool.agent.v1.Agent.Enroll:input_type -> drool.agent.v1.EnrollRequest
+	6,  // 35: drool.agent.v1.Agent.RecoveryChallenge:input_type -> drool.agent.v1.RecoveryChallengeRequest
+	8,  // 36: drool.agent.v1.Agent.Recover:input_type -> drool.agent.v1.RecoverRequest
+	10, // 37: drool.agent.v1.Agent.Session:input_type -> drool.agent.v1.AgentMessage
+	37, // 38: drool.agent.v1.Agent.Channel:input_type -> drool.agent.v1.Frame
+	38, // 39: drool.agent.v1.Agent.FetchRelease:input_type -> drool.agent.v1.FetchReleaseRequest
+	1,  // 40: drool.agent.v1.Agent.GetTrust:output_type -> drool.agent.v1.TrustBundle
+	5,  // 41: drool.agent.v1.Agent.Enroll:output_type -> drool.agent.v1.EnrollResponse
+	7,  // 42: drool.agent.v1.Agent.RecoveryChallenge:output_type -> drool.agent.v1.RecoveryChallengeResponse
+	9,  // 43: drool.agent.v1.Agent.Recover:output_type -> drool.agent.v1.RecoverResponse
+	11, // 44: drool.agent.v1.Agent.Session:output_type -> drool.agent.v1.ControllerMessage
+	37, // 45: drool.agent.v1.Agent.Channel:output_type -> drool.agent.v1.Frame
+	39, // 46: drool.agent.v1.Agent.FetchRelease:output_type -> drool.agent.v1.Chunk
+	40, // [40:47] is the sub-list for method output_type
+	33, // [33:40] is the sub-list for method input_type
+	33, // [33:33] is the sub-list for extension type_name
+	33, // [33:33] is the sub-list for extension extendee
+	0,  // [0:33] is the sub-list for field type_name
 }
 
 func init() { file_agent_proto_init() }
@@ -3082,6 +3176,7 @@ func file_agent_proto_init() {
 		(*ControllerMessage_Disconnect)(nil),
 		(*ControllerMessage_RequestTelemetry)(nil),
 		(*ControllerMessage_Config)(nil),
+		(*ControllerMessage_FirewallConfig)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -3089,7 +3184,7 @@ func file_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   39,
+			NumMessages:   40,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -117,3 +117,6 @@ func (r sshRunner) Start(cmd string, stdin []byte, stdout, stderr io.Writer, pty
 	}
 	return p, nil
 }
+
+// Runner adapts an SSH client (pooled or freshly dialed) to hostexec.Runner.
+func Runner(c *sshx.Client) hostexec.Runner { return sshRunner{c} }

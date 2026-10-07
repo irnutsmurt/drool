@@ -1,6 +1,6 @@
 # DROOL Technical Alpha: Internal Architecture
 
-**v0.5 · 2026-10-06 (v0.1.0-alpha + M6 + M7)** · Implements the *Technical Alpha* slice of `DESIGN.md` (§33), M6 file management and single-file deployment (DESIGN §13), and M7, the DROOL agent and its lifecycle (DESIGN §4, §6, §8, §9, §28; §23 here).
+**v0.6 · 2026-10-07 (v0.1.0-alpha + M6 + M7 + M8)** · Implements the *Technical Alpha* slice of `DESIGN.md` (§33), M6 file management and single-file deployment (DESIGN §13), M7, the DROOL agent and its lifecycle (DESIGN §4, §6, §8, §9, §28; §23 here), and M8, firewall policy and safe enforcement on plain-nftables hosts (DESIGN §15–19; §24 here).
 
 Sections 1–21 describe the implementation as built. Where an implementation decision superseded the original plan, the prose was updated and the decision and its reason are in §22.
 
@@ -25,8 +25,10 @@ This document is where we argue about concrete things: schema, operation semanti
 
 - **M7:** the `drool-agent` binary and the agent Driver: enrollment, PKI with an offline-capable root and trust manifest, mTLS gRPC, certificate renewal/recovery/revocation, clone quarantine, local capability ceiling, state versioning, telemetry, agent-side audit, protocol negotiation, signed self-update with automatic rollback, staged rollouts, endpoint migration; Agent preferred / SSH fallback (§23)
 
+- **M8:** intent-based firewall policy (hosts, groups, named services, internet/internal, IPv4/IPv6), compilation to nftables via named sets, environment detection and refusal, the dead-man transaction protocol over the agent and SSH (durable host journal, systemd rollback timer, boot loader, commit only over a new connection), management-path protection with an audited emergency override, set-element propagation, drift detection, Monitor/Guided/Enforce, connection learning (agents) and snapshots (SSH), simulation and Explain Host (§24)
+
 ### Out of scope (but the design must not block them)
-Firewall, batch/canary rollouts, scheduling, templated files and directory sync, desired state, YAML editing, MFA, plugins, multi-hop jumps.
+Docker/container firewalling, WireGuard identity networking, batch/canary rollouts, scheduling, templated files and directory sync, desired state, YAML editing, MFA, plugins, multi-hop jumps.
 
 ### Supported managed hosts
 Debian 12+, Ubuntu 22.04+, RHEL/Rocky/Alma 9+, current Fedora (dnf5). The integration matrix (§18) runs Debian 12 and 13, Ubuntu 24.04 and 26.04, Rocky 9 and 10, and Fedora 44.
@@ -925,7 +927,7 @@ Privileged containers are not used for testing (they interfered with the develop
 | Agent (Alpha 2) | **Done in M7** (§23) |
 | Agent file access | `files.FS` is the transport contract; `Caps.AllowedPaths` carries the agent's `files.allowed_paths` as a ceiling the controller may narrow, never widen; `Caps.RootEquivalent` drives the "root-equivalent" label for unrestricted access. `filedeploy` and the API depend only on `files.FS` |
 | Multi-hop | `host_hops` table; dialer recursion is written but limited to one hop |
-| Firewall Beta | `sshx.DialFresh()` (no pool, no reuse); `host_addresses` with `source`; reserved `state_versions` |
+| Firewall Beta | **Done in M8** (§24); container/Docker strategies and the WireGuard backend reuse the backend-independent compiler (`internal/firewall/compile`) |
 | Desired state | Idempotent ops already return `Changed` with before/after states |
 | YAML | Canonical Go types + generated JSON Schema |
 | Hash-chained audit | `prev_hash` column reserved |
@@ -945,6 +947,7 @@ Privileged containers are not used for testing (they interfered with the develop
 | **M5 Alpha release** | Backup/restore, integration matrix green, error explanations, docs, tag `v0.1.0-alpha` |
 | **M6 Files** | File manager, artifact store, managed file deployment with preview/validation/rollback (§10.6, §10.7) |
 | **M7 Agent** | `drool-agent`, enrollment, PKI, agent Driver and `files.FS`, management router with SSH fallback, lifecycle, self-update and rollouts (§23) |
+| **M8 Firewall** | Policy model and compiler, nftables backend, coexistence refusal, dead-man transactions (agent + SSH), management-path protection, sets, drift, learning, simulation, Explain (§24) |
 
 ---
 
@@ -1128,6 +1131,30 @@ Meaningful choices made during implementation, newest last.
 | M7 | `drool-agent install --token` on an enrolled host enrolls again: the new identity is created beside the old one and only swapped in after enrollment succeeded; the old identity is moved to `replaced-<time>/`, never deleted. Without systemd, install stops a previous supervisor and agent first | Found in the usability pass: re-installing after a revocation kept the revoked identity, and a second supervisor ran next to the first |
 | M7 | Usability pass (headless Chromium, all eight steps on an SSH host: install from the host page, Agent preferred / SSH fallback, command/package/service/files through the agent, agent stopped → SSH fallback shown per job, local ceiling change → CapabilityError with no fallback and the UI unable to widen it, signed update, broken signed update → automatic rollback and paused rollout, revocation → management blocked). Also fixed: preset cards' content was vertically centered; the CapabilityError text said the same thing three times; `AuthorizationError` was explained as "sudo refused" for blocked management; log and CLI messages pointed to a nonexistent "Settings → Agents"; agents and files pages load on demand (main bundle 539 → 358 KB) | M7 usability goal |
 | M7 | APT's "Package 'x' has no installation candidate" is classified like "Unable to locate package" (`package not found`), so named package operations refresh metadata once and retry | Found in the Debian 12 VM test: a fresh cloud image with stale lists couldn't install `cron` (the same class of problem as the M5 fix) |
+| M8 | One host-side tool, `drool-fw` (POSIX sh: dash, bash), implements the whole on-host transaction protocol for both transports: the agent runs it as root, the SSH path through sudo with the tool and boot unit sent along and installed when their hash differs. Files live in `/usr/libexec/drool-firewall` (bin_t), `/var/lib/drool/firewall` and `drool-firewall.service` | One implementation of the protocol that must survive crashes; testable without root under `sh` with fake `nft`/`systemd-run`; the M7 SELinux lesson (`/usr/lib` is `lib_t`) |
+| M8 | The SSH executor's firewall state (DESIGN §9 "state file on the host") is the tool's own `committed.json`/journal: committed revision, epoch, hash; the tool refuses expired, duplicate, stale and foreign-epoch transactions itself | State lives with the domain's tooling, so a restore, an agent and SSH see the same thing |
+| M8 | Management-path flows come from what the host saw over a fresh connection, re-measured at every transaction: `SSH_CONNECTION` (source address and sshd port as the host sees them, right behind NAT, port forwarding and jump hosts) and the agent's resolved controller endpoints. Their accept rules precede denies; a deny that matches one is a conflict; the emergency override drops only the conflicting accept | The configured address/port can differ from what the host sees (port forwarding in the VM tests, NAT in real networks); a stale observation would protect the wrong path |
+| M8 | The agent commits only over a session that connected after the apply (`agentsvc.WithSessionAfter`); after a pending apply the agent ends that session itself and the controller also asks it to reconnect. The agent cancels only the apply-time session, never a newer one | Found in review: the delayed self-disconnect could have cut the new session the commit travels over |
+| M8 | Any foreign nftables table with rules or a dropping base chain refuses enforcement, not only tables of recognised managers; empty accepting tables (Debian's default `inet filter`) are fine | A rule in another table can drop what DROOL accepts; precedence can't be proven (DESIGN §16.4) |
+| M8 | Outbound traffic is allowed by default per host; `restrict` makes output default-drop with only policy allows, the management path and base ICMP/DHCP. Denies compile on both ends regardless | Default-deny outbound breaks package updates and DNS on most hosts; the design leaves the default open |
+| M8 | Removing DROOL's policy is itself a transaction (candidate = an empty `inet drool`) | One path for every change, including the one that should be harmless |
+| M8 | Address changes: the converger compares each enforced host's sets hash every 15 s and pushes `drool-fw sets` (flush and refill of the changed sets in one nft transaction, a generation number, refused unless the committed rules hash matches). Never on hosts applied with the emergency override | DESIGN §15.4, §5.3.1; the override removed management protection, so only a full transaction may change those hosts |
+| M8 | `firewall_apply` jobs run one host at a time and stop at the first failure; the job timeout is the longest rollback window plus 10 minutes | A bad policy stops at the first host; the job outlives the transaction |
+| M8 | Reboots, system updates, network-service actions and agent updates are refused while a transaction is open — at job submission (409) and again at dispatch | Found in the Debian VM test: checked only at dispatch, a reboot queued behind the transaction's host lock and ran right after the commit instead of being refused |
+| M8 | Drift is the hash of `nft -s list table inet drool` against the one recorded at commit (and refreshed at boot); agents report it with status telemetry, SSH hosts are checked every 5 minutes; applying over drift needs `firewall.override` ("replace drifted rules"), and a rollback then restores DROOL's last committed policy, not the drift | DROOL must never silently overwrite or adopt changes it didn't make |
+| M8 | Learning samples sockets with `ss` every 30 s on agents (aggregated by direction, protocol, service port and peer; new connections counted once), not conntrack or eBPF | No extra packages or kernel features, works in every supported environment; conntrack/eBPF can replace the sampler later without changing the model |
+| M8 | The learning switch is its own message (`FirewallConfig`), re-sent on every session, not versioned agent-config | It is not managed state: losing it is harmless, re-sending is cheap |
+| M8 | Agents announce optional features in the hello (`firewall-1`); the protocol version stays 1. Agents without the feature are managed over SSH for firewall purposes when SSH is configured | Additive change; old agents keep working for everything else |
+| M8 | Transaction outcomes: committed, rolled_back (confirmed by the host), failed (nothing changed), unknown (not committed and not yet confirmed); unknown is resolved when the agent reconnects or by the converger over a fresh SSH connection | Never report an unconfirmed firewall operation as success |
+| M8 | Rollback timeout: host value, else the smallest of its groups', else the default (120 s); 30–3600 s in settings; refused below 10 s and below 3x the measured fresh connection unless `override_timeout` | DESIGN §17.4 |
+| M8 | Test-only controls: `DROOL_TEST_FW_CONTROL` (per-host delay or skip of the commit), `DROOL_TEST_FW_DELAY_COMMIT`, `DROOL_TEST_FW_SKIP_COMMIT`, and `DROOL_FW_DOCKER_SOCK` in the detect script; each logs "TEST MODE" | Lets integration tests kill the controller, the agent or the host inside the pending window deterministically |
+| M8 | Minimal cloud images without nftables (Debian 12 genericcloud) are refused with "install the nftables package"; DROOL doesn't install it on its own | Found in the Debian VM test; installing packages implicitly would be a surprise change |
+| M8 | UFW counts as active only when `ufw status` says so; `ufw.service` being active is used only when `ufw status` is unavailable | Found in the Ubuntu 24.04 VM test: `ufw.service` is a oneshot that is "active (exited)" with UFW disabled, so every Ubuntu host was refused |
+| M8 | `ufw disable` leaves UFW's iptables-nft chains loaded until the next boot; DROOL keeps refusing (they are foreign rules) and says so: "UFW is disabled but its rules are still loaded: reboot, or remove them" | Found in the Ubuntu 24.04 VM test; refusing is right, an unexplained refusal was not |
+| M8 | Removing DROOL's policy is allowed on hosts where enforcement is refused, gated only on the tooling (root, systemd, nft, required tools) | A firewall manager installed after DROOL enforced must not trap DROOL's rules on the host; removal deletes only `inet drool` |
+| M8 | Side effects of a settings change (pushing the learning switch to the agent, waking the converger) run after the database transaction commits, never from inside it | Found in the container regression run: the learning push read the host's mode through another connection before the commit and sent "learning off"; it passed earlier only by winning the race |
+| M8 | Check and SSH snapshots also record how the host sees DROOL's SSH connection (`SSH_CONNECTION`, unprivileged, over the connection in use); transactions still re-measure it over a fresh connection before compiling | Found in the browser pass: before the first transaction Explain had no management row and a snapshot showed DROOL's own connection as "would be blocked" |
+| M8 | List-valued API fields are arrays, never `null` (`listResponse` marshals nil as `[]`; firewall results initialise their slices) | Found in the browser pass: `null` crashed the Firewall page and the policy preview |
 ---
 
 ## 23. Agent (M7)
@@ -1207,3 +1234,130 @@ New permissions: `agents.read` (all roles), `agents.enroll`, `agents.manage`, `a
 - **In-process end to end** (`internal/api`, real gRPC and mTLS): enroll/operate/fallback/revoke, token expiry/reuse/revocation, renewal and recovery inside and outside the grace, clone quarantine, manifest rotation, planned rotation, protocol compatibility at both boundaries, loss during an operation (exactly one execution), endpoint migration.
 - **Containers, real binaries** (`test/integration/agent_test.go`, all seven distros): install over SSH, commands, packages, services, files and deployment through the agent, the op log, SSH fallback with the agent stopped, a local ceiling change that SSH must not bypass, manual enrollment with a token on stdin, token reuse, agent-observed addresses; updates: signed update with health confirmation, offline catch-up, a broken signed release rolled back with the rollout paused at the canary, an untrusted signing key refused by the agent, an unsigned binary refused by the controller.
 - **VMs with real systemd** (`vm_agent_test.go`, Debian 12, Ubuntu 24.04, Rocky 9 with SELinux enforcing): the unit with its `ExecStartPre` guard, services, packages, a real update and an automatic rollback through systemd, reboot through the agent, revocation.
+
+---
+
+## 24. Firewall (M8)
+
+Implements DESIGN §15–19 for plain-nftables hosts. Everything here is as built; deviations from the design and their reasons are in §22.
+
+### 24.1 Components
+
+| Package | Role |
+|---|---|
+| `internal/firewall/policy` | Intent model: selectors (host, group, internet, internal, any, cidr), built-in and custom services, `internal_ranges`, validation |
+| `internal/firewall/compile` | Backend-independent per-host policy: ordered input/output rules with reasons, named address sets, management-path flows and conflicts, evaluation (simulation) and Explain |
+| `internal/firewall/nftables` | The nftables backend: rendering, set-element deltas, environment detection (`nft -j list ruleset` and service checks) and the compatibility matrix |
+| `internal/firewall/hostfw` | The on-host tool `drool-fw` (POSIX sh), the boot unit, detect and snapshot scripts, and the Go wrapper that runs them through any `hostexec.Runner` |
+| `internal/firewall/observe` | Connection snapshots (`ss`) → aggregated flows |
+| `internal/firewall/fwsvc` | Controller service: storage, plans, transactions over agent or SSH, converger (set propagation, drift, unresolved transactions), observations, suggestions, simulation |
+| `internal/agent/firewall.go` | Agent side: runs `drool-fw` as root, reconnects after an apply, reports status and endpoints, samples connections when learning is on |
+
+### 24.2 Intent and compilation
+
+A policy is `from → to: services`, allow or deny. For host H:
+
+- **Inbound** rules come from every enabled policy whose `to` covers H (host, group, or `any` = every managed host); the peers are the policy's `from` selectors.
+- **Outbound** rules come from policies whose `from` covers H. Denies always compile; allows only when H's outbound mode is `restrict` (default `allow`).
+- **Peers:** hosts and groups become *dynamic* named sets (`h_<hash>_4/6`, `g_<hash>_4/6`) filled with the members' validated addresses (configured, discovered and agent-observed; loopback and link-local excluded). `internal` is the static set `internal_4/6` from `internal_ranges`; `internet` is `!= @internal_X`; `cidr` is an inline set; `any` matches everything.
+- **Services:** `dns` compiles to UDP and TCP 53; ICMP entries name a type and compile per family.
+- **Order** in each chain: base rules (invalid drop, established/related accept, loopback, essential ICMP/ICMPv6 and DHCP), **management path**, denies, allows, default (input drop; output accept, or drop when restricted). DROOL owns exactly one table, `inet drool`, with base chains at `filter` priority.
+
+Hashes: `RulesHash` covers everything except dynamic set elements; `SetsHash` covers only those. A policy or management-path change changes `RulesHash` (a transaction); an address change only `SetsHash` (a set update).
+
+### 24.3 Management-path protection (DESIGN §18)
+
+The required flows come from what the host itself saw, measured over a fresh connection at every transaction:
+
+- **SSH path:** `SSH_CONNECTION` over a brand-new connection (through the jump host when there is one): the source address and sshd port as the host sees them, which is right behind NAT and port forwarding.
+- **Agent path:** the controller endpoints as the agent resolves them (`Hello.firewall_json`), needed when outbound traffic is restricted.
+- **Jump role:** a host other hosts are reached through allows outbound SSH to them.
+
+These accept rules precede denies. A deny that matches a management flow makes compilation report a conflict, and the transaction is refused with the policy's name and the flow. The audited emergency override (`firewall.override`, reason required) drops just the conflicting accept; the dead-man transaction still protects the host.
+
+### 24.4 Environment detection (DESIGN §16)
+
+`detect` (read-only, runs everywhere) reports systemd, nft, required tools, firewall-related services, Docker and Tailscale processes, legacy iptables rule counts, resolvers and the full `nft -j list ruleset`. Enforcement is refused when any of these hold: no systemd; no nft; missing `systemd-run`/`flock`/`sha256sum`; firewalld, UFW, Docker, Tailscale or iptables/netfilter-persistent services active; legacy iptables rules; or **any foreign nftables table with rules or a dropping base chain** (named when recognised: Docker, UFW, firewalld, Tailscale, libvirt, Podman, Kubernetes CNIs, iptables-nft). Empty foreign tables with accepting base chains (Debian's default `inet filter`) are allowed. Monitoring, snapshots, simulation and Explain work regardless.
+
+### 24.5 The host tool and its files (DESIGN §17.0)
+
+```
+/usr/libexec/drool-firewall/drool-fw          the tool (bin_t under SELinux)
+/etc/systemd/system/drool-firewall.service    boot loader: Before=network-pre.target, After=nftables.service
+/var/lib/drool/firewall/
+  transaction.json   journal: tx id, state, previous/candidate hash, state_version, deadline
+  committed.nft      the last committed policy (what boot and rollback load)
+  committed.json     committed hash, revision, epoch, live-table hash (drift), sets generation, rules hash
+  candidate.nft      only during a transaction
+  seen               recent transaction ids (duplicates are refused)
+/run/drool-fw.lock   flock: apply, commit, rollback, boot and sets never interleave
+```
+
+Writes go temp file → `sync FILE` → rename → `sync DIR`. Every nft file starts `table inet drool` / `delete table inet drool`, so it replaces DROOL's table atomically and touches nothing else. The tool never runs `nft flush ruleset` and never edits `/etc/nftables.conf`.
+
+| Command | Does |
+|---|---|
+| `apply` | expiry → duplicate → pending → epoch/stale → write candidate, check its hash → `nft -c` → drift check (live table vs `committed.json`) → **journal `pending` (durable)** → arm `systemd-run --on-active=Ns drool-fw rollback` → `nft -f candidate` (failure: restore at once) |
+| `commit` | only for the pending transaction, before its deadline, with the candidate's hash: promote candidate → `committed.json` → journal `committed` → stop the timer |
+| `rollback` | the timer's action: load `committed.nft`, journal `rolled_back`. Idempotent; no-op after a commit |
+| `boot` | pending journal → roll back (never the candidate); otherwise load `committed.nft` |
+| `sets` | apply a set-element delta to the committed rules (same rules hash, newer generation, no pending transaction, no drift) and record the new committed file |
+| `status` | journal, committed revision/epoch/hash, live-table hash, boot unit |
+
+The SSH path sends the tool and boot unit with each mutating call and installs them when their hash differs; the agent carries its own copy.
+
+### 24.6 Transactions (DESIGN §17)
+
+A transaction is the job step `firewall_apply` (one host at a time, stopping at the first failure). Per host, under an in-process firewall-domain lock:
+
+1. Resolve any unresolved earlier transaction; refuse while one is open.
+2. Pick the path with the M7 router rules (agent if preferred and connected and it announces `firewall-1`, else SSH; blocked hosts get nothing; an agent whose ceiling lacks `firewall` fails with `CapabilityError` and never falls back to SSH).
+3. `detect` → refuse unsupported environments. `status` → refuse a pending host transaction, a foreign epoch, a host revision ahead of the controller's (host_ahead, reconciliation) and drift (unless "replace drifted rules").
+4. **Measure a fresh path:** agent: request a reconnect and time the new mTLS session; SSH: dial a new connection through the full jump chain (never the pool) and read `SSH_CONNECTION`.
+5. Compile with the fresh management flows; refuse conflicts (unless overridden) and a policy that changed since the preview (`expect_rules_hash`).
+6. Timeout: host → smallest group value → default (120 s). Refused below 10 s, and below 3× the measured connection time unless `override_timeout`.
+7. Reserve the next revision (`state_versions`, domain `firewall`) and record the transaction (`preparing`).
+8. `apply` on the host. The reboot-blocking marker is set from here until the end.
+9. **Verify over a new connection:** agent: ask it to reconnect (it also drops the apply session itself); wait for a session that connected *after* the apply, check its hello's journal (transaction id, revision, candidate hash), then send `commit` only over that session (`agentsvc.WithSessionAfter`). SSH: dial a brand-new connection through the jump chain, check `status`, `commit` over it.
+10. Not committed by the verification deadline (deadline − min(15 s, timeout/4)): wait past the deadline, then confirm the host's own rollback (`rolled_back` with its reason). If the host can't be reached, the state is `unknown`; the converger resolves it when the host is reachable or the agent reconnects.
+
+States: `preparing`, `pending`, `committed`, `rolled_back` (the host restored its previous policy), `failed` (refused or failed before anything changed), `unknown`. Nothing that wasn't committed is reported as success.
+
+While a transaction is open (and until its deadline + 2 min if unresolved), reboots, system updates, service actions on network units (`networking`, `NetworkManager`, `systemd-networkd`, `systemd-resolved`, `nftables`, `firewalld`, `ufw`, `iptables`, `docker`, …) and agent updates are refused.
+
+### 24.7 Address sets (DESIGN §5.3.1, §15.4)
+
+The converger (every 15 s, and on policy/setting changes) recompiles enforced hosts. Same rules hash, different sets hash → `sets` with a flush-and-refill delta for the changed sets in one nft transaction, a new generation, and the new full committed file. Hosts applied with the emergency override never get automatic set updates (a full transaction is required). The Firewall page shows "Policy propagation incomplete: N/M enforced hosts current" and names stale hosts; simulation and Explain note stale generations.
+
+### 24.8 Modes, learning, drift
+
+| Mode | Effect |
+|---|---|
+| Off | Nothing |
+| Monitor | Learning on (agent) or snapshots (SSH); Explain shows what a policy would do |
+| Guided | Monitor plus suggestions from unclassified flows; approving one opens the policy editor (and creates a missing custom service) |
+| Enforce | Transactions can apply; drift is detected |
+
+Agents sample `ss` every 30 s while learning is on (`FirewallConfig` message) and send aggregated flows (direction, protocol, service port, peer, new-connection count). SSH hosts get on-demand snapshots only and are labelled as such. Flows are classified against the desired policy (covered by a policy or the management path, or unclassified). Drift: agents report `status` every status interval; SSH hosts are checked every 5 minutes; the live-table hash is compared with the one recorded at commit.
+
+### 24.9 Simulation and Explain (DESIGN §19.2–19.3)
+
+`POST /firewall/simulate` evaluates a new connection between hosts or addresses on both ends (source output chain, destination input chain), for every address pair of the same family, with the desired policy: YES / NO / PARTLY, the deciding rule and reason per host (policy, management path, default, "not filtered in mode X"), and notes about unapplied changes, stale set generations and drift. Explain Host lists the compiled rules as allowances and denies with peers, members and reasons.
+
+### 24.10 Agent protocol additions
+
+Protocol version unchanged (1). `Hello` gained `firewall_json` (tool status and resolved endpoints) and `features` (`firewall-1`); `ControllerMessage` gained `FirewallConfig` (learning on/off); telemetry kinds `firewall` and `flows`; the internal operation type `firewall` carries one `drool-fw` action. Older agents don't announce the feature and are managed over SSH (if configured) for firewall purposes. The ceiling's `firewall` capability is no longer reserved; detection, status and snapshots need `monitoring`. `/var/lib/drool`, `/usr/libexec/drool-firewall` and the boot unit are protected from agent file operations.
+
+### 24.11 API, RBAC, UI, backup
+
+Permissions: `firewall.read` (all roles), `firewall.write` and `firewall.override` (admin). A `firewall_apply` step needs `firewall.write` whichever route submits it; the internal `firewall` operation is refused in job specs. Routes: `/api/v1/firewall/{settings,services,groups,policies,hosts,apply,transactions,simulate,propagation}` (see `api/openapi.yaml`). UI: a Firewall page (hosts with status and propagation, policies, "Can A reach B?", services, transactions, settings) and a Firewall card on every host page (mode, environment check, status, apply/remove with overrides, Explain, observations and suggestions, transaction timelines, generated nftables as diagnostics). Audit: `firewall.policy.*`, `firewall.service.*`, `firewall.settings.update`, `firewall.host.update`, `firewall.group.update`, `firewall.detect`, `firewall.snapshot`, `firewall.override`, `firewall.transaction.{start,commit,rollback,unknown}`, `firewall.sets.update`, `firewall.drift`, `firewall.state.adopt`. Backups include all `fw_*` tables (the database is backed up whole); hosts keep their committed policy across a controller restore, and a host ahead of the restored controller is flagged and must be adopted.
+
+### 24.12 Testing
+
+- Unit: `hostfw` (the tool's state machine under `sh` with fake nft/systemd: commit, timer rollback, boot with pending, late commit, duplicates, stale and foreign-epoch revisions, expiry, malformed candidates, hash mismatches, timer failure, apply failure, drift and replacement, crash after journaling, set updates), `compile` (IPv4/IPv6, groups and churn, internet/internal, DNS, outbound restriction, management conflicts and override, rendering, deltas, Explain), `nftables` (compatibility matrix), `observe`.
+- In-process end to end (`internal/api/firewall_test.go`; real agent over mTLS, in-process SSH server, real `drool-fw` with fake nft and a fake `systemd-run` whose timer really fires): agent transaction with reconnect, agent death after apply, capability denial, SSH transaction over fresh connections, refused management-path deny, emergency override with a blocked path → timer rollback, reboot refusal while pending, drift, set updates, Docker refusal, host-ahead reconciliation, the 3× timeout rule, permissions.
+- Containers (`test/integration/firewall_test.go`): refusal without systemd (nothing installed), SSH snapshots, agent continuous learning and Guided suggestions, refusal through the agent.
+- In-process additions: removal next to Docker (apply refused, remove committed), the learning switch following mode changes (fails on the pre-fix code), management path recorded by Check, and every list-valued field of the firewall API being an array, never `null`.
+- VMs with real nftables and systemd, only inside disposable qemu (TCG) guests (`vm_firewall_test.go`; `-run '^TestVMFirewall$' -vm debian-12,ubuntu-24.04,rockylinux-9`): plain-nftables detection (nftables installed with a DROOL package job where the image lacks it), SSH transaction committed over a fresh connection, outbound restriction with the management path intact, boot restore of the committed policy, a deliberately blocked management path rolled back by the host's timer, reboot refused while pending (409), hard reset while pending → boot loader rolls back ("rebooted during the transaction"), drift detected and replaced only on request, foreign nftables rules refused and untouched (Ubuntu: enabled UFW refused; disabled UFW with its rules still loaded refused with the hint), address change pushed as a set update without a transaction, agent transaction committed over a new mTLS connection, blocked agent path rolled back, agent killed while pending → systemd timer rolls back, removal.
+- `TestVMFirewallControllerCrash` (Debian 12 behind a jump host): commit through the jump host over a brand-new SSH chain; the controller is killed while a candidate is pending; the host rolls back on its own; the restarted controller resolves the transaction as rolled back with the host's reason. The guest sees the jump host's real address, so the compiled management rule is exactly that address (the test's own side channel needs its own allowance).
+- Browser pass (puppeteer, VM + container): Check, Enforce, refusal reasons, intent-first policy editor with live affected-hosts preview, apply dialog, transaction timeline, Explain, Can A reach B? (YES/NO with the reason), management-path refusal on the host card, observations, settings. It found two pages crashing on `null` arrays and the snapshot's own SSH connection shown as "would be blocked"; all fixed.

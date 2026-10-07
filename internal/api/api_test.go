@@ -26,6 +26,8 @@ import (
 	"drool/internal/driver/sshdriver"
 	"drool/internal/engine"
 	"drool/internal/filedeploy"
+	"drool/internal/firewall/fwsvc"
+	"drool/internal/firewall/hostfw"
 	"drool/internal/inventory"
 	"drool/internal/logging"
 	"drool/internal/mgmt"
@@ -48,6 +50,11 @@ type harness struct {
 	agents *agentsvc.Service
 	pki    *agentsvc.PKI
 	router *mgmt.Router
+	fw     *fwsvc.Service
+	// fwSSH is where the firewall tooling of SSH hosts lives in tests
+	// (fake nft, systemd-run; see firewall_test.go), fwFake its fake kernel.
+	fwSSH  hostfw.Paths
+	fwFake string
 }
 
 func newHarness(t *testing.T) *harness {
@@ -92,6 +99,17 @@ func newHarness(t *testing.T) *harness {
 		t.Fatal(err)
 	}
 	router := &mgmt.Router{St: st, Inv: inv, SSH: executor, Agents: agents}
+	fwFake, fwSSH := fakeHostDir(t, "ssh")
+	fw, err := fwsvc.New(context.Background(), fwsvc.Deps{Store: st, Inv: inv, Agents: agents, Audit: auditW, Log: logs.App,
+		Decide: router.FirewallDecision, ToolPaths: &fwSSH})
+	if err != nil {
+		t.Fatal(err)
+	}
+	router.Firewall = fw
+	agents.SetFirewallHooks(fw)
+	fwCtx, fwCancel := context.WithCancel(context.Background())
+	go fw.Run(fwCtx)
+	t.Cleanup(fwCancel)
 	eng := engine.New(st, inv, router, auditW, logs.Job, engine.Config{RetryDelay: 10 * time.Millisecond})
 	if err := eng.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -99,7 +117,7 @@ func newHarness(t *testing.T) *harness {
 	srv, err := New(Deps{
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng, Simulator: router, Files: router, Artifacts: arts,
-		Agents: agents, Router: router,
+		Agents: agents, Router: router, Firewall: fw,
 		UI: fstest.MapFS{
 			"index.html":    {Data: []byte("<!doctype html><title>ui</title>")},
 			"assets/app.js": {Data: []byte("console.log(1)")},
@@ -112,7 +130,8 @@ func newHarness(t *testing.T) *harness {
 	srv.SetReady(true)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
-	return &harness{t: t, srv: srv, ts: ts, auth: authSvc, st: st, eng: eng, agents: agents, pki: pki, router: router}
+	return &harness{t: t, srv: srv, ts: ts, auth: authSvc, st: st, eng: eng, agents: agents, pki: pki, router: router,
+		fw: fw, fwSSH: fwSSH, fwFake: fwFake}
 }
 
 func (h *harness) mkUser(name, role string) {

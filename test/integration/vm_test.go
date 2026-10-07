@@ -71,7 +71,7 @@ users:
   - name: deploy
     shell: /bin/bash
     sudo: "ALL=(ALL) NOPASSWD:ALL"
-    ssh_authorized_keys: [%q]
+    ssh_authorized_keys: [%q, %q]
   - name: pwuser
     shell: /bin/bash
     lock_passwd: false
@@ -81,7 +81,7 @@ chpasswd:
   expire: false
   users:
     - {name: pwuser, password: %s, type: text}
-`, indent(privPEM), strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshPub))), ctl.controllerKey(t), ctl.controllerKey(t), sudoPassword)
+`, indent(privPEM), strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshPub))), ctl.controllerKey(t), testAuthorizedKey(), ctl.controllerKey(t), sudoPassword)
 	os.WriteFile(filepath.Join(seed, "user-data"), []byte(userData), 0o644)
 	os.WriteFile(filepath.Join(seed, "meta-data"), []byte("instance-id: drool-"+runID+"-"+def.Name+"\nlocal-hostname: "+strings.ReplaceAll(def.Name, ".", "-")+"\n"), 0o644)
 

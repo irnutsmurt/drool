@@ -121,6 +121,7 @@ func (a *Agent) telemetryLoop(ctx context.Context, s *session) {
 			return
 		case <-status.C:
 			a.sendTelemetry(ctx, s, "status")
+			a.sendFirewallStatus(ctx, s)
 		case <-addr.C:
 			if cur := addrSet(); cur != lastAddrs {
 				lastAddrs = cur

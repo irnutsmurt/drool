@@ -50,6 +50,11 @@ func checkOp(c agentcaps.Caps, op model.Operation) error {
 		return c.AllowService(op.Service.Name)
 	case model.OpReboot:
 		return c.AllowReboot()
+	case model.OpFirewall:
+		if op.Firewall.Mutating() {
+			return c.AllowFirewall()
+		}
+		return c.AllowMonitoring()
 	}
 	return &agentcaps.Error{Capability: "", Message: fmt.Sprintf("the agent does not run %q operations directly", op.Type)}
 }
@@ -290,6 +295,9 @@ func (a *Agent) runOp(env *agentrpc.OpEnvelope, c *channel, controller string) {
 	}
 	a.oplog.Write(ev)
 	c.send(agentrpc.FrameResult, agentrpc.MustJSON(r), nil)
+	if env.Operation != nil && env.Operation.Type == model.OpFirewall && err == nil {
+		a.afterFirewallOp(env.Operation.Firewall, res)
+	}
 }
 
 // execute runs one operation locally with the shared implementations.
@@ -313,6 +321,11 @@ func (a *Agent) execute(ctx context.Context, op model.Operation, out driver.Outp
 		return h.Service(ctx, op.Service, out, started)
 	case model.OpReboot:
 		return h.RebootOp(ctx, op.Reboot, out, started)
+	case model.OpFirewall:
+		if started != nil {
+			started()
+		}
+		return a.runFirewall(ctx, op.Firewall)
 	}
 	return nil, model.Errorf(model.ClassValidation, false, "the agent cannot run %q operations", op.Type)
 }

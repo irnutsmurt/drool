@@ -7,6 +7,7 @@ import (
 	"drool/internal/agentsvc"
 	"drool/internal/artifacts"
 	"drool/internal/files"
+	"drool/internal/firewall/fwsvc"
 	"drool/internal/hostops"
 	"drool/internal/mgmt"
 	"drool/internal/model"
@@ -53,6 +54,7 @@ type Deps struct {
 	Agents    *agentsvc.Service // agent endpoint; nil disables agent routes
 	Router    *mgmt.Router      // management paths; nil: SSH only
 	WebPin    func() string     // curl --pinnedpubkey value of the web TLS key
+	Firewall  *fwsvc.Service    // firewall policy (M8)
 	Artifacts *artifacts.Store  // deployment artifacts
 	// StaleAfter is how old a status check may be before it is shown as stale.
 	StaleAfter time.Duration
@@ -216,6 +218,34 @@ func (s *Server) routes() []route {
 		{method: "PUT", path: APIPrefix + "/hosts/{id}/agent/caps", auth: authed, perm: auth.PermAgentsManage, h: s.handleSetAgentCaps},
 		{method: "POST", path: APIPrefix + "/hosts/{id}/agent/install", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleInstallAgent},
 		{method: "POST", path: APIPrefix + "/hosts/{id}/state/{domain}/adopt", auth: authed, perm: auth.PermAgentsManage, h: s.handleAdoptState},
+
+		// Firewall (M8).
+		{method: "GET", path: APIPrefix + "/firewall/settings", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallSettings},
+		{method: "PUT", path: APIPrefix + "/firewall/settings", auth: authed, perm: auth.PermFirewallWrite, h: s.handleSetFirewallSettings},
+		{method: "GET", path: APIPrefix + "/firewall/services", auth: authed, perm: auth.PermFirewallRead, h: s.handleListFirewallServices},
+		{method: "POST", path: APIPrefix + "/firewall/services", auth: authed, perm: auth.PermFirewallWrite, h: s.handleCreateFirewallService},
+		{method: "DELETE", path: APIPrefix + "/firewall/services/{id}", auth: authed, perm: auth.PermFirewallWrite, h: s.handleDeleteFirewallService},
+		{method: "GET", path: APIPrefix + "/firewall/groups", auth: authed, perm: auth.PermFirewallRead, h: s.handleListFirewallGroups},
+		{method: "PUT", path: APIPrefix + "/firewall/groups/{id}", auth: authed, perm: auth.PermFirewallWrite, h: s.handleSetFirewallGroup},
+		{method: "GET", path: APIPrefix + "/firewall/policies", auth: authed, perm: auth.PermFirewallRead, h: s.handleListFirewallPolicies},
+		{method: "POST", path: APIPrefix + "/firewall/policies", auth: authed, perm: auth.PermFirewallWrite, h: s.handleCreateFirewallPolicy},
+		{method: "POST", path: APIPrefix + "/firewall/policies/preview", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallPolicyPreview},
+		{method: "GET", path: APIPrefix + "/firewall/policies/{id}", auth: authed, perm: auth.PermFirewallRead, h: s.handleGetFirewallPolicy},
+		{method: "PUT", path: APIPrefix + "/firewall/policies/{id}", auth: authed, perm: auth.PermFirewallWrite, h: s.handleUpdateFirewallPolicy},
+		{method: "DELETE", path: APIPrefix + "/firewall/policies/{id}", auth: authed, perm: auth.PermFirewallWrite, h: s.handleDeleteFirewallPolicy},
+		{method: "GET", path: APIPrefix + "/firewall/hosts", auth: authed, perm: auth.PermFirewallRead, h: s.handleListFirewallHosts},
+		{method: "GET", path: APIPrefix + "/firewall/hosts/{id}", auth: authed, perm: auth.PermFirewallRead, h: s.handleGetFirewallHost},
+		{method: "PUT", path: APIPrefix + "/firewall/hosts/{id}", auth: authed, perm: auth.PermFirewallWrite, h: s.handleSetFirewallHost},
+		{method: "POST", path: APIPrefix + "/firewall/hosts/{id}/detect", auth: authed, perm: auth.PermFirewallWrite, h: s.handleFirewallDetect},
+		{method: "POST", path: APIPrefix + "/firewall/hosts/{id}/snapshot", auth: authed, perm: auth.PermFirewallWrite, h: s.handleFirewallSnapshot},
+		{method: "GET", path: APIPrefix + "/firewall/hosts/{id}/observations", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallObservations},
+		{method: "GET", path: APIPrefix + "/firewall/hosts/{id}/suggestions", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallSuggestions},
+		{method: "POST", path: APIPrefix + "/firewall/hosts/{id}/adopt", auth: authed, perm: auth.PermFirewallWrite, h: s.handleFirewallAdopt},
+		{method: "POST", path: APIPrefix + "/firewall/apply", auth: authed, perm: auth.PermFirewallWrite, h: s.handleFirewallApply},
+		{method: "GET", path: APIPrefix + "/firewall/transactions", auth: authed, perm: auth.PermFirewallRead, h: s.handleListFirewallTransactions},
+		{method: "GET", path: APIPrefix + "/firewall/transactions/{id}", auth: authed, perm: auth.PermFirewallRead, h: s.handleGetFirewallTransaction},
+		{method: "POST", path: APIPrefix + "/firewall/simulate", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallSimulate},
+		{method: "GET", path: APIPrefix + "/firewall/propagation", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallPropagation},
 	}
 }
 

@@ -278,6 +278,9 @@ func (s *Service) Session(stream pb.Agent_SessionServer) error {
 		se.send(&pb.ControllerMessage{Msg: &pb.ControllerMessage_Manifest{Manifest: &pb.SignedManifest{Payload: sm.Payload, Signature: sm.Signature}}})
 	}
 	s.pushConfigIfNeeded(ctx, se, hello)
+	if fh := s.firewallHooks(); fh != nil {
+		go fh.OnSession(ident.HostID, hello.FirewallJson, hello.Features, se.connectedAt)
+	}
 	s.agentOnlyStatus(ctx, ident.HostID, true)
 	s.hostChanged(ident.HostID)
 	go s.offerPendingUpdate(context.WithoutCancel(ctx), se)
@@ -464,6 +467,12 @@ func (s *Service) renew(ctx context.Context, se *Session) {
 // storage as SSH polling, so stale-data rules stay the same.
 func (s *Service) ingestTelemetry(ctx context.Context, se *Session, t *pb.Telemetry) {
 	hostID := se.ident.HostID
+	if t.Kind == "firewall" || t.Kind == "flows" {
+		if fh := s.firewallHooks(); fh != nil {
+			fh.OnTelemetry(hostID, t.Kind, t.Output)
+		}
+		return
+	}
 	err := s.st.InTx(ctx, func(q *db.Queries) error {
 		switch t.Kind {
 		case "facts":

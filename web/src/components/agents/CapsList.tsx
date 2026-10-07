@@ -13,7 +13,7 @@ export function capRows(c: AgentCaps): { name: string; value: string; on: boolea
     { name: "Packages", value: packages, on: c.packages.enabled, rootEq: c.packages.enabled && !c.packages.configured_repositories_only },
     { name: "Files", value: files, on: c.files.enabled, rootEq: c.files.enabled && (!c.files.allowed_paths?.length || c.files.allowed_paths.includes("/")) },
     { name: "Shell (commands, scripts)", value: c.shell ? "yes" : "no", on: c.shell, rootEq: c.shell },
-    { name: "Firewall", value: c.firewall ? "yes" : "no", on: c.firewall, reserved: true },
+    { name: "Firewall", value: c.firewall ? "yes (policy transactions, address sets)" : "no", on: c.firewall },
     { name: "Users", value: c.users ? "yes" : "no", on: c.users, rootEq: c.users, reserved: true },
   ];
 }

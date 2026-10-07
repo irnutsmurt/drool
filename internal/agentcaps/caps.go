@@ -30,7 +30,7 @@ type Caps struct {
 	Services   Services `json:"services" yaml:"services"`
 	Reboot     bool     `json:"reboot" yaml:"reboot"`
 	Files      Files    `json:"files" yaml:"files"`
-	Firewall   bool     `json:"firewall" yaml:"firewall"` // reserved for the firewall milestone
+	Firewall   bool     `json:"firewall" yaml:"firewall"` // firewall transactions and set updates (M8)
 	Users      bool     `json:"users" yaml:"users"`       // reserved: user management
 }
 
@@ -374,7 +374,10 @@ var plainPackage = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9+._:@~=-]*$`)
 // protected are the agent's own files: never reachable through the files
 // capability, so the controller can't rewrite the ceiling, the agent's
 // identity, its operation log or its binaries through file operations.
-var protected = []string{"/etc/drool", "/var/lib/drool-agent", "/var/log/drool-agent", "/usr/libexec/drool-agent"}
+var protected = []string{"/etc/drool", "/var/lib/drool-agent", "/var/log/drool-agent", "/usr/libexec/drool-agent",
+	// The firewall tooling's state and the boot loader (DESIGN §17.0): only
+	// the firewall capability changes them, through transactions.
+	"/var/lib/drool", "/usr/libexec/drool-firewall", "/etc/systemd/system/drool-firewall.service"}
 
 // AllowPath checks a path against the files capability.
 func (c Caps) AllowPath(p string) error {
@@ -469,6 +472,23 @@ func (c Caps) AllowShell() error {
 }
 
 // AllowReboot checks reboots.
+// AllowFirewall checks firewall changes (transactions, set updates).
+func (c Caps) AllowFirewall() error {
+	if !c.Firewall {
+		return deny("firewall", "the agent's capability ceiling does not allow firewall changes on this host")
+	}
+	return nil
+}
+
+// AllowMonitoring checks read-only inspection (firewall detection, status,
+// connection snapshots).
+func (c Caps) AllowMonitoring() error {
+	if !c.Monitoring {
+		return deny("monitoring", "the agent's capability ceiling does not allow monitoring on this host")
+	}
+	return nil
+}
+
 func (c Caps) AllowReboot() error {
 	if !c.Reboot {
 		return deny("reboot", "the agent's capability ceiling does not allow reboots on this host")

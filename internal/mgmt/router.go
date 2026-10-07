@@ -16,6 +16,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"drool/internal/agentsvc"
@@ -23,6 +24,7 @@ import (
 	"drool/internal/driver/sshdriver"
 	"drool/internal/engine"
 	"drool/internal/files"
+	"drool/internal/firewall/fwsvc"
 	"drool/internal/hostops"
 	"drool/internal/inventory"
 	"drool/internal/model"
@@ -37,6 +39,33 @@ type Router struct {
 	Inv    *inventory.Service
 	SSH    *sshdriver.Executor
 	Agents *agentsvc.Service // nil: agent endpoint disabled
+	// Firewall runs firewall_apply steps and blocks reboots and network
+	// restarts while a transaction is pending (DESIGN §17.3).
+	Firewall *fwsvc.Service
+}
+
+// networkUnits are services whose restart can drop or rebuild networking
+// or firewall state: refused while a firewall transaction is pending.
+var networkUnits = map[string]bool{"networking": true, "network": true, "networkmanager": true, "systemd-networkd": true,
+	"systemd-resolved": true, "nftables": true, "firewalld": true, "ufw": true, "iptables": true, "ip6tables": true,
+	"netfilter-persistent": true, "wpa_supplicant": true, "drool-firewall": true, "docker": true}
+
+// DisruptsFirewall reports whether op is refused while a firewall
+// transaction is pending: reboots, system updates, and network service actions.
+func DisruptsFirewall(op model.Operation) bool {
+	switch op.Type {
+	case model.OpReboot, model.OpSystemUpdate:
+		return true
+	case model.OpService:
+		return networkUnits[strings.ToLower(strings.TrimSuffix(op.Service.Name, ".service"))]
+	}
+	return false
+}
+
+// FirewallDecision adapts Decide for the firewall service.
+func (r *Router) FirewallDecision(ctx context.Context, h db.Host) fwsvc.Decision {
+	d := r.Decide(ctx, h)
+	return fwsvc.Decision{UseAgent: d.UseAgent, SSHAllowed: d.SSHAllowed, Blocked: d.Blocked, Reason: d.Reason}
 }
 
 // Decision is the management path for a host right now.
@@ -152,6 +181,26 @@ func (p *path) Secrets() []string {
 }
 
 func (p *path) Execute(ctx context.Context, op model.Operation, out driver.OutputSink, started func()) (*driver.OpResult, error) {
+	if op.Type == model.OpFirewallApply {
+		if p.r.Firewall == nil {
+			return nil, &model.OpError{Class: model.ClassConfiguration, Message: "firewall management is not available on this controller"}
+		}
+		res, err := p.r.Firewall.Apply(ctx, p.host.ID, op.FirewallApply, out, started)
+		if res != nil {
+			if tx, ok := res.Data["firewall"].(fwsvc.TxRow); ok {
+				p.transport = tx.Transport
+			} else if tr, ok := res.Data["transport"].(string); ok {
+				p.transport = tr
+			}
+		}
+		return res, err
+	}
+	if p.r.Firewall != nil && DisruptsFirewall(op) {
+		if why := p.r.Firewall.PendingReason(ctx, p.host.ID); why != "" {
+			return nil, &driver.NotStartedError{Err: &model.OpError{Class: model.ClassLock, Message: "refused: " + why,
+				Hint: "Reboots and network restarts wait until the firewall transaction commits or rolls back."}}
+		}
+	}
 	step := driver.StepInfoFrom(ctx).Step
 	pin := p.pins[step]
 	d := p.r.Decide(ctx, p.host)

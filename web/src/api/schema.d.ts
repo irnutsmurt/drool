@@ -1482,6 +1482,338 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/firewall/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getFirewallSettings"];
+        /** @description internal_ranges defines the semantic `internet` target (everything outside it). Requires firewall.write. */
+        put: operations["setFirewallSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listFirewallServices"];
+        put?: never;
+        post: operations["createFirewallService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/services/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteFirewallService"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listFirewallGroups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/groups/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["setFirewallGroup"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listFirewallPolicies"];
+        put?: never;
+        post: operations["createFirewallPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/policies/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Which hosts a new, changed or deleted policy would change, and how (allowances added and removed, management-path conflicts). Nothing is saved. */
+        post: operations["previewFirewallPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/policies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getFirewallPolicy"];
+        put: operations["updateFirewallPolicy"];
+        post?: never;
+        delete: operations["deleteFirewallPolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/hosts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listFirewallHosts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/hosts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The host's plan, Explain Host, environment and what is committed. `override=true` previews the emergency override. */
+        get: operations["getFirewallHost"];
+        put: operations["setFirewallHost"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/hosts/{id}/detect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Inspect the host's firewall environment (read-only on the host; works on unsupported hosts too). */
+        post: operations["detectFirewall"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/hosts/{id}/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Take a one-off connection snapshot (SSH hosts get only snapshots; agents learn continuously). */
+        post: operations["firewallSnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/hosts/{id}/observations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["firewallObservations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/hosts/{id}/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Guided mode. Policies proposed from unclassified flows; an administrator approves them by creating the policy. */
+        get: operations["firewallSuggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/hosts/{id}/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Reconciliation. Accept the host's committed firewall revision (host ahead of a restored controller). */
+        post: operations["adoptFirewallState"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Start a job with one dead-man firewall transaction per host (one host at a time, stopping at the first failure).
+         *     Overrides need `firewall.override` and a reason; the emergency override still uses the dead-man rollback.
+         */
+        post: operations["applyFirewall"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listFirewallTransactions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/transactions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getFirewallTransaction"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Can From reach To on Protocol/Port? Answers with the policy (or management path) that decides on each host. */
+        post: operations["simulateFirewall"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/firewall/propagation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["firewallPropagation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2472,6 +2804,332 @@ export interface components {
             can_rollback: boolean;
             diff?: string;
             diff_note?: string;
+        };
+        FwSettings: {
+            internal_ranges: string[];
+            default_timeout_s: number;
+        };
+        FwEntry: {
+            /** @enum {string} */
+            protocol: "tcp" | "udp" | "icmp" | "icmpv6";
+            /** @description "53", "8000-8010", "80,443" */
+            ports?: string;
+            icmp_type?: string;
+        };
+        FwServiceInput: {
+            name: string;
+            description?: string;
+            entries: components["schemas"]["FwEntry"][];
+        };
+        FwService: {
+            /** @description Custom services only. */
+            id?: string;
+            name: string;
+            description: string;
+            builtin: boolean;
+            entries: components["schemas"]["FwEntry"][];
+        };
+        FwGroup: {
+            id: string;
+            name: string;
+            rollback_timeout_s: number;
+        };
+        FwSelector: {
+            /** @enum {string} */
+            kind: "host" | "group" | "internet" | "internal" | "any" | "cidr";
+            id?: string;
+            cidr?: string;
+        };
+        FwPolicyInput: {
+            name: string;
+            description?: string;
+            enabled?: boolean;
+            /** @enum {string} */
+            action?: "allow" | "deny";
+            from: components["schemas"]["FwSelector"][];
+            to: components["schemas"]["FwSelector"][];
+            services: string[];
+            /** @description Evaluation order (0 appends). Denies win over allows regardless of order. */
+            position?: number;
+        };
+        FwPolicy: {
+            id: string;
+            name: string;
+            description: string;
+            enabled: boolean;
+            /** @enum {string} */
+            action: "allow" | "deny";
+            from: components["schemas"]["FwSelector"][];
+            to: components["schemas"]["FwSelector"][];
+            services: string[];
+            position: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        FwHostConfig: {
+            /** @enum {string} */
+            mode: "off" | "monitor" | "guided" | "enforce";
+            /** @enum {string} */
+            outbound?: "allow" | "restrict";
+            /** @description 0 inherits the group or default timeout */
+            rollback_timeout_s?: number;
+        };
+        FwHostSummary: {
+            host_id: string;
+            host_name: string;
+            /** @enum {string} */
+            mode: "off" | "monitor" | "guided" | "enforce";
+            outbound: string;
+            /** @enum {string} */
+            transport: "agent" | "ssh" | "blocked" | "none";
+            /** @enum {string} */
+            learning: "continuous" | "snapshot" | "off";
+            checked: boolean;
+            supported: boolean | null;
+            reason?: string;
+            enforced: boolean;
+            revision: number;
+            in_sync: boolean;
+            /** @enum {string} */
+            status: "not_enforced" | "in_sync" | "changes_pending" | "sets_pending" | "drift" | "pending_transaction" | "conflicts";
+            drift?: string;
+            conflicts: number;
+            pending_transaction_id?: string;
+        };
+        FwPropagation: {
+            enforced: number;
+            current: number;
+            stale: string[];
+            rules_changed: string[];
+        };
+        FwReason: {
+            /** @enum {string} */
+            kind: "base" | "management" | "policy" | "default";
+            policy_id?: string;
+            policy_name?: string;
+            text: string;
+        };
+        FwAllowance: {
+            /** @enum {string} */
+            direction: "in" | "out";
+            /** @enum {string} */
+            verdict: "accept" | "drop";
+            service: string;
+            peer: string;
+            members?: string[];
+            family: number;
+            reason: components["schemas"]["FwReason"];
+        };
+        FwConflict: {
+            policy_id: string;
+            policy_name: string;
+            message: string;
+        };
+        FwSet: {
+            name: string;
+            family: number;
+            dynamic: boolean;
+            elements: string[];
+            label: string;
+            hosts?: string[];
+        };
+        FwHostPolicy: {
+            host_id: string;
+            input?: {
+                [key: string]: unknown;
+            };
+            output?: {
+                [key: string]: unknown;
+            };
+            sets: components["schemas"]["FwSet"][];
+            conflicts?: components["schemas"]["FwConflict"][];
+            overrode?: components["schemas"]["FwConflict"][];
+            warnings?: string[];
+        };
+        FwEnv: {
+            root?: boolean;
+            systemd?: boolean;
+            nft?: string;
+            nft_version?: string;
+            missing_tools?: string[];
+            services?: {
+                [key: string]: string;
+            };
+            ufw_status?: string;
+            docker?: boolean;
+            tailscale?: boolean;
+            legacy_iptables_rules?: number;
+            distro_conf_flushes?: boolean;
+            resolvers?: string[];
+            tool_version?: string;
+            tables?: {
+                family?: string;
+                name?: string;
+                owner?: string;
+                rules?: number;
+                sets?: number;
+                chains?: {
+                    [key: string]: unknown;
+                }[];
+            }[];
+            drool_table?: boolean;
+            ruleset_error?: string;
+        };
+        FwEligibility: {
+            supported: boolean;
+            reasons?: string[];
+            warnings?: string[];
+            detected?: string[];
+        };
+        FwApplied: {
+            enforced: boolean;
+            revision: number;
+            rules_hash: string;
+            sets_hash: string;
+            override_mgmt: boolean;
+            sets_generation: number;
+            sets_generation_applied: number;
+            sets_error?: string;
+            drift?: string;
+            /** Format: date-time */
+            status_at?: string;
+            rules_changed: boolean;
+            sets_pending: boolean;
+        };
+        FwPlan: {
+            host_id: string;
+            host_name: string;
+            config: components["schemas"]["FwHostConfig"];
+            rollback_timeout_s: number;
+            rollback_timeout_from: string;
+            policy: components["schemas"]["FwHostPolicy"];
+            /** @description The generated nftables policy (advanced diagnostics). */
+            rendered: {
+                full: string;
+                full_hash: string;
+                rules_hash: string;
+                sets_hash: string;
+            };
+            management_warnings?: string[];
+            environment?: components["schemas"]["FwEnv"];
+            eligibility?: components["schemas"]["FwEligibility"];
+            /** Format: date-time */
+            environment_checked_at?: string;
+            applied: components["schemas"]["FwApplied"];
+            pending_transaction?: components["schemas"]["FwTransaction"];
+            transport: string;
+            learning: string;
+            explain: components["schemas"]["FwAllowance"][];
+            /** @description Allowances and denies the desired policy adds to what is committed. */
+            changes_added: string[];
+            changes_removed: string[];
+            summary: components["schemas"]["FwHostSummary"];
+        };
+        FwTransaction: {
+            id: string;
+            host_id: string;
+            job_id?: string;
+            /** @enum {string} */
+            kind: "apply" | "remove";
+            /** @enum {string} */
+            state: "preparing" | "pending" | "committed" | "rolled_back" | "failed" | "unknown";
+            transport: string;
+            epoch: string;
+            revision: number;
+            previous_hash?: string;
+            candidate_hash: string;
+            rules_hash?: string;
+            timeout_s: number;
+            /** Format: date-time */
+            deadline?: string;
+            measured_ms: number;
+            override_mgmt: boolean;
+            override_timeout: boolean;
+            allow_drift: boolean;
+            detail: string;
+            error_class?: string;
+            steps: {
+                at: string;
+                text: string;
+            }[];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            finished_at?: string;
+            candidate?: string;
+        };
+        FwObservation: {
+            /** @enum {string} */
+            direction: "in" | "out";
+            protocol: string;
+            port: number;
+            peer: string;
+            peer_host_id?: string;
+            peer_host?: string;
+            service?: string;
+            /** @enum {string} */
+            source: "agent" | "snapshot";
+            count: number;
+            /** Format: date-time */
+            first_seen: string;
+            /** Format: date-time */
+            last_seen: string;
+            classified: boolean;
+            verdict: string;
+            reason: string;
+        };
+        FwSuggestion: {
+            title: string;
+            policy: components["schemas"]["FwPolicyInput"];
+            new_service?: components["schemas"]["FwServiceInput"];
+            count: number;
+            peers: string[];
+        };
+        FwSimRequest: {
+            from_host?: string;
+            from_address?: string;
+            to_host?: string;
+            to_address?: string;
+            /** @enum {string} */
+            protocol: "tcp" | "udp";
+            port: number;
+        };
+        FwSimHop: {
+            host_id: string;
+            host: string;
+            /** @enum {string} */
+            direction: "in" | "out";
+            mode: string;
+            filtered: boolean;
+            /** @enum {string} */
+            verdict: "accept" | "drop";
+            reason: components["schemas"]["FwReason"];
+            rule?: string;
+            notes?: string[];
+        };
+        FwSimResult: {
+            allowed: boolean;
+            /** @enum {string} */
+            answer: "YES" | "NO" | "PARTLY";
+            summary: string;
+            from: string;
+            to: string;
+            hops: components["schemas"]["FwSimHop"][];
+            pairs: string[];
+        };
+        FwPolicyImpact: {
+            host_id: string;
+            host_name: string;
+            mode: string;
+            enforced: boolean;
+            supported: boolean | null;
+            added: string[];
+            removed: string[];
+            conflicts?: string[];
         };
     };
     responses: {
@@ -5116,6 +5774,648 @@ export interface operations {
                 content?: never;
             };
             409: components["responses"]["Problem"];
+        };
+    };
+    getFirewallSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FwSettings"];
+                };
+            };
+        };
+    };
+    setFirewallSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FwSettings"];
+            };
+        };
+        responses: {
+            /** @description Settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FwSettings"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    listFirewallServices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Built-in and custom services. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FwService"][];
+                    };
+                };
+            };
+        };
+    };
+    createFirewallService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FwServiceInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FwService"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    deleteFirewallService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    listFirewallGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Groups and their rollback timeouts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FwGroup"][];
+                    };
+                };
+            };
+        };
+    };
+    setFirewallGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description 0 inherits the default */
+                    rollback_timeout_s: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    listFirewallPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Policies in evaluation order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FwPolicy"][];
+                    };
+                };
+            };
+        };
+    };
+    createFirewallPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FwPolicyInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FwPolicy"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    previewFirewallPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The policy being changed or deleted. */
+                    id?: string;
+                    delete?: boolean;
+                    policy?: components["schemas"]["FwPolicyInput"];
+                };
+            };
+        };
+        responses: {
+            /** @description Affected hosts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FwPolicyImpact"][];
+                    };
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    getFirewallPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FwPolicy"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    updateFirewallPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FwPolicyInput"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FwPolicy"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    deleteFirewallPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    listFirewallHosts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every host's firewall summary and the fleet's propagation state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FwHostSummary"][];
+                        propagation: components["schemas"]["FwPropagation"];
+                    };
+                };
+            };
+        };
+    };
+    getFirewallHost: {
+        parameters: {
+            query?: {
+                override?: boolean;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FwPlan"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    setFirewallHost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FwHostConfig"];
+            };
+        };
+        responses: {
+            /** @description Plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FwPlan"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    detectFirewall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Environment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        environment: components["schemas"]["FwEnv"];
+                        eligibility: components["schemas"]["FwEligibility"];
+                    };
+                };
+            };
+            502: components["responses"]["Problem"];
+        };
+    };
+    firewallSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Flows recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        flows: number;
+                    };
+                };
+            };
+            502: components["responses"]["Problem"];
+        };
+    };
+    firewallObservations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Aggregated flows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FwObservation"][];
+                    };
+                };
+            };
+        };
+    };
+    firewallSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Suggestions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FwSuggestion"][];
+                    };
+                };
+            };
+        };
+    };
+    adoptFirewallState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Adopted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    applyFirewall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    host_ids: string[];
+                    /** @description Take DROOL's policy off the hosts (still a transaction). */
+                    remove?: boolean;
+                    /** @description Emergency override of management-path protection. */
+                    override_mgmt?: boolean;
+                    /** @description Accept a rollback timeout shorter than 3x the measured connection time. */
+                    override_timeout?: boolean;
+                    /** @description Replace DROOL rules changed outside DROOL. */
+                    allow_drift?: boolean;
+                    /** @description Refuse if the policy changed since this preview. */
+                    expect_rules_hash?: string;
+                    /** @description Required with any override; audited. */
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Job started. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    listFirewallTransactions: {
+        parameters: {
+            query?: {
+                host_id?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Transactions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FwTransaction"][];
+                    };
+                };
+            };
+        };
+    };
+    getFirewallTransaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Transaction with its timeline and candidate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FwTransaction"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    simulateFirewall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FwSimRequest"];
+            };
+        };
+        responses: {
+            /** @description Answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FwSimResult"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    firewallPropagation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Set propagation across enforced hosts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FwPropagation"];
+                };
+            };
         };
     };
 }

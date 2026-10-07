@@ -81,6 +81,11 @@ func (a *Agent) Run(ctx context.Context) error {
 		case errors.As(err, &rev):
 			wait = 10 * time.Minute
 			a.log.Error("this agent's identity is not accepted by the controller", "reason", rev.reason)
+		case errors.Is(err, errReconnect):
+			// A deliberate reconnect (firewall verification): immediately,
+			// and it doesn't count as a failure.
+			a.log.Info("reconnecting to the controller over a new connection")
+			continue
 		default:
 			a.log.Warn("controller session ended", "err", err)
 		}
@@ -248,8 +253,11 @@ func (a *Agent) connect(ctx context.Context, ep string) error {
 		return err
 	}
 	defer conn.Close()
-	sctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	sctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	a.mu.Lock()
+	a.sessionCancel = cancel
+	a.mu.Unlock()
 	client := pb.NewAgentClient(conn)
 	var pr peer.Peer
 	stream, err := client.Session(sctx, grpc.Peer(&pr))
@@ -257,7 +265,9 @@ func (a *Agent) connect(ctx context.Context, ep string) error {
 		return err
 	}
 	s := &session{stream: stream, client: client, conn: conn, endpoint: ep}
-	if err := s.send(&pb.AgentMessage{Msg: &pb.AgentMessage_Hello{Hello: a.hello(leaf)}}); err != nil {
+	hello := a.hello(leaf)
+	hello.FirewallJson = a.firewallReport(sctx)
+	if err := s.send(&pb.AgentMessage{Msg: &pb.AgentMessage_Hello{Hello: hello}}); err != nil {
 		return err
 	}
 	first, err := stream.Recv()
@@ -301,7 +311,12 @@ func (a *Agent) connect(ctx context.Context, ep string) error {
 	go a.heartbeats(sctx, s, hb)
 	go a.telemetryLoop(sctx, s)
 	go a.renewLoop(sctx, s)
-	return a.serve(sctx, s)
+	go a.learnLoop(sctx, s)
+	err = a.serve(sctx, s)
+	if errors.Is(context.Cause(sctx), errReconnect) {
+		return errReconnect
+	}
+	return err
 }
 
 // hello describes this agent: versions, the authoritative local ceiling,
@@ -316,7 +331,7 @@ func (a *Agent) hello(leaf *x509.Certificate) *pb.Hello {
 			MachineId: machineID(), Os: runtime.GOOS, Arch: runtime.GOARCH, BootId: bootID()},
 		SessionNonce: a.nonce, CeilingJson: caps2json(a.ceiling), EffectiveJson: caps2json(a.Effective()),
 		CertNotAfterUnix: leaf.NotAfter.Unix(), Endpoints: ep.All(), State: &pb.StateReport{},
-		Update: a.updateReport(),
+		Update: a.updateReport(), Features: Features,
 	}
 	if id != nil {
 		h.ControllerEpoch = id.ControllerEpoch
@@ -383,9 +398,14 @@ func (a *Agent) serve(ctx context.Context, s *session) error {
 			s.send(&pb.AgentMessage{Msg: &pb.AgentMessage_ConfigAck{ConfigAck: a.applyConfig(msg.Config)}})
 		case *pb.ControllerMessage_RequestTelemetry:
 			go a.sendTelemetry(ctx, s, msg.RequestTelemetry.Kind)
+		case *pb.ControllerMessage_FirewallConfig:
+			a.setFirewallConfig(msg.FirewallConfig)
 		case *pb.ControllerMessage_Disconnect:
 			if msg.Disconnect.Code == "revoked" {
 				return &errRevoked{reason: msg.Disconnect.Reason}
+			}
+			if msg.Disconnect.Code == "reconnect" {
+				return errReconnect
 			}
 			return errors.New("controller closed the session: " + msg.Disconnect.Reason)
 		}

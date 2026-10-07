@@ -70,6 +70,8 @@ type Service struct {
 type Hooks struct {
 	// HostChanged: management state or inventory of a host changed.
 	HostChanged func(hostID string)
+	// Firewall connects sessions and telemetry to the firewall service.
+	Firewall FirewallHooks
 }
 
 type challenge struct {

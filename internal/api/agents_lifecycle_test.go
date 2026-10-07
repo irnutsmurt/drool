@@ -123,10 +123,13 @@ func TestAgentCertificateLifecycle(t *testing.T) {
 	}
 	st.SaveChain(chain)
 	ag = startAgent(t, p, "v1.0.0")
+	// Wait for the recovered certificate itself: "connected" can still see
+	// the previous agent's session for a moment.
+	eventually(t, 20*time.Second, "recovered certificate", func() bool {
+		c, err := st.Chain()
+		return err == nil && time.Until(c[0].NotAfter) > 29*24*time.Hour
+	})
 	eventually(t, 10*time.Second, "recovered session", func() bool { return e.connected(id.HostID) })
-	if c, _ := st.Chain(); time.Until(c[0].NotAfter) < 29*24*time.Hour {
-		t.Errorf("recovered certificate expires %s", c[0].NotAfter)
-	}
 	ag.stop()
 
 	// Beyond the grace period: refused, re-enrollment required.

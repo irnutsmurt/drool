@@ -1,0 +1,15 @@
+[Unit]
+Description=DROOL firewall policy (restores the last committed policy at boot)
+DefaultDependencies=no
+Wants=network-pre.target
+Before=network-pre.target shutdown.target
+After=local-fs.target nftables.service
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/drool-firewall/drool-fw boot
+
+[Install]
+WantedBy=sysinit.target

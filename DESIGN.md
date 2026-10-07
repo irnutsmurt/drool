@@ -1,6 +1,6 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.3**
+**Design Document v0.3.4**
 Status: Draft · 2026-10-06 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
@@ -11,6 +11,22 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.3 → v0.3.4 (M8: what the firewall ships as)
+
+The firewall architecture (§15–19) is unchanged. M8 implemented it for plain-nftables hosts; these points record how it ships:
+
+| # | As built | Section |
+|---|---|---|
+| 1 | The management path is measured from the host's side over a fresh connection at every transaction (`SSH_CONNECTION`; the agent's resolved controller endpoints), so NAT, port forwarding and jump hosts are handled. Management-path accepts come before denies; a conflicting deny is refused with its name; the emergency override removes only the conflicting accept | §18 |
+| 2 | Policies can allow or deny. Inbound is default-deny on enforced hosts; outbound is allowed unless a host is set to *restrict* | §15.1 |
+| 3 | Any other nftables rules (not only those of a known manager) refuse enforcement, because precedence can't be proven. An empty accepting table is fine. Hosts without nftables are refused with "install the nftables package" | §16.4–16.5 |
+| 4 | The SSH executor's firewall state file is the firewall tooling's own journal and committed-state file in `/var/lib/drool/firewall`, not a general `/var/lib/drool/state.json` | §9, §17.0 |
+| 5 | Continuous learning on agents samples sockets (`ss`) every 30 seconds and reports aggregated flows; conntrack/eBPF is a later refinement. SSH hosts get on-demand snapshots | §19.1 |
+| 6 | Reboots, system updates, network-service actions and agent updates are refused while a firewall transaction is pending, at submission and at dispatch | §17.3 |
+| 7 | Strict expiry of set elements (§5.3) is not implemented yet | §5.3 |
+| 8 | Docker, firewalld, UFW, Tailscale and legacy iptables stay refused; container firewalling (§20) is the next expansion | §16.5, §20 |
+| 9 | Removing DROOL's own policy stays possible on a host where enforcement is now refused (a firewall manager installed afterwards): it needs only the tooling (root, systemd, `nft`) and deletes only DROOL's table | §16.5 |
 
 ### v0.3.2 → v0.3.3
 
@@ -300,7 +316,7 @@ Host record updated
 
 Removing the old address takes priority over granting the new one. **Residual risk:** between the host leaving an address and peers learning about it, the old address keeps its permissions. If DHCP hands `10.10.2.10` to another device during that window, the device inherits the database's permissions. Mitigations: agents report interface events immediately; stable addresses or DHCP reservations are recommended for security-sensitive identities.
 
-**Strict expiry (optional, off by default):** a group or policy can enable timeouts on set elements, so addresses that aren't refreshed drop out of peer sets. The UI warns that a long controller outage will then eventually **fail closed** for those relationships.
+**Strict expiry (optional, off by default; not implemented yet):** a group or policy can enable timeouts on set elements, so addresses that aren't refreshed drop out of peer sets. The UI warns that a long controller outage will then eventually **fail closed** for those relationships.
 
 ### 5.3.1 Propagation is per-peer atomic, not fleet-wide atomic
 
@@ -510,7 +526,7 @@ issued_at: 2026-10-06T14:00:00Z
 expires_at: 2026-10-06T14:10:00Z
 ```
 
-Rules enforced by the agent (and by the SSH executor, using a state file on the host at `/var/lib/drool/state.json`):
+Rules enforced by the agent (and by the SSH executor, using state files on the host; for the firewall domain these are the firewall tooling's journal and committed state in `/var/lib/drool/firewall`, §17.0):
 
 - Reject any operation past `expires_at`.
 - Reject any operation whose `operation_id` was already executed (replay or duplicate).
@@ -960,7 +976,7 @@ Authorized admins may use an explicit emergency override (audited). Even with th
 
 | Host type | Capability |
 |---|---|
-| Agent | Full continuous learning (conntrack / eBPF) |
+| Agent | Continuous learning (socket sampling every 30 s, aggregated; conntrack/eBPF later) |
 | SSH | **Current connection snapshot only** (`ss`, conntrack dump). Not labeled "learning" |
 
 Modes: **Monitor** (observe), **Guided** (observe, suggest, admin approves), **Enforce** (apply, detect drift). Observations are aggregated (e.g. "web01 → database01:5432, 12,482 connections"). Unclassified flows are highlighted.
@@ -1211,6 +1227,8 @@ AuditEvent, SystemEvent
 - Agent self-update: separate release-signing trust, signed manifests, staged atomic install with health-checked automatic rollback, controller-managed canary/batch rollout of the agent (§28)
 
 ### Beta: The differentiator
+M8 delivered the firewall core of this stage for plain-nftables hosts: policies, services, groups, set-based compilation with propagation generations, coexistence detection and refusal, management-path protection, dead-man transactions (agent + SSH) with journal and boot loader, simulation, Explain Host, drift detection, Monitor/Guided/Enforce. Still open here: container/Docker strategies (§20), full restore reconciliation (§10.3).
+
 - Host firewall policies, named services, host groups
 - nftables set-based compilation, address observation stream, propagation generations
 - Coexistence detection and refusal (§16)

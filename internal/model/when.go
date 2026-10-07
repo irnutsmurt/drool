@@ -191,6 +191,8 @@ func (o Operation) when() *When {
 		return o.Reboot.When
 	case OpFileDeploy:
 		return o.FileDeploy.When
+	case OpFirewallApply:
+		return o.FirewallApply.When
 	}
 	return nil
 }

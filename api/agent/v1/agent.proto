@@ -139,6 +139,7 @@ message ControllerMessage {
     Disconnect disconnect = 11;
     RequestTelemetry request_telemetry = 12;
     ConfigPush config = 13;
+    FirewallConfig firewall_config = 14;
   }
 }
 
@@ -153,6 +154,8 @@ message Hello {
   UpdateReport update = 8;        // outcome of a pending/finished update
   repeated string endpoints = 9;
   string controller_epoch = 10;   // the epoch the agent was enrolled with
+  bytes firewall_json = 11;       // drool-fw status and resolved endpoints (M8)
+  repeated string features = 12;  // optional capabilities of this agent build, e.g. "firewall-1"
 }
 
 message StateReport {
@@ -276,6 +279,13 @@ message ManifestAck {
 message ConfigPush {
   bytes requested_caps_json = 1;  // narrowing only; the agent intersects with its ceiling
   DomainState version = 2;        // agent-config state version
+}
+
+// FirewallConfig turns continuous connection learning on or off (DESIGN
+// 19.1). Not versioned state: it is re-sent on every session.
+message FirewallConfig {
+  bool learning = 1;
+  uint32 sample_seconds = 2;
 }
 
 message ConfigAck {

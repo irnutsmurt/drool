@@ -171,7 +171,7 @@ func describe(c agentcaps.Caps) string {
 			b.WriteString(" (whole filesystem)")
 		}
 	}
-	fmt.Fprintf(&b, "\n  shell       %s\n  firewall    %s (reserved: no DROOL feature uses it yet)\n  users       %s (reserved)\n", yes(c.Shell), yes(c.Firewall), yes(c.Users))
+	fmt.Fprintf(&b, "\n  shell       %s\n  firewall    %s (DROOL firewall policy, applied as dead-man transactions)\n  users       %s (reserved)\n", yes(c.Shell), yes(c.Firewall), yes(c.Users))
 	if re := c.RootEquivalent(); len(re) > 0 {
 		b.WriteString("  ROOT-EQUIVALENT: the controller can do anything root can on this host, because of:\n")
 		for _, r := range re {

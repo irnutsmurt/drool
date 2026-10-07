@@ -29,14 +29,16 @@ const (
 // Operation is one typed step. Exactly one of the typed fields is set,
 // matching Type.
 type Operation struct {
-	Type         string
-	Command      *CommandOp
-	Script       *ScriptOp
-	Package      *PackageOp
-	SystemUpdate *SystemUpdateOp
-	Service      *ServiceOp
-	Reboot       *RebootOp
-	FileDeploy   *FileDeployOp
+	Type          string
+	Command       *CommandOp
+	Script        *ScriptOp
+	Package       *PackageOp
+	SystemUpdate  *SystemUpdateOp
+	Service       *ServiceOp
+	Reboot        *RebootOp
+	FileDeploy    *FileDeployOp
+	FirewallApply *FirewallApplyOp
+	Firewall      *FirewallOp
 }
 
 // CommandOp runs a single shell command line.
@@ -105,6 +107,16 @@ func (o Operation) MarshalJSON() ([]byte, error) {
 			Type string `json:"type"`
 			*FileDeployOp
 		}{o.Type, o.FileDeploy}
+	case OpFirewallApply:
+		body = struct {
+			Type string `json:"type"`
+			*FirewallApplyOp
+		}{o.Type, o.FirewallApply}
+	case OpFirewall:
+		body = struct {
+			Type string `json:"type"`
+			*FirewallOp
+		}{o.Type, o.Firewall}
 	default:
 		return nil, fmt.Errorf("unknown operation type %q", o.Type)
 	}
@@ -153,10 +165,16 @@ func (o *Operation) UnmarshalJSON(data []byte) error {
 	case OpFileDeploy:
 		o.FileDeploy = &FileDeployOp{}
 		return strict(o.FileDeploy)
+	case OpFirewallApply:
+		o.FirewallApply = &FirewallApplyOp{}
+		return strict(o.FirewallApply)
+	case OpFirewall:
+		o.Firewall = &FirewallOp{}
+		return strict(o.Firewall)
 	case "":
 		return errors.New("operation type is required")
 	default:
-		return fmt.Errorf("unknown operation type %q (supported: command, script, package, system_update, service, reboot, file_deploy)", head.Type)
+		return fmt.Errorf("unknown operation type %q (supported: command, script, package, system_update, service, reboot, file_deploy, firewall_apply)", head.Type)
 	}
 }
 
@@ -201,6 +219,13 @@ func (o *Operation) Normalize() error {
 		return o.Reboot.normalize()
 	case OpFileDeploy:
 		return o.FileDeploy.normalize()
+	case OpFirewallApply:
+		if err := o.FirewallApply.When.normalize(); err != nil {
+			return err
+		}
+		return o.FirewallApply.normalize()
+	case OpFirewall:
+		return o.Firewall.normalize()
 	}
 	return fmt.Errorf("unknown operation type %q", o.Type)
 }
@@ -252,6 +277,12 @@ func (o Operation) Meta() Meta {
 		// is not, so only then is a retry unsafe.
 		idem := o.FileDeploy.Service == nil || o.FileDeploy.Service.Action == "reload"
 		return Meta{Lock: LockExclusive, Idempotent: idem, Become: o.FileDeploy.Elevated, TimeoutS: o.FileDeploy.TimeoutS}
+	case OpFirewallApply:
+		// Never retried automatically: a transaction whose outcome is
+		// unknown is resolved by asking the host, not by applying again.
+		return Meta{Lock: LockExclusive, Become: true, TimeoutS: o.FirewallApply.TimeoutS}
+	case OpFirewall:
+		return Meta{Lock: LockNone, Become: true, TimeoutS: 300}
 	}
 	return Meta{Lock: LockExclusive}
 }
@@ -305,6 +336,13 @@ func (o Operation) Summary() string {
 			return "Roll back " + o.FileDeploy.Path
 		}
 		return "Deploy " + o.FileDeploy.Path
+	case OpFirewallApply:
+		if o.FirewallApply.Remove {
+			return "Remove DROOL firewall policy"
+		}
+		return "Apply firewall policy"
+	case OpFirewall:
+		return "firewall " + o.Firewall.Kind
 	}
 	return o.Type
 }
@@ -346,6 +384,9 @@ func (j *JobSpec) Normalize() error {
 		return fmt.Errorf("a job may have at most %d steps", MaxSteps)
 	}
 	for i := range j.Steps {
+		if j.Steps[i].Type == OpFirewall {
+			return fmt.Errorf("step %d: %q is an internal operation", i+1, OpFirewall)
+		}
 		if err := j.Steps[i].Normalize(); err != nil {
 			return fmt.Errorf("step %d: %w", i+1, err)
 		}

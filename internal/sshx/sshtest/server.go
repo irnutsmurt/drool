@@ -34,6 +34,7 @@ type Server struct {
 	passwords    map[string]string
 	exec         ExecFunc
 	allowForward bool
+	connEnv      bool
 	commands     []string
 
 	conns  atomic.Int64
@@ -103,7 +104,10 @@ func (s *Server) Authorize(pub ssh.PublicKey) {
 func (s *Server) SetPassword(user, pw string) { s.mu.Lock(); s.passwords[user] = pw; s.mu.Unlock() }
 func (s *Server) SetExec(f ExecFunc)          { s.mu.Lock(); s.exec = f; s.mu.Unlock() }
 func (s *Server) AllowForwarding(v bool)      { s.mu.Lock(); s.allowForward = v; s.mu.Unlock() }
-func (s *Server) Connections() int64          { return s.conns.Load() }
+
+// SetConnectionEnv exports SSH_CONNECTION to commands, like sshd does.
+func (s *Server) SetConnectionEnv(v bool) { s.mu.Lock(); s.connEnv = v; s.mu.Unlock() }
+func (s *Server) Connections() int64      { return s.conns.Load() }
 func (s *Server) Commands() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -213,7 +217,7 @@ func (s *Server) handle(nc net.Conn) {
 			if err != nil {
 				continue
 			}
-			go s.session(ch, creqs)
+			go s.session(ch, creqs, nc)
 		case "direct-tcpip":
 			s.mu.Lock()
 			allow := s.allowForward
@@ -229,7 +233,7 @@ func (s *Server) handle(nc net.Conn) {
 	}
 }
 
-func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
+func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request, nc net.Conn) {
 	defer ch.Close()
 	for r := range reqs {
 		switch r.Type {
@@ -259,6 +263,13 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 			s.mu.Lock()
 			s.commands = append(s.commands, cmd)
 			f := s.exec
+			if s.connEnv {
+				r, _ := nc.RemoteAddr().(*net.TCPAddr)
+				l, _ := nc.LocalAddr().(*net.TCPAddr)
+				if r != nil && l != nil {
+					cmd = fmt.Sprintf("SSH_CONNECTION='%s %d %s %d'; export SSH_CONNECTION; %s", r.IP, r.Port, l.IP, l.Port, cmd)
+				}
+			}
 			s.mu.Unlock()
 			out, errOut, code := f(cmd, stdin)
 			io.Copy(ch, bytes.NewBufferString(out))

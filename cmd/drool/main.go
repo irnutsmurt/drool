@@ -35,6 +35,7 @@ import (
 	"drool/internal/driver/sshdriver"
 	"drool/internal/engine"
 	"drool/internal/filedeploy"
+	"drool/internal/firewall/fwsvc"
 	"drool/internal/inventory"
 	"drool/internal/logging"
 	"drool/internal/mgmt"
@@ -363,6 +364,15 @@ func cmdServe(path string, explicit bool) error {
 		}
 	}
 	router := &mgmt.Router{St: st, Inv: inv, SSH: executor, Agents: agents}
+	fw, err := fwsvc.New(ctx, fwsvc.Deps{Store: st, Inv: inv, Agents: agents, Audit: auditW, Log: logs.App.With("component", "firewall"),
+		Decide: router.FirewallDecision})
+	if err != nil {
+		return fmt.Errorf("firewall: %w", err)
+	}
+	router.Firewall = fw
+	if agents != nil {
+		agents.SetFirewallHooks(fw)
+	}
 	eng := engine.New(st, inv, router, auditW, logs.Job, engine.Config{
 		GlobalConcurrency:  cfg.Engine.GlobalConcurrency,
 		PerJumpConcurrency: cfg.Engine.PerJumpHostConcurrency,
@@ -397,6 +407,7 @@ func cmdServe(path string, explicit bool) error {
 		log.Info("agent endpoint listening", "listen", agentAddr, "root_ca", pki.RootFingerprint())
 	}
 	go poll.Run(ctx)
+	go fw.Run(ctx)
 	go artifactGC(ctx, arts, log)
 
 	srv, err := api.New(api.Deps{
@@ -404,7 +415,7 @@ func cmdServe(path string, explicit bool) error {
 		UI: web.Dist(), Registry: reg, TLSMode: tlsRes.Mode,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
 		Poller: poll, StaleAfter: pollCfg.StaleAfter(), Simulator: router, Files: router, Artifacts: arts,
-		Agents: agents, Router: router, WebPin: webPin(tlsRes),
+		Agents: agents, Router: router, WebPin: webPin(tlsRes), Firewall: fw,
 	})
 	if err != nil {
 		return err

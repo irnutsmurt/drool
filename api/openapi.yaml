@@ -1508,6 +1508,247 @@ paths:
       responses:
         '204': { description: Adopted. }
         '409': { $ref: '#/components/responses/Problem' }
+  /firewall/settings:
+    get:
+      operationId: getFirewallSettings
+      tags: [firewall]
+      responses:
+        '200': { description: Settings., content: { application/json: { schema: { $ref: '#/components/schemas/FwSettings' } } } }
+    put:
+      operationId: setFirewallSettings
+      tags: [firewall]
+      description: internal_ranges defines the semantic `internet` target (everything outside it). Requires firewall.write.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FwSettings' } } } }
+      responses:
+        '200': { description: Settings., content: { application/json: { schema: { $ref: '#/components/schemas/FwSettings' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /firewall/services:
+    get:
+      operationId: listFirewallServices
+      tags: [firewall]
+      responses:
+        '200': { description: Built-in and custom services., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/FwService' } } } } } } }
+    post:
+      operationId: createFirewallService
+      tags: [firewall]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FwServiceInput' } } } }
+      responses:
+        '201': { description: Created., content: { application/json: { schema: { $ref: '#/components/schemas/FwService' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /firewall/services/{id}:
+    delete:
+      operationId: deleteFirewallService
+      tags: [firewall]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '204': { description: Deleted. }
+        '422': { $ref: '#/components/responses/Problem' }
+  /firewall/groups:
+    get:
+      operationId: listFirewallGroups
+      tags: [firewall]
+      responses:
+        '200': { description: Groups and their rollback timeouts., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/FwGroup' } } } } } } }
+  /firewall/groups/{id}:
+    put:
+      operationId: setFirewallGroup
+      tags: [firewall]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [rollback_timeout_s], properties: { rollback_timeout_s: { type: integer, description: '0 inherits the default' } } } } } }
+      responses:
+        '204': { description: Saved. }
+        '422': { $ref: '#/components/responses/Problem' }
+  /firewall/policies:
+    get:
+      operationId: listFirewallPolicies
+      tags: [firewall]
+      responses:
+        '200': { description: Policies in evaluation order., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/FwPolicy' } } } } } } }
+    post:
+      operationId: createFirewallPolicy
+      tags: [firewall]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FwPolicyInput' } } } }
+      responses:
+        '201': { description: Created., content: { application/json: { schema: { $ref: '#/components/schemas/FwPolicy' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /firewall/policies/preview:
+    post:
+      operationId: previewFirewallPolicy
+      tags: [firewall]
+      description: Which hosts a new, changed or deleted policy would change, and how (allowances added and removed, management-path conflicts). Nothing is saved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: string, description: The policy being changed or deleted. }
+                delete: { type: boolean }
+                policy: { $ref: '#/components/schemas/FwPolicyInput' }
+      responses:
+        '200': { description: Affected hosts., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/FwPolicyImpact' } } } } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /firewall/policies/{id}:
+    get:
+      operationId: getFirewallPolicy
+      tags: [firewall]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Policy., content: { application/json: { schema: { $ref: '#/components/schemas/FwPolicy' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      operationId: updateFirewallPolicy
+      tags: [firewall]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FwPolicyInput' } } } }
+      responses:
+        '200': { description: Saved., content: { application/json: { schema: { $ref: '#/components/schemas/FwPolicy' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: deleteFirewallPolicy
+      tags: [firewall]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '204': { description: Deleted. }
+        '404': { $ref: '#/components/responses/Problem' }
+  /firewall/hosts:
+    get:
+      operationId: listFirewallHosts
+      tags: [firewall]
+      responses:
+        '200':
+          description: Every host's firewall summary and the fleet's propagation state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, propagation]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/FwHostSummary' } }
+                  propagation: { $ref: '#/components/schemas/FwPropagation' }
+  /firewall/hosts/{id}:
+    get:
+      operationId: getFirewallHost
+      tags: [firewall]
+      description: The host's plan, Explain Host, environment and what is committed. `override=true` previews the emergency override.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: override, in: query, schema: { type: boolean } }
+      responses:
+        '200': { description: Plan., content: { application/json: { schema: { $ref: '#/components/schemas/FwPlan' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      operationId: setFirewallHost
+      tags: [firewall]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FwHostConfig' } } } }
+      responses:
+        '200': { description: Plan., content: { application/json: { schema: { $ref: '#/components/schemas/FwPlan' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /firewall/hosts/{id}/detect:
+    post:
+      operationId: detectFirewall
+      tags: [firewall]
+      description: Inspect the host's firewall environment (read-only on the host; works on unsupported hosts too).
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200':
+          description: Environment.
+          content: { application/json: { schema: { type: object, required: [environment, eligibility], properties: { environment: { $ref: '#/components/schemas/FwEnv' }, eligibility: { $ref: '#/components/schemas/FwEligibility' } } } } }
+        '502': { $ref: '#/components/responses/Problem' }
+  /firewall/hosts/{id}/snapshot:
+    post:
+      operationId: firewallSnapshot
+      tags: [firewall]
+      description: Take a one-off connection snapshot (SSH hosts get only snapshots; agents learn continuously).
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Flows recorded., content: { application/json: { schema: { type: object, required: [flows], properties: { flows: { type: integer } } } } } }
+        '502': { $ref: '#/components/responses/Problem' }
+  /firewall/hosts/{id}/observations:
+    get:
+      operationId: firewallObservations
+      tags: [firewall]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Aggregated flows., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/FwObservation' } } } } } } }
+  /firewall/hosts/{id}/suggestions:
+    get:
+      operationId: firewallSuggestions
+      tags: [firewall]
+      description: Guided mode. Policies proposed from unclassified flows; an administrator approves them by creating the policy.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Suggestions., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/FwSuggestion' } } } } } } }
+  /firewall/hosts/{id}/adopt:
+    post:
+      operationId: adoptFirewallState
+      tags: [firewall]
+      description: Reconciliation. Accept the host's committed firewall revision (host ahead of a restored controller).
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '204': { description: Adopted. }
+        '404': { $ref: '#/components/responses/Problem' }
+  /firewall/apply:
+    post:
+      operationId: applyFirewall
+      tags: [firewall]
+      description: |
+        Start a job with one dead-man firewall transaction per host (one host at a time, stopping at the first failure).
+        Overrides need `firewall.override` and a reason; the emergency override still uses the dead-man rollback.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [host_ids]
+              properties:
+                host_ids: { type: array, items: { type: string } }
+                remove: { type: boolean, description: Take DROOL's policy off the hosts (still a transaction). }
+                override_mgmt: { type: boolean, description: Emergency override of management-path protection. }
+                override_timeout: { type: boolean, description: Accept a rollback timeout shorter than 3x the measured connection time. }
+                allow_drift: { type: boolean, description: Replace DROOL rules changed outside DROOL. }
+                expect_rules_hash: { type: string, description: Refuse if the policy changed since this preview. }
+                reason: { type: string, description: Required with any override; audited. }
+      responses:
+        '201': { description: Job started., content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /firewall/transactions:
+    get:
+      operationId: listFirewallTransactions
+      tags: [firewall]
+      parameters:
+        - { name: host_id, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: Transactions, newest first., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/FwTransaction' } } } } } } }
+  /firewall/transactions/{id}:
+    get:
+      operationId: getFirewallTransaction
+      tags: [firewall]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Transaction with its timeline and candidate., content: { application/json: { schema: { $ref: '#/components/schemas/FwTransaction' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /firewall/simulate:
+    post:
+      operationId: simulateFirewall
+      tags: [firewall]
+      description: Can From reach To on Protocol/Port? Answers with the policy (or management path) that decides on each host.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FwSimRequest' } } } }
+      responses:
+        '200': { description: Answer., content: { application/json: { schema: { $ref: '#/components/schemas/FwSimResult' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /firewall/propagation:
+    get:
+      operationId: firewallPropagation
+      tags: [firewall]
+      responses:
+        '200': { description: Set propagation across enforced hosts., content: { application/json: { schema: { $ref: '#/components/schemas/FwPropagation' } } } }
 components:
   securitySchemes:
     session: { type: apiKey, in: cookie, name: drool_session }
@@ -2615,3 +2856,341 @@ components:
         can_rollback: { type: boolean }
         diff: { type: string }
         diff_note: { type: string }
+
+    FwSettings:
+      type: object
+      required: [internal_ranges, default_timeout_s]
+      properties:
+        internal_ranges: { type: array, items: { type: string } }
+        default_timeout_s: { type: integer }
+    FwEntry:
+      type: object
+      required: [protocol]
+      properties:
+        protocol: { type: string, enum: [tcp, udp, icmp, icmpv6] }
+        ports: { type: string, description: '"53", "8000-8010", "80,443"' }
+        icmp_type: { type: string }
+    FwServiceInput:
+      type: object
+      required: [name, entries]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        entries: { type: array, items: { $ref: '#/components/schemas/FwEntry' } }
+    FwService:
+      type: object
+      required: [name, description, builtin, entries]
+      properties:
+        id: { type: string, description: Custom services only. }
+        name: { type: string }
+        description: { type: string }
+        builtin: { type: boolean }
+        entries: { type: array, items: { $ref: '#/components/schemas/FwEntry' } }
+    FwGroup:
+      type: object
+      required: [id, name, rollback_timeout_s]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        rollback_timeout_s: { type: integer }
+    FwSelector:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [host, group, internet, internal, any, cidr] }
+        id: { type: string }
+        cidr: { type: string }
+    FwPolicyInput:
+      type: object
+      required: [name, from, to, services]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        enabled: { type: boolean }
+        action: { type: string, enum: [allow, deny] }
+        from: { type: array, items: { $ref: '#/components/schemas/FwSelector' } }
+        to: { type: array, items: { $ref: '#/components/schemas/FwSelector' } }
+        services: { type: array, items: { type: string } }
+        position: { type: integer, description: Evaluation order (0 appends). Denies win over allows regardless of order. }
+    FwPolicy:
+      type: object
+      required: [id, name, description, enabled, action, from, to, services, position, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        enabled: { type: boolean }
+        action: { type: string, enum: [allow, deny] }
+        from: { type: array, items: { $ref: '#/components/schemas/FwSelector' } }
+        to: { type: array, items: { $ref: '#/components/schemas/FwSelector' } }
+        services: { type: array, items: { type: string } }
+        position: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    FwHostConfig:
+      type: object
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [off, monitor, guided, enforce] }
+        outbound: { type: string, enum: [allow, restrict] }
+        rollback_timeout_s: { type: integer, description: '0 inherits the group or default timeout' }
+    FwHostSummary:
+      type: object
+      required: [host_id, host_name, mode, outbound, transport, learning, checked, supported, enforced, revision, in_sync, status, conflicts]
+      properties:
+        host_id: { type: string }
+        host_name: { type: string }
+        mode: { type: string, enum: [off, monitor, guided, enforce] }
+        outbound: { type: string }
+        transport: { type: string, enum: [agent, ssh, blocked, none] }
+        learning: { type: string, enum: [continuous, snapshot, 'off'] }
+        checked: { type: boolean }
+        supported: { type: [boolean, 'null'] }
+        reason: { type: string }
+        enforced: { type: boolean }
+        revision: { type: integer }
+        in_sync: { type: boolean }
+        status: { type: string, enum: [not_enforced, in_sync, changes_pending, sets_pending, drift, pending_transaction, conflicts] }
+        drift: { type: string }
+        conflicts: { type: integer }
+        pending_transaction_id: { type: string }
+    FwPropagation:
+      type: object
+      required: [enforced, current, stale, rules_changed]
+      properties:
+        enforced: { type: integer }
+        current: { type: integer }
+        stale: { type: array, items: { type: string } }
+        rules_changed: { type: array, items: { type: string } }
+    FwReason:
+      type: object
+      required: [kind, text]
+      properties:
+        kind: { type: string, enum: [base, management, policy, default] }
+        policy_id: { type: string }
+        policy_name: { type: string }
+        text: { type: string }
+    FwAllowance:
+      type: object
+      required: [direction, verdict, service, peer, family, reason]
+      properties:
+        direction: { type: string, enum: [in, out] }
+        verdict: { type: string, enum: [accept, drop] }
+        service: { type: string }
+        peer: { type: string }
+        members: { type: array, items: { type: string } }
+        family: { type: integer }
+        reason: { $ref: '#/components/schemas/FwReason' }
+    FwConflict:
+      type: object
+      required: [policy_id, policy_name, message]
+      properties:
+        policy_id: { type: string }
+        policy_name: { type: string }
+        message: { type: string }
+    FwSet:
+      type: object
+      required: [name, family, dynamic, elements, label]
+      properties:
+        name: { type: string }
+        family: { type: integer }
+        dynamic: { type: boolean }
+        elements: { type: array, items: { type: string } }
+        label: { type: string }
+        hosts: { type: array, items: { type: string } }
+    FwHostPolicy:
+      type: object
+      required: [host_id, sets]
+      properties:
+        host_id: { type: string }
+        input: { type: object, additionalProperties: true }
+        output: { type: object, additionalProperties: true }
+        sets: { type: array, items: { $ref: '#/components/schemas/FwSet' } }
+        conflicts: { type: array, items: { $ref: '#/components/schemas/FwConflict' } }
+        overrode: { type: array, items: { $ref: '#/components/schemas/FwConflict' } }
+        warnings: { type: array, items: { type: string } }
+    FwEnv:
+      type: object
+      properties:
+        root: { type: boolean }
+        systemd: { type: boolean }
+        nft: { type: string }
+        nft_version: { type: string }
+        missing_tools: { type: array, items: { type: string } }
+        services: { type: object, additionalProperties: { type: string } }
+        ufw_status: { type: string }
+        docker: { type: boolean }
+        tailscale: { type: boolean }
+        legacy_iptables_rules: { type: integer }
+        distro_conf_flushes: { type: boolean }
+        resolvers: { type: array, items: { type: string } }
+        tool_version: { type: string }
+        tables:
+          type: array
+          items:
+            type: object
+            properties:
+              family: { type: string }
+              name: { type: string }
+              owner: { type: string }
+              rules: { type: integer }
+              sets: { type: integer }
+              chains: { type: array, items: { type: object, additionalProperties: true } }
+        drool_table: { type: boolean }
+        ruleset_error: { type: string }
+    FwEligibility:
+      type: object
+      required: [supported]
+      properties:
+        supported: { type: boolean }
+        reasons: { type: array, items: { type: string } }
+        warnings: { type: array, items: { type: string } }
+        detected: { type: array, items: { type: string } }
+    FwApplied:
+      type: object
+      required: [enforced, revision, rules_hash, sets_hash, override_mgmt, sets_generation, sets_generation_applied, rules_changed, sets_pending]
+      properties:
+        enforced: { type: boolean }
+        revision: { type: integer }
+        rules_hash: { type: string }
+        sets_hash: { type: string }
+        override_mgmt: { type: boolean }
+        sets_generation: { type: integer }
+        sets_generation_applied: { type: integer }
+        sets_error: { type: string }
+        drift: { type: string }
+        status_at: { type: string, format: date-time }
+        rules_changed: { type: boolean }
+        sets_pending: { type: boolean }
+    FwPlan:
+      type: object
+      required: [host_id, host_name, config, rollback_timeout_s, rollback_timeout_from, policy, rendered, applied, transport, learning, explain, changes_added, changes_removed, summary]
+      properties:
+        host_id: { type: string }
+        host_name: { type: string }
+        config: { $ref: '#/components/schemas/FwHostConfig' }
+        rollback_timeout_s: { type: integer }
+        rollback_timeout_from: { type: string }
+        policy: { $ref: '#/components/schemas/FwHostPolicy' }
+        rendered:
+          type: object
+          required: [full, full_hash, rules_hash, sets_hash]
+          description: The generated nftables policy (advanced diagnostics).
+          properties:
+            full: { type: string }
+            full_hash: { type: string }
+            rules_hash: { type: string }
+            sets_hash: { type: string }
+        management_warnings: { type: array, items: { type: string } }
+        environment: { $ref: '#/components/schemas/FwEnv' }
+        eligibility: { $ref: '#/components/schemas/FwEligibility' }
+        environment_checked_at: { type: string, format: date-time }
+        applied: { $ref: '#/components/schemas/FwApplied' }
+        pending_transaction: { $ref: '#/components/schemas/FwTransaction' }
+        transport: { type: string }
+        learning: { type: string }
+        explain: { type: array, items: { $ref: '#/components/schemas/FwAllowance' } }
+        changes_added: { type: array, items: { type: string }, description: Allowances and denies the desired policy adds to what is committed. }
+        changes_removed: { type: array, items: { type: string } }
+        summary: { $ref: '#/components/schemas/FwHostSummary' }
+    FwTransaction:
+      type: object
+      required: [id, host_id, kind, state, transport, epoch, revision, candidate_hash, timeout_s, measured_ms, override_mgmt, override_timeout, allow_drift, detail, steps, created_at, updated_at]
+      properties:
+        id: { type: string }
+        host_id: { type: string }
+        job_id: { type: string }
+        kind: { type: string, enum: [apply, remove] }
+        state: { type: string, enum: [preparing, pending, committed, rolled_back, failed, unknown] }
+        transport: { type: string }
+        epoch: { type: string }
+        revision: { type: integer }
+        previous_hash: { type: string }
+        candidate_hash: { type: string }
+        rules_hash: { type: string }
+        timeout_s: { type: integer }
+        deadline: { type: string, format: date-time }
+        measured_ms: { type: integer }
+        override_mgmt: { type: boolean }
+        override_timeout: { type: boolean }
+        allow_drift: { type: boolean }
+        detail: { type: string }
+        error_class: { type: string }
+        steps: { type: array, items: { type: object, required: [at, text], properties: { at: { type: string }, text: { type: string } } } }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        candidate: { type: string }
+    FwObservation:
+      type: object
+      required: [direction, protocol, port, peer, source, count, first_seen, last_seen, classified, verdict, reason]
+      properties:
+        direction: { type: string, enum: [in, out] }
+        protocol: { type: string }
+        port: { type: integer }
+        peer: { type: string }
+        peer_host_id: { type: string }
+        peer_host: { type: string }
+        service: { type: string }
+        source: { type: string, enum: [agent, snapshot] }
+        count: { type: integer }
+        first_seen: { type: string, format: date-time }
+        last_seen: { type: string, format: date-time }
+        classified: { type: boolean }
+        verdict: { type: string }
+        reason: { type: string }
+    FwSuggestion:
+      type: object
+      required: [title, policy, count, peers]
+      properties:
+        title: { type: string }
+        policy: { $ref: '#/components/schemas/FwPolicyInput' }
+        new_service: { $ref: '#/components/schemas/FwServiceInput' }
+        count: { type: integer }
+        peers: { type: array, items: { type: string } }
+    FwSimRequest:
+      type: object
+      required: [protocol, port]
+      properties:
+        from_host: { type: string }
+        from_address: { type: string }
+        to_host: { type: string }
+        to_address: { type: string }
+        protocol: { type: string, enum: [tcp, udp] }
+        port: { type: integer }
+    FwSimHop:
+      type: object
+      required: [host_id, host, direction, mode, filtered, verdict, reason]
+      properties:
+        host_id: { type: string }
+        host: { type: string }
+        direction: { type: string, enum: [in, out] }
+        mode: { type: string }
+        filtered: { type: boolean }
+        verdict: { type: string, enum: [accept, drop] }
+        reason: { $ref: '#/components/schemas/FwReason' }
+        rule: { type: string }
+        notes: { type: array, items: { type: string } }
+    FwSimResult:
+      type: object
+      required: [allowed, answer, summary, from, to, hops, pairs]
+      properties:
+        allowed: { type: boolean }
+        answer: { type: string, enum: ['YES', 'NO', PARTLY] }
+        summary: { type: string }
+        from: { type: string }
+        to: { type: string }
+        hops: { type: array, items: { $ref: '#/components/schemas/FwSimHop' } }
+        pairs: { type: array, items: { type: string } }
+    FwPolicyImpact:
+      type: object
+      required: [host_id, host_name, mode, enforced, supported, added, removed]
+      properties:
+        host_id: { type: string }
+        host_name: { type: string }
+        mode: { type: string }
+        enforced: { type: boolean }
+        supported: { type: [boolean, 'null'] }
+        added: { type: array, items: { type: string } }
+        removed: { type: array, items: { type: string } }
+        conflicts: { type: array, items: { type: string } }

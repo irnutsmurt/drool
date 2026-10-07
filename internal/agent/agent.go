@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"drool/internal/firewall/hostfw"
+	"drool/internal/firewall/observe"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -32,6 +34,8 @@ type Options struct {
 	// "systemd" (default when systemd runs) or "exit" (a supervisor such as
 	// a test harness restarts the process).
 	Supervisor string
+	// FirewallPaths redirects the firewall tooling (tests).
+	FirewallPaths *hostfw.Paths
 }
 
 // Agent is one running agent.
@@ -54,6 +58,12 @@ type Agent struct {
 	session   *session // current controller session, if any
 	ctx       context.Context
 	protocol  uint32 // negotiated with the controller
+
+	sessionCancel context.CancelCauseFunc // ends the current session (firewall verification)
+	learning      bool
+	sampleEvery   time.Duration
+	flowsMu       sync.Mutex
+	flows         *observe.Aggregator
 }
 
 // LoadCeiling reads and checks /etc/drool/agent.yaml. When the agent runs
@@ -113,7 +123,8 @@ func New(opt Options) (*Agent, error) {
 		return nil, err
 	}
 	a := &Agent{opt: opt, paths: opt.Paths, store: st, ledger: led, oplog: ol, file: file, ceiling: file.Capabilities,
-		run: opt.Runner, log: opt.Log, now: opt.Now, nonce: randomID(), running: map[string]context.CancelFunc{}}
+		run: opt.Runner, log: opt.Log, now: opt.Now, nonce: randomID(), running: map[string]context.CancelFunc{},
+		flows: observe.NewAggregator(), sampleEvery: defaultSampleEvery}
 	a.effective = a.computeEffective()
 	return a, nil
 }
@@ -149,3 +160,6 @@ func bootID() string {
 	b, _ := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	return strings.TrimSpace(string(b))
 }
+
+// Paths returns the agent's directories.
+func (a *Agent) Paths() Paths { return a.paths }
