@@ -15,6 +15,7 @@ import (
 
 	"drool/internal/agentcaps"
 	"drool/internal/hostexec"
+	"drool/internal/monitor/agentmon"
 )
 
 // Options configure an agent.
@@ -39,6 +40,11 @@ type Options struct {
 	// NetCollect overrides the connection collector's options (tests: a
 	// fake ss, a short sample period, a fake conntrack).
 	NetCollect *collect.Options
+	// Monitor overrides the monitoring engine's options (tests: a fixture
+	// root, fake helpers, no /dev/kmsg); MonitorExtra adds a collector
+	// (the runaway test build).
+	Monitor      *agentmon.Options
+	MonitorExtra func(ctx context.Context)
 }
 
 // Agent is one running agent.
@@ -67,6 +73,13 @@ type Agent struct {
 	sampleEvery   time.Duration
 	coll          *collect.Collector // connection collector, while collection is on
 	collectStop   context.CancelFunc
+
+	mon           *agentmon.Engine // system monitoring (M11), while enabled
+	monStop       context.CancelFunc
+	monConfigured bool // this process received a MonitorConfig
+	diag          *diagHandler
+	bgRun         hostexec.Runner // background package checks: a low-priority scope
+	monRun        hostexec.Runner // monitoring scripts: inside the agent's budget
 }
 
 // LoadCeiling reads and checks /etc/drool/agent.yaml. When the agent runs
@@ -94,9 +107,6 @@ func LoadCeiling(path string) (*agentcaps.File, error) {
 
 // New prepares an agent: state, ledger, operation log and ceiling.
 func New(opt Options) (*Agent, error) {
-	if opt.Runner == nil {
-		opt.Runner = hostexec.Local{}
-	}
 	if opt.Now == nil {
 		opt.Now = time.Now
 	}
@@ -125,10 +135,12 @@ func New(opt Options) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	diag := newDiagHandler(opt.Log.Handler())
 	a := &Agent{opt: opt, paths: opt.Paths, store: st, ledger: led, oplog: ol, file: file, ceiling: file.Capabilities,
-		run: opt.Runner, log: opt.Log, now: opt.Now, nonce: randomID(), running: map[string]context.CancelFunc{},
-		sampleEvery: defaultSampleEvery}
+		run: opt.Runner, log: slog.New(diag), now: opt.Now, nonce: randomID(), running: map[string]context.CancelFunc{},
+		sampleEvery: defaultSampleEvery, diag: diag}
 	a.effective = a.computeEffective()
+	a.setupRunners()
 	return a, nil
 }
 

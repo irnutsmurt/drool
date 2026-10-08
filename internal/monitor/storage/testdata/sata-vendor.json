@@ -1,0 +1,7 @@
+{"json_format_version":[1,0],"smartctl":{"version":[7,2],"exit_status":4,"messages":[{"string":"Read SMART Thresholds failed","severity":"error"}]},
+"device":{"name":"/dev/sdc","type":"sat","protocol":"ATA"},
+"model_name":"Industrial CF 8GB","serial_number":"IND0001",
+"smart_support":{"available":true,"enabled":true},
+"ata_smart_attributes":{"revision":16,"table":[
+{"id":5,"name":"Unknown_Attribute","value":100,"worst":100,"thresh":0,"when_failed":"","raw":{"value":3,"string":"3"}},
+{"id":168,"name":"SATA_Phy_Error_Count","value":100,"worst":100,"thresh":0,"when_failed":"","raw":{"value":0,"string":"0"}}]}}

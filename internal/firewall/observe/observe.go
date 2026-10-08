@@ -238,7 +238,9 @@ func Conns(socks []Socket) []Conn {
 		// socket on the same port) means a server answering.
 		if l, ok := ix.Lookup(s.Proto, s.Local.Addr(), int(s.Local.Port())); ok {
 			c.Inbound, c.ServerPort = true, int(s.Local.Port())
-			if c.Process == "" {
+			// The service is the listener, even when it hands accepted
+			// connections to another process (OpenSSH 9.8+: sshd-session).
+			if l.Process != "" {
 				c.Process, c.PID = l.Process, l.PID
 			}
 		} else {

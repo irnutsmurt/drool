@@ -901,6 +901,8 @@ type rolloutJSON struct {
 	Failures      int64             `json:"failures"`
 	PausedReason  string            `json:"paused_reason"`
 	Automatic     bool              `json:"automatic"`
+	Kind          string            `json:"kind"`   // update | install (SSH → agent conversion)
+	Preset        string            `json:"preset"` // install: the capability preset
 	CreatedAt     string            `json:"created_at"`
 	UpdatedAt     string            `json:"updated_at"`
 	Hosts         []rolloutHostJSON `json:"hosts,omitempty"`
@@ -920,7 +922,7 @@ type rolloutHostJSON struct {
 func toRolloutJSON(r db.AgentRollout) rolloutJSON {
 	return rolloutJSON{ID: r.ID, Version: r.Version, Status: r.Status, Canary: r.Canary, BatchSize: r.BatchSize, MaxFailures: r.MaxFailures,
 		HealthWindowS: r.HealthWindowS, Failures: r.Failures, PausedReason: r.PausedReason, Automatic: r.Automatic != 0,
-		CreatedAt: msTime(r.CreatedAt), UpdatedAt: msTime(r.UpdatedAt)}
+		Kind: r.Kind, Preset: r.Preset, CreatedAt: msTime(r.CreatedAt), UpdatedAt: msTime(r.UpdatedAt)}
 }
 
 func (s *Server) handleListRollouts(w http.ResponseWriter, r *http.Request) {

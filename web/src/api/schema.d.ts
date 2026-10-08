@@ -2053,6 +2053,357 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/monitoring/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Fleet health: what needs attention across every host (unhealthy, stale, CPU/memory pressure, low disk, storage, services, interfaces, temperatures, reduced fidelity, missing helpers), with rows filtered, sorted and paged on the server. */
+        get: operations["monitoringSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Health issues found by the evaluation (what M12 alerting will consume), most severe and newest first; at most 500. */
+        get: operations["monitoringIssues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["monitoringSettings"];
+        /** @description Fleet monitoring settings (audited); re-sent to every connected agent. Requires `monitoring.settings`. */
+        put: operations["setMonitoringSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listHelperApprovals"];
+        put?: never;
+        /** @description A standing approval: install an allowlisted monitoring helper wherever it would add capability, for one group or every host, through package jobs owned by the approver. Audited. Requires `monitoring.settings`. */
+        post: operations["addHelperApproval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/approvals/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteHelperApproval"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/helpers/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Which monitoring helpers each selected host needs, with the package manager's names. Changes nothing. */
+        post: operations["previewHelpers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/helpers/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Install the helpers the selected hosts need through ordinary package jobs (one per distinct package list), with the usual locking, capability checks and audit. Requires `jobs.execute`. GPU drivers are never installed. */
+        post: operations["installHelpers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/monitoring": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The host's monitoring overview (headline tiles, current state, issues, probes, helpers, agent budget). Unknown values are absent, never zero. */
+        get: operations["hostMonitoring"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/monitoring/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Metric history for one range (1h and 6h from raw points, 24h five-minute, 7d and 30d hourly, average and maximum per window). `series` selects exact keys or prefixes ending in ':' (fs:, net.rx:, temp:); at most 32 series and 2000 points each. Missing windows are gaps, not zeros. */
+        get: operations["hostMonitoringHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/monitoring/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Service inventory (systemd). The default view hides transient, static and other noise units unless failed; `all=true` shows everything. */
+        get: operations["hostServices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/monitoring/services/{unit}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["hostServiceHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/monitoring/service-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["hostServiceEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/monitoring/storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Physical devices (with partitions, filesystems and stable ids), capability-aware health, probe results and recent kernel storage evidence. */
+        get: operations["hostStorage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/monitoring/hardware": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["hostHardware"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/monitoring/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["hostMonitoringEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/monitoring/helpers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["hostHelpers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/monitoring/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Watched services, the flash probe and disabled checks (`monitoring.manage`); the agent's resource budget needs `monitoring.settings`. Audited; re-sent to the agent. A probe more often than hourly returns a wear warning. */
+        put: operations["setHostMonitoringSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/monitoring/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Collect now (an agent immediately; an SSH host on its next poll). */
+        post: operations["refreshHostMonitoring"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/monitoring/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The agent's in-memory diagnostic ring as last delivered (routine diagnostics are never written to the host's disk). */
+        get: operations["hostDiagnostics"];
+        put?: never;
+        post: operations["requestHostDiagnostics"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/conversions/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Classify SSH hosts for conversion to agent management (compatible, already agent-managed, unsupported, unreachable). Changes nothing. */
+        post: operations["previewAgentConversion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/conversions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Install the agent on the compatible hosts as a rollout: a canary first, then bounded batches, pausing at the failure limit. Each host uses the single-host install over its pinned SSH connection; a failure leaves that host on SSH. Audited. */
+        post: operations["startAgentConversion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2264,6 +2615,12 @@ export interface components {
         AgentRollout: {
             id: string;
             version: string;
+            /**
+             * @description install: a bulk SSH → agent conversion (hosts get the agent over SSH).
+             * @enum {string}
+             */
+            kind: "update" | "install";
+            preset: string;
             /** @enum {string} */
             status: "running" | "paused" | "completed" | "cancelled";
             canary: number;
@@ -3764,6 +4121,594 @@ export interface components {
             added: string[];
             removed: string[];
             conflicts?: string[];
+        };
+        /** @description How the host is observed. Agents stream continuously; SSH hosts are polled, never continuous. */
+        MonFidelity: {
+            /** @enum {string} */
+            mode: "continuous" | "polled";
+            sample_s: number;
+            /** @description The agent lowered its fidelity to save resources. */
+            reduced: boolean;
+            reasons?: string[];
+            since?: number;
+        };
+        MonCPU: {
+            percent?: number;
+            iowait?: number;
+            steal?: number;
+            cores?: (number | null)[];
+            count: number;
+        };
+        MonMemory: {
+            total_bytes: number;
+            /** @description MemAvailable (reclaimable cache counts as available). */
+            available_bytes: number;
+            used_percent: number;
+            estimated?: boolean;
+            swap_total_bytes: number;
+            swap_free_bytes: number;
+            swap_percent?: number;
+        };
+        MonPressure: {
+            cpu10?: number;
+            cpu60?: number;
+            memory10?: number;
+            memory60?: number;
+            io10?: number;
+            io60?: number;
+        };
+        MonFS: {
+            mount: string;
+            device: string;
+            devnum: string;
+            type: string;
+            total_bytes: number;
+            used_bytes: number;
+            avail_bytes: number;
+            used_percent: number;
+            inodes_percent?: number;
+            read_only: boolean;
+            unresponsive?: boolean;
+        };
+        MonInterface: {
+            name: string;
+            /** @enum {string} */
+            kind: "physical" | "virtual" | "loopback";
+            state: string;
+            carrier?: boolean;
+            speed_mbps?: number;
+            mtu?: number;
+            rx_bps?: number;
+            tx_bps?: number;
+            err_ps?: number;
+            drop_ps?: number;
+            rx_errors: number;
+            tx_errors: number;
+            rx_drops: number;
+            tx_drops: number;
+        };
+        MonDiskIO: {
+            name: string;
+            read_bps?: number;
+            write_bps?: number;
+            busy_percent?: number;
+        };
+        MonSensor: {
+            id: string;
+            chip: string;
+            label: string;
+            /** @enum {string} */
+            kind: "cpu" | "board" | "storage" | "gpu" | "other";
+            device?: string;
+            celsius: number;
+            /** @description The hardware's own high threshold. */
+            high?: number;
+            critical?: number;
+            emergency?: number;
+        };
+        MonGPU: {
+            index: number;
+            vendor: string;
+            model: string;
+            source: string;
+            util_percent?: number;
+            mem_used_bytes?: number;
+            mem_total_bytes?: number;
+            celsius?: number;
+            power_w?: number;
+            power_state?: string;
+            note?: string;
+        };
+        MonCollector: {
+            name: string;
+            /** @enum {string} */
+            state: "ok" | "unavailable" | "failed" | "deferred";
+            note?: string;
+        };
+        MonHelper: {
+            package: string;
+            tool: string;
+            installed: boolean;
+            useful: boolean;
+            purpose: string;
+        };
+        MonAgentResources: {
+            enforced: boolean;
+            note?: string;
+            cpu_quota_percent?: number;
+            cpu_weight?: number;
+            memory_high_bytes?: number;
+            memory_max_bytes?: number;
+            cpu_percent?: number;
+            memory_bytes?: number;
+            memory_peak_bytes?: number;
+            /** @description The CPU quota held the agent back for more than 10% of the last 30 s (not any throttled period). */
+            throttled?: boolean;
+            oom_kills?: number;
+            buffer_bytes: number;
+            buffer_limit: number;
+            dropped_points: number;
+        };
+        MonState: {
+            /** @enum {string} */
+            source: "agent" | "ssh";
+            at: number;
+            boot_id?: string;
+            fidelity: components["schemas"]["MonFidelity"];
+            cpu?: components["schemas"]["MonCPU"];
+            load?: number[];
+            memory?: components["schemas"]["MonMemory"];
+            uptime_s?: number;
+            pressure?: components["schemas"]["MonPressure"];
+            filesystems: components["schemas"]["MonFS"][];
+            interfaces: components["schemas"]["MonInterface"][];
+            disks: components["schemas"]["MonDiskIO"][];
+            sensors: components["schemas"]["MonSensor"][];
+            gpus: components["schemas"]["MonGPU"][];
+            gpu_note?: string;
+            collectors: components["schemas"]["MonCollector"][];
+            helpers: components["schemas"]["MonHelper"][];
+            agent?: components["schemas"]["MonAgentResources"];
+        };
+        MonTile: {
+            key: string;
+            label: string;
+            value?: number;
+            unit?: string;
+            text: string;
+            /** @enum {string} */
+            status: "ok" | "info" | "warning" | "critical" | "unknown";
+            detail?: string;
+        };
+        MonIssue: {
+            id: string;
+            host_id: string;
+            host_name?: string;
+            check: string;
+            subject: string;
+            /** @enum {string} */
+            severity: "info" | "warning" | "critical";
+            /** @enum {string} */
+            state: "active" | "resolved";
+            title: string;
+            detail?: string;
+            value?: number;
+            started_at: number;
+            updated_at: number;
+            resolved_at?: number;
+        };
+        MonProbe: {
+            mount: string;
+            at: number;
+            ok: boolean;
+            /** @enum {string} */
+            stage?: "location" | "write" | "sync" | "read" | "verify" | "timeout";
+            error?: string;
+            /** @description Read back from the device (O_DIRECT) rather than the page cache. */
+            direct: boolean;
+            ms: number;
+            location?: string;
+        };
+        MonGap: {
+            from: number;
+            to: number;
+            reason: string;
+        };
+        /** @description An agent resource budget; absent fields keep the defaults. */
+        MonLimits: {
+            cpu_quota_percent?: number;
+            cpu_weight?: number;
+            memory_high_mb?: number;
+            memory_max_mb?: number;
+        };
+        MonEffectiveLimits: {
+            CPUQuotaPct: number;
+            CPUWeight: number;
+            MemoryHighMB: number;
+            MemoryMaxMB: number;
+        };
+        MonAgentView: {
+            limits: components["schemas"]["MonEffectiveLimits"];
+            overridden: boolean;
+            monitor_1: boolean;
+            connected: boolean;
+        };
+        MonHelperStatus: {
+            package: string;
+            installed: boolean;
+            useful: boolean;
+            purpose: string;
+            /** @enum {string} */
+            requested?: "requested" | "installed" | "failed";
+            job_id?: string;
+            /** @enum {string} */
+            approved?: "global" | "group";
+        };
+        MonHostSettings: {
+            watched_services: string[];
+            probe_mounts: string[];
+            /** @description Seconds between probes (default 3600). Shorter intervals are allowed but add flash wear. */
+            probe_s?: number;
+            limits?: components["schemas"]["MonLimits"];
+            disabled_checks: string[];
+        };
+        MonHostOverview: {
+            host_id: string;
+            has_data: boolean;
+            source: string;
+            stale: boolean;
+            updated_at: number;
+            tiles: components["schemas"]["MonTile"][];
+            state?: components["schemas"]["MonState"];
+            issues: components["schemas"]["MonIssue"][];
+            probes: {
+                [key: string]: components["schemas"]["MonProbe"];
+            };
+            settings: components["schemas"]["MonHostSettings"];
+            helpers: components["schemas"]["MonHelperStatus"][];
+            gaps: components["schemas"]["MonGap"][];
+            agent?: components["schemas"]["MonAgentView"];
+        };
+        MonSeries: {
+            key: string;
+            /** @description [unix seconds (window end), average, maximum] */
+            points: number[][];
+        };
+        MonHistory: {
+            range: string;
+            from: number;
+            to: number;
+            step_s: number;
+            series: components["schemas"]["MonSeries"][];
+            available: string[];
+            gaps: components["schemas"]["MonGap"][];
+            truncated: boolean;
+        };
+        MonService: {
+            name: string;
+            description: string;
+            load: string;
+            active: string;
+            sub: string;
+            file_state: string;
+            since?: number;
+            /** @description Automatic restarts since the unit was last started by hand (systemd NRestarts). */
+            restarts?: number;
+            result?: string;
+            transient: boolean;
+            /** @description False while the host's telemetry is lost (state unknown). */
+            known: boolean;
+            changed_at: number;
+            /** @enum {string} */
+            state: "running" | "stopped" | "failed" | "unknown";
+            notable: boolean;
+            watched: boolean;
+        };
+        MonServicesView: {
+            supported: boolean;
+            note?: string;
+            updated_at: number;
+            source: string;
+            counts: {
+                [key: string]: number;
+            };
+            hidden: number;
+            units: components["schemas"]["MonService"][];
+        };
+        MonServiceEvent: {
+            unit: string;
+            ts: number;
+            from: string;
+            to: string;
+            result?: string;
+        };
+        MonServiceEvents: {
+            events: components["schemas"]["MonServiceEvent"][];
+        };
+        MonIndicator: {
+            name: string;
+            value: string;
+            /** @enum {string} */
+            status: "ok" | "warning" | "critical" | "info";
+        };
+        MonDeviceHealth: {
+            /** @enum {string} */
+            state: "ok" | "warning" | "failing" | "no_indicators" | "unknown";
+            summary: string;
+            indicators: components["schemas"]["MonIndicator"][];
+        };
+        MonPartition: {
+            name: string;
+            uuid?: string;
+            size_bytes: number;
+            read_only: boolean;
+            mounts?: string[];
+            via?: string;
+        };
+        MonSMART: {
+            passed?: boolean;
+            celsius?: number;
+            power_on_hours?: number;
+            power_cycles?: number;
+            reallocated?: number;
+            pending?: number;
+            offline_uncorrectable?: number;
+            reported_uncorrectable?: number;
+            crc_errors?: number;
+            grown_defects?: number;
+            uncorrected_errors?: number;
+            endurance_used_percent?: number;
+            endurance_vendor_specific?: boolean;
+            bytes_read?: number;
+            bytes_written?: number;
+            last_self_test?: string;
+            last_self_test_passed?: boolean;
+            error_log_count?: number;
+            protocol?: string;
+            bridge_type?: string;
+        };
+        MonNVMe: {
+            critical_warning?: number;
+            warnings?: string[];
+            celsius?: number;
+            available_spare?: number;
+            spare_threshold?: number;
+            percent_used?: number;
+            bytes_read?: number;
+            bytes_written?: number;
+            power_cycles?: number;
+            power_on_hours?: number;
+            unsafe_shutdowns?: number;
+            media_errors?: number;
+            error_log_entries?: number;
+            last_self_test?: string;
+            via_usb?: boolean;
+        };
+        MonEMMC: {
+            life_time_a?: string;
+            life_time_b?: string;
+            life_a?: string;
+            life_b?: string;
+            /** @enum {string} */
+            pre_eol?: "normal" | "warning" | "urgent";
+        };
+        MonAttribute: {
+            id: number;
+            name: string;
+            value: number;
+            worst: number;
+            thresh: number;
+            raw: string;
+            when_failed?: string;
+        };
+        MonDevice: {
+            /** @description Stable identity (WWN */
+            key: string;
+            name: string;
+            ids?: string[];
+            /** @enum {string} */
+            kind: "hdd" | "ssd" | "nvme" | "usb-flash" | "usb-sata" | "usb-nvme" | "usb" | "sd" | "emmc" | "virtual" | "unknown";
+            transport: string;
+            model?: string;
+            serial?: string;
+            firmware?: string;
+            size_bytes: number;
+            rotational?: boolean;
+            removable: boolean;
+            read_only: boolean;
+            partitions: components["schemas"]["MonPartition"][];
+            mounts?: string[];
+            /** @enum {string} */
+            capability: "full" | "partial" | "vendor" | "limited" | "unavailable";
+            capability_note?: string;
+            source?: string;
+            standby?: boolean;
+            health: components["schemas"]["MonDeviceHealth"];
+            smart?: components["schemas"]["MonSMART"];
+            nvme?: components["schemas"]["MonNVMe"];
+            emmc?: components["schemas"]["MonEMMC"];
+            evidence: {
+                io_errors?: number;
+            };
+            raw?: components["schemas"]["MonAttribute"][];
+            helper?: string;
+        };
+        MonEvent: {
+            id: number;
+            ts: number;
+            kind: string;
+            subject?: string;
+            /** @enum {string} */
+            severity: "info" | "warning" | "critical";
+            message: string;
+            data?: unknown;
+        };
+        MonStorageView: {
+            updated_at: number;
+            smart_read: boolean;
+            devices: components["schemas"]["MonDevice"][];
+            probes: {
+                [key: string]: components["schemas"]["MonProbe"];
+            };
+            events: components["schemas"]["MonEvent"][];
+            source: string;
+            note?: string;
+        };
+        MonDiagEntry: {
+            time: string;
+            level: string;
+            message: string;
+        };
+        MonThresholds: {
+            cpu_percent: number;
+            cpu_minutes: number;
+            memory_percent: number;
+            memory_critical_percent: number;
+            memory_minutes: number;
+            disk_warning_percent: number;
+            disk_critical_percent: number;
+            inode_warning_percent: number;
+            inode_critical_percent: number;
+            service_failed_minutes: number;
+            watched_stopped_minutes: number;
+            interface_down_minutes: number;
+            temperature_minutes: number;
+            stale_intervals: number;
+        };
+        MonSettings: {
+            enabled: boolean;
+            /** @enum {string} */
+            profile: "recommended" | "custom";
+            custom: components["schemas"]["MonThresholds"];
+            retention_days: number;
+            sample_s: number;
+            slow_s: number;
+            services_s: number;
+            storage_s: number;
+            smart_s: number;
+            buffer_kb: number;
+            limits?: components["schemas"]["MonLimits"];
+            ssh_poll_s: number;
+            ssh_smart_s: number;
+            ssh_sudo: boolean;
+        };
+        MonPrune: {
+            at: string;
+            points: number;
+            events: number;
+            service_events: number;
+            issues: number;
+            ms: number;
+        };
+        MonSettingsView: {
+            settings: components["schemas"]["MonSettings"];
+            recommended: components["schemas"]["MonThresholds"];
+            checks: string[];
+            helpers: string[];
+            last_prune: components["schemas"]["MonPrune"];
+        };
+        MonFleetHost: {
+            host_id: string;
+            name: string;
+            source: string;
+            /** @enum {string} */
+            mode: "continuous" | "polled" | "none";
+            updated_at: number;
+            stale: boolean;
+            cpu?: number;
+            memory?: number;
+            disk?: number;
+            disk_mount?: string;
+            temperature?: number;
+            services: number;
+            failed_services: number;
+            storage: string;
+            issues: number;
+            /** @enum {string} */
+            worst: "ok" | "info" | "warning" | "critical";
+            reduced: boolean;
+            helpers: string[];
+            categories: string[];
+        };
+        MonFleet: {
+            hosts: number;
+            monitored: number;
+            agent: number;
+            ssh: number;
+            counts: {
+                [key: string]: number;
+            };
+            rows: components["schemas"]["MonFleetHost"][];
+            total: number;
+            issues: components["schemas"]["MonIssue"][];
+            generated_at: number;
+        };
+        MonHelpersRequest: {
+            host_ids: string[];
+            packages?: ("smartmontools" | "nvme-cli" | "lm-sensors")[];
+        };
+        MonHelperPlanHost: {
+            host_id: string;
+            name: string;
+            helpers: string[];
+            packages: string[];
+            manager?: string;
+            skip?: string;
+        };
+        MonHelperPreview: {
+            hosts: number;
+            counts: {
+                [key: string]: number;
+            };
+            plan: components["schemas"]["MonHelperPlanHost"][];
+            installs: number;
+        };
+        MonInstallResult: {
+            jobs: string[];
+            preview: components["schemas"]["MonHelperPreview"];
+        };
+        MonApproval: {
+            id: string;
+            /** @enum {string} */
+            scope: "global" | "group";
+            group_id?: string;
+            group_name?: string;
+            package: string;
+            created_by?: string;
+            created_at: number;
+        };
+        MonApprovalInput: {
+            /** @enum {string} */
+            scope: "global" | "group";
+            group_id?: string;
+            /** @enum {string} */
+            package: "smartmontools" | "nvme-cli" | "lm-sensors";
+        };
+        ConversionRequest: {
+            host_ids: string[];
+            /** @enum {string} */
+            preset?: "monitor" | "managed" | "full";
+            canary?: number;
+            batch_size?: number;
+            max_failures?: number;
+        };
+        ConversionHost: {
+            host_id: string;
+            name: string;
+            /** @enum {string} */
+            status: "compatible" | "agent" | "unsupported" | "unreachable";
+            reason?: string;
+            arch?: string;
+        };
+        ConversionPreview: {
+            selected: number;
+            counts: {
+                [key: string]: number;
+            };
+            hosts: components["schemas"]["ConversionHost"][];
+            binary: {
+                [key: string]: string;
+            };
         };
     };
     responses: {
@@ -7529,6 +8474,613 @@ export interface operations {
                 };
             };
             404: components["responses"]["Problem"];
+        };
+    };
+    monitoringSummary: {
+        parameters: {
+            query?: {
+                category?: "all" | "unhealthy" | "stale" | "cpu" | "memory" | "disk" | "storage" | "services" | "network" | "temperature" | "fidelity" | "helpers" | "no_data";
+                /** @description Host name substring. */
+                q?: string;
+                sort?: "attention" | "name" | "cpu" | "memory" | "disk" | "temperature";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fleet health. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonFleet"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    monitoringIssues: {
+        parameters: {
+            query?: {
+                host_id?: string;
+                state?: "active" | "resolved" | "all";
+                severity?: "info" | "warning" | "critical";
+                check?: string;
+                limit?: number;
+                /** @description Started before (ms) */
+                before?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Issues. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        issues: components["schemas"]["MonIssue"][];
+                    };
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    monitoringSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonSettingsView"];
+                };
+            };
+        };
+    };
+    setMonitoringSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MonSettings"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonSettingsView"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    listHelperApprovals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Standing approvals and the helper allowlist. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        approvals: components["schemas"]["MonApproval"][];
+                        allowlist: string[];
+                    };
+                };
+            };
+        };
+    };
+    addHelperApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MonApprovalInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                    };
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    deleteHelperApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed (installed helpers stay installed). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    previewHelpers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MonHelpersRequest"];
+            };
+        };
+        responses: {
+            /** @description Preview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonHelperPreview"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    installHelpers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MonHelpersRequest"];
+            };
+        };
+        responses: {
+            /** @description Jobs started. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonInstallResult"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    hostMonitoring: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Overview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonHostOverview"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    hostMonitoringHistory: {
+        parameters: {
+            query?: {
+                range?: "1h" | "6h" | "24h" | "7d" | "30d";
+                series?: string[];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description History. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonHistory"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    hostServices: {
+        parameters: {
+            query?: {
+                filter?: "all" | "running" | "stopped" | "failed" | "enabled" | "disabled";
+                all?: boolean;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Services. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonServicesView"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    hostServiceHistory: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+                unit: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Transitions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonServiceEvents"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    hostServiceEvents: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every unit's transitions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonServiceEvents"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    hostStorage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Storage. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonStorageView"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    hostHardware: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Temperature sensors and GPUs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sensors: components["schemas"]["MonSensor"][];
+                        gpus: components["schemas"]["MonGPU"][];
+                        gpu_note: string;
+                    };
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    hostMonitoringEvents: {
+        parameters: {
+            query?: {
+                kind?: "kernel" | "probe" | "fidelity" | "gap" | "reboot";
+                limit?: number;
+                /** @description Event id cursor. */
+                before?: number;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Events, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        events: components["schemas"]["MonEvent"][];
+                    };
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    hostHelpers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What this host would get. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonHelperPreview"];
+                };
+            };
+        };
+    };
+    setHostMonitoringSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MonHostSettings"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        settings: components["schemas"]["MonHostSettings"];
+                        warning?: string;
+                    };
+                };
+            };
+            403: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    refreshHostMonitoring: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Requested. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        agent: boolean;
+                    };
+                };
+            };
+        };
+    };
+    hostDiagnostics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Entries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        entries: components["schemas"]["MonDiagEntry"][];
+                    };
+                };
+            };
+        };
+    };
+    requestHostDiagnostics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Requested from the agent. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Problem"];
+        };
+    };
+    previewAgentConversion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversionRequest"];
+            };
+        };
+        responses: {
+            /** @description Preview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversionPreview"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    startAgentConversion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversionRequest"];
+            };
+        };
+        responses: {
+            /** @description Started. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rollout_id: string;
+                        preview: components["schemas"]["ConversionPreview"];
+                    };
+                };
+            };
+            422: components["responses"]["Problem"];
         };
     };
 }

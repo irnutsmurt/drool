@@ -1,0 +1,6 @@
+{"json_format_version":[1,0],"smartctl":{"version":[7,3],"exit_status":8,"messages":[{"string":"SMART overall-health self-assessment test result: FAILED!","severity":"error"}]},
+"device":{"name":"/dev/nvme0","type":"nvme","protocol":"NVMe"},
+"model_name":"Generic NVMe 512GB","serial_number":"NV123","firmware_version":"1.0",
+"smart_support":{"available":true,"enabled":true},"smart_status":{"passed":false,"nvme":{"value":5}},
+"nvme_smart_health_information_log":{"critical_warning":5,"temperature":71,"available_spare":3,"available_spare_threshold":10,"percentage_used":104,"data_units_read":1,"data_units_written":2,"power_cycles":4,"power_on_hours":5,"unsafe_shutdowns":6,"media_errors":12,"num_err_log_entries":30},
+"nvme_self_test_log":{"table":[{"self_test_code":{"value":1,"string":"Short"},"self_test_result":{"value":0,"string":"Completed without error"}}]}}

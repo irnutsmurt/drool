@@ -92,7 +92,8 @@ func (r *runningAgent) stop() {
 
 func startAgent(t *testing.T, p agent.Paths, version string) *runningAgent {
 	t.Helper()
-	a, err := agent.New(agent.Options{Paths: p, Version: version, StatusEvery: time.Second, RenewCheck: 200 * time.Millisecond, Supervisor: "exit"})
+	a, err := agent.New(agent.Options{Paths: p, Version: version, StatusEvery: time.Second, RenewCheck: 200 * time.Millisecond, Supervisor: "exit",
+		Monitor: fixtureMonitor(t)})
 	if err != nil {
 		t.Fatal(err)
 	}

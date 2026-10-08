@@ -10,6 +10,7 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { to: "/", label: "Dashboard" },
   { to: "/hosts", label: "Hosts", permission: "hosts.read" },
+  { to: "/monitoring", label: "Monitoring", permission: "monitoring.read" },
   { to: "/groups", label: "Groups", permission: "hosts.read" },
   { to: "/jobs", label: "Jobs", permission: "jobs.read" },
   { to: "/firewall", label: "Firewall", permission: "firewall.read" },

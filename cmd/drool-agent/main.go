@@ -23,6 +23,7 @@ import (
 
 	"drool/internal/agent"
 	"drool/internal/agentcaps"
+	"drool/internal/monitor/agentmon"
 	"drool/internal/release"
 	"drool/internal/version"
 )
@@ -114,7 +115,8 @@ func cmdRun(args []string) error {
 		}
 		os.Exit(3)
 	}
-	a, err := agent.New(agent.Options{Paths: p, Version: version.Version, Log: logger(), Supervisor: *sup, StatusEvery: *status})
+	a, err := agent.New(agent.Options{Paths: p, Version: version.Version, Log: logger(), Supervisor: *sup, StatusEvery: *status,
+		MonitorExtra: runawayCollector})
 	if err != nil {
 		return err
 	}
@@ -244,7 +246,12 @@ func copyFile(src, dst string, perm os.FileMode) error {
 	return os.Rename(tmp, dst)
 }
 
-const unit = `[Unit]
+// unit is the service. The resource budget (M11) keeps the agent from
+// ever competing with the host's workload: a low CPU weight, a hard CPU
+// quota, a memory high-water mark and a hard ceiling. Operations run in
+// their own scopes outside it (see internal/agent/limits.go); the
+// controller may tune the budget at runtime.
+var unit = fmt.Sprintf(`[Unit]
 Description=DROOL agent
 After=network-online.target
 Wants=network-online.target
@@ -259,10 +266,18 @@ ExecStart=/usr/libexec/drool-agent/current/drool-agent run
 Restart=always
 RestartSec=5
 UMask=0077
+# Resource budget: the managed workload wins.
+CPUWeight=%d
+CPUQuota=%d%%
+MemoryHigh=%dM
+MemoryMax=%dM
+IOWeight=20
+TasksMax=256
+OOMScoreAdjust=300
 
 [Install]
 WantedBy=multi-user.target
-`
+`, agentmon.DefaultCPUWeight, agentmon.DefaultCPUQuotaPct, agentmon.DefaultMemoryHighMB, agentmon.DefaultMemoryMaxMB)
 
 func cmdInstall(args []string) error {
 	fs := flag.NewFlagSet("install", flag.ExitOnError)

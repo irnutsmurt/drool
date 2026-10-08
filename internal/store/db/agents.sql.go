@@ -11,7 +11,7 @@ import (
 )
 
 const activeRollouts = `-- name: ActiveRollouts :many
-SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at FROM agent_rollouts WHERE status = 'running' ORDER BY created_at
+SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset FROM agent_rollouts WHERE status = 'running' ORDER BY created_at
 `
 
 func (q *Queries) ActiveRollouts(ctx context.Context) ([]AgentRollout, error) {
@@ -37,6 +37,8 @@ func (q *Queries) ActiveRollouts(ctx context.Context) ([]AgentRollout, error) {
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Kind,
+			&i.Preset,
 		); err != nil {
 			return nil, err
 		}
@@ -394,7 +396,7 @@ func (q *Queries) GetReleaseFor(ctx context.Context, arg GetReleaseForParams) (A
 }
 
 const getRollout = `-- name: GetRollout :one
-SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at FROM agent_rollouts WHERE id = ?
+SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset FROM agent_rollouts WHERE id = ?
 `
 
 func (q *Queries) GetRollout(ctx context.Context, id string) (AgentRollout, error) {
@@ -414,6 +416,8 @@ func (q *Queries) GetRollout(ctx context.Context, id string) (AgentRollout, erro
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Kind,
+		&i.Preset,
 	)
 	return i, err
 }
@@ -1260,7 +1264,7 @@ func (q *Queries) ListRolloutHosts(ctx context.Context, rolloutID string) ([]Lis
 }
 
 const listRollouts = `-- name: ListRollouts :many
-SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at FROM agent_rollouts ORDER BY created_at DESC LIMIT 50
+SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset FROM agent_rollouts ORDER BY created_at DESC LIMIT 50
 `
 
 func (q *Queries) ListRollouts(ctx context.Context) ([]AgentRollout, error) {
@@ -1286,6 +1290,8 @@ func (q *Queries) ListRollouts(ctx context.Context) ([]AgentRollout, error) {
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Kind,
+			&i.Preset,
 		); err != nil {
 			return nil, err
 		}
@@ -1762,6 +1768,21 @@ func (q *Queries) SetRolloutHostState(ctx context.Context, arg SetRolloutHostSta
 		arg.RolloutID,
 		arg.HostID,
 	)
+	return err
+}
+
+const setRolloutKind = `-- name: SetRolloutKind :exec
+UPDATE agent_rollouts SET kind = ?, preset = ? WHERE id = ?
+`
+
+type SetRolloutKindParams struct {
+	Kind   string
+	Preset string
+	ID     string
+}
+
+func (q *Queries) SetRolloutKind(ctx context.Context, arg SetRolloutKindParams) error {
+	_, err := q.db.ExecContext(ctx, setRolloutKind, arg.Kind, arg.Preset, arg.ID)
 	return err
 }
 

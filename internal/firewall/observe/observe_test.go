@@ -59,3 +59,17 @@ func TestParseAndAggregate(t *testing.T) {
 		t.Errorf("after drain: %+v", fl)
 	}
 }
+
+func TestInboundTakesTheListener(t *testing.T) {
+	// OpenSSH 9.8+ hands each accepted connection to sshd-session; the
+	// service a policy names is still the listening sshd.
+	cs := Conns(ParseSockets(`tcp LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:(("sshd",pid=900,fd=3))
+tcp ESTAB 0 0 10.0.0.5:22 10.0.0.9:51234 users:(("sshd-session",pid=1234,fd=4))
+tcp ESTAB 0 0 10.0.0.5:44310 142.250.1.1:443 users:(("curl",pid=4242,fd=5))`))
+	if len(cs) != 2 || !cs[0].Inbound || cs[0].Process != "sshd" || cs[0].PID != 900 {
+		t.Fatalf("inbound: %+v", cs)
+	}
+	if cs[1].Inbound || cs[1].Process != "curl" {
+		t.Fatalf("outbound keeps its own process: %+v", cs[1])
+	}
+}

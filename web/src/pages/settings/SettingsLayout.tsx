@@ -7,6 +7,7 @@ const tabs = [
   { to: "account", label: "Account" },
   { to: "tokens", label: "API tokens" },
   { to: "users", label: "Users", permission: "users.manage" },
+  { to: "monitoring", label: "Monitoring", permission: "monitoring.read" },
   { to: "system", label: "System" },
 ];
 

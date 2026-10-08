@@ -50,6 +50,15 @@ const (
 	PermNetworkRead     Permission = "network.read"     // observed connections, topology, enrichment status
 	PermNetworkSnapshot Permission = "network.snapshot" // take a connection snapshot of an SSH host
 	PermNetworkSettings Permission = "network.settings" // collection, retention, enrichment
+
+	// System monitoring (M11). Reading metrics, services and hardware
+	// health is for everyone; watching services, the flash probe and
+	// refreshes for operators; thresholds, retention, standing helper
+	// approvals and agent resource budgets for administrators. Installing
+	// helpers is a package job (jobs.execute).
+	PermMonitoringRead     Permission = "monitoring.read"
+	PermMonitoringManage   Permission = "monitoring.manage"
+	PermMonitoringSettings Permission = "monitoring.settings"
 )
 
 // Role names stored in users.role.
@@ -72,19 +81,20 @@ var rolePermissions = map[string][]Permission{
 		PermAgentsRead, PermAgentsEnroll, PermAgentsManage, PermAgentsPKI,
 		PermFirewallRead, PermFirewallWrite, PermFirewallOverride,
 		PermNetworkRead, PermNetworkSnapshot, PermNetworkSettings,
+		PermMonitoringRead, PermMonitoringManage, PermMonitoringSettings,
 	},
 	// Operators can already run commands as root (jobs.execute), so file
 	// elevation adds no power they don't have.
 	RoleOperator: {
 		PermHostsRead, PermJobsRead, PermJobsExecute, PermCredentialsUse,
 		PermFilesRead, PermFilesWrite, PermFilesDeploy, PermFilesElevate,
-		PermAgentsRead, PermFirewallRead, PermNetworkRead, PermNetworkSnapshot,
+		PermAgentsRead, PermFirewallRead, PermNetworkRead, PermNetworkSnapshot, PermMonitoringRead, PermMonitoringManage,
 	},
 	RoleAuditor: {
-		PermHostsRead, PermJobsRead, PermAuditRead, PermSettingsRead, PermAgentsRead, PermFirewallRead, PermNetworkRead,
+		PermHostsRead, PermJobsRead, PermAuditRead, PermSettingsRead, PermAgentsRead, PermFirewallRead, PermNetworkRead, PermMonitoringRead,
 	},
 	RoleViewer: {
-		PermHostsRead, PermJobsRead, PermAgentsRead, PermFirewallRead,
+		PermHostsRead, PermJobsRead, PermAgentsRead, PermFirewallRead, PermMonitoringRead,
 	},
 }
 

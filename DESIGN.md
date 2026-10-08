@@ -1,16 +1,34 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.6**
+**Design Document v0.3.7**
 Status: Draft · 2026-10-07 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
 > DROOL is a web-first platform for managing, automating, monitoring, and eventually segmenting Linux systems through SSH or an agent.
 >
-> The broader name is intentional, but **Linux is the product scope**. The name is not a mandate to add Windows or other platforms (see §34).
+> **Linux is the platform DROOL implements today.** A Windows agent is a future product goal, deferred (§2.6, §34): the controller's typed operations are kept platform-neutral so that agent can implement them with Windows-native mechanisms later. Nothing in this document requires the architecture to stay Linux-only forever.
+>
+> **Simple by default. Powerful by choice.** Homelab-friendly UX, production-conscious engineering (§2.5).
 
 ---
 
 ## 0. Changes
+
+### v0.3.6 → v0.3.7 (M11: system monitoring, service inventory and hardware health)
+
+The product philosophy is stated explicitly (§2.5): **simple by default, powerful by choice**; homelab-friendly UX, production-conscious engineering. Linux is the implemented platform and a Windows agent is recorded as deferred future work, not out of scope (§2.6, §34). Monitoring extends the agent telemetry of §5/§6 rather than adding a separate system:
+
+| # | As built | Section |
+|---|---|---|
+| 1 | Agents monitor **continuously** (sampling every 10 s, one-minute points); SSH hosts are **polled** (every 5 minutes) with the same collectors run against a script's dump. The UI never calls polling continuous | §11.3 |
+| 2 | **The managed workload wins.** The agent runs under a systemd budget (low CPU weight, a hard CPU quota, a memory high-water mark and ceiling) chosen from measurements, bounds every internal structure, and lowers its own fidelity under pressure; operations run outside the budget | §11.3, §6 |
+| 3 | **Memory first.** Routine telemetry stays in a bounded in-memory buffer while the controller is away; when it fills, the oldest routine samples go and the gap is reported. Nothing is written to the host's disk except the configuration and the optional flash probe | §11.3 |
+| 4 | **History on the controller** in downsampled tiers (raw for a day, five-minute for eight days, hourly for the retention period) in SQLite; no external time-series database | §11.3 |
+| 5 | **Services** are inventoried with their states, enablement, timestamps and restarts; state changes are recorded (not repeated samples), including Unknown while telemetry is lost | §11.3 |
+| 6 | **Hardware health is capability-aware.** Temperatures with the hardware's own thresholds; GPUs where the vendor exposes them; storage health separate from filesystem space, with Full / Partial / Vendor-specific / Limited / Unavailable capability and no invented health for SD cards or unknown devices; an optional tiny write/read flash probe | §11.3 |
+| 7 | **Optional helpers** (smartmontools, nvme-cli, lm-sensors) are explained when missing and installed only with approval (one host, a selection, a group or everywhere, from an allowlist) through the ordinary package engine. GPU drivers are never installed | §11.3, §12.3 |
+| 8 | **Health evaluation** with a recommended profile (or custom thresholds), durations and hysteresis; it opens and resolves issues that M12's alerting will consume. Nothing is notified yet | §11.3 |
+| 9 | **SSH → agent conversion** in bulk: the existing single-host install, rolled out canary-first in bounded batches through the agent rollout machinery | §6.1, §28 |
 
 ### v0.3.5 → v0.3.6 (M10: network connectivity monitoring)
 
@@ -164,6 +182,12 @@ Security acts as **guardrails around the experience, not obstacles in front of i
 | **Usable, not maximally hardened yet** | Works out of the box; the UI recommends the stronger setting | Self-signed TLS; root CA kept online; one-time setup code on the console; no MFA; local-only audit log |
 
 New defaults must be placed in one of these categories deliberately. When in doubt, prefer a working default plus a visible recommendation over a prerequisite.
+
+**Simple by default. Powerful by choice.** DROOL's audience is self-hosters, homelabs, enthusiasts and small environments: someone who installs DROOL and adds hosts gets useful monitoring and management immediately, without learning Prometheus, Grafana, Ansible, query languages, exporters or dashboard design. Advanced controls exist, but never as prerequisites. The engineering is **production-conscious**: DROOL does not cripple itself or make unsafe assumptions because a homelab is the common case.
+
+### 2.6 Linux first, platform-neutral operations
+
+Linux is the implemented platform. A **Windows agent is deferred future work**, not out of scope forever. To keep that door open, the controller speaks in typed operations and typed telemetry (services, packages and updates, files, reboots, metrics, storage health) rather than in Linux command lines: the Linux agent and the SSH path implement them with systemd, apt/dnf, /proc and sysfs; a future Windows agent would implement the same operations with the Service Control Manager, Windows Update/winget, NTFS ACLs and performance counters. Linux-specific details (nftables, systemd unit states, SMART via smartmontools) stay behind those typed boundaries. No Windows code is built until it is scheduled.
 
 ---
 
@@ -618,11 +642,25 @@ agent-version:<1.5
 
 ### 11.3 Monitoring
 
-CPU, memory, load, disk/filesystem, uptime, interfaces, throughput, service health, failed services, package/update status, reboot required, agent/SSH connectivity, listening ports.
+A normal user installs DROOL, adds hosts and immediately sees CPU, memory, storage, temperatures, network, services, storage-device health and active health issues — no exporters, query languages or dashboard design. Advanced controls (thresholds, intervals, agent budgets, helper approvals, all-units views, raw SMART attributes) exist without being prerequisites.
 
-Agents stream telemetry. SSH hosts are polled; the polling interval is configurable and the scheduler spreads polls out.
+**Two fidelities, one implementation.** Agents stream: they sample every 10 seconds, aggregate one-minute points (average and maximum) and send them in batches, with filesystems, sensors and GPUs every minute, services every 30 seconds and storage health every 30 minutes. SSH-only hosts are polled (every 5 minutes; storage health hourly): a generated script dumps the same /proc and sysfs files and helper outputs, and the controller runs the very same collectors against that dump. Every view says which fidelity it shows; polling is never called continuous. Long-term history lives on the controller; the agent is not a time-series database.
 
----
+**The managed workload wins.** The agent has an explicit resource budget (systemd: low CPU weight, a hard CPU quota, a memory high-water mark and a hard ceiling; defaults chosen from measurements and suitable for a Raspberry Pi) and every internal structure is bounded (queues, buffers, observations, diagnostics, helper output, concurrent helpers). Under pressure — its own budget nearly used, or the host itself CPU- or memory-starved — it samples less often and defers expensive collectors, keeping controller connectivity and important state changes; the UI says when fidelity was reduced and why. Operations (packages, scripts, firewall transactions, services) run outside the budget.
+
+**Memory first.** While the controller is unreachable the agent keeps routine telemetry in a bounded in-memory buffer; when it fills, the oldest routine samples are discarded and the gap is reported on reconnect. Important events (service transitions, storage evidence, probe results, fidelity changes) are kept preferentially. Routine diagnostics stay in a memory ring; only meaningful failures are logged, deduplicated and rate-limited. Nothing routine is written to the host's disk.
+
+**History.** Raw points for a day, five-minute aggregates for eight days, hourly aggregates for the retention period (default 30 days), in SQLite; pruning and rollups run in small transactions beside ingestion. Views: hour, 24 hours, 7 days, 30 days.
+
+**Services.** On systemd hosts: name, description, load/active/sub state, enablement, since when, automatic restarts. The default view hides transient and static noise unless it failed; an all-units view shows everything. State changes are stored (Running → Failed, Failed → Running, Running → Stopped, Unknown while telemetry is lost and back), so rules such as "if jellyfin.service stops for 2 minutes" can be evaluated (M12). Service control stays the typed service operation.
+
+**Hardware.** Temperatures from hwmon (thermal zones and lm-sensors as fallbacks) with the hardware's own high/critical thresholds — never one invented danger temperature; missing sensors are normal. GPUs through vendor-specific collectors (nvidia-smi; AMD and Intel sysfs), best effort: "GPU telemetry unavailable", never zeros. DROOL never installs GPU drivers.
+
+**Storage health is not filesystem space.** Physical devices are tracked by stable identifiers (WWN, NVMe EUI, model and serial) with their partitions, device-mapper layers, filesystems and mounts. Each device has a capability: **Full** (standardized SMART or NVMe health), **Partial** (some, e.g. eMMC life-time registers or only the SMART result), **Vendor-specific** (only vendor attributes), **Limited** (the device exposes no health telemetry: SD cards, most USB sticks) or **Unavailable** (could exist but can't be read: tool missing, no permission, virtual disk). A device is never called healthy because its health couldn't be read; limited devices say "No failure indicators detected" from what Linux itself sees (IO errors, controller resets and timeouts, USB resets, filesystem errors, read-only flips) and, optionally, a tiny hourly write/read probe on the actual filesystem in a DROOL-owned location (fsync, read back, compare; a shorter interval is allowed with a wear warning). SMART attribute numbers are not assumed to mean the same across manufacturers; disks in standby aren't woken; no self-tests are started.
+
+**Helpers.** DROOL uses the kernel first, then tools already installed, then optional helpers (smartmontools, nvme-cli, lm-sensors). A missing helper is explained ("NVMe health is unavailable because nvme-cli is not installed; installing it enables …"). Installation needs approval — once for a host, for a selection, for a group or everywhere for an allowlisted helper — and goes through the ordinary package job engine, audited like any install; DROOL records that it asked and never uninstalls. One host's failed installation only reduces that host's monitoring.
+
+**Health evaluation.** A recommended profile (CPU ≥95% for 5 minutes, memory ≥90%/97% for 5 minutes, filesystems over 85%/95%, inodes, read-only flips, failed and watched services, interfaces down, temperatures against hardware thresholds, SMART failure, NVMe critical warnings and spare, new media errors, kernel storage errors, probe failures, stale hosts, reduced fidelity) or custom thresholds, with durations and hysteresis so momentary spikes never count. It opens and resolves health issues that M12's alert lifecycle will consume; M11 notifies nobody.
 
 ## 12. Automation: Operation Engine
 
@@ -1286,7 +1324,9 @@ Desired-state baselines, workflows UI, dynamic groups, maintenance windows, netw
 
 ## 34. Explicitly Out of Scope (initially)
 
-Kubernetes replacement, SIEM, log analytics, vulnerability scanner, full configuration management language, Ansible compatibility layer, general endpoint management, Windows. Also deferred: the enterprise identity features listed in §1.1.
+Kubernetes replacement, SIEM, log analytics, vulnerability scanner, full configuration management language, Ansible compatibility layer, general endpoint management. Also deferred: the enterprise identity features listed in §1.1.
+
+**Deferred future work (in scope eventually, not scheduled):** a **Windows agent** implementing the platform-neutral typed operations and telemetry (§2.6).
 
 ---
 

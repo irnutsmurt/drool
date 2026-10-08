@@ -1,6 +1,7 @@
 package agentsvc
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -14,9 +15,12 @@ import (
 	"time"
 
 	"drool/internal/agentcaps"
+	"drool/internal/agentrpc"
 	"drool/internal/audit"
 	"drool/internal/hostops"
 	"drool/internal/release"
+	"drool/internal/store/db"
+	"drool/internal/version"
 )
 
 // --- agent binaries served to new hosts ---
@@ -30,6 +34,9 @@ type Binary struct {
 }
 
 var binCache sync.Map // path → Binary (keyed with mtime)
+
+// SetBinariesDir points at the agent binaries (tests).
+func (s *Service) SetBinariesDir(dir string) { s.cfg.BinariesDir = dir }
 
 func (s *Service) binariesDir() string {
 	if s.cfg.BinariesDir != "" {
@@ -152,10 +159,15 @@ type InstallOptions struct {
 }
 
 // InstallViaSSH installs and enrolls the agent on an SSH-managed host,
-// using the host's pinned SSH connection: upload the binary as the login
-// user, then run `drool-agent install` as root with a host-bound token on
-// stdin. The host becomes "agent preferred, SSH fallback".
-func (s *Service) InstallViaSSH(ctx context.Context, o InstallOptions, out io.Writer) error {
+// using the host's pinned SSH connection (DESIGN §6.1): check the OS and
+// architecture, upload the binary as the login user and verify its
+// checksum on the host, then run `drool-agent install` as root with a
+// short-lived, single-use, host-bound token on stdin (never in arguments
+// or logs). The agent generates its identity key itself. Success means
+// the new agent connected over mTLS. On failure the host stays exactly as
+// manageable over SSH as before: a half-installed agent is stopped and
+// its unconnected identity revoked, and the temporary upload is removed.
+func (s *Service) InstallViaSSH(ctx context.Context, o InstallOptions, out io.Writer) (err error) {
 	logf := func(format string, a ...any) { fmt.Fprintf(out, format+"\n", a...) }
 	h, err := s.st.R.GetHost(ctx, o.HostID)
 	if err != nil {
@@ -176,35 +188,48 @@ func (s *Service) InstallViaSSH(ctx context.Context, o InstallOptions, out io.Wr
 		}
 	}
 	logf("Checking the host over its pinned SSH connection...")
-	r, err := s.inv.RunOnHost(ctx, o.HostID, "uname -m", nil, false, time.Minute)
+	r, err := s.inv.RunOnHost(ctx, o.HostID, "uname -s; uname -m", nil, false, time.Minute)
 	if err != nil {
 		return fmt.Errorf("SSH: %w", err)
 	}
-	arch := map[string]string{"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}[strings.TrimSpace(string(r.Stdout))]
-	bin, err := s.AgentBinary(arch)
+	f := strings.Fields(string(r.Stdout))
+	if len(f) != 2 || f[0] != "Linux" {
+		return fmt.Errorf("the host reports %q: the DROOL agent runs on Linux only", strings.TrimSpace(string(r.Stdout)))
+	}
+	arch := map[string]string{"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}[f[1]]
+	bin, err := s.InstallBinary(ctx, arch)
 	if err != nil {
 		return err
 	}
-	data, err := os.ReadFile(bin.Path)
-	if err != nil {
-		return err
-	}
-	logf("Uploading drool-agent (linux/%s, %d MB, sha256 %.16s)...", arch, bin.Size>>20, bin.SHA256)
-	r, err = s.inv.RunOnHost(ctx, o.HostID, `d=$(mktemp -d "${TMPDIR:-/tmp}/drool-agent-install.XXXXXXXX") && cat > "$d/drool-agent" && chmod 0755 "$d/drool-agent" && sha256sum "$d/drool-agent" && echo "$d"`, data, false, 5*time.Minute)
+	logf("Uploading drool-agent %s (linux/%s, %d MB, sha256 %.16s; %s)...", bin.Version, arch, bin.Size>>20, bin.SHA256, bin.Source)
+	r, err = s.inv.RunOnHost(ctx, o.HostID, `d=$(mktemp -d "${TMPDIR:-/tmp}/drool-agent-install.XXXXXXXX") && cat > "$d/drool-agent" && chmod 0755 "$d/drool-agent" && sha256sum "$d/drool-agent" && echo "$d"`, bin.Data, false, 5*time.Minute)
 	if err != nil || r.ExitCode != 0 {
-		return fmt.Errorf("upload failed: %v %s", err, strings.TrimSpace(string(r.Stderr)))
+		msg := ""
+		if r != nil {
+			msg = strings.TrimSpace(string(r.Stderr))
+		}
+		return fmt.Errorf("upload failed: %v %s", err, msg)
 	}
 	lines := strings.Split(strings.TrimSpace(string(r.Stdout)), "\n")
 	dir := strings.TrimSpace(lines[len(lines)-1])
-	if !strings.Contains(lines[0], bin.SHA256) || !strings.Contains(dir, "/drool-agent-install.") {
-		return errors.New("the uploaded binary's checksum does not match")
+	if !strings.Contains(dir, "/drool-agent-install.") {
+		return errors.New("the upload did not report its directory")
 	}
+	// The temporary directory goes whatever happens (token file, binary).
 	defer s.inv.RunOnHost(context.WithoutCancel(ctx), o.HostID, "rm -rf -- "+hostops.ShQuote(dir), nil, false, time.Minute)
+	if !strings.HasPrefix(lines[0], bin.SHA256+" ") {
+		return errors.New("the uploaded binary's checksum does not match: refusing to install")
+	}
 	tok, err := s.CreateToken(ctx, TokenOptions{Description: "installed over SSH", HostID: o.HostID, Preset: o.Preset,
 		TTL: 15 * time.Minute, UserID: o.UserID, WebHost: o.WebHost})
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err != nil {
+			s.RevokeToken(context.WithoutCancel(ctx), tok.ID) // unused or not: single-use either way
+		}
+	}()
 	cmd := hostops.ShQuote(dir+"/drool-agent") + " install --token-file - --preset " + hostops.ShQuote(o.Preset)
 	stdin := []byte(tok.Token + "\n")
 	if o.ReleaseKey != "" {
@@ -216,14 +241,15 @@ func (s *Service) InstallViaSSH(ctx context.Context, o InstallOptions, out io.Wr
 	logf("Installing and enrolling as root (agent endpoint %s)...", strings.Join(tok.Endpoints, ", "))
 	r, err = s.inv.RunOnHost(ctx, o.HostID, cmd, stdin, true, 3*time.Minute)
 	if r != nil {
-		out.Write(r.Stdout)
-		out.Write(r.Stderr)
+		out.Write(redactToken(r.Stdout, tok.Token))
+		out.Write(redactToken(r.Stderr, tok.Token))
+	}
+	if err == nil && r.ExitCode != 0 {
+		err = fmt.Errorf("drool-agent install exited with status %d", r.ExitCode)
 	}
 	if err != nil {
+		s.undoInstall(context.WithoutCancel(ctx), o, logf)
 		return err
-	}
-	if r.ExitCode != 0 {
-		return fmt.Errorf("drool-agent install exited with status %d", r.ExitCode)
 	}
 	logf("Waiting for the agent to connect...")
 	deadline := time.Now().Add(90 * time.Second)
@@ -231,14 +257,102 @@ func (s *Service) InstallViaSSH(ctx context.Context, o InstallOptions, out io.Wr
 		if _, ok := s.SessionFor(o.HostID); ok {
 			logf("The agent is connected. This host is now managed through the agent, with SSH as fallback.")
 			s.audit.Record(ctx, audit.Event{Action: "agent.install", TargetType: "host", TargetID: o.HostID,
-				Details: map[string]any{"preset": o.Preset, "arch": arch, "binary_sha256": bin.SHA256, "release_key": o.ReleaseKey != ""}})
+				Details: map[string]any{"preset": o.Preset, "arch": arch, "binary_sha256": bin.SHA256, "version": bin.Version,
+					"binary_source": bin.Source, "release_key": o.ReleaseKey != ""}})
 			return nil
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			err = ctx.Err()
+			s.undoInstall(context.WithoutCancel(ctx), o, logf)
+			return err
 		case <-time.After(time.Second):
 		}
 	}
-	return errors.New("the agent was installed but has not connected yet; check `systemctl status drool-agent` on the host and that it can reach the controller's agent port")
+	err = errors.New("the agent was installed but never connected (check that the host can reach the controller's agent port); it was stopped again and the host stays managed over SSH")
+	s.undoInstall(context.WithoutCancel(ctx), o, logf)
+	return err
+}
+
+// undoInstall leaves a failed installation SSH-managed as before: the
+// agent service is stopped and disabled, and an identity that never
+// connected is revoked (so a later attempt can enroll again).
+func (s *Service) undoInstall(ctx context.Context, o InstallOptions, logf func(string, ...any)) {
+	s.inv.RunOnHost(ctx, o.HostID, "systemctl disable --now drool-agent.service >/dev/null 2>&1 || true", nil, true, time.Minute)
+	if id, err := s.st.R.GetLiveIdentityForHost(ctx, o.HostID); err == nil {
+		if _, ok := s.SessionFor(o.HostID); !ok {
+			s.st.InTx(ctx, func(q *db.Queries) error {
+				_, err := s.RevokeIdentity(ctx, q, id.ID, o.UserID, "installation over SSH did not complete")
+				return err
+			})
+		}
+	}
+	logf("Rolled back: the agent service was stopped; the host remains managed over SSH.")
+}
+
+func redactToken(b []byte, tok string) []byte {
+	if tok == "" {
+		return b
+	}
+	return []byte(strings.ReplaceAll(string(b), tok, "[token]"))
+}
+
+// InstallImage is the agent binary chosen for an installation.
+type InstallImage struct {
+	Version string
+	Arch    string
+	SHA256  string
+	Size    int64
+	Data    []byte
+	Source  string // what it is, for the operator and the audit log
+}
+
+// InstallBinary picks the binary to install on linux/arch: the signed
+// release of exactly this controller's version (verified again against
+// the trusted release keys), else the build shipped with the controller.
+// Never "the newest release": that may be one nobody has rolled out yet.
+func (s *Service) InstallBinary(ctx context.Context, arch string) (*InstallImage, error) {
+	if arch == "" {
+		return nil, errors.New("unsupported architecture (amd64 and arm64 are supported)")
+	}
+	keys, _ := s.KnownKeys(ctx)
+	var best *db.AgentRelease
+	if r, err := s.st.R.GetReleaseFor(ctx, db.GetReleaseForParams{Version: version.Version, Os: "linux", Arch: arch}); err == nil &&
+		agentrpc.Negotiate(s.ControllerRange, agentrpc.Range{Min: uint32(r.ProtocolMin), Max: uint32(r.ProtocolMax)}) != 0 {
+		best = &r
+	}
+	if best != nil && len(keys) > 0 {
+		m, err := release.Verify(&release.Signed{Payload: best.ManifestPayload, KeyID: best.KeyID, Signature: best.Signature}, keys)
+		if err != nil {
+			return nil, fmt.Errorf("signed release %s no longer verifies: %w", best.Version, err)
+		}
+		rc, _, err := s.arts.Open(ctx, best.Sha256)
+		if err != nil {
+			return nil, err
+		}
+		defer rc.Close()
+		data, err := io.ReadAll(io.LimitReader(rc, 256<<20))
+		if err != nil {
+			return nil, err
+		}
+		if err := release.CheckBinary(m, bytes.NewReader(data)); err != nil {
+			return nil, fmt.Errorf("signed release %s: %w", best.Version, err)
+		}
+		return &InstallImage{Version: m.Version, Arch: arch, SHA256: m.SHA256, Size: m.Size, Data: data,
+			Source: "signed release " + m.Version + " (key " + best.KeyID + ")"}, nil
+	}
+	b, err := s.AgentBinary(arch)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(b.Path)
+	if err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256(data)
+	if hex.EncodeToString(sum[:]) != b.SHA256 {
+		return nil, errors.New("the bundled agent binary changed while reading it")
+	}
+	return &InstallImage{Version: version.Version, Arch: arch, SHA256: b.SHA256, Size: b.Size, Data: data,
+		Source: "the build shipped with this controller (no signed release uploaded)"}, nil
 }

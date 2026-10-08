@@ -1,0 +1,20 @@
+{"json_format_version":[1,0],"smartctl":{"version":[7,3],"exit_status":0},
+"device":{"name":"/dev/sda","info_name":"/dev/sda [SAT]","type":"sat","protocol":"ATA"},
+"model_name":"Samsung SSD 870 EVO 1TB","serial_number":"S6PTNX0R123456","firmware_version":"SVT02B6Q",
+"wwn":{"naa":5,"oui":9528,"id":61851720123},"logical_block_size":512,"rotation_rate":0,
+"smart_support":{"available":true,"enabled":true},"smart_status":{"passed":true},
+"ata_smart_attributes":{"revision":1,"table":[
+{"id":5,"name":"Reallocated_Sector_Ct","value":100,"worst":100,"thresh":10,"when_failed":"","raw":{"value":0,"string":"0"}},
+{"id":9,"name":"Power_On_Hours","value":98,"worst":98,"thresh":0,"when_failed":"","raw":{"value":8123,"string":"8123"}},
+{"id":177,"name":"Wear_Leveling_Count","value":97,"worst":97,"thresh":0,"when_failed":"","raw":{"value":31,"string":"31"}},
+{"id":187,"name":"Reported_Uncorrect","value":100,"worst":100,"thresh":0,"when_failed":"","raw":{"value":0,"string":"0"}},
+{"id":197,"name":"Current_Pending_Sector","value":100,"worst":100,"thresh":0,"when_failed":"","raw":{"value":0,"string":"0"}},
+{"id":198,"name":"Offline_Uncorrectable","value":100,"worst":100,"thresh":0,"when_failed":"","raw":{"value":0,"string":"0"}},
+{"id":199,"name":"UDMA_CRC_Error_Count","value":100,"worst":100,"thresh":0,"when_failed":"","raw":{"value":2,"string":"2"}}]},
+"ata_device_statistics":{"pages":[{"number":1,"name":"General Statistics","table":[
+{"offset":24,"name":"Logical Sectors Written","size":6,"value":40960000000,"flags":{"valid":true}},
+{"offset":40,"name":"Logical Sectors Read","size":6,"value":81920000000,"flags":{"valid":true}}]},
+{"number":7,"name":"Solid State Device Statistics","table":[{"offset":8,"name":"Percentage Used Endurance Indicator","size":1,"value":4,"flags":{"valid":true}}]}]},
+"power_on_time":{"hours":8123},"power_cycle_count":512,"temperature":{"current":34},
+"ata_smart_error_log":{"summary":{"revision":1,"count":0}},
+"ata_smart_self_test_log":{"standard":{"revision":1,"table":[{"type":{"value":1,"string":"Short offline"},"status":{"value":0,"string":"Completed without error","passed":true},"lifetime_hours":8100}]}}}

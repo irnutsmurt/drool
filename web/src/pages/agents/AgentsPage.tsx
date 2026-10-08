@@ -211,7 +211,7 @@ function UpdatesTab() {
           rowKey={(r) => r.id}
           empty="No rollouts yet."
           columns={[
-            { header: "Version", cell: (r) => <button className="font-medium text-accent" onClick={() => setOpenRollout(r.id)}>{r.version}</button> },
+            { header: "Rollout", cell: (r) => <button className="font-medium text-accent" onClick={() => setOpenRollout(r.id)}>{r.kind === "install" ? `Install agent ${r.version} over SSH (${r.preset})` : `Update to ${r.version}`}</button> },
             { header: "Status", cell: (r) => <Badge tone={r.status === "completed" ? "ok" : r.status === "paused" ? "danger" : r.status === "running" ? "accent" : "neutral"}>{r.status}</Badge> },
             { header: "Plan", cell: (r) => <span className="text-xs text-muted">canary {r.canary}, batches of {r.batch_size}, pause after {r.max_failures} failure(s){r.automatic ? " · automatic" : ""}</span> },
             { header: "Failures", cell: (r) => r.failures },

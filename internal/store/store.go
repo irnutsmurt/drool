@@ -118,6 +118,20 @@ func (s *Store) InTx(ctx context.Context, fn func(q *db.Queries) error) error {
 	return tx.Commit()
 }
 
+// InRawTx runs fn inside a write transaction with the raw *sql.Tx (for
+// queries sqlc can't express, e.g. monitoring's binary points).
+func (s *Store) InRawTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
+	tx, err := s.Writer.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if err := fn(tx); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
 type migration struct {
 	version int
 	name    string

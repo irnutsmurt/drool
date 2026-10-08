@@ -70,6 +70,16 @@ function lowContrast() {
   return out;
 }
 
+const monitoringPages = (hosts) => {
+  const id = (n) => hosts.find((h) => h.name === n)?.id;
+  const out = ["/monitoring", "/monitoring?category=unhealthy", "/settings/monitoring"];
+  if (id("nas-01")) {
+    for (const tab of ["overview", "metrics", "services", "storage", "hardware", "agent"]) out.push(`/hosts/${id("nas-01")}/monitoring?tab=${tab}`);
+    out.push(`/hosts/${id("pi-sd")}/monitoring?tab=storage`, `/hosts/${id("gpu-01")}/monitoring?tab=hardware`, `/hosts/${id("old-vm")}/monitoring`);
+  }
+  return out;
+};
+
 const pages = async () => {
   const hosts = (await api(page, "GET", "/hosts")).body.items;
   const host = hosts.find((h) => h.name === "web-1") ?? hosts[0];
@@ -81,6 +91,8 @@ const pages = async () => {
     // M10: network monitoring, the observed topology, filtered and empty views.
     "/network", "/network?policy=unclassified", "/network?scope=external&new=host&since=7d", "/network?peer=192.0.2.123", "/network?tab=settings",
     "/firewall?tab=designer&view=topology&topo=observed", "/firewall?tab=designer&view=topology&topo=both",
+    // M11: monitoring, the fleet and a host's tabs (fixture hosts), settings.
+    ...monitoringPages(hosts),
   ];
 };
 

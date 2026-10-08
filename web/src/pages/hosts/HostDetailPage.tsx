@@ -15,6 +15,7 @@ import { ManagedFilesCard } from "@/components/files/ManagedFilesCard";
 import { ManagementCard } from "@/components/agents/ManagementCard";
 import { FirewallCard } from "@/components/firewall/FirewallCard";
 import { HostNetworkCard } from "@/components/network/HostNetworkCard";
+import { HostMonitoringCard } from "@/components/monitoring/HostMonitoringCard";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -150,6 +151,7 @@ export function HostDetailPage() {
           )}
         </Card>}
 
+        {can("monitoring.read") && !h.jump_only && <div className="lg:col-span-2"><HostMonitoringCard hostId={h.id} /></div>}
         {!h.jump_only && <div className="lg:col-span-2"><ManagementCard host={h} /></div>}
         {can("firewall.read") && <div className="lg:col-span-2"><FirewallCard host={h} /></div>}
         {can("network.read") && !h.jump_only && <div className="lg:col-span-2"><HostNetworkCard hostId={h.id} /></div>}

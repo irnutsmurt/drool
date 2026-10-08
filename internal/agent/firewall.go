@@ -20,8 +20,9 @@ import (
 
 // Features are optional capabilities of this agent build, announced in the
 // hello. The controller only sends firewall operations to agents that
-// announce "firewall-1"; "netmon-1" agents report "netflows" (M10).
-var Features = []string{"firewall-1", "netmon-1"}
+// announce "firewall-1"; "netmon-1" agents report "netflows" (M10);
+// "monitor-1" agents run system monitoring (M11).
+var Features = []string{"firewall-1", "netmon-1", "monitor-1"}
 
 // errReconnect ends a session on purpose: after applying a firewall
 // candidate the agent proves the management path with a completely new
@@ -53,6 +54,10 @@ func (a *Agent) firewallReport(ctx context.Context) []byte {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	rep := FirewallReport{Status: map[string]string{}}
+	// Firewall state is recovery state, not monitoring: it runs outside the
+	// agent's resource budget like any operation. (Inside the CPU quota a
+	// slow host's status check outlived its timeout, the hello carried no
+	// pending transaction, and a good candidate was rolled back.)
 	if res, err := hostfw.Run(ctx, a.run, hostops.Become{Method: "none"}, a.fwPaths(), hostfw.Action{Kind: hostfw.Status}); err == nil {
 		rep.Status = res.Values
 	}

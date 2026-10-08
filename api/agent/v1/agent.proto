@@ -140,6 +140,7 @@ message ControllerMessage {
     RequestTelemetry request_telemetry = 12;
     ConfigPush config = 13;
     FirewallConfig firewall_config = 14;
+    MonitorConfig monitor_config = 15;
   }
 }
 
@@ -191,9 +192,11 @@ message Ping {
 }
 
 // Telemetry carries the raw output of the same collection scripts the SSH
-// path runs; the controller parses it with the same code.
+// path runs; the controller parses it with the same code. M11 adds JSON
+// kinds from the monitoring runtime: metrics, monitor_state, services,
+// storage, events, diagnostics.
 message Telemetry {
-  string kind = 1;                // facts | status | updates
+  string kind = 1;                // facts | status | updates | firewall | netflows | metrics | ...
   bytes output = 2;
   string package_manager = 3;     // for updates
   int64 collected_at_unix = 4;
@@ -286,6 +289,15 @@ message ConfigPush {
 message FirewallConfig {
   bool learning = 1;
   uint32 sample_seconds = 2;
+}
+
+// MonitorConfig configures system monitoring (M11): intervals, the flash
+// probe, the offline buffer and the agent's own resource budget. JSON
+// (agentmon.Config). Not versioned state: re-sent on every session. It
+// never widens the capability ceiling: monitoring still needs the
+// monitoring capability.
+message MonitorConfig {
+  bytes config_json = 1;
 }
 
 message ConfigAck {

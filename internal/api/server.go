@@ -11,6 +11,7 @@ import (
 	"drool/internal/hostops"
 	"drool/internal/mgmt"
 	"drool/internal/model"
+	"drool/internal/monitor/monsvc"
 	"drool/internal/netmon/netsvc"
 	"io/fs"
 	"log/slog"
@@ -57,6 +58,7 @@ type Deps struct {
 	WebPin    func() string     // curl --pinnedpubkey value of the web TLS key
 	Firewall  *fwsvc.Service    // firewall policy (M8)
 	Network   *netsvc.Service   // network monitoring (M10); nil disables its routes
+	Monitor   *monsvc.Service   // system monitoring (M11); nil disables its routes
 	Artifacts *artifacts.Store  // deployment artifacts
 	// StaleAfter is how old a status check may be before it is shown as stale.
 	StaleAfter time.Duration
@@ -263,6 +265,30 @@ func (s *Server) routes() []route {
 		{method: "GET", path: APIPrefix + "/network/enrichment", auth: authed, perm: auth.PermNetworkRead, h: s.handleNetworkEnrichment},
 		{method: "POST", path: APIPrefix + "/network/enrichment/reload", auth: authed, perm: auth.PermNetworkSettings, h: s.handleReloadNetworkEnrichment},
 		{method: "GET", path: APIPrefix + "/hosts/{id}/network", auth: authed, perm: auth.PermNetworkRead, h: s.handleHostNetwork},
+		{method: "GET", path: APIPrefix + "/monitoring/summary", auth: authed, perm: auth.PermMonitoringRead, h: s.handleMonitoringSummary},
+		{method: "GET", path: APIPrefix + "/monitoring/issues", auth: authed, perm: auth.PermMonitoringRead, h: s.handleMonitoringIssues},
+		{method: "GET", path: APIPrefix + "/monitoring/settings", auth: authed, perm: auth.PermMonitoringRead, h: s.handleMonitoringSettings},
+		{method: "PUT", path: APIPrefix + "/monitoring/settings", auth: authed, perm: auth.PermMonitoringSettings, h: s.handleSetMonitoringSettings},
+		{method: "GET", path: APIPrefix + "/monitoring/approvals", auth: authed, perm: auth.PermMonitoringRead, h: s.handleListApprovals},
+		{method: "POST", path: APIPrefix + "/monitoring/approvals", auth: authed, perm: auth.PermMonitoringSettings, h: s.handleAddApproval},
+		{method: "DELETE", path: APIPrefix + "/monitoring/approvals/{id}", auth: authed, perm: auth.PermMonitoringSettings, h: s.handleDeleteApproval},
+		{method: "POST", path: APIPrefix + "/monitoring/helpers/preview", auth: authed, perm: auth.PermMonitoringRead, h: s.handlePreviewHelpers},
+		{method: "POST", path: APIPrefix + "/monitoring/helpers/install", auth: authed, perm: auth.PermJobsExecute, h: s.handleInstallHelpers},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/monitoring", auth: authed, perm: auth.PermMonitoringRead, h: s.handleHostMonitoring},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/monitoring/history", auth: authed, perm: auth.PermMonitoringRead, h: s.handleHostMonitoringHistory},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/monitoring/services", auth: authed, perm: auth.PermMonitoringRead, h: s.handleHostServices},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/monitoring/services/{unit}/history", auth: authed, perm: auth.PermMonitoringRead, h: s.handleHostServiceHistory},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/monitoring/service-events", auth: authed, perm: auth.PermMonitoringRead, h: s.handleHostServiceEvents},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/monitoring/storage", auth: authed, perm: auth.PermMonitoringRead, h: s.handleHostStorage},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/monitoring/hardware", auth: authed, perm: auth.PermMonitoringRead, h: s.handleHostHardware},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/monitoring/events", auth: authed, perm: auth.PermMonitoringRead, h: s.handleHostMonitoringEvents},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/monitoring/helpers", auth: authed, perm: auth.PermMonitoringRead, h: s.handleHostHelpers},
+		{method: "PUT", path: APIPrefix + "/hosts/{id}/monitoring/settings", auth: authed, perm: auth.PermMonitoringManage, h: s.handleSetHostMonitoringSettings},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/monitoring/refresh", auth: authed, perm: auth.PermMonitoringManage, h: s.handleRefreshHostMonitoring},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/monitoring/diagnostics", auth: authed, perm: auth.PermMonitoringManage, h: s.handleHostDiagnostics},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/monitoring/diagnostics", auth: authed, perm: auth.PermMonitoringManage, h: s.handleHostDiagnostics},
+		{method: "POST", path: APIPrefix + "/agents/conversions/preview", auth: authed, perm: auth.PermAgentsEnroll, h: s.handlePreviewConversion},
+		{method: "POST", path: APIPrefix + "/agents/conversions", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleStartConversion},
 		{method: "POST", path: APIPrefix + "/hosts/{id}/network/snapshot", auth: authed, perm: auth.PermNetworkSnapshot, h: s.handleHostNetworkSnapshot},
 		{method: "GET", path: APIPrefix + "/firewall/propagation", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallPropagation},
 	}

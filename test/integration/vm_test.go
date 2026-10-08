@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,13 +44,15 @@ var vmDefs = []vmDef{
 	{"rockylinux-9", "https://dl.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base.latest.x86_64.qcow2", "dnf", "max,la57=off", "sshd", "crond", "java-17-openjdk-headless"},
 }
 
+var vmImageOnce sync.Once
+
 type vm struct {
 	def         vmDef
 	c           *container
 	fingerprint string
 }
 
-func startVM(t *testing.T, def vmDef) *vm {
+func startVM(t *testing.T, def vmDef, env ...string) *vm {
 	t.Helper()
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	block, err := ssh.MarshalPrivateKey(priv, "")
@@ -85,13 +89,18 @@ chpasswd:
 	os.WriteFile(filepath.Join(seed, "user-data"), []byte(userData), 0o644)
 	os.WriteFile(filepath.Join(seed, "meta-data"), []byte("instance-id: drool-"+runID+"-"+def.Name+"\nlocal-hostname: "+strings.ReplaceAll(def.Name, ".", "-")+"\n"), 0o644)
 
-	if _, err := docker("image", "inspect", "drool-it-vmrunner"); err != nil {
+	// Always build (a cached no-op when vm/ is unchanged), so changes to
+	// run-vm.sh reach the image.
+	vmImageOnce.Do(func() {
 		mustDocker(t, "build", "-q", "-t", "drool-it-vmrunner", filepath.Join(root, "test", "integration", "vm"))
-	}
+	})
 	c := &container{Name: "drool-it-" + runID + "-vm-" + def.Name, Port: freePort()}
-	mustDocker(t, "run", "-d", "--name", c.Name, "--network", netOuter, "-p", fmt.Sprintf("127.0.0.1:%d:22", c.Port),
-		"--cpus", "2", "--memory", "3g", "-e", "VM_CPU="+def.CPU, "-v", "drool-vm-images:/images", "-v", seed+":/seed:ro",
-		"drool-it-vmrunner", def.URL)
+	args := []string{"run", "-d", "--name", c.Name, "--network", netOuter, "-p", fmt.Sprintf("127.0.0.1:%d:22", c.Port),
+		"--cpus", "2", "--memory", "3g", "-e", "VM_CPU=" + def.CPU, "-v", "drool-vm-images:/images", "-v", seed + ":/seed:ro"}
+	for _, e := range env {
+		args = append(args, "-e", e)
+	}
+	mustDocker(t, append(args, "drool-it-vmrunner", def.URL)...)
 	t.Cleanup(func() {
 		if !*flagKeep {
 			docker("rm", "-f", c.Name)
@@ -99,7 +108,15 @@ chpasswd:
 	})
 	v := &vm{def: def, c: c, fingerprint: ssh.FingerprintSHA256(sshPub)}
 	t.Logf("%s: booting under TCG (this takes a few minutes)", def.Name)
+	booted := false
+	defer func() {
+		if !booted {
+			out, _ := exec.Command("docker", "logs", "--tail", "60", c.Name).CombinedOutput()
+			t.Logf("%s console (last lines):\n%s", def.Name, out)
+		}
+	}()
 	waitFor(t, 20*time.Minute, def.Name+" sshd", func() bool { return sshBanner(c.Port) })
+	booted = true
 	return v
 }
 

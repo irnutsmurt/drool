@@ -269,7 +269,7 @@ func (s *Service) autoPolicy(ctx context.Context) {
 	}
 	rolls, _ := s.st.R.ListRollouts(ctx)
 	for _, r := range rolls {
-		if r.Version == target && (r.Status == "running" || r.Status == "paused" || r.Automatic != 0) {
+		if r.Kind == "update" && r.Version == target && (r.Status == "running" || r.Status == "paused" || r.Automatic != 0) {
 			return // already rolling out (or paused/finished: a person decides what next)
 		}
 	}
@@ -310,7 +310,8 @@ func (s *Service) advanceRollouts(ctx context.Context) {
 			}
 			// A host that accepted an offer but never reported back.
 			if (h.State == "offered" || h.State == "staged" || h.State == "updating") &&
-				now.Sub(time.UnixMilli(h.UpdatedAt)) > time.Duration(r.HealthWindowS)*time.Second+10*time.Minute {
+				now.Sub(time.UnixMilli(h.UpdatedAt)) > time.Duration(r.HealthWindowS)*time.Second+10*time.Minute &&
+				!s.converting(r.ID, h.HostID) {
 				s.setHostState(ctx, r.ID, h.HostID, "failed", "no report from the agent")
 				failures++
 			}
@@ -332,7 +333,7 @@ func (s *Service) advanceRollouts(ctx context.Context) {
 				continue
 			}
 			open++
-			if h.State == "pending" {
+			if h.State == "pending" && r.Kind == "update" {
 				if _, ok := s.SessionFor(h.HostID); !ok {
 					continue // offline: catches up later, doesn't block the wave
 				}
@@ -348,7 +349,11 @@ func (s *Service) advanceRollouts(ctx context.Context) {
 		}
 		for _, h := range hosts {
 			if h.State == "pending" && h.Wave <= wave {
-				s.offer(ctx, r, h.HostID)
+				if r.Kind == "install" {
+					s.convertHost(ctx, r, h.HostID)
+				} else {
+					s.offer(ctx, r, h.HostID)
+				}
 			}
 		}
 	}
@@ -421,7 +426,7 @@ func (s *Service) onUpdateReport(ctx context.Context, ident db.AgentIdentity, u 
 		UpdateAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}, ID: ident.ID})
 	rolls, _ := s.st.R.ListRollouts(ctx)
 	for _, r := range rolls {
-		if r.Status != "running" && r.Status != "paused" {
+		if r.Status != "running" && r.Status != "paused" || r.Kind != "update" {
 			continue
 		}
 		if u.Version != "" && u.Version != r.Version {

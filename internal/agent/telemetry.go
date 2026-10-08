@@ -36,7 +36,7 @@ func (a *Agent) collect(ctx context.Context, kind string) (*pb.Telemetry, error)
 	case "status":
 		script = discovery.StatusScript
 	case "updates":
-		r, err := a.run.Run(ctx, pkg.DetectCommand, hostexec.RunOptions{})
+		r, err := a.monRun.Run(ctx, pkg.DetectCommand, hostexec.RunOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -49,7 +49,14 @@ func (a *Agent) collect(ctx context.Context, kind string) (*pb.Telemetry, error)
 			return nil, nil // no supported package manager: nothing to report
 		}
 	}
-	r, err := a.run.Run(ctx, "sh -s", hostexec.RunOptions{Stdin: []byte(script), MaxOutput: 4 << 20})
+	// Package update checks (apt/dnf) can use hundreds of MB: they run in a
+	// low-priority scope outside the agent's budget. The small inventory
+	// scripts run inside it.
+	runner := a.monRun
+	if kind == "updates" {
+		runner = a.bgRun
+	}
+	r, err := runner.Run(ctx, "sh -s", hostexec.RunOptions{Stdin: []byte(script), MaxOutput: 4 << 20})
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +86,7 @@ func (a *Agent) refreshMetadata(ctx context.Context) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
-	r, err := a.run.Run(ctx, pkg.DetectCommand, hostexec.RunOptions{})
+	r, err := a.monRun.Run(ctx, pkg.DetectCommand, hostexec.RunOptions{})
 	if err != nil {
 		return
 	}
@@ -89,7 +96,7 @@ func (a *Agent) refreshMetadata(ctx context.Context) {
 	} else if m != "apt-get" {
 		return
 	}
-	a.run.Run(ctx, cmd, hostexec.RunOptions{})
+	a.bgRun.Run(ctx, cmd, hostexec.RunOptions{})
 }
 
 func addrSet() string {

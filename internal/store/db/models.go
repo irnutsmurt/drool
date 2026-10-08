@@ -136,6 +136,8 @@ type AgentRollout struct {
 	CreatedBy     sql.NullString
 	CreatedAt     int64
 	UpdatedAt     int64
+	Kind          string
+	Preset        string
 }
 
 type AgentRolloutHost struct {
@@ -496,6 +498,125 @@ type JobStep struct {
 	Truncated   int64
 	StartedAt   int64
 	FinishedAt  sql.NullInt64
+}
+
+type MonCurrent struct {
+	HostID            string
+	Source            string
+	UpdatedAt         int64
+	StateJson         string
+	RawJson           string
+	StorageJson       string
+	StorageAt         int64
+	ServicesNote      string
+	ServicesSupported int64
+	ServicesAt        int64
+	ProbesJson        string
+	KernelJson        string
+}
+
+type MonEvent struct {
+	ID       int64
+	HostID   string
+	Ts       int64
+	Kind     string
+	Subject  string
+	Severity string
+	Message  string
+	DataJson string
+}
+
+type MonGap struct {
+	ID        int64
+	HostID    string
+	FromTs    int64
+	ToTs      int64
+	Reason    string
+	CreatedAt int64
+}
+
+type MonHelperApproval struct {
+	ID        string
+	Scope     string
+	GroupID   sql.NullString
+	Package   string
+	CreatedBy sql.NullString
+	CreatedAt int64
+}
+
+type MonHelperInstall struct {
+	HostID      string
+	Package     string
+	JobID       sql.NullString
+	Status      string
+	Scope       string
+	RequestedBy sql.NullString
+	RequestedAt int64
+	Detail      string
+}
+
+type MonHostSetting struct {
+	HostID       string
+	SettingsJson string
+	UpdatedBy    sql.NullString
+	UpdatedAt    int64
+}
+
+type MonIssue struct {
+	ID         string
+	HostID     string
+	CheckID    string
+	Subject    string
+	Severity   string
+	State      string
+	Title      string
+	Detail     string
+	Value      sql.NullFloat64
+	StartedAt  int64
+	UpdatedAt  int64
+	ResolvedAt sql.NullInt64
+}
+
+type MonLayout struct {
+	ID       int64
+	Hash     string
+	KeysJson string
+}
+
+type MonPoint struct {
+	HostID string
+	Tier   int64
+	Ts     int64
+	Span   int64
+	N      int64
+	Layout int64
+	Data   []byte
+}
+
+type MonService struct {
+	HostID      string
+	Unit        string
+	Description string
+	LoadState   string
+	ActiveState string
+	SubState    string
+	FileState   string
+	Since       int64
+	Restarts    sql.NullInt64
+	Result      string
+	Transient   int64
+	Known       int64
+	ChangedAt   int64
+}
+
+type MonServiceEvent struct {
+	ID        int64
+	HostID    string
+	Unit      string
+	Ts        int64
+	FromState string
+	ToState   string
+	Result    string
 }
 
 type NetCollector struct {

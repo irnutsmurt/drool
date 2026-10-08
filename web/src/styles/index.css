@@ -45,6 +45,12 @@
   --ui-edge-observed: #0e7c86;
   --ui-node-asn: #eef8f9;
   --ui-highlight: #f0a020;
+  /* Charts: series differ by dash pattern and marker too, never by colour alone */
+  --ui-chart-1: #2f6fde;
+  --ui-chart-2: #b8541c;
+  --ui-chart-3: #0e7c86;
+  --ui-chart-4: #7a4fd6;
+  --ui-chart-grid: #e3e7ec;
   --ui-radius: 6px;
   --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --ui-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -83,6 +89,11 @@
     --ui-edge-observed: #4fc3cf;
     --ui-node-asn: #142a2d;
     --ui-highlight: #f5b544;
+    --ui-chart-1: #6b9ff2;
+    --ui-chart-2: #f0965a;
+    --ui-chart-3: #4fc3cf;
+    --ui-chart-4: #b49af5;
+    --ui-chart-grid: #2a3138;
     color-scheme: dark;
   }
 }
@@ -118,6 +129,11 @@
   --ui-edge-observed: #4fc3cf;
   --ui-node-asn: #142a2d;
   --ui-highlight: #f5b544;
+  --ui-chart-1: #6b9ff2;
+  --ui-chart-2: #f0965a;
+  --ui-chart-3: #4fc3cf;
+  --ui-chart-4: #b49af5;
+  --ui-chart-grid: #2a3138;
   color-scheme: dark;
 }
 

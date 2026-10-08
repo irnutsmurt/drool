@@ -39,6 +39,9 @@ import (
 	"drool/internal/inventory"
 	"drool/internal/logging"
 	"drool/internal/mgmt"
+	"drool/internal/model"
+	"drool/internal/monitor/collect"
+	"drool/internal/monitor/monsvc"
 	"drool/internal/netmon/netsvc"
 	"drool/internal/poller"
 	"drool/internal/secrets"
@@ -393,6 +396,40 @@ func cmdServe(path string, explicit bool) error {
 	poll := poller.New(st, inv, eng.Locks(), eng.Saturated, logs.App, pollCfg)
 	poll.AgentManaged = router.AgentHealthy
 	eng.OnHostChanged(poll.RunNow)
+	// System monitoring (M11): agents stream it, SSH hosts are polled.
+	mon := monsvc.New(monsvc.Deps{Store: st, Agents: agents, Inventory: inv, Engine: eng, Audit: auditW, Log: logs.App.With("component", "monitoring")})
+	if agents != nil {
+		agents.SetMonitorHooks(mon)
+		agents.SetLocker(func(hostID string) (func(), bool) {
+			return eng.Locks().TryAcquire(hostID, "agent-install", model.LockExclusive)
+		})
+	}
+	poll.MonitorEvery = func(ctx context.Context) time.Duration {
+		if s := mon.Settings(ctx); s.Enabled {
+			return time.Duration(s.SSHPollS) * time.Second
+		}
+		return 0
+	}
+	poll.Monitor = func(ctx context.Context, h db.Host) error {
+		run := func(ctx context.Context, script string) ([]byte, error) {
+			r, err := inv.RunOnHost(ctx, h.ID, "sh -s", []byte(script), false, 2*time.Minute)
+			if err != nil {
+				return nil, err
+			}
+			return r.Stdout, nil
+		}
+		var runRoot collect.Runner
+		if inventory.CanBecomeRoot(h) {
+			runRoot = func(ctx context.Context, script string) ([]byte, error) {
+				r, err := inv.RunOnHost(ctx, h.ID, "sh -s", []byte(script), true, 3*time.Minute)
+				if err != nil {
+					return nil, err
+				}
+				return r.Stdout, nil
+			}
+		}
+		return mon.PollSSH(ctx, h.ID, run, runRoot)
+	}
 	if cfg.Agent.Enabled && agents != nil {
 		pki.SetHosts(advertisedHosts(cfg.Agent.Advertise))
 		bind := cfg.Agent.Bind
@@ -411,6 +448,7 @@ func cmdServe(path string, explicit bool) error {
 	go fw.Run(ctx)
 	network := netsvc.New(netsvc.Deps{Store: st, Firewall: fw, GeoIPDir: cfg.GeoIPDir(), Log: logs.App.With("component", "network")})
 	go network.Run(ctx)
+	go mon.Run(ctx)
 	go artifactGC(ctx, arts, log)
 
 	srv, err := api.New(api.Deps{
@@ -418,7 +456,7 @@ func cmdServe(path string, explicit bool) error {
 		UI: web.Dist(), Registry: reg, TLSMode: tlsRes.Mode,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
 		Poller: poll, StaleAfter: pollCfg.StaleAfter(), Simulator: router, Files: router, Artifacts: arts,
-		Agents: agents, Router: router, WebPin: webPin(tlsRes), Firewall: fw, Network: network,
+		Agents: agents, Router: router, WebPin: webPin(tlsRes), Firewall: fw, Network: network, Monitor: mon,
 	})
 	if err != nil {
 		return err

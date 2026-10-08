@@ -1,0 +1,1 @@
+{"critical_warning":0,"temperature":310,"avail_spare":100,"spare_thresh":10,"percent_used":3,"endurance_grp_critical_warning_summary":0,"data_units_read":1000,"data_units_written":2000,"host_read_commands":1,"host_write_commands":2,"controller_busy_time":3,"power_cycles":10,"power_on_hours":20,"unsafe_shutdowns":2,"media_errors":0,"num_err_log_entries":1}

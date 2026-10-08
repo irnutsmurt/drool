@@ -67,6 +67,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		return err
 	}
 	a.reportUpdateOutcome() // a finished or rolled-back update, if any
+	a.applyLimits(a.storedLimits())
+	a.startMemGuard(ctx)
+	a.startMonitor()
 	backoff := time.Second
 	for ctx.Err() == nil {
 		started := time.Now()
@@ -325,6 +328,7 @@ func (a *Agent) connect(ctx context.Context, ep string) error {
 	go a.telemetryLoop(sctx, s)
 	go a.renewLoop(sctx, s)
 	go a.learnLoop(sctx, s)
+	go a.monitorSendLoop(sctx, s)
 	err = a.serve(sctx, s)
 	if errors.Is(context.Cause(sctx), errReconnect) {
 		return errReconnect
@@ -410,7 +414,16 @@ func (a *Agent) serve(ctx context.Context, s *session) error {
 		case *pb.ControllerMessage_Config:
 			s.send(&pb.AgentMessage{Msg: &pb.AgentMessage_ConfigAck{ConfigAck: a.applyConfig(msg.Config)}})
 		case *pb.ControllerMessage_RequestTelemetry:
-			go a.sendTelemetry(ctx, s, msg.RequestTelemetry.Kind)
+			switch k := msg.RequestTelemetry.Kind; {
+			case k == "diagnostics":
+				b, _ := json.Marshal(a.diag.Diagnostics())
+				s.send(&pb.AgentMessage{Msg: &pb.AgentMessage_Telemetry{Telemetry: &pb.Telemetry{Kind: k, Output: b, CollectedAtUnix: a.now().Unix()}}})
+			case a.monitorRequest(k):
+			default:
+				go a.sendTelemetry(ctx, s, k)
+			}
+		case *pb.ControllerMessage_MonitorConfig:
+			a.setMonitorConfig(msg.MonitorConfig)
 		case *pb.ControllerMessage_FirewallConfig:
 			a.setFirewallConfig(msg.FirewallConfig)
 		case *pb.ControllerMessage_Disconnect:

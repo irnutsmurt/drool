@@ -31,6 +31,7 @@ import (
 	"drool/internal/inventory"
 	"drool/internal/logging"
 	"drool/internal/mgmt"
+	"drool/internal/monitor/monsvc"
 	"drool/internal/netmon/netsvc"
 	"drool/internal/secrets"
 	"drool/internal/sshx"
@@ -60,6 +61,7 @@ type harness struct {
 	// database directory.
 	net    *netsvc.Service
 	geoDir string
+	mon    *monsvc.Service
 }
 
 func newHarness(t *testing.T) *harness {
@@ -121,10 +123,12 @@ func newHarness(t *testing.T) *harness {
 	if err := eng.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	mon := monsvc.New(monsvc.Deps{Store: st, Agents: agents, Inventory: inv, Engine: eng, Audit: auditW, Log: logs.App})
+	agents.SetMonitorHooks(mon)
 	srv, err := New(Deps{
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng, Simulator: router, Files: router, Artifacts: arts,
-		Agents: agents, Router: router, Firewall: fw, Network: network,
+		Agents: agents, Router: router, Firewall: fw, Network: network, Monitor: mon,
 		UI: fstest.MapFS{
 			"index.html":    {Data: []byte("<!doctype html><title>ui</title>")},
 			"assets/app.js": {Data: []byte("console.log(1)")},
@@ -138,7 +142,7 @@ func newHarness(t *testing.T) *harness {
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return &harness{t: t, srv: srv, ts: ts, auth: authSvc, st: st, eng: eng, agents: agents, pki: pki, router: router,
-		fw: fw, fwSSH: fwSSH, fwFake: fwFake, net: network, geoDir: geoDir}
+		fw: fw, fwSSH: fwSSH, fwFake: fwFake, net: network, geoDir: geoDir, mon: mon}
 }
 
 func (h *harness) mkUser(name, role string) {

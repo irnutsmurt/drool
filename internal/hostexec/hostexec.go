@@ -50,6 +50,11 @@ type Runner interface {
 type Local struct {
 	// Env is added to the inherited environment.
 	Env []string
+	// Wrap prefixes the shell (e.g. systemd-run --scope ... --: the agent
+	// runs operations outside its own resource budget). It must exec the
+	// command in place, so the process group and exit status are the
+	// command's.
+	Wrap []string
 }
 
 // limitWriter keeps up to max bytes and records truncation.
@@ -74,7 +79,8 @@ func (w *limitWriter) Write(p []byte) (int, error) {
 }
 
 func (l Local) command(cmd string, stdin []byte) *exec.Cmd {
-	c := exec.Command("/bin/sh", "-c", cmd)
+	args := append(append([]string{}, l.Wrap...), "/bin/sh", "-c", cmd)
+	c := exec.Command(args[0], args[1:]...)
 	c.Env = append(c.Environ(), l.Env...)
 	if stdin != nil {
 		c.Stdin = bytes.NewReader(stdin)

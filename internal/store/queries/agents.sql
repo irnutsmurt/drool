@@ -249,3 +249,6 @@ UPDATE job_hosts SET transport = ?, transport_note = ? WHERE job_id = ? AND host
 
 -- name: GetHostByName :one
 SELECT * FROM hosts WHERE name = ?;
+
+-- name: SetRolloutKind :exec
+UPDATE agent_rollouts SET kind = ?, preset = ? WHERE id = ?;

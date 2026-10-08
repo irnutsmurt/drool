@@ -1,0 +1,1 @@
+{"json_format_version":[1,0],"smartctl":{"version":[7,3],"exit_status":2,"messages":[{"string":"Read Device Identity failed: scsi error unsupported field in scsi command","severity":"error"}]},"device":{"name":"/dev/sde","type":"sat","protocol":"ATA"}}

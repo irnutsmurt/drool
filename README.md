@@ -72,6 +72,11 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
   for public addresses, the country and network owner from local GeoIP/ASN databases you install.
   Agent hosts are observed continuously (conntrack when available), SSH hosts by snapshot. See
   [Network monitoring](#network-monitoring).
+- **System monitoring** (on `main`): CPU, memory, disks, network, temperatures, GPUs, services and
+  storage device health for every host, with history (hour to 30 days), health issues that need a
+  condition to last before they appear, and a fleet view. Agent hosts are continuous, within a
+  small enforced resource budget; SSH hosts are polled every 5 minutes. See
+  [System monitoring](#system-monitoring).
 - **Appearance:** Light, Dark or System (follows your OS), from the header or *Settings → Account*.
 - **Accounts and audit:** local users with roles (admin, operator, auditor, viewer), API tokens,
   credentials encrypted at rest, an append-only audit log of every change.
@@ -90,6 +95,8 @@ These are planned (see `DESIGN.md`) but **do not exist yet**:
 - batch/canary rollouts for jobs (agent updates do have them), workflows, MFA, single sign-on, high availability, Windows
 - network security features beyond visibility: blocking by address or country, threat scores or
   reputation, packet capture, intrusion detection, alerting
+- notifications and alert rules for monitoring (health issues are shown in DROOL only), custom
+  dashboards, log collection
 
 ## Supported hosts
 
@@ -586,6 +593,108 @@ Designer. Nothing is created until you review, save and apply it.
 | `firewall.read` | every role | Viewing |
 | `firewall.write` | administrators | Policies, modes, checks and applying |
 | `firewall.override` | administrators | Emergency override, short timeouts, replacing drift |
+
+## System monitoring
+
+**Monitoring** in the sidebar shows the whole fleet: how many hosts need attention and why (high
+CPU or memory, low disk space, failed services, storage health, temperature, stale data), with
+search, sorting and paging. Every host page has a **Monitoring** card with tiles for CPU, Memory,
+Storage, Temperature, Network, Services, Storage devices and Active health issues; each opens the
+host's monitoring page:
+
+- **Metrics:** charts for the last hour, 6 hours, 24 hours, 7 days or 30 days — CPU (and per core
+  now), load, memory and swap, filesystems, network throughput and errors, disk IO, temperatures,
+  GPUs. Lines differ by pattern as well as colour, maxima are dotted, missing data is a gap (never
+  zero), and **Show as table** gives the same numbers as text.
+- **Services:** every systemd service (the noise hidden unless you ask for **Show all units**),
+  filtered by Running, Stopped, Failed, Enabled, Disabled or All, with each one's state history.
+  **Watch** a service to get a health issue when it stays stopped. Start/stop/restart are ordinary
+  service jobs.
+- **Storage health:** each device with its partitions, filesystems and mounts, what the device can
+  tell about its own health, and kernel evidence (IO errors, resets, read-only remounts).
+- **Sensors & GPU:** temperatures with the limits the hardware itself reports; GPU use, memory,
+  temperature and power where the driver provides them.
+- **Collection & helpers:** how the host is monitored, which optional tools would add
+  information, and (agent hosts) the agent's resource budget and use.
+
+Nothing is installed, changed or sent anywhere to monitor a host. Health issues are listed in
+DROOL; there are no notifications yet.
+
+### Agent hosts and SSH hosts
+
+| | Agent hosts | SSH-only hosts |
+|---|---|---|
+| How | **Continuous**: samples every 10 s (services every 30 s), kept as one-minute averages and maxima; storage health every 30 min; kernel storage errors as they happen | **Polled** every 5 min (Settings → Monitoring); storage health and kernel errors hourly, and only where sudo is allowed without a password |
+| While DROOL is unreachable | Kept in the agent's memory (2 MB by default, about a day for a typical host) and delivered later; anything older is dropped and shown as a gap | Missed polls are gaps |
+| On the host's disk | Nothing but the agent's configuration (and the optional probe file, below) | Nothing |
+
+### The agent stays out of the way
+
+The agent runs under a resource budget enforced by systemd, shown on each host's **Collection &
+helpers** tab:
+
+| | Default |
+|---|---|
+| CPU | at most 25% of one core, low priority (weight 20) when the host is busy |
+| Memory | reclaimed above 96 MB, never more than 160 MB |
+| Disk IO, tasks | low priority; at most 256 tasks |
+
+In practice it uses far less: about 0.1% of a CPU and 25 MB on a normal PC, about 4% of an
+emulated CPU and 14 MB on a slow virtual machine. Jobs you run through the agent (package updates,
+scripts) are **not** limited by this budget. When the host is under pressure — or the agent nears
+its own limits — the agent samples less often and postpones storage scans; the host page says
+**Reduced to save resources** and why, and full detail returns once things are calm. If the agent's own memory
+ever kept growing (a bug), it restarts itself rather than lingering at its limit. Admins can
+change the budget for all hosts (Settings → Monitoring) or one host.
+
+### Storage health
+
+Each device shows **how much it can tell** about its health — *Full*, *Partial*,
+*Vendor-specific*, *Limited* or *Unavailable* — and only then a verdict. SATA and SAS disks need
+`smartmontools`, NVMe drives `smartmontools` or `nvme-cli`; eMMC reports its own wear. **SD cards
+and USB sticks report nothing**: DROOL says "Limited — no failure indicators detected", never
+"healthy", and watches kernel errors and read-only remounts instead. For those you can turn on the
+**write/read probe** for a filesystem (agent hosts): once an hour it writes 512 bytes to a file in
+a DROOL-owned directory, flushes it to the card and reads it back. More frequent probes are
+possible but add flash wear, and DROOL warns you. DROOL never starts SMART self-tests and never
+wakes a sleeping disk.
+
+### Optional helpers
+
+`smartmontools`, `nvme-cli` and `lm-sensors` add information. A host's **Collection & helpers**
+tab says which would help and why; **Install** shows exactly what would be installed and runs an
+ordinary package job (audited, in the job history). On the fleet page, select hosts and choose
+**Install recommended helpers** for a preview with counts first. Admins can also give a standing
+approval (all hosts or a group) in Settings → Monitoring, after which DROOL installs a needed
+helper once per host. DROOL never uninstalls helpers and never installs GPU drivers.
+
+### Moving SSH hosts to the agent
+
+On the fleet page, select hosts and choose **Convert to agent**. The preview counts compatible,
+already-converted, unsupported and unreachable hosts; the conversion then runs as a staged rollout
+(a canary host first, then batches) and pauses on a failure. Each host gets the agent build that
+matches your DROOL version, verified, with a single-use token; a host where anything fails stays
+exactly as it was, managed over SSH.
+
+### Health issues
+
+Issues appear only when a condition lasts (for example CPU above 95% for 5 minutes, a disk over
+85% full on two checks in a row) and clear only after it has properly recovered, so short spikes
+don't flap. Temperatures are judged only against limits the hardware reports — DROOL has no
+universal "too hot". **Settings → Monitoring** offers the recommended thresholds or your own, and
+any check can be turned off per host.
+
+### History, size and permissions
+
+History is kept as one-minute values for 26 hours, five-minute values for 8 days and hourly
+values for 30 days (adjustable). Measured: about **1.5 MB per host** — 8.6 MB for 5 hosts, 78 MB
+for 50, 308 MB for 200.
+
+| Permission | Roles | Allows |
+|---|---|---|
+| `monitoring.read` | everyone | All monitoring views |
+| `monitoring.manage` | administrators, operators | Watching services, probes, per-host checks, refreshing, helper installs (with `jobs.execute`) |
+| `monitoring.settings` | administrators | Global settings, agent budgets, standing helper approvals (audited) |
 
 ## Network monitoring
 

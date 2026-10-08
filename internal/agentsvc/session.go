@@ -281,6 +281,9 @@ func (s *Service) Session(stream pb.Agent_SessionServer) error {
 	if fh := s.firewallHooks(); fh != nil {
 		go fh.OnSession(ident.HostID, hello.FirewallJson, hello.Features, se.connectedAt)
 	}
+	if mh := s.monitorHooks(); mh != nil {
+		go mh.OnSession(ident.HostID, hello.Features, hello.EffectiveJson)
+	}
 	s.agentOnlyStatus(ctx, ident.HostID, true)
 	s.hostChanged(ident.HostID)
 	go s.offerPendingUpdate(context.WithoutCancel(ctx), se)
@@ -467,6 +470,12 @@ func (s *Service) renew(ctx context.Context, se *Session) {
 // storage as SSH polling, so stale-data rules stay the same.
 func (s *Service) ingestTelemetry(ctx context.Context, se *Session, t *pb.Telemetry) {
 	hostID := se.ident.HostID
+	if MonitorKinds[t.Kind] {
+		if mh := s.monitorHooks(); mh != nil {
+			mh.OnTelemetry(hostID, t.Kind, t.Output)
+		}
+		return
+	}
 	if t.Kind == "firewall" || t.Kind == "flows" || t.Kind == "netflows" {
 		if fh := s.firewallHooks(); fh != nil {
 			fh.OnTelemetry(hostID, t.Kind, t.Output)

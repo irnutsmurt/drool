@@ -17,8 +17,10 @@ const unknown = <span className="text-muted">unknown</span>;
 
 export function HealthCard({ host }: { host: Host }) {
   const h = host.health;
+  // CPU, memory, disks and services live in Monitoring (M11) now.
+  const mon = useAuth().can("monitoring.read");
   return (
-    <Card title="Current status">
+    <Card title={mon ? "Updates and reboot" : "Current status"}>
       {!h ? (
         <p className="text-sm text-muted">Not checked yet. Status is collected automatically every few minutes.</p>
       ) : (
@@ -35,6 +37,7 @@ export function HealthCard({ host }: { host: Host }) {
             {!h.reachable && <span className="ml-2 text-danger">failed: {h.last_error}</span>}
           </Row>
           <Row label="Uptime">{formatUptime(h.uptime_s)}</Row>
+          {!mon && (<>
           <Row label="Load (1 min)">{h.load1 ?? "—"}</Row>
           <Row label="Memory used">{formatPct(h.mem_used_pct)}</Row>
           <Row label="Fullest disk">
@@ -46,6 +49,7 @@ export function HealthCard({ host }: { host: Host }) {
             {h.failed_units == null ? <span className="text-muted">n/a (systemd not running)</span>
               : h.failed_units === 0 ? "none" : <span className="text-danger">{h.failed_unit_names.join(", ")}</span>}
           </Row>
+          </>)}
           <Row label="Reboot">
             {h.reboot_required == null ? unknown : h.reboot_required ? <span className="text-warn">required{h.reboot_reason && ` (${h.reboot_reason})`}</span> : "not required"}
           </Row>
@@ -152,12 +156,19 @@ export function ServicesCard({ host }: { host: Host }) {
   const [filter, setFilter] = useState("");
   const { can } = useAuth();
   if (!full) return null;
+  // The service inventory, its states and history live in Monitoring (M11);
+  // listening ports in Network (M10).
+  if (can("monitoring.read") && can("network.read")) return null;
   const manage = can("jobs.execute") && full.systemd_running;
   const services = full.services.filter((s) => !filter || `${s.name} ${s.description ?? ""}`.toLowerCase().includes(filter.toLowerCase()));
   return (
     <Card title={can("network.read") ? "Services" : "Services and listening ports"}>
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="space-y-2">
+        {can("monitoring.read") ? (
+          <p className="text-sm text-muted">
+            Services, their states and history are under <Link className="text-accent underline" to={`/hosts/${host.id}/monitoring?tab=services`}>Monitoring → Services</Link>.
+          </p>
+        ) : <div className="space-y-2">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-sm font-medium">Running services ({full.services.length})</h3>
             {full.services.length > 8 && <Input className="h-8 max-w-[12rem]" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} />}
@@ -193,7 +204,7 @@ export function ServicesCard({ host }: { host: Host }) {
               ))}
             </p>
           )}
-        </div>
+        </div>}
         <div className="space-y-2">
           <h3 className="text-sm font-medium">Listening ports ({full.ports.length})</h3>
           {can("network.read") ? (

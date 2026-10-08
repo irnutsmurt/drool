@@ -62,12 +62,19 @@ func TestBrowser(t *testing.T) {
 	writeTestGeoIP(t, filepath.Join(ctl.dataDir, "geoip"))
 	ctl.must(t, "POST", "/api/v1/network/enrichment/reload", nil, nil)
 	writeTestFlows(t, addrs)
+	// Monitoring (M11): hosts whose data comes from the fixture
+	// (testdata/monitor.json): an SD-card Pi, a NAS with a failing disk,
+	// a GPU box, an eMMC edge device with a USB SSD, a stale VM. Their
+	// addresses are unreachable, so SSH polling never overwrites them.
+	for i, n := range []string{"nas-01", "pi-sd", "gpu-01", "edge-usb", "old-vm"} {
+		ctl.must(t, "POST", "/api/v1/hosts", map[string]any{"name": n, "address": fmt.Sprintf("192.0.2.%d", 11+i), "port": 22, "user": "deploy", "become_method": "sudo"}, nil)
+	}
 
 	shots := t.TempDir()
 	if d := os.Getenv("DROOL_E2E_SHOTS"); d != "" {
 		shots = d
 	}
-	cmd := exec.Command("node", "--test", "--test-concurrency=1", "e2e/designer.test.mjs", "e2e/network.test.mjs", "e2e/theme.test.mjs", "e2e/contrast.test.mjs")
+	cmd := exec.Command("node", "--test", "--test-concurrency=1", "e2e/designer.test.mjs", "e2e/network.test.mjs", "e2e/monitoring.test.mjs", "e2e/theme.test.mjs", "e2e/contrast.test.mjs")
 	cmd.Dir = filepath.Join(root, "web")
 	cmd.Env = append(os.Environ(), "DROOL_E2E_URL="+ctl.base(), "DROOL_E2E_USER="+adminUser, "DROOL_E2E_PASSWORD="+adminPassword,
 		"CHROME="+chrome, "DROOL_E2E_SHOTS="+shots)

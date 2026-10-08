@@ -62,6 +62,7 @@ type Service struct {
 	channels   map[string]*pendingChannel
 	challenges map[string]challenge
 	hooks      Hooks
+	locker     Locker
 	grpc       *grpc.Server
 	listener   net.Listener
 }
@@ -72,6 +73,8 @@ type Hooks struct {
 	HostChanged func(hostID string)
 	// Firewall connects sessions and telemetry to the firewall service.
 	Firewall FirewallHooks
+	// Monitor connects sessions and telemetry to system monitoring (M11).
+	Monitor MonitorHooks
 }
 
 type challenge struct {

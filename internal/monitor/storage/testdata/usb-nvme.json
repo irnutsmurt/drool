@@ -1,0 +1,5 @@
+{"json_format_version":[1,0],"smartctl":{"version":[7,3],"exit_status":0},
+"device":{"name":"/dev/sdf","info_name":"/dev/sdf [USB NVMe JMicron]","type":"sntjmicron","protocol":"NVMe"},
+"model_name":"WD_BLACK SN770 1TB","serial_number":"22123A800123","firmware_version":"731030WD",
+"smart_support":{"available":true,"enabled":true},"smart_status":{"passed":true,"nvme":{"value":0}},
+"nvme_smart_health_information_log":{"critical_warning":0,"temperature":38,"available_spare":100,"available_spare_threshold":10,"percentage_used":1,"data_units_read":2000000,"data_units_written":3000000,"power_cycles":40,"power_on_hours":300,"unsafe_shutdowns":7,"media_errors":0,"num_err_log_entries":0}}

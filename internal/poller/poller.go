@@ -26,6 +26,7 @@ const (
 	taskStatus  = "status"
 	taskUpdates = "updates"
 	taskRefresh = "refresh"
+	taskMonitor = "monitor" // system monitoring (M11): SSH hosts are polled, never streamed
 )
 
 // Config tunes polling.
@@ -85,6 +86,11 @@ type Poller struct {
 	// AgentManaged reports hosts whose inventory comes from their agent's
 	// telemetry; they are not polled over SSH (ARCHITECTURE-ALPHA §23.7).
 	AgentManaged func(ctx context.Context, h db.Host) bool
+
+	// Monitor polls one SSH host's system monitoring (M11); nil disables
+	// the task. MonitorEvery is its interval (0: monitoring is off).
+	Monitor      func(ctx context.Context, h db.Host) error
+	MonitorEvery func(ctx context.Context) time.Duration
 }
 
 func New(st *store.Store, inv *inventory.Service, locks *lock.Manager, busy func() bool, log *slog.Logger, cfg Config) *Poller {
@@ -123,6 +129,13 @@ func (p *Poller) interval(task string) time.Duration {
 		return p.cfg.UpdatesInterval
 	case taskFacts:
 		return p.cfg.FactsInterval
+	case taskMonitor:
+		if p.MonitorEvery != nil {
+			if d := p.MonitorEvery(context.Background()); d > 0 {
+				return d
+			}
+		}
+		return p.cfg.StatusInterval
 	}
 	return p.cfg.RefreshInterval
 }
@@ -148,6 +161,7 @@ func (p *Poller) seed(ctx context.Context, hostID string, now time.Time) map[str
 	d[taskStatus] = next(st.CheckedAt, serr == nil, taskStatus, now) // never checked (new host): now
 	d[taskUpdates] = next(st.UpdatesCheckedAt.Int64, serr == nil && st.UpdatesCheckedAt.Valid, taskUpdates, soon(5*time.Minute))
 	d[taskRefresh] = next(st.MetadataRefreshedAt.Int64, serr == nil && st.MetadataRefreshedAt.Valid, taskRefresh, soon(30*time.Minute))
+	d[taskMonitor] = soon(time.Minute)
 	if serr == nil && st.UpdatesCheckedAt.Valid && !st.UpdatesAvailable.Valid {
 		// Update count unknown (no package cache): refresh metadata soon.
 		d[taskRefresh] = soon(2 * time.Minute)
@@ -192,7 +206,12 @@ func (p *Poller) tick(ctx context.Context) {
 			p.due[h.ID] = d
 		}
 		task := ""
-		for _, t := range []string{taskFacts, taskStatus, taskUpdates, taskRefresh} {
+		for _, t := range []string{taskFacts, taskStatus, taskMonitor, taskUpdates, taskRefresh} {
+			// Monitoring needs a reachable host, not systemd ("unsupported"
+			// means no supported init system for service operations).
+			if t == taskMonitor && (p.Monitor == nil || h.Status != inventory.StatusReady && h.Status != inventory.StatusUnsupported) {
+				continue
+			}
 			if !d[t].After(now) {
 				task = t
 				break
@@ -255,7 +274,7 @@ func (p *Poller) RunNow(hostID string) {
 	defer p.mu.Unlock()
 	if d := p.due[hostID]; d != nil {
 		now := p.now()
-		d[taskFacts], d[taskStatus], d[taskUpdates] = now, now, now
+		d[taskFacts], d[taskStatus], d[taskUpdates], d[taskMonitor] = now, now, now, now
 	}
 }
 
@@ -331,6 +350,16 @@ func (p *Poller) run(ctx context.Context, h db.Host, task string) {
 			// soon instead of waiting for the daily refresh.
 			p.reschedule(h.ID, taskRefresh, time.Minute)
 		}
+	case taskMonitor:
+		every := p.interval(taskMonitor)
+		if p.MonitorEvery != nil && p.MonitorEvery(ctx) <= 0 {
+			p.reschedule(h.ID, task, 5*time.Minute) // monitoring is off; look again later
+			return
+		}
+		if err := p.Monitor(ctx, h); err != nil {
+			log.Info("poller: monitoring poll failed", "err", err)
+		}
+		p.reschedule(h.ID, task, jitter(every))
 	case taskRefresh:
 		f, err := p.st.R.GetHostFacts(ctx, h.ID)
 		if err != nil || !inventory.CanBecomeRoot(h) || (f.PkgManager != "apt" && f.PkgManager != "dnf" && f.PkgManager != "yum") {

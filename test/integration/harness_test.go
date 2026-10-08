@@ -67,6 +67,8 @@ const (
 	agentV1     = "v1.0.0"
 	agentV2     = "v1.1.0"
 	agentBroken = "v1.2.0"
+	// agentRunaway carries a deliberately runaway collector (-tags droolrunaway).
+	agentRunaway = "v1.3.0"
 )
 
 var (
@@ -119,6 +121,7 @@ func setup(m *testing.M) (int, error) {
 		{filepath.Join(agentDir, "drool-agent-linux-amd64"), agentV1, ""},
 		{filepath.Join(releaseDir, "drool-agent-"+agentV2), agentV2, ""},
 		{filepath.Join(releaseDir, "drool-agent-"+agentBroken), agentBroken, "droolbroken"},
+		{filepath.Join(releaseDir, "drool-agent-"+agentRunaway), agentRunaway, "droolrunaway"},
 	} {
 		args := []string{"build", "-trimpath", "-ldflags", "-X drool/internal/version.Version=" + b.version, "-o", b.out}
 		if b.tags != "" {
@@ -168,6 +171,9 @@ func setup(m *testing.M) (int, error) {
 		"DROOL_TEST_FW_CONTROL=" + filepath.Join(work, "fw-control"),
 		// Synthetic network observations for the browser tests (M10).
 		"DROOL_TEST_NETFLOWS_FILE=" + filepath.Join(work, "netflows.json"),
+		// Synthetic monitoring data for hosts that only TestBrowser creates
+		// (nas-01, pi-sd, gpu-01, edge-usb, old-vm).
+		"DROOL_TEST_MONITOR_FILE=" + filepath.Join(root, "test", "integration", "testdata", "monitor.json"),
 	}}
 	netflowsFile = filepath.Join(work, "netflows.json")
 	fwControlFile = filepath.Join(work, "fw-control")
@@ -675,7 +681,11 @@ func getJobHost(t *testing.T, jobID, hostID string) jobHost {
 func run(t *testing.T, hostID string, step map[string]any) jobHost {
 	t.Helper()
 	id := submit(t, []string{hostID}, step)
-	waitJob(t, id, 15*time.Minute)
+	wait := 15 * time.Minute
+	if ts, ok := step["timeout_s"].(int); ok && time.Duration(ts)*time.Second+time.Minute > wait {
+		wait = time.Duration(ts)*time.Second + time.Minute // the step's own timeout decides (slow initramfs builds under emulation)
+	}
+	waitJob(t, id, wait)
 	return getJobHost(t, id, hostID)
 }
 
