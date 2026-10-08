@@ -5,6 +5,7 @@ package api
 import (
 	"context"
 	"drool/internal/agentsvc"
+	"drool/internal/alerts"
 	"drool/internal/artifacts"
 	"drool/internal/files"
 	"drool/internal/firewall/fwsvc"
@@ -59,6 +60,7 @@ type Deps struct {
 	Firewall  *fwsvc.Service    // firewall policy (M8)
 	Network   *netsvc.Service   // network monitoring (M10); nil disables its routes
 	Monitor   *monsvc.Service   // system monitoring (M11); nil disables its routes
+	Alerts    *alerts.Service   // alerts, maintenance, notifications (M12); nil disables their routes
 	Artifacts *artifacts.Store  // deployment artifacts
 	// StaleAfter is how old a status check may be before it is shown as stale.
 	StaleAfter time.Duration
@@ -291,6 +293,31 @@ func (s *Server) routes() []route {
 		{method: "POST", path: APIPrefix + "/agents/conversions", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleStartConversion},
 		{method: "POST", path: APIPrefix + "/hosts/{id}/network/snapshot", auth: authed, perm: auth.PermNetworkSnapshot, h: s.handleHostNetworkSnapshot},
 		{method: "GET", path: APIPrefix + "/firewall/propagation", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallPropagation},
+
+		{method: "GET", path: APIPrefix + "/alerts", auth: authed, perm: auth.PermAlertsRead, h: s.handleListAlerts},
+		{method: "GET", path: APIPrefix + "/alerts/summary", auth: authed, perm: auth.PermAlertsRead, h: s.handleAlertSummary},
+		{method: "GET", path: APIPrefix + "/alerts/{id}", auth: authed, perm: auth.PermAlertsRead, h: s.handleGetAlert},
+		{method: "POST", path: APIPrefix + "/alerts/{id}/acknowledge", auth: authed, perm: auth.PermAlertsAcknowledge, h: s.handleAcknowledgeAlert},
+		{method: "GET", path: APIPrefix + "/events", auth: authed, perm: auth.PermAlertsRead, h: s.handleListEvents},
+		{method: "GET", path: APIPrefix + "/maintenance", auth: authed, perm: auth.PermAlertsRead, h: s.handleListMaintenance},
+		{method: "POST", path: APIPrefix + "/maintenance", auth: authed, perm: auth.PermMaintenanceManage, h: s.handleStartMaintenance},
+		{method: "GET", path: APIPrefix + "/maintenance/{id}", auth: authed, perm: auth.PermAlertsRead, h: s.handleGetMaintenance},
+		{method: "POST", path: APIPrefix + "/maintenance/{id}/end", auth: authed, perm: auth.PermMaintenanceManage, h: s.handleEndMaintenance},
+		{method: "GET", path: APIPrefix + "/notifications/destinations", auth: authed, perm: auth.PermNotificationsRead, h: s.handleListDestinations},
+		{method: "POST", path: APIPrefix + "/notifications/destinations", auth: authed, perm: auth.PermNotificationsManage, h: s.handleCreateDestination},
+		{method: "GET", path: APIPrefix + "/notifications/destinations/{id}", auth: authed, perm: auth.PermNotificationsRead, h: s.handleGetDestination},
+		{method: "PATCH", path: APIPrefix + "/notifications/destinations/{id}", auth: authed, perm: auth.PermNotificationsManage, h: s.handleUpdateDestination},
+		{method: "DELETE", path: APIPrefix + "/notifications/destinations/{id}", auth: authed, perm: auth.PermNotificationsManage, h: s.handleDeleteDestination},
+		{method: "POST", path: APIPrefix + "/notifications/destinations/{id}/test", auth: authed, perm: auth.PermNotificationsTest, h: s.handleTestDestination},
+		{method: "POST", path: APIPrefix + "/notifications/test", auth: authed, perm: auth.PermNotificationsManage, h: s.handleTestUnsavedDestination},
+		{method: "GET", path: APIPrefix + "/notifications/routes", auth: authed, perm: auth.PermNotificationsRead, h: s.handleListRoutes},
+		{method: "POST", path: APIPrefix + "/notifications/routes", auth: authed, perm: auth.PermNotificationsManage, h: s.handleCreateRoute},
+		{method: "POST", path: APIPrefix + "/notifications/routes/preview", auth: authed, perm: auth.PermNotificationsRead, h: s.handlePreviewRoute},
+		{method: "PATCH", path: APIPrefix + "/notifications/routes/{id}", auth: authed, perm: auth.PermNotificationsManage, h: s.handleUpdateRoute},
+		{method: "DELETE", path: APIPrefix + "/notifications/routes/{id}", auth: authed, perm: auth.PermNotificationsManage, h: s.handleDeleteRoute},
+		{method: "GET", path: APIPrefix + "/notifications/deliveries", auth: authed, perm: auth.PermNotificationsRead, h: s.handleListDeliveries},
+		{method: "GET", path: APIPrefix + "/notifications/settings", auth: authed, perm: auth.PermNotificationsRead, h: s.handleNotificationSettings},
+		{method: "PUT", path: APIPrefix + "/notifications/settings", auth: authed, perm: auth.PermNotificationsManage, h: s.handleSetNotificationSettings},
 	}
 }
 

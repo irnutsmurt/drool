@@ -5,11 +5,68 @@ package integration
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+// alertHook is a local webhook receiver for the alerts a VM's real
+// failures raise (M12): nothing leaves the workstation.
+type alertHook struct {
+	mu  sync.Mutex
+	got []struct {
+		Event string `json:"event"`
+		Alert struct {
+			Check, Subject, Severity, State string
+			DurationS                       *int64 `json:"duration_s"`
+		} `json:"alert"`
+	}
+}
+
+func newAlertHook(t *testing.T) *alertHook {
+	h := &alertHook{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		h.mu.Lock()
+		var p struct {
+			Event string `json:"event"`
+			Alert struct {
+				Check, Subject, Severity, State string
+				DurationS                       *int64 `json:"duration_s"`
+			} `json:"alert"`
+		}
+		if json.Unmarshal(b, &p) == nil {
+			h.got = append(h.got, p)
+		}
+		h.mu.Unlock()
+		w.WriteHeader(204)
+	}))
+	var d struct{ ID string }
+	ctl.must(t, "POST", "/api/v1/notifications/destinations", map[string]any{"name": "vm-test-hook", "kind": "webhook", "config": map[string]any{},
+		"secrets": map[string]any{"url": srv.URL + "/hook"}}, &d)
+	t.Cleanup(func() {
+		ctl.do("DELETE", "/api/v1/notifications/destinations/"+d.ID, nil, nil)
+		srv.Close()
+	})
+	return h
+}
+
+// has reports whether an event for a check (and subject prefix) arrived.
+func (h *alertHook) has(event, check, subject string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, p := range h.got {
+		if p.Event == event && p.Alert.Check == check && strings.HasPrefix(p.Alert.Subject, subject) {
+			return true
+		}
+	}
+	return false
+}
 
 // TestVMMonitoring runs system monitoring against a real systemd guest
 // with emulated storage (NVMe, SATA, USB, an SD card when the guest
@@ -30,10 +87,10 @@ func TestVMMonitoring(t *testing.T) {
 	}
 	key := newReleaseKey(t)
 	ctl.must(t, "POST", "/api/v1/agents/release-keys", map[string]any{"public_key": key.line}, nil)
-	if st, body := uploadRelease(t, key, releaseDir+"/drool-agent-"+agentRunaway, agentRunaway); st != 201 && st != 409 {
+	if st, body := uploadRelease(t, key, releaseDir+"/drool-agent-"+agentRunaway, agentRunaway); st != 201 && st != 409 && !strings.Contains(body, "already exists") {
 		t.Fatalf("upload runaway build: %d %s", st, body)
 	}
-	if st, body := uploadRelease(t, key, releaseDir+"/drool-agent-"+agentV2, agentV2); st != 201 && st != 409 {
+	if st, body := uploadRelease(t, key, releaseDir+"/drool-agent-"+agentV2, agentV2); st != 201 && st != 409 && !strings.Contains(body, "already exists") {
 		t.Fatalf("upload %s: %d %s", agentV2, st, body)
 	}
 	// Faster SSH polls for the test (the default is five minutes).
@@ -257,6 +314,7 @@ func testVMMonitoring(t *testing.T, def vmDef, v *vm, h host, key releaseKey) {
 		}
 	})
 
+	hook := newAlertHook(t) // for the whole VM test (subtests' cleanups would delete it early)
 	t.Run("service transitions through the agent", func(t *testing.T) {
 		mustVMSSH(t, v, `printf '[Unit]\nDescription=DROOL test unit\n[Service]\nExecStart=/bin/sleep infinity\n[Install]\nWantedBy=multi-user.target\n' > /etc/systemd/system/drool-mon-test.service && systemctl daemon-reload && systemctl enable --now drool-mon-test.service`)
 		ctl.must(t, "PUT", "/api/v1/hosts/"+h.ID+"/monitoring/settings", map[string]any{"watched_services": []string{"drool-mon-test.service"}, "probe_mounts": []string{}, "disabled_checks": []string{}}, nil)
@@ -280,11 +338,28 @@ func testVMMonitoring(t *testing.T, def vmDef, v *vm, h host, key releaseKey) {
 			return len(hist.Events) > 0 && strings.HasPrefix(hist.Events[0].To, "failed")
 		})
 		waitFor(t, 4*time.Minute, "watched service failed issue", func() bool { return hasIssue(monOverview(t, h.ID), "service_failed", "drool-mon-test") })
+		// M12: the real failure is an alert, delivered once to the webhook.
+		waitFor(t, time.Minute, "alert notification for the failed service", func() bool { return hook.has("opened", "service_failed", "drool-mon-test") })
 		mustVMSSH(t, v, "systemctl reset-failed drool-mon-test.service; systemctl start drool-mon-test.service")
 		waitFor(t, 3*time.Minute, "Failed → Running and resolved", func() bool {
 			ctl.must(t, "GET", path, nil, &hist)
 			return len(hist.Events) > 1 && strings.HasPrefix(hist.Events[0].To, "active") && !hasIssue(monOverview(t, h.ID), "service_failed", "drool-mon-test")
 		})
+		waitFor(t, time.Minute, "recovery notification", func() bool { return hook.has("recovered", "service_failed", "drool-mon-test") })
+		hook.mu.Lock()
+		n := 0
+		for _, p := range hook.got {
+			if p.Alert.Check == "service_failed" && strings.HasPrefix(p.Alert.Subject, "drool-mon-test") {
+				n++
+				if p.Event == "recovered" && (p.Alert.DurationS == nil || *p.Alert.DurationS <= 0) {
+					t.Errorf("recovery without a duration: %+v", p)
+				}
+			}
+		}
+		hook.mu.Unlock()
+		if n != 2 {
+			t.Errorf("one opening and one recovery for the service, got %d notifications", n)
+		}
 	})
 
 	var sataDev string
@@ -327,6 +402,7 @@ func testVMMonitoring(t *testing.T, def vmDef, v *vm, h host, key releaseKey) {
 		})
 		o := monOverview(t, h.ID)
 		t.Logf("probe after the disk went offline: %+v; issues %+v", o.Probes["/mnt/probe"], o.Issues)
+		waitFor(t, time.Minute, "a critical alert for the failed probe", func() bool { return hook.has("opened", "probe", "/mnt/probe") })
 	})
 
 	t.Run("pressure on the host reduces fidelity", func(t *testing.T) {

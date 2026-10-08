@@ -479,3 +479,49 @@ func TestAgentPKIBackup(t *testing.T) {
 		t.Fatalf("PKI after recovery: %v %+v", err, p3)
 	}
 }
+
+// Notification destinations' secrets (M12) are sealed with the master
+// key: a backup carries them, the key check covers them, and a restore
+// without the key disables the destination instead of keeping secrets it
+// can't open.
+func TestNotificationSecrets(t *testing.T) {
+	src := controller(t)
+	box, _, _, err := secrets.LoadOrCreateBox(src.MasterKeyPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ct, nonce, ver, err := box.Seal("ndst_1", "notify-discord", []byte(`{"url":"https://discord.com/api/webhooks/1/secret"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(filepath.Join(src.DataDir, store.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Writer.Exec(`INSERT INTO notify_destinations (id, name, kind, enabled, config_json, secret_ciphertext, secret_nonce, secret_key_version, created_at, updated_at)
+		VALUES ('ndst_1', 'Discord', 'discord', 1, '{}', ?, ?, ?, 0, 0)`, ct, nonce, ver); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := secrets.VerifyBox(context.Background(), st.R, box); err != nil || n != 1 {
+		t.Fatalf("verify: %d %v", n, err)
+	}
+	if _, err := secrets.VerifyBox(context.Background(), st.R, secrets.NewBoxForTest()); err == nil {
+		t.Fatal("a wrong key must not verify")
+	}
+	st.Close()
+
+	dst := fresh(t)
+	if _, err := Restore(context.Background(), dst, bytes.NewReader(makeBackup(t, src, true)), RestoreOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if count(t, dst, "notify_destinations WHERE enabled = 1 AND secret_ciphertext IS NOT NULL") != 1 {
+		t.Fatal("destination not restored with its secrets")
+	}
+	dst2 := fresh(t)
+	if _, err := Restore(context.Background(), dst2, bytes.NewReader(makeBackup(t, src, false)), RestoreOptions{DiscardCredentials: true}); err != nil {
+		t.Fatal(err)
+	}
+	if count(t, dst2, "notify_destinations WHERE enabled = 0 AND secret_ciphertext IS NULL AND last_error != ''") != 1 {
+		t.Fatal("restore without the key must disable the destination and drop its secrets")
+	}
+}

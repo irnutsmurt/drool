@@ -1952,7 +1952,7 @@ paths:
     get:
       operationId: monitoringIssues
       tags: [monitoring]
-      description: Health issues found by the evaluation (what M12 alerting will consume), most severe and newest first; at most 500.
+      description: Health issues found by the evaluation (M12 alerting consumes their transitions), most severe and newest first; at most 500.
       parameters:
         - { name: host_id, in: query, schema: { type: string } }
         - { name: state, in: query, schema: { type: string, enum: [active, resolved, all] } }
@@ -2199,6 +2199,259 @@ paths:
           description: Started.
           content: { application/json: { schema: { type: object, required: [rollout_id, preview], properties: { rollout_id: { type: string }, preview: { $ref: '#/components/schemas/ConversionPreview' } } } } }
         '422': { $ref: '#/components/responses/Problem' }
+  /alerts:
+    get:
+      operationId: listAlerts
+      tags: [alerts]
+      description: >-
+        Alert occurrences. An alert opens when an M11 health issue becomes active with Warning or Critical severity and
+        resolves only when that issue recovers. Open views (active, acknowledged, open) sort critical first, then newest;
+        history views (resolved, all) newest first. Paged with `next_cursor`; at most 200 per page.
+      parameters:
+        - { name: view, in: query, schema: { type: string, enum: [active, acknowledged, open, resolved, all] }, description: 'active: open and unacknowledged (default); open: active or acknowledged.' }
+        - { name: severity, in: query, schema: { type: string, enum: [warning, critical] } }
+        - { name: host_id, in: query, schema: { type: string } }
+        - { name: group_id, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { type: string, enum: [cpu, memory, disk, storage, services, network, temperature, stale, fidelity] } }
+        - { name: check, in: query, schema: { type: string } }
+        - { name: acknowledged, in: query, schema: { type: boolean } }
+        - { name: suppressed, in: query, schema: { type: boolean }, description: 'Open views: suppressed by maintenance now. History: was suppressed.' }
+        - { name: since, in: query, schema: { type: integer }, description: Opened at or after (unix ms). }
+        - { name: until, in: query, schema: { type: integer }, description: Opened before (unix ms). }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: A page of alerts.
+          content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Alert' } }, next_cursor: { type: string } } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /alerts/summary:
+    get:
+      operationId: alertSummary
+      tags: [alerts]
+      description: Open alert counts for the fleet and per host, and hosts in maintenance. `destinations` only with `notifications.read`.
+      responses:
+        '200': { description: Summary., content: { application/json: { schema: { $ref: '#/components/schemas/AlertSummary' } } } }
+  /alerts/{id}:
+    get:
+      operationId: getAlert
+      tags: [alerts]
+      description: An alert with its timeline, source health issue, deliveries and other occurrences of the same condition. Delivery error details need `notifications.read`.
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: Alert., content: { application/json: { schema: { $ref: '#/components/schemas/AlertDetail' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /alerts/{id}/acknowledge:
+    post:
+      operationId: acknowledgeAlert
+      tags: [alerts]
+      description: >-
+        Acknowledge an active alert (audited). It stays open until its condition recovers, stops reminders and changes
+        nothing about the health issue. Requires `alerts.acknowledge`.
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { note: { type: string, maxLength: 500 } } } } } }
+      responses:
+        '200': { description: Acknowledged., content: { application/json: { schema: { $ref: '#/components/schemas/Alert' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /events:
+    get:
+      operationId: listEvents
+      tags: [alerts]
+      description: The controller's event timeline (alerts opened, critical, acknowledged, recovered; maintenance started and ended; notification destinations failing and recovering), newest first, at most 200.
+      parameters:
+        - { name: host_id, in: query, schema: { type: string } }
+        - { name: kind, in: query, schema: { type: string }, description: 'Kind prefix, e.g. alert. or maintenance.' }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200 } }
+        - { name: before, in: query, schema: { type: integer }, description: Event id cursor. }
+      responses:
+        '200': { description: Events., content: { application/json: { schema: { type: object, required: [events], properties: { events: { type: array, items: { $ref: '#/components/schemas/TimelineEvent' } } } } } } }
+  /maintenance:
+    get:
+      operationId: listMaintenance
+      tags: [alerts]
+      description: Maintenance, newest first, at most 200.
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [active, ended, all] } }
+        - { name: host_id, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200 } }
+        - { name: before, in: query, schema: { type: integer }, description: Started before (unix ms). }
+      responses:
+        '200': { description: Maintenance., content: { application/json: { schema: { type: object, required: [maintenance], properties: { maintenance: { type: array, items: { $ref: '#/components/schemas/Maintenance' } } } } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+    post:
+      operationId: startMaintenance
+      tags: [alerts]
+      description: >-
+        Start maintenance now for hosts and/or groups, with exactly one of a duration, an end time or "until ended
+        manually". It suppresses notifications only: monitoring, health evaluation, firewall rollback, agent recovery and
+        host-key checks continue. Audited. Requires `maintenance.manage`.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/MaintenanceInput' } } } }
+      responses:
+        '201': { description: Started., content: { application/json: { schema: { $ref: '#/components/schemas/Maintenance' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /maintenance/{id}:
+    get:
+      operationId: getMaintenance
+      tags: [alerts]
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: Maintenance., content: { application/json: { schema: { $ref: '#/components/schemas/Maintenance' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /maintenance/{id}/end:
+    post:
+      operationId: endMaintenance
+      tags: [alerts]
+      description: End maintenance now (audited). Alerts still active get one opening notification after a short grace period.
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: Ended., content: { application/json: { schema: { $ref: '#/components/schemas/Maintenance' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /notifications/destinations:
+    get:
+      operationId: listDestinations
+      tags: [notifications]
+      description: Notification destinations with their delivery health. Secrets are never returned, only whether each is set.
+      responses:
+        '200': { description: Destinations., content: { application/json: { schema: { type: object, required: [destinations], properties: { destinations: { type: array, items: { $ref: '#/components/schemas/Destination' } } } } } } }
+    post:
+      operationId: createDestination
+      tags: [notifications]
+      description: >-
+        Add a destination (audited without secret values). With `notify_for: recommended` (the default) it joins the
+        default route: Warning and Critical alerts plus recoveries. Requires `notifications.manage`.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/DestinationInput' } } } }
+      responses:
+        '201': { description: Created., content: { application/json: { schema: { $ref: '#/components/schemas/Destination' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /notifications/destinations/{id}:
+    get:
+      operationId: getDestination
+      tags: [notifications]
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: Destination., content: { application/json: { schema: { $ref: '#/components/schemas/Destination' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    patch:
+      operationId: updateDestination
+      tags: [notifications]
+      description: Change a destination. Omitted secrets keep their stored value. Audited.
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/DestinationInput' } } } }
+      responses:
+        '200': { description: Updated., content: { application/json: { schema: { $ref: '#/components/schemas/Destination' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: deleteDestination
+      tags: [notifications]
+      description: Delete a destination; its unsent notifications are cancelled. Alerts are unaffected. Audited.
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '204': { description: Deleted. }
+        '404': { $ref: '#/components/responses/Problem' }
+  /notifications/destinations/{id}/test:
+    post:
+      operationId: testDestination
+      tags: [notifications]
+      description: Send a test notification (no alert is created). Audited; at most 10 a minute per user. Requires `notifications.test`.
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: The result (also for failures)., content: { application/json: { schema: { $ref: '#/components/schemas/TestResult' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
+  /notifications/test:
+    post:
+      operationId: testUnsavedDestination
+      tags: [notifications]
+      description: Send a test notification to a destination that isn't saved yet. Audited. Requires `notifications.manage`.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [kind, config], properties: { kind: { type: string, enum: [email, webhook, discord, slack] }, config: { $ref: '#/components/schemas/DestinationConfig' }, secrets: { $ref: '#/components/schemas/DestinationSecrets' } } } } }
+      responses:
+        '200': { description: The result., content: { application/json: { schema: { $ref: '#/components/schemas/TestResult' } } } }
+        '429': { $ref: '#/components/responses/Problem' }
+  /notifications/routes:
+    get:
+      operationId: listRoutes
+      tags: [notifications]
+      responses:
+        '200':
+          description: Routes (default first), with the category and check names filters accept.
+          content: { application/json: { schema: { type: object, required: [routes, categories, checks], properties: { routes: { type: array, items: { $ref: '#/components/schemas/Route' } }, categories: { type: array, items: { type: string } }, checks: { type: array, items: { type: string } } } } } }
+    post:
+      operationId: createRoute
+      tags: [notifications]
+      description: >-
+        Add a route. Empty filters match everything; filters combine with AND and values within one with OR. Every matching
+        route contributes its destinations, and each destination is notified once per alert event. Audited.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RouteInput' } } } }
+      responses:
+        '201': { description: Created., content: { application/json: { schema: { $ref: '#/components/schemas/Route' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /notifications/routes/preview:
+    post:
+      operationId: previewRoute
+      tags: [notifications]
+      description: Which destinations an alert for this host, check and severity would go to.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [host_id, check, severity], properties: { host_id: { type: string }, check: { type: string }, severity: { type: string, enum: [warning, critical] } } } } } }
+      responses:
+        '200': { description: Destinations., content: { application/json: { schema: { $ref: '#/components/schemas/RoutePreview' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /notifications/routes/{id}:
+    patch:
+      operationId: updateRoute
+      tags: [notifications]
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RouteInput' } } } }
+      responses:
+        '200': { description: Updated., content: { application/json: { schema: { $ref: '#/components/schemas/Route' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: deleteRoute
+      tags: [notifications]
+      description: Delete a route (not the default one, which can be disabled instead).
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '204': { description: Deleted. }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /notifications/deliveries:
+    get:
+      operationId: listDeliveries
+      tags: [notifications]
+      description: Delivery history with attempts, newest first, at most 200 per page.
+      parameters:
+        - { name: destination_id, in: query, schema: { type: string } }
+        - { name: alert_id, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [queued, sending, delivered, failed, cancelled] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Deliveries.
+          content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Delivery' } }, next_cursor: { type: string } } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /notifications/settings:
+    get:
+      operationId: notificationSettings
+      tags: [notifications]
+      responses:
+        '200': { description: Settings., content: { application/json: { schema: { $ref: '#/components/schemas/NotificationSettingsView' } } } }
+    put:
+      operationId: setNotificationSettings
+      tags: [notifications]
+      description: Link address, time zone and retention (audited). Requires `notifications.manage`.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationSettings' } } } }
+      responses:
+        '200': { description: Saved., content: { application/json: { schema: { $ref: '#/components/schemas/NotificationSettingsView' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+
 components:
   securitySchemes:
     session: { type: apiKey, in: cookie, name: drool_session }
@@ -4636,3 +4889,305 @@ components:
         counts: { type: object, additionalProperties: { type: integer } }
         hosts: { type: array, items: { $ref: '#/components/schemas/ConversionHost' } }
         binary: { type: object, additionalProperties: { type: string } }
+    Alert:
+      type: object
+      description: One alert occurrence (one activation of an M11 health issue).
+      required: [id, host_id, host_name, issue_id, check, subject, category, severity, peak_severity, state, title, detail, issue_started_at, opened_at, duration_ms, suppressed, ever_suppressed, notification]
+      properties:
+        id: { type: string }
+        host_id: { type: string }
+        host_name: { type: string }
+        issue_id: { type: string }
+        check: { type: string }
+        subject: { type: string }
+        category: { type: string }
+        severity: { type: string, enum: [warning, critical] }
+        peak_severity: { type: string, enum: [warning, critical] }
+        state: { type: string, enum: [active, acknowledged, resolved] }
+        title: { type: string }
+        detail: { type: string }
+        value: { type: number }
+        value_text: { type: string }
+        observed_at: { type: integer, description: When the condition was first observed, if monitoring knows. }
+        issue_started_at: { type: integer }
+        opened_at: { type: integer }
+        acknowledgement: { $ref: '#/components/schemas/Acknowledgement' }
+        resolved_at: { type: integer }
+        duration_ms: { type: integer }
+        suppressed: { type: boolean, description: Suppressed by maintenance now. }
+        suppressed_by: { $ref: '#/components/schemas/MaintenanceRef' }
+        ever_suppressed: { type: boolean }
+        notify_after: { type: integer, description: Opening notification due (after maintenance ended). }
+        notification: { $ref: '#/components/schemas/NotificationState' }
+    Acknowledgement:
+      type: object
+      required: [by, at]
+      properties:
+        by: { type: string }
+        at: { type: integer }
+        note: { type: string }
+    MaintenanceRef:
+      type: object
+      required: [id, reason]
+      properties:
+        id: { type: string }
+        reason: { type: string }
+        ends_at: { type: integer }
+    NotificationState:
+      type: object
+      required: [status, delivered, pending, failed, cancelled, retrying]
+      properties:
+        status: { type: string, enum: [none, suppressed, pending, delivered, partial, failing, failed] }
+        delivered: { type: integer }
+        pending: { type: integer }
+        failed: { type: integer }
+        cancelled: { type: integer }
+        retrying: { type: boolean }
+    AlertSummary:
+      type: object
+      required: [active, active_critical, acknowledged, critical, warning, suppressed, hosts, maintenance]
+      properties:
+        active: { type: integer, description: Open and unacknowledged. }
+        active_critical: { type: integer, description: Open, unacknowledged and critical. }
+        acknowledged: { type: integer }
+        critical: { type: integer }
+        warning: { type: integer }
+        suppressed: { type: integer }
+        hosts:
+          type: object
+          additionalProperties:
+            type: object
+            required: [critical, warning, acknowledged, suppressed]
+            properties: { critical: { type: integer }, warning: { type: integer }, acknowledged: { type: integer }, suppressed: { type: integer } }
+        maintenance: { type: object, additionalProperties: { $ref: '#/components/schemas/MaintenanceRef' } }
+        destinations: { type: object, required: [configured, failing], properties: { configured: { type: integer }, failing: { type: integer } } }
+    AlertDetail:
+      type: object
+      required: [alert, timeline, deliveries, occurrences]
+      properties:
+        alert: { $ref: '#/components/schemas/Alert' }
+        timeline: { type: array, items: { $ref: '#/components/schemas/AlertTimelineEntry' } }
+        deliveries: { type: array, items: { $ref: '#/components/schemas/Delivery' } }
+        issue: { $ref: '#/components/schemas/AlertSourceIssue' }
+        occurrences:
+          type: array
+          items:
+            type: object
+            required: [id, state, severity, opened_at]
+            properties: { id: { type: string }, state: { type: string }, severity: { type: string }, opened_at: { type: integer }, resolved_at: { type: integer } }
+    AlertTimelineEntry:
+      type: object
+      required: [ts, kind, text]
+      properties:
+        ts: { type: integer }
+        kind: { type: string }
+        text: { type: string }
+        actor: { type: string }
+    AlertSourceIssue:
+      type: object
+      required: [id, state, severity, title, detail, started_at, updated_at]
+      properties:
+        id: { type: string }
+        state: { type: string }
+        severity: { type: string }
+        title: { type: string }
+        detail: { type: string }
+        value: { type: number }
+        started_at: { type: integer }
+        updated_at: { type: integer }
+        resolved_at: { type: integer }
+    TimelineEvent:
+      type: object
+      required: [id, ts, kind, severity, title]
+      properties:
+        id: { type: integer }
+        ts: { type: integer }
+        kind: { type: string }
+        severity: { type: string, enum: [info, warning, critical] }
+        host_id: { type: string }
+        object_type: { type: string }
+        object_id: { type: string }
+        title: { type: string }
+    Maintenance:
+      type: object
+      required: [id, reason, created_by, started_at, active, targets, host_count, suppressing]
+      properties:
+        id: { type: string }
+        reason: { type: string }
+        created_by: { type: string }
+        started_at: { type: integer }
+        ends_at: { type: integer, description: Absent until ended manually. }
+        ended_at: { type: integer }
+        ended_by: { type: string }
+        active: { type: boolean }
+        targets:
+          type: array
+          items: { type: object, required: [kind, id, name], properties: { kind: { type: string, enum: [host, group] }, id: { type: string }, name: { type: string } } }
+        host_count: { type: integer }
+        suppressing: { type: integer, description: Open alerts it suppresses. }
+    MaintenanceInput:
+      type: object
+      properties:
+        host_ids: { type: array, items: { type: string } }
+        group_ids: { type: array, items: { type: string } }
+        reason: { type: string, maxLength: 200 }
+        duration_minutes: { type: integer, minimum: 1, maximum: 43200 }
+        until: { type: integer, description: End (unix ms). }
+        indefinite: { type: boolean, description: Until ended manually. }
+    DestinationConfig:
+      type: object
+      description: Non-secret settings; which apply depends on the kind.
+      properties:
+        host: { type: string }
+        port: { type: integer }
+        security: { type: string, enum: [starttls, tls, none] }
+        username: { type: string }
+        from: { type: string }
+        to: { type: array, items: { type: string } }
+        allow_plaintext: { type: boolean }
+        header_name: { type: string }
+        url_display: { type: string, readOnly: true }
+        timeout_s: { type: integer, minimum: 1, maximum: 30 }
+    DestinationSecrets:
+      type: object
+      description: Write-only secret values. Omitted keeps the stored value; an empty string clears an optional one.
+      properties:
+        url: { type: string, description: Webhook, Discord or Slack URL. }
+        header_value: { type: string, description: Webhook authorization header value. }
+        password: { type: string, description: SMTP password. }
+    DestinationInput:
+      type: object
+      properties:
+        name: { type: string, maxLength: 64 }
+        kind: { type: string, enum: [email, webhook, discord, slack] }
+        enabled: { type: boolean }
+        config: { $ref: '#/components/schemas/DestinationConfig' }
+        secrets: { $ref: '#/components/schemas/DestinationSecrets' }
+        notify_for: { type: string, enum: [recommended, custom], description: 'recommended: in the default route (Warning and Critical plus recoveries).' }
+    Destination:
+      type: object
+      required: [id, name, kind, enabled, config, secrets_set, notify_for, routes, health, warnings, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [email, webhook, discord, slack] }
+        enabled: { type: boolean }
+        config: { $ref: '#/components/schemas/DestinationConfig' }
+        secrets_set: { type: object, required: [url, header_value, password], properties: { url: { type: boolean }, header_value: { type: boolean }, password: { type: boolean } } }
+        notify_for: { type: string, enum: [recommended, custom] }
+        routes: { type: array, items: { type: string } }
+        health:
+          type: object
+          required: [status, consecutive_failures, queued]
+          properties:
+            status: { type: string, enum: [ok, failing, unused, disabled] }
+            last_success_at: { type: integer }
+            last_failure_at: { type: integer }
+            last_error: { type: string }
+            consecutive_failures: { type: integer }
+            failing_since: { type: integer }
+            queued: { type: integer }
+        last_test: { type: object, required: [at, ok, result], properties: { at: { type: integer }, ok: { type: boolean }, result: { type: string } } }
+        warnings: { type: array, items: { type: string } }
+        created_at: { type: integer }
+        updated_at: { type: integer }
+    TestResult:
+      type: object
+      required: [outcome, category, message, duration_ms, warnings]
+      properties:
+        outcome: { type: string, enum: [delivered, transient, permanent] }
+        category: { type: string, enum: [ok, timeout, tls, auth, rejected, rate_limited, server_error, network, config] }
+        status_code: { type: integer }
+        message: { type: string }
+        ambiguous: { type: boolean }
+        duration_ms: { type: integer }
+        warnings: { type: array, items: { type: string } }
+    Route:
+      type: object
+      required: [id, name, is_default, enabled, severities, host_ids, group_ids, categories, checks, recovery, reminder_minutes, destination_ids, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        is_default: { type: boolean }
+        enabled: { type: boolean }
+        severities: { type: array, items: { type: string, enum: [warning, critical] } }
+        host_ids: { type: array, items: { type: string } }
+        group_ids: { type: array, items: { type: string } }
+        categories: { type: array, items: { type: string } }
+        checks: { type: array, items: { type: string } }
+        recovery: { type: boolean }
+        reminder_minutes: { type: integer, description: '0: no reminders (default); otherwise 60 to 10080.' }
+        destination_ids: { type: array, items: { type: string } }
+        created_at: { type: integer }
+        updated_at: { type: integer }
+    RouteInput:
+      type: object
+      properties:
+        name: { type: string, maxLength: 80 }
+        enabled: { type: boolean }
+        severities: { type: array, items: { type: string, enum: [warning, critical] } }
+        host_ids: { type: array, items: { type: string } }
+        group_ids: { type: array, items: { type: string } }
+        categories: { type: array, items: { type: string } }
+        checks: { type: array, items: { type: string } }
+        recovery: { type: boolean }
+        reminder_minutes: { type: integer }
+        destination_ids: { type: array, items: { type: string } }
+    RoutePreview:
+      type: object
+      required: [destinations]
+      properties:
+        destinations:
+          type: array
+          items:
+            type: object
+            required: [id, name, kind, recovery, reminder_minutes]
+            properties: { id: { type: string }, name: { type: string }, kind: { type: string }, recovery: { type: boolean }, reminder_minutes: { type: integer } }
+    Delivery:
+      type: object
+      required: [id, destination, destination_kind, kind, status, attempts, created_at, ambiguous]
+      properties:
+        id: { type: string, description: Sent to webhooks as delivery_id / Idempotency-Key. }
+        alert_id: { type: string }
+        host_name: { type: string }
+        alert_title: { type: string }
+        destination_id: { type: string }
+        destination: { type: string }
+        destination_kind: { type: string }
+        kind: { type: string, enum: [opening, escalation, reminder, recovery] }
+        status: { type: string, enum: [queued, sending, delivered, failed, cancelled] }
+        attempts: { type: integer }
+        next_attempt_at: { type: integer }
+        created_at: { type: integer }
+        finished_at: { type: integer }
+        last_error: { type: string }
+        last_category: { type: string }
+        last_status_code: { type: integer }
+        ambiguous: { type: boolean, description: An attempt may have reached the receiver without DROOL seeing success; a retry may have delivered it twice. }
+        attempt_log:
+          type: array
+          items:
+            type: object
+            required: [n, started_at, outcome]
+            properties:
+              n: { type: integer }
+              started_at: { type: integer }
+              finished_at: { type: integer }
+              outcome: { type: string, enum: [delivered, transient, permanent, interrupted] }
+              category: { type: string }
+              status_code: { type: integer }
+              error: { type: string }
+    NotificationSettings:
+      type: object
+      required: [link_base_url, time_zone, alert_retention_days, delivery_retention_days]
+      properties:
+        link_base_url: { type: string, description: 'DROOL''s address for "Open in DROOL" links; empty: no links.' }
+        time_zone: { type: string, description: IANA name for times in notifications; empty for the controller's. }
+        alert_retention_days: { type: integer, minimum: 30, maximum: 730 }
+        delivery_retention_days: { type: integer, minimum: 7, maximum: 365 }
+    NotificationSettingsView:
+      type: object
+      required: [settings, kinds]
+      properties:
+        settings: { $ref: '#/components/schemas/NotificationSettings' }
+        kinds: { type: array, items: { type: string } }

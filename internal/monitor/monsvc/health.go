@@ -81,6 +81,7 @@ type hostEval struct {
 
 type issueRef struct {
 	id, severity, title string
+	started             int64
 }
 
 type evaluator struct {
@@ -108,7 +109,7 @@ func ikey(check, subject string) string { return check + "|" + subject }
 
 // load reads the active issues after a restart.
 func (e *evaluator) load(ctx context.Context) {
-	rows, err := e.s.d.Store.Reader.QueryContext(ctx, `SELECT id, host_id, check_id, subject, severity, title, updated_at FROM mon_issues WHERE state = 'active'`)
+	rows, err := e.s.d.Store.Reader.QueryContext(ctx, `SELECT id, host_id, check_id, subject, severity, title, updated_at, started_at FROM mon_issues WHERE state = 'active'`)
 	if err != nil {
 		return
 	}
@@ -117,14 +118,14 @@ func (e *evaluator) load(ctx context.Context) {
 	defer e.mu.Unlock()
 	for rows.Next() {
 		var id, h, c, sub, sev, title string
-		var at int64
-		if rows.Scan(&id, &h, &c, &sub, &sev, &title, &at) != nil {
+		var at, started int64
+		if rows.Scan(&id, &h, &c, &sub, &sev, &title, &at, &started) != nil {
 			continue
 		}
 		if e.active[h] == nil {
 			e.active[h] = map[string]issueRef{}
 		}
-		e.active[h][ikey(c, sub)] = issueRef{id: id, severity: sev, title: title}
+		e.active[h][ikey(c, sub)] = issueRef{id: id, severity: sev, title: title, started: started}
 		he := e.host(h)
 		// Evidence issues keep decaying from when they were last updated.
 		switch c {
@@ -182,22 +183,83 @@ func (h *hostEval) cond(key string) *cond {
 
 // --- issue persistence ---
 
+// IssueTransition is an issue becoming active, changing severity or title,
+// or resolving. M12's alerting consumes it.
+type IssueTransition struct {
+	Kind         string // opened | changed | resolved
+	IssueID      string
+	HostID       string
+	Check        string
+	Subject      string
+	Severity     string
+	PrevSeverity string // changed: the severity before
+	Title        string
+	Detail       string
+	Value        *float64
+	ObservedAt   *int64 // when the condition was first seen, if known (before its duration was satisfied)
+	StartedAt    int64  // when the issue became active
+	At           int64
+}
+
+// IssueHook runs inside the transaction that records an issue transition,
+// so whatever it writes commits (or rolls back) together with the issue.
+type IssueHook func(ctx context.Context, tx *sql.Tx, t IssueTransition) error
+
+// SetIssueHook installs the transition hook (alerting).
+func (s *Service) SetIssueHook(h IssueHook) { s.hook = h }
+
+func (e *evaluator) inTx(ctx context.Context, fn func(tx *sql.Tx) error, t IssueTransition) error {
+	return e.s.d.Store.InRawTx(ctx, func(tx *sql.Tx) error {
+		if err := fn(tx); err != nil {
+			return err
+		}
+		if e.s.hook != nil {
+			return e.s.hook(ctx, tx, t)
+		}
+		return nil
+	})
+}
+
 func (e *evaluator) open(ctx context.Context, hostID, check, subject, sev, title, detail string, value *float64) {
+	e.openAt(ctx, hostID, check, subject, sev, title, detail, value, time.Time{})
+}
+
+// openAt opens (or updates) an issue; observed is when the condition was
+// first seen, when known.
+func (e *evaluator) openAt(ctx context.Context, hostID, check, subject, sev, title, detail string, value *float64, observed time.Time) {
 	e.mu.Lock()
 	ref, ok := e.active[hostID][ikey(check, subject)]
 	e.mu.Unlock()
 	now := e.s.now().UnixMilli()
-	db := e.s.d.Store.Writer
+	title, detail, subject = trunc(title, 300), trunc(detail, 1000), trunc(subject, 255)
+	t := IssueTransition{HostID: hostID, Check: check, Subject: subject, Severity: sev, Title: title, Detail: detail, Value: value, At: now}
 	if ok {
 		if ref.severity == sev && ref.title == title {
 			return
 		}
-		db.ExecContext(ctx, `UPDATE mon_issues SET severity = ?, title = ?, detail = ?, value = ?, updated_at = ? WHERE id = ?`,
-			sev, trunc(title, 300), trunc(detail, 1000), value, now, ref.id)
+		t.Kind, t.IssueID, t.PrevSeverity, t.StartedAt = "changed", ref.id, ref.severity, ref.started
+		if err := e.inTx(ctx, func(tx *sql.Tx) error {
+			_, err := tx.ExecContext(ctx, `UPDATE mon_issues SET severity = ?, title = ?, detail = ?, value = ?, updated_at = ? WHERE id = ?`,
+				sev, title, detail, value, now, ref.id)
+			return err
+		}, t); err != nil {
+			e.s.log.Warn("update health issue", "host", hostID, "check", check, "err", err)
+			return
+		}
 	} else {
 		ref.id = ids.New(ids.MonIssue)
-		if _, err := db.ExecContext(ctx, `INSERT INTO mon_issues (id, host_id, check_id, subject, severity, state, title, detail, value, started_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`, ref.id, hostID, check, trunc(subject, 255), sev, trunc(title, 300), trunc(detail, 1000), value, now, now); err != nil {
+		ref.started = now
+		var obs *int64
+		if !observed.IsZero() && observed.UnixMilli() < now {
+			o := observed.UnixMilli()
+			obs = &o
+		}
+		t.Kind, t.IssueID, t.StartedAt, t.ObservedAt = "opened", ref.id, now, obs
+		if err := e.inTx(ctx, func(tx *sql.Tx) error {
+			_, err := tx.ExecContext(ctx, `INSERT INTO mon_issues (id, host_id, check_id, subject, severity, state, title, detail, value, started_at, updated_at, observed_at)
+				VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`, ref.id, hostID, check, subject, sev, title, detail, value, now, now, obs)
+			return err
+		}, t); err != nil {
 			e.s.log.Warn("record health issue", "host", hostID, "check", check, "err", err)
 			return
 		}
@@ -224,15 +286,25 @@ func (e *evaluator) touch(ctx context.Context, hostID, check, subject string) {
 func (e *evaluator) resolve(ctx context.Context, hostID, check, subject string) {
 	e.mu.Lock()
 	ref, ok := e.active[hostID][ikey(check, subject)]
-	if ok {
-		delete(e.active[hostID], ikey(check, subject))
-	}
 	e.mu.Unlock()
 	if !ok {
 		return
 	}
 	now := e.s.now().UnixMilli()
-	e.s.d.Store.Writer.ExecContext(ctx, `UPDATE mon_issues SET state = 'resolved', resolved_at = ?, updated_at = ? WHERE id = ?`, now, now, ref.id)
+	t := IssueTransition{Kind: "resolved", IssueID: ref.id, HostID: hostID, Check: check, Subject: subject, Severity: ref.severity,
+		Title: ref.title, StartedAt: ref.started, At: now}
+	if err := e.inTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE mon_issues SET state = 'resolved', resolved_at = ?, updated_at = ? WHERE id = ?`, now, now, ref.id)
+		return err
+	}, t); err != nil {
+		e.s.log.Warn("resolve health issue", "host", hostID, "check", check, "err", err)
+		return // still active: the next evaluation tries again
+	}
+	e.mu.Lock()
+	if cur, still := e.active[hostID][ikey(check, subject)]; still && cur.id == ref.id {
+		delete(e.active[hostID], ikey(check, subject))
+	}
+	e.mu.Unlock()
 }
 
 func (e *evaluator) activeKeys(hostID, check string) []string {
@@ -263,6 +335,7 @@ func (e *evaluator) onPoints(ctx context.Context, hostID string, ps []monitor.Po
 		check, sev, title, detail string
 		fire, resolve             bool
 		v                         float64
+		since                     time.Time
 	}
 	var outs []outcome
 	e.mu.Lock()
@@ -274,7 +347,7 @@ func (e *evaluator) onPoints(ctx context.Context, hostID string, ps []monitor.Po
 			c := h.cond(ikey(CheckCPU, ""))
 			fire, res := track(c, v[0] >= t.CPUPercent, v[0] < t.CPUPercent-10, start, end, gap, mins(t.CPUMinutes), 3*time.Minute)
 			outs = append(outs, outcome{CheckCPU, "warning", fmt.Sprintf("CPU at %.0f%% or more for %d minutes", t.CPUPercent, t.CPUMinutes),
-				"Sustained CPU saturation; momentary spikes are ignored.", fire, res, v[0]})
+				"Sustained CPU saturation; momentary spikes are ignored.", fire, res, v[0], c.since})
 		}
 		if v, ok := p.V[monitor.KeyMem]; ok && !hs.Disabled(CheckMemory) {
 			c := h.cond(ikey(CheckMemory, ""))
@@ -286,14 +359,14 @@ func (e *evaluator) onPoints(ctx context.Context, hostID string, ps []monitor.Po
 			if c.firing && !fire {
 				fire = true // severity may have changed: open() writes only real changes
 			}
-			outs = append(outs, outcome{CheckMemory, sev, title, "Used memory excludes reclaimable cache (MemAvailable).", fire, res, v[0]})
+			outs = append(outs, outcome{CheckMemory, sev, title, "Used memory excludes reclaimable cache (MemAvailable).", fire, res, v[0], c.since})
 		}
 	}
 	e.mu.Unlock()
 	for _, o := range outs {
 		switch {
 		case o.fire:
-			e.open(ctx, hostID, o.check, "", o.sev, o.title, o.detail, f64(o.v))
+			e.openAt(ctx, hostID, o.check, "", o.sev, o.title, o.detail, f64(o.v), o.since)
 		case o.resolve:
 			e.resolve(ctx, hostID, o.check, "")
 		}
@@ -311,6 +384,7 @@ func (e *evaluator) onState(ctx context.Context, hostID string, prev, st *monito
 		check, sub, sev, title string
 		detail                 string
 		v                      *float64
+		since                  time.Time
 	}
 	var acts []act
 	e.mu.Lock()
@@ -340,7 +414,7 @@ func (e *evaluator) onState(ctx context.Context, hostID string, prev, st *monito
 				if f.UsedPercent >= t.DiskCritical {
 					sev, title = "critical", fmt.Sprintf("%s is over %.0f%% full", f.Mount, t.DiskCritical)
 				}
-				acts = append(acts, act{true, CheckFilesystem, f.Mount, sev, title, fmt.Sprintf("%s free of %s.", bytesText(f.AvailBytes), bytesText(f.TotalBytes)), f64(f.UsedPercent)})
+				acts = append(acts, act{true, CheckFilesystem, f.Mount, sev, title, fmt.Sprintf("%s free of %s.", bytesText(f.AvailBytes), bytesText(f.TotalBytes)), f64(f.UsedPercent), time.Time{}})
 			case c.firing && f.UsedPercent < t.DiskWarning-2:
 				c.firing = false
 				acts = append(acts, act{open: false, check: CheckFilesystem, sub: f.Mount})
@@ -361,7 +435,7 @@ func (e *evaluator) onState(ctx context.Context, hostID string, prev, st *monito
 				if v >= t.InodeCritical {
 					sev = "critical"
 				}
-				acts = append(acts, act{true, CheckInodes, f.Mount, sev, fmt.Sprintf("%s is running out of inodes", f.Mount), "New files can't be created when inodes run out, even with free space.", f64(v)})
+				acts = append(acts, act{true, CheckInodes, f.Mount, sev, fmt.Sprintf("%s is running out of inodes", f.Mount), "New files can't be created when inodes run out, even with free space.", f64(v), time.Time{}})
 			case c.firing && v < t.InodeWarning-2:
 				c.firing = false
 				acts = append(acts, act{open: false, check: CheckInodes, sub: f.Mount})
@@ -374,7 +448,7 @@ func (e *evaluator) onState(ctx context.Context, hostID string, prev, st *monito
 				acts = append(acts, act{open: false, check: CheckFSReadOnly, sub: f.Mount})
 			case h.rwSeen[f.Mount]:
 				acts = append(acts, act{true, CheckFSReadOnly, f.Mount, "critical", f.Mount + " became read-only",
-					"It was writable earlier in this boot. Filesystems switch to read-only after IO errors; check the storage device.", nil})
+					"It was writable earlier in this boot. Filesystems switch to read-only after IO errors; check the storage device.", nil, time.Time{}})
 			}
 		}
 	}
@@ -399,7 +473,7 @@ func (e *evaluator) onState(ctx context.Context, hostID string, prev, st *monito
 			fire, res := track(c, !up, up, now, now, 10*time.Minute, mins(t.InterfaceMinutes), 0)
 			if fire || c.firing {
 				acts = append(acts, act{true, CheckInterfaceDown, in.Name, "warning", "Network interface " + in.Name + " is down",
-					"It was up earlier in this boot (state now: " + in.State + ").", nil})
+					"It was up earlier in this boot (state now: " + in.State + ").", nil, c.since})
 			} else if res || up {
 				acts = append(acts, act{open: false, check: CheckInterfaceDown, sub: in.Name})
 			}
@@ -422,7 +496,7 @@ func (e *evaluator) onState(ctx context.Context, hostID string, prev, st *monito
 					sev, which = "critical", "critical"
 				}
 				acts = append(acts, act{true, CheckTemperature, sn.ID, sev, fmt.Sprintf("%s is above its %s temperature", sensorName(sn), which),
-					fmt.Sprintf("At or above the hardware's own %s threshold (%.0f °C).", which, *limit), f64(sn.Celsius)})
+					fmt.Sprintf("At or above the hardware's own %s threshold (%.0f °C).", which, *limit), f64(sn.Celsius), c.since})
 			} else if res {
 				acts = append(acts, act{open: false, check: CheckTemperature, sub: sn.ID})
 			}
@@ -430,14 +504,14 @@ func (e *evaluator) onState(ctx context.Context, hostID string, prev, st *monito
 	}
 	if st.Fidelity.Reduced && !hs.Disabled(CheckFidelity) {
 		acts = append(acts, act{true, CheckFidelity, "", "info", "Monitoring fidelity reduced to save resources",
-			strings.Join(st.Fidelity.Reasons, "; "), nil})
+			strings.Join(st.Fidelity.Reasons, "; "), nil, time.Time{}})
 	} else {
 		acts = append(acts, act{open: false, check: CheckFidelity})
 	}
 	e.mu.Unlock()
 	for _, a := range acts {
 		if a.open {
-			e.open(ctx, hostID, a.check, a.sub, a.sev, a.title, a.detail, a.v)
+			e.openAt(ctx, hostID, a.check, a.sub, a.sev, a.title, a.detail, a.v, a.since)
 		} else {
 			e.resolve(ctx, hostID, a.check, a.sub)
 		}
@@ -672,8 +746,8 @@ func (e *evaluator) tick(ctx context.Context, now time.Time) {
 		}
 		stale := now.Sub(h.at) > time.Duration(t.StaleIntervals)*interval+time.Minute
 		if stale && !hs.Disabled(CheckStale) {
-			e.open(ctx, h.id, CheckStale, "", "warning", "No monitoring data since "+h.at.UTC().Format("2006-01-02 15:04")+" UTC",
-				"The host is unreachable, or its agent or SSH polling stopped. Values shown are from before.", nil)
+			e.openAt(ctx, h.id, CheckStale, "", "warning", "No monitoring data since "+h.at.UTC().Format("2006-01-02 15:04")+" UTC",
+				"The host is unreachable, or its agent or SSH polling stopped. Values shown are from before.", nil, h.at)
 			e.markServicesUnknown(ctx, h.id, now)
 		}
 		if !stale {
@@ -767,8 +841,8 @@ func (e *evaluator) services(ctx context.Context, hostID string, hs HostSettings
 		case "stopped":
 			if watched && since >= mins(t.WatchedMinutes) && !hs.Disabled(CheckServiceStopped) {
 				stopped[u.Name] = true
-				e.open(ctx, hostID, CheckServiceStopped, u.Name, "critical", u.Name+" is not running",
-					"A watched service ("+u.Active+"/"+u.Sub+").", nil)
+				e.openAt(ctx, hostID, CheckServiceStopped, u.Name, "critical", u.Name+" is not running",
+					"A watched service ("+u.Active+"/"+u.Sub+").", nil, time.UnixMilli(u.ChangedAt))
 			}
 		}
 	}

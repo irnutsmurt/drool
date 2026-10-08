@@ -110,7 +110,8 @@ func (m *Manifest) Complete() bool {
 var countedTables = []string{"users", "api_tokens", "hosts", "ssh_host_keys", "secrets", "groups", "host_tags",
 	"host_facts", "jobs", "job_output", "audit_events", "artifacts", "file_deployments",
 	"agent_identities", "agent_ca", "agent_trust_manifests", "agent_enrollment_tokens", "agent_releases", "agent_rollouts", "state_versions",
-	"fw_policies", "fw_services", "fw_host_config", "fw_group_config", "fw_host_state", "fw_transactions", "fw_observations", "fw_networks"}
+	"fw_policies", "fw_services", "fw_host_config", "fw_group_config", "fw_host_state", "fw_transactions", "fw_observations", "fw_networks",
+	"alerts", "maintenance", "notify_destinations", "notify_routes"}
 
 // Options controls Create.
 type Options struct {
@@ -188,6 +189,10 @@ func Create(ctx context.Context, cfg *config.Loaded, w io.Writer, opts Options) 
 		return nil, err
 	}
 	m.Credentials = m.Counts["secrets"]
+	var notifySecrets int64
+	if sdb.QueryRowContext(ctx, `SELECT count(*) FROM notify_destinations WHERE secret_ciphertext IS NOT NULL`).Scan(&notifySecrets) == nil {
+		m.Credentials += notifySecrets // absent before schema 12
+	}
 	if rows, qerr := sdb.QueryContext(ctx, `SELECT kind, fingerprint, key_ciphertext IS NOT NULL FROM agent_ca`); qerr == nil {
 		for rows.Next() {
 			var kind, fp string

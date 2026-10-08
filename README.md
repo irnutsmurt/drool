@@ -77,6 +77,10 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
   condition to last before they appear, and a fleet view. Agent hosts are continuous, within a
   small enforced resource budget; SSH hosts are polled every 5 minutes. See
   [System monitoring](#system-monitoring).
+- **Alerts and notifications** (on `main`): problems monitoring confirms become alerts you can
+  acknowledge, with one message when they start and one when they're fixed — by email, Discord,
+  Slack or webhook — and maintenance mode to keep quiet while you work. See
+  [Alerts and notifications](#alerts-and-notifications).
 - **Appearance:** Light, Dark or System (follows your OS), from the header or *Settings → Account*.
 - **Accounts and audit:** local users with roles (admin, operator, auditor, viewer), API tokens,
   credentials encrypted at rest, an append-only audit log of every change.
@@ -94,9 +98,9 @@ These are planned (see `DESIGN.md`) but **do not exist yet**:
 - plugins
 - batch/canary rollouts for jobs (agent updates do have them), workflows, MFA, single sign-on, high availability, Windows
 - network security features beyond visibility: blocking by address or country, threat scores or
-  reputation, packet capture, intrusion detection, alerting
-- notifications and alert rules for monitoring (health issues are shown in DROOL only), custom
-  dashboards, log collection
+  reputation, packet capture, intrusion detection, alerting on network activity
+- on-call rotations, escalation and paging, incident grouping, alert rule expressions, recurring
+  maintenance windows (they come with scheduling), custom dashboards, log collection
 
 ## Supported hosts
 
@@ -682,7 +686,9 @@ Issues appear only when a condition lasts (for example CPU above 95% for 5 minut
 85% full on two checks in a row) and clear only after it has properly recovered, so short spikes
 don't flap. Temperatures are judged only against limits the hardware reports — DROOL has no
 universal "too hot". **Settings → Monitoring** offers the recommended thresholds or your own, and
-any check can be turned off per host.
+any check can be turned off per host. Warning and Critical issues become
+[alerts](#alerts-and-notifications); informational ones (such as reduced monitoring fidelity) are
+shown here only.
 
 ### History, size and permissions
 
@@ -695,6 +701,157 @@ for 50, 308 MB for 200.
 | `monitoring.read` | everyone | All monitoring views |
 | `monitoring.manage` | administrators, operators | Watching services, probes, per-host checks, refreshing, helper installs (with `jobs.execute`) |
 | `monitoring.settings` | administrators | Global settings, agent budgets, standing helper approvals (audited) |
+
+## Alerts and notifications
+
+Monitoring decides *what is wrong*: a **health issue** appears when a condition has lasted long
+enough (see [Health issues](#health-issues)). An **alert** is DROOL telling you about it. Every time
+a Warning or Critical issue starts, DROOL opens an alert; when the issue goes away, the alert is
+resolved and you're told how long it lasted. If `jellyfin.service` fails today and again tomorrow,
+those are two alerts, linked to each other.
+
+### Setting up notifications
+
+**Settings → Notifications → Add destination**, pick one, fill in one or two fields, press
+**Send test**, then **Save**:
+
+| Destination | What you need |
+|---|---|
+| **Discord** | A webhook URL: channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL |
+| **Slack** | An incoming-webhook URL (`https://hooks.slack.com/services/…`) from a Slack app |
+| **Email** | Your SMTP server, port, a username and password (or app password), a From address and one or more recipients. **STARTTLS** on port 587 is the usual choice; **TLS** for port 465. Certificates are checked normally. Sending without encryption is possible only for a relay on a trusted network, after you confirm it, and never with a password |
+| **Webhook** | Any `http://` or `https://` URL, including services on your own network (Home Assistant, ntfy, n8n, …), and optionally a secret header such as `Authorization: Bearer …`. DROOL POSTs JSON (format below) |
+
+That's all most people need: a new destination gets **Recommended** — Warning and Critical alerts,
+plus a message when they're fixed. The test message says it's a test and creates no alert. The
+links in messages point to the address you're using DROOL from (change it under *Advanced*).
+
+What arrives looks like this:
+
+```
+CRITICAL: storage01
+nvme0n1 (Samsung 990 PRO): new media errors
+media errors 2 → 3
+First detected: 2026-10-08 02:14 CEST
+Open in DROOL: https://drool.lan:8443/alerts/alr_…
+
+RECOVERED: media01
+Recovered: jellyfin.service failed
+Duration: 7m 42s
+Acknowledged by rob: Restarting after the config fix
+```
+
+### Working with alerts
+
+**Alerts** (in the menu, with the number of unacknowledged alerts) has three lists: **Active**,
+**Acknowledged** and **Resolved / history**, with filters for severity, host, group, category,
+maintenance and dates. Severity is always shown as a word and an icon, not just a colour. An
+alert's page shows its timeline (when the condition was first seen, when the alert opened, who was
+notified, who acknowledged it, when it recovered), the health issue behind it, every notification
+attempt, and earlier occurrences of the same problem.
+
+- **Acknowledge** (with an optional note, e.g. "Replacing the disk this evening") tells others
+  someone is on it and stops reminders. It does **not** close the alert: only the condition
+  recovering does. Nobody can mark a failing system as healthy.
+- **One message when it starts, one when it's fixed.** A problem that stays for hours doesn't send
+  a message every minute. If a Warning becomes Critical you're told once.
+- **Reminders** for alerts nobody has acknowledged are off unless you add them to a route
+  (hourly at most often, at most 12).
+
+### Maintenance
+
+Working on a machine? On its host page (or **Alerts → Maintenance**) choose **Start maintenance**,
+for 1, 2, 4 or 24 hours, until a time, or until you end it, with a reason ("Kernel upgrade").
+Groups can be put in maintenance too.
+
+During maintenance DROOL **doesn't send notifications** for those hosts — and nothing else changes:
+monitoring, health issues and alerts carry on (marked *Suppressed by maintenance*), and firewall
+rollback, agent recovery and host-key checks keep protecting you. A problem that starts and ends
+during maintenance is kept in the history and never sent. One still there when maintenance ends
+is sent once, after a two-minute grace period (in case it was just finishing). Recurring windows
+("every Sunday at 3:00") come with scheduling.
+
+### Advanced: routing
+
+Under **Settings → Notifications → Advanced**. The **Recommended** route sends Warning and
+Critical alerts to the destinations that chose it. You can add routes such as:
+
+- *All Critical* → Email + Discord
+- *Storage warnings on the NAS group* → Email
+- *Service warnings on the Media group* → Discord, without recovery messages
+
+A route filters by severity, hosts and groups, and categories (CPU, memory, disk space, storage
+health, services, interfaces, temperature, unreachable). There's no order to get right: every
+route that matches contributes its destinations, and each destination gets an alert once even
+if several routes chose it. Recovery messages go to the destinations that got the alert.
+
+### Delivery, retries and duplicates
+
+Notifications are saved in DROOL's database in the same step that opens the alert, then sent in
+the background, so a restart or crash never loses one. If a destination fails, DROOL retries for
+about an hour with growing gaps (30 seconds up to 30 minutes), unless the failure can't fix itself
+— wrong credentials, a rejected request, a certificate problem — which stops at once. It never
+retries forever, and a retry is never a new alert. Each destination shows **Last success** and
+**Last failure**; when one keeps failing, the dashboard's event list says so once (and again when
+it works). Alerts stay correct whatever happens to the destinations.
+
+Delivery is *at least once*: if a server received a notification but its answer got lost (a
+timeout, a restart at the wrong moment), DROOL can't know and sends it again — marked "may have
+arrived twice" in the delivery history. Webhooks get a `delivery_id` (also as the
+`Idempotency-Key` header) that stays the same across retries, so a receiver can drop duplicates.
+
+To protect your chat channels during a big outage, DROOL sends at most 30 messages a minute to one
+Discord or Slack destination (60 for email, 120 for a webhook); the rest wait their turn.
+
+### Webhook format
+
+```json
+{
+  "schema": "drool.notification.v1",
+  "event_id": "alr_01J…:opening",
+  "delivery_id": "ndel_01J…",
+  "event": "opened",
+  "sent_at": "2026-10-08T02:14:05Z",
+  "test": false,
+  "summary": "CRITICAL: storage01",
+  "text": "nvme0n1 (Samsung 990 PRO): new media errors\nFirst detected: …",
+  "alert": {
+    "id": "alr_01J…", "fingerprint": "host_01J…/media_errors/nvme0n1",
+    "state": "active", "severity": "critical",
+    "host": { "id": "host_01J…", "name": "storage01" },
+    "check": "media_errors", "category": "storage", "subject": "nvme0n1",
+    "title": "nvme0n1 (Samsung 990 PRO): new media errors", "detail": "media errors 2 → 3",
+    "value": 3, "observed_at": "…", "opened_at": "…", "url": "https://drool.lan:8443/alerts/alr_01J…"
+  }
+}
+```
+
+`event` is `opened`, `escalated`, `reminder`, `recovered` or `test`; recoveries add `resolved_at`
+and `duration_s`, acknowledged alerts an `acknowledgement` (`by`, `at`, `note`). `event_id` is the
+same for every destination; `fingerprint` is the same for every occurrence of a problem. Headers:
+`X-DROOL-Event`, `X-DROOL-Delivery`, `Idempotency-Key`, and your secret header if set. A 2xx answer
+is success; redirects are followed (up to 3, only to `http(s)`, never from `https` to `http`, and
+your secret header is not sent to another host).
+
+### Secrets, retention and permissions
+
+SMTP passwords, webhook URLs and secret headers are encrypted with the master key like SSH
+credentials, never shown again after saving (the page shows `https://discord.com/…•••••••`), and
+never written to logs or the audit log (which records *that* a secret changed). A backup restored
+without its master key keeps destinations but disables them until you enter their secrets again.
+
+Alert history is kept **180 days**, delivery details **30 days** (both adjustable). Measured with
+a pessimistic three alerts per host per day: about **1 MB per host** at 200 hosts (208 MB); lists
+and details stay around a millisecond.
+
+| Permission | Roles | Allows |
+|---|---|---|
+| `alerts.read` | everyone | Alerts, history, maintenance list, event timeline |
+| `alerts.acknowledge` | administrators, operators | Acknowledging alerts (audited) |
+| `maintenance.manage` | administrators, operators | Starting and ending maintenance (audited) |
+| `notifications.read` | administrators, operators, auditors | Destinations (without secrets), routes, delivery history |
+| `notifications.test` | administrators, operators | Sending a test to an existing destination (audited) |
+| `notifications.manage` | administrators | Adding, changing and deleting destinations and routes, testing unsaved ones, settings (audited) |
 
 ## Network monitoring
 
@@ -905,6 +1062,12 @@ plain HTTP to the network by accident.
   are not shown; "new" is relative to the retained history (30 days by default); GeoIP/ASN only
   from databases you install and update; observations from M8 agents have no processes until the
   agent is updated.
+- **Alerts and notifications:** delivery is at least once (a rare duplicate is possible; webhooks
+  get an id to drop it); an SMTP server or webhook with a self-signed certificate needs its CA in
+  the controller's system trust store (there is no per-destination certificate setting); no SMS,
+  push apps or plugins beyond the four built-in destinations (a webhook can feed ntfy, Gotify or
+  Home Assistant); maintenance starts now (no recurring windows until scheduling); deleting a host
+  deletes its alert history.
 - **Local accounts only;** no MFA or single sign-on yet.
 - **Backup and restore are command-line only** (Settings → System shows the commands).
 - The **web UI is functional, not polished**; a visual design pass comes later.

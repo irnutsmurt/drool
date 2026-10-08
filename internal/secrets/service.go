@@ -363,6 +363,19 @@ func VerifyBox(ctx context.Context, q *db.Queries, box *Box) (int, error) {
 			bad.Failed++
 		}
 	}
+	// So are notification destinations' secrets (M12).
+	ns, err := q.ListNotifySecrets(ctx)
+	if err != nil {
+		return 0, err
+	}
+	for _, r := range ns {
+		if _, err := box.Open(r.ID, "notify-"+r.Kind, r.SecretCiphertext, r.SecretNonce, int(r.SecretKeyVersion.Int64)); err != nil {
+			if bad == nil {
+				bad = &KeyMismatchError{Total: len(rows) + len(cas) + len(ns), First: "notification destination " + r.ID}
+			}
+			bad.Failed++
+		}
+	}
 	if bad != nil {
 		return len(rows), bad
 	}
@@ -404,6 +417,10 @@ func DiscardAllTx(ctx context.Context, tx *sql.Tx) ([]string, error) {
 		// certificate recovery, without re-enrolling.
 		`UPDATE agent_ca SET key_ciphertext = NULL, key_nonce = NULL, key_version = NULL,
 			key_removed_at = CAST(strftime('%s','now') AS INTEGER) * 1000 WHERE key_ciphertext IS NOT NULL`,
+		// Notification destinations keep their settings but are disabled
+		// until their secrets are entered again.
+		`UPDATE notify_destinations SET secret_ciphertext = NULL, secret_nonce = NULL, secret_key_version = NULL, enabled = 0,
+			last_error = 'secrets discarded during recovery; enter them again' WHERE secret_ciphertext IS NOT NULL`,
 	} {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return nil, err

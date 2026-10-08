@@ -174,6 +174,7 @@ func setup(m *testing.M) (int, error) {
 		// Synthetic monitoring data for hosts that only TestBrowser creates
 		// (nas-01, pi-sd, gpu-01, edge-usb, old-vm).
 		"DROOL_TEST_MONITOR_FILE=" + filepath.Join(root, "test", "integration", "testdata", "monitor.json"),
+		"DROOL_TEST_ALERT_TIMING=fast",
 	}}
 	netflowsFile = filepath.Join(work, "netflows.json")
 	fwControlFile = filepath.Join(work, "fw-control")

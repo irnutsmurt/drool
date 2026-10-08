@@ -10,6 +10,10 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { cx } from "@/components/ui/cx";
 import { formatDateTime } from "@/lib/format";
 import { summarizeCounts } from "./jobs/summary";
+import { useAlerts, useAlertSummary, useEvents } from "@/components/alerts/queries";
+import { AlertSeverity } from "@/components/alerts/ui";
+import { StatusIcon } from "@/components/monitoring/Status";
+import { fmtSince } from "@/components/monitoring/format";
 
 function Stat({ label, value, detail, tone, to }: {
   label: string;
@@ -106,6 +110,8 @@ export function DashboardPage() {
             </ul>
           )}
         </Card>
+        {can("alerts.read") && <AlertsCard />}
+        {can("alerts.read") && <EventsCard />}
         <Card title="Jobs">
           {running.length === 0 && recent.length === 0 ? (
             <p className="text-sm text-muted">No jobs yet.</p>
@@ -125,5 +131,56 @@ export function DashboardPage() {
         </Card>
       </div>
     </>
+  );
+}
+
+function AlertsCard() {
+  const sum = useAlertSummary();
+  const list = useAlerts({ view: "open" });
+  const s = sum.data;
+  const rows = (list.data?.pages[0]?.items ?? []).slice(0, 6);
+  return (
+    <Card title="Alerts" actions={<Link className="text-sm text-accent" to="/alerts">All alerts</Link>}>
+      {s && (
+        <p className="mb-2 text-sm">
+          {s.active + s.acknowledged === 0 ? "No open alerts." : (
+            <><b>{s.critical}</b> critical · <b>{s.warning}</b> warning · {s.acknowledged} acknowledged{s.suppressed ? ` · ${s.suppressed} suppressed by maintenance` : ""}</>
+          )}
+          {s.destinations?.configured === 0 && <> · <Link className="text-accent underline" to="/settings/notifications">Set up notifications</Link></>}
+          {(s.destinations?.failing ?? 0) > 0 && <span className="text-warn"> · notifications failing</span>}
+        </p>
+      )}
+      <ul className="space-y-2 text-sm">
+        {rows.map((a) => (
+          <li key={a.id} className="flex flex-wrap items-center gap-2">
+            <AlertSeverity severity={a.severity} />
+            <Link className="text-accent" to={`/alerts/${a.id}`}>{a.host_name}: {a.title}</Link>
+            {a.acknowledgement && <span className="text-xs text-muted">acknowledged</span>}
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+const eventStatus: Record<string, "critical" | "warning" | "info"> = { critical: "critical", warning: "warning", info: "info" };
+
+function EventsCard() {
+  const ev = useEvents(undefined, 8);
+  const rows = ev.data?.events ?? [];
+  return (
+    <Card title="Recent events">
+      {rows.length === 0 ? <p className="text-sm text-muted">No events yet.</p> : (
+        <ul className="space-y-2 text-sm">
+          {rows.map((e) => (
+            <li key={e.id} className="flex items-start gap-2">
+              <StatusIcon status={e.kind === "alert.recovered" || e.kind === "notifications.recovered" ? "ok" : eventStatus[e.severity] ?? "info"} />
+              {e.object_type === "alert" ? <Link className="min-w-0 text-accent" to={`/alerts/${e.object_id}`}>{e.title}</Link> : <span className="min-w-0">{e.title}</span>}
+              <span className="ml-auto shrink-0 text-xs text-muted">{fmtSince(e.ts)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }

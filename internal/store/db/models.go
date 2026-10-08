@@ -157,6 +157,46 @@ type AgentTrustManifest struct {
 	CreatedAt int64
 }
 
+type Alert struct {
+	ID             string
+	HostID         string
+	HostName       string
+	IssueID        string
+	CheckID        string
+	Subject        string
+	Category       string
+	Severity       string
+	PeakSeverity   string
+	State          string
+	Title          string
+	Detail         string
+	Value          sql.NullFloat64
+	ObservedAt     sql.NullInt64
+	IssueStartedAt int64
+	OpenedAt       int64
+	AcknowledgedAt sql.NullInt64
+	AckBy          sql.NullString
+	AckByName      string
+	AckNote        string
+	ResolvedAt     sql.NullInt64
+	Suppressed     int64
+	SuppressedBy   sql.NullString
+	EverSuppressed int64
+	NotifyAfter    sql.NullInt64
+	NextReminderAt sql.NullInt64
+	RemindersSent  int64
+	UpdatedAt      int64
+}
+
+type AlertEvent struct {
+	ID      int64
+	AlertID string
+	Ts      int64
+	Kind    string
+	Text    string
+	Actor   string
+}
+
 type ApiToken struct {
 	ID         string
 	UserID     string
@@ -191,6 +231,17 @@ type AuditEvent struct {
 	RequestID   string
 	DetailsJson string
 	PrevHash    []byte
+}
+
+type Event struct {
+	ID         int64
+	Ts         int64
+	Kind       string
+	Severity   string
+	HostID     sql.NullString
+	ObjectType string
+	ObjectID   string
+	Title      string
 }
 
 type FileDeployment struct {
@@ -500,6 +551,24 @@ type JobStep struct {
 	FinishedAt  sql.NullInt64
 }
 
+type Maintenance struct {
+	ID            string
+	Reason        string
+	CreatedBy     sql.NullString
+	CreatedByName string
+	StartedAt     int64
+	EndsAt        sql.NullInt64
+	EndedAt       sql.NullInt64
+	EndedByName   string
+}
+
+type MaintenanceTarget struct {
+	MaintenanceID string
+	Kind          string
+	TargetID      string
+	Name          string
+}
+
 type MonCurrent struct {
 	HostID            string
 	Source            string
@@ -575,6 +644,7 @@ type MonIssue struct {
 	StartedAt  int64
 	UpdatedAt  int64
 	ResolvedAt sql.NullInt64
+	ObservedAt sql.NullInt64
 }
 
 type MonLayout struct {
@@ -629,6 +699,82 @@ type NetCollector struct {
 	Forwarded     int64
 	ReportedAt    sql.NullInt64
 	SnapshotAt    sql.NullInt64
+}
+
+type NotifyAttempt struct {
+	DeliveryID string
+	N          int64
+	StartedAt  int64
+	FinishedAt sql.NullInt64
+	Outcome    string
+	Category   string
+	StatusCode sql.NullInt64
+	Error      string
+}
+
+type NotifyDelivery struct {
+	ID              string
+	DedupeKey       string
+	AlertID         sql.NullString
+	DestinationID   sql.NullString
+	DestinationName string
+	DestinationKind string
+	Kind            string
+	RecoveryWanted  int64
+	MessageJson     string
+	Status          string
+	Attempts        int64
+	NextAttemptAt   int64
+	LeaseUntil      sql.NullInt64
+	CreatedAt       int64
+	FinishedAt      sql.NullInt64
+	LastError       string
+	LastCategory    string
+	LastStatusCode  sql.NullInt64
+	Ambiguous       int64
+}
+
+type NotifyDestination struct {
+	ID                  string
+	Name                string
+	Kind                string
+	Enabled             int64
+	ConfigJson          string
+	SecretCiphertext    []byte
+	SecretNonce         []byte
+	SecretKeyVersion    sql.NullInt64
+	CreatedBy           sql.NullString
+	CreatedAt           int64
+	UpdatedAt           int64
+	LastSuccessAt       sql.NullInt64
+	LastFailureAt       sql.NullInt64
+	LastError           string
+	ConsecutiveFailures int64
+	FailingSince        sql.NullInt64
+	LastTestAt          sql.NullInt64
+	LastTestOk          sql.NullInt64
+	LastTestResult      string
+}
+
+type NotifyRoute struct {
+	ID              string
+	Name            string
+	IsDefault       int64
+	Enabled         int64
+	SeveritiesJson  string
+	HostIdsJson     string
+	GroupIdsJson    string
+	CategoriesJson  string
+	ChecksJson      string
+	Recovery        int64
+	ReminderMinutes int64
+	CreatedAt       int64
+	UpdatedAt       int64
+}
+
+type NotifyRouteDestination struct {
+	RouteID       string
+	DestinationID string
 }
 
 type Secret struct {

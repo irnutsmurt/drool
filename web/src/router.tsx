@@ -30,6 +30,9 @@ const FirewallPage = lazy(() => import("@/pages/firewall/FirewallPage").then((x)
 const NetworkPage = lazy(() => import("@/pages/network/NetworkPage").then((x) => ({ default: x.NetworkPage })));
 const MonitoringPage = lazy(() => import("@/pages/monitoring/MonitoringPage").then((x) => ({ default: x.MonitoringPage })));
 const HostMonitoringPage = lazy(() => import("@/pages/monitoring/HostMonitoringPage").then((x) => ({ default: x.HostMonitoringPage })));
+const AlertsPage = lazy(() => import("@/pages/alerts/AlertsPage").then((x) => ({ default: x.AlertsPage })));
+const AlertDetailPage = lazy(() => import("@/pages/alerts/AlertDetailPage").then((x) => ({ default: x.AlertDetailPage })));
+const NotificationsPage = lazy(() => import("@/pages/settings/NotificationsPage").then((x) => ({ default: x.NotificationsPage })));
 const MonitoringSettingsPage = lazy(() => import("@/pages/settings/MonitoringSettingsPage").then((x) => ({ default: x.MonitoringSettingsPage })));
 const later = (el: ReactNode) => <Suspense fallback={null}>{el}</Suspense>;
 
@@ -50,6 +53,8 @@ export const router = createBrowserRouter([
       { path: "hosts/:id", element: <RequirePermission permission="hosts.read"><HostDetailPage /></RequirePermission> },
       { path: "hosts/:id/monitoring", element: <RequirePermission permission="monitoring.read">{later(<HostMonitoringPage />)}</RequirePermission> },
       { path: "monitoring", element: <RequirePermission permission="monitoring.read">{later(<MonitoringPage />)}</RequirePermission> },
+      { path: "alerts", element: <RequirePermission permission="alerts.read">{later(<AlertsPage />)}</RequirePermission> },
+      { path: "alerts/:id", element: <RequirePermission permission="alerts.read">{later(<AlertDetailPage />)}</RequirePermission> },
       { path: "hosts/:id/files", element: <RequirePermission permission="files.read">{later(<FilesPage />)}</RequirePermission> },
       { path: "hosts/:id/files/edit", element: <RequirePermission permission="files.read">{later(<EditFilePage />)}</RequirePermission> },
       { path: "file-deployments/:id", element: <RequirePermission permission="files.read">{later(<FileDeploymentPage />)}</RequirePermission> },
@@ -71,6 +76,7 @@ export const router = createBrowserRouter([
           { path: "tokens", element: <TokensPage /> },
           { path: "users", element: <RequirePermission permission="users.manage"><UsersPage /></RequirePermission> },
           { path: "monitoring", element: <RequirePermission permission="monitoring.read">{later(<MonitoringSettingsPage />)}</RequirePermission> },
+          { path: "notifications", element: <RequirePermission permission="notifications.read">{later(<NotificationsPage />)}</RequirePermission> },
           { path: "system", element: <SystemPage /> },
         ],
       },

@@ -5,11 +5,14 @@ export interface NavItem {
   permission?: string;
   /** Not implemented yet; shown as a placeholder with this milestone label. */
   milestone?: string;
+  /** Shows the open alert count. */
+  alerts?: boolean;
 }
 
 export const navItems: NavItem[] = [
   { to: "/", label: "Dashboard" },
   { to: "/hosts", label: "Hosts", permission: "hosts.read" },
+  { to: "/alerts", label: "Alerts", permission: "alerts.read", alerts: true },
   { to: "/monitoring", label: "Monitoring", permission: "monitoring.read" },
   { to: "/groups", label: "Groups", permission: "hosts.read" },
   { to: "/jobs", label: "Jobs", permission: "jobs.read" },

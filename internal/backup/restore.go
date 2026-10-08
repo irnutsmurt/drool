@@ -148,7 +148,8 @@ func Restore(ctx context.Context, cfg *config.Loaded, r io.Reader, opts RestoreO
 	// Credentials: find a master key that opens them. Count what is really
 	// in the database rather than trusting the manifest.
 	var nCred int64
-	if err := sdb.Reader.QueryRowContext(ctx, `SELECT count(*) FROM secrets`).Scan(&nCred); err != nil {
+	if err := sdb.Reader.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM secrets) +
+		(SELECT count(*) FROM notify_destinations WHERE secret_ciphertext IS NOT NULL)`).Scan(&nCred); err != nil {
 		return nil, invalid("database has no credentials table: %v", err)
 	}
 	m.Credentials = nCred

@@ -27,6 +27,7 @@ import (
 	"golang.org/x/term"
 
 	"drool/internal/agentsvc"
+	"drool/internal/alerts"
 	"drool/internal/api"
 	"drool/internal/artifacts"
 	"drool/internal/audit"
@@ -448,7 +449,16 @@ func cmdServe(path string, explicit bool) error {
 	go fw.Run(ctx)
 	network := netsvc.New(netsvc.Deps{Store: st, Firewall: fw, GeoIPDir: cfg.GeoIPDir(), Log: logs.App.With("component", "network")})
 	go network.Run(ctx)
+	// Alerting (M12) consumes the health issues monitoring records.
+	alertCfg := alerts.Config{}
+	if os.Getenv("DROOL_TEST_ALERT_TIMING") == "fast" {
+		log.Warn("TEST MODE: alert timings shortened (maintenance grace 3 s, tick 2 s); never use this in production")
+		alertCfg.Grace, alertCfg.Tick, alertCfg.Poll = 3*time.Second, 2*time.Second, 500*time.Millisecond
+	}
+	alertSvc := alerts.New(alerts.Deps{Store: st, Box: box, Audit: auditW, Log: logs.App.With("component", "alerts"), Config: alertCfg})
+	alertSvc.Attach(mon)
 	go mon.Run(ctx)
+	go alertSvc.Run(ctx)
 	go artifactGC(ctx, arts, log)
 
 	srv, err := api.New(api.Deps{
@@ -456,7 +466,7 @@ func cmdServe(path string, explicit bool) error {
 		UI: web.Dist(), Registry: reg, TLSMode: tlsRes.Mode,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
 		Poller: poll, StaleAfter: pollCfg.StaleAfter(), Simulator: router, Files: router, Artifacts: arts,
-		Agents: agents, Router: router, WebPin: webPin(tlsRes), Firewall: fw, Network: network, Monitor: mon,
+		Agents: agents, Router: router, WebPin: webPin(tlsRes), Firewall: fw, Network: network, Monitor: mon, Alerts: alertSvc,
 	})
 	if err != nil {
 		return err
@@ -570,7 +580,8 @@ func webPin(r *tlsutil.Result) func() string {
 // next to existing credentials would make them all undecryptable.
 func loadMasterKey(ctx context.Context, cfg *config.Loaded, st *store.Store) (*secrets.Box, bool, bool, error) {
 	var n int
-	if err := st.Reader.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM secrets) + (SELECT count(*) FROM agent_ca WHERE key_ciphertext IS NOT NULL)`).Scan(&n); err != nil {
+	if err := st.Reader.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM secrets) + (SELECT count(*) FROM agent_ca WHERE key_ciphertext IS NOT NULL)
+		+ (SELECT count(*) FROM notify_destinations WHERE secret_ciphertext IS NOT NULL)`).Scan(&n); err != nil {
 		return nil, false, false, err
 	}
 	recovery := fmt.Sprintf(`Restore the master key file from your backup. If it is permanently lost, keep

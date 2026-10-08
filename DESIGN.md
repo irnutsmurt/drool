@@ -1,7 +1,7 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.7**
-Status: Draft · 2026-10-07 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
+**Design Document v0.3.8**
+Status: Draft · 2026-10-08 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
 > DROOL is a web-first platform for managing, automating, monitoring, and eventually segmenting Linux systems through SSH or an agent.
@@ -13,6 +13,20 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.7 → v0.3.8 (M12: alerts, notifications and maintenance)
+
+M11 answers "what is happening?"; M12 answers "what needs my attention, and how should DROOL tell me?" without making anyone a NOC engineer. One health evaluator (M11) decides what is wrong; M12 only consumes its issues:
+
+| # | As built | Section |
+|---|---|---|
+| 1 | **Issues and alerts are different things.** A health issue is M11's judgement that a condition lasted long enough. An **alert** is one *occurrence* of a Warning or Critical issue: it opens when the issue becomes active and resolves only when the issue recovers. A service that fails, recovers and fails again tomorrow is two alerts for the same check and subject. Informational issues never become alerts | §11.3, §11.4 |
+| 2 | **Acknowledging is not resolving.** Operators acknowledge (with an optional note) to say someone is on it; it stops reminders, is audited, and changes nothing about the condition. Nobody can mark a failing condition healthy | §11.4 |
+| 3 | **One opening, one recovery.** Repeated samples of an active condition never notify again; a rise to Critical notifies once; reminders exist but are off by default | §11.4 |
+| 4 | **Maintenance mode suppresses notifications, nothing else** (immediate, for hosts or groups, with an expiry or until ended). Monitoring, health evaluation, firewall rollback, agent recovery and host-key checks all continue; suppressed alerts stay visible. Recurring windows are scheduling (§26) | §12.13 |
+| 5 | **Notifications for self-hosters:** email (SMTP with TLS/STARTTLS), Discord, Slack and a generic JSON webhook, each with a test button; one **default route** (Warning and Critical plus recoveries) is all most installations need, optional routes filter by severity, host, group and category without a rule language | §11.4 |
+| 6 | **Durable delivery:** notifications are queued in the database in the same transaction as the alert and delivered by bounded workers with bounded retries, so a controller crash never loses one; delivery is at least once (a rare duplicate is possible and receivers get an id to deduplicate) | §11.4 |
+| 7 | The dashboard's **event timeline** (§22.8) now exists, starting with alert, maintenance and notification-destination events | §22.8 |
 
 ### v0.3.6 → v0.3.7 (M11: system monitoring, service inventory and hardware health)
 
@@ -660,7 +674,23 @@ A normal user installs DROOL, adds hosts and immediately sees CPU, memory, stora
 
 **Helpers.** DROOL uses the kernel first, then tools already installed, then optional helpers (smartmontools, nvme-cli, lm-sensors). A missing helper is explained ("NVMe health is unavailable because nvme-cli is not installed; installing it enables …"). Installation needs approval — once for a host, for a selection, for a group or everywhere for an allowlisted helper — and goes through the ordinary package job engine, audited like any install; DROOL records that it asked and never uninstalls. One host's failed installation only reduces that host's monitoring.
 
-**Health evaluation.** A recommended profile (CPU ≥95% for 5 minutes, memory ≥90%/97% for 5 minutes, filesystems over 85%/95%, inodes, read-only flips, failed and watched services, interfaces down, temperatures against hardware thresholds, SMART failure, NVMe critical warnings and spare, new media errors, kernel storage errors, probe failures, stale hosts, reduced fidelity) or custom thresholds, with durations and hysteresis so momentary spikes never count. It opens and resolves health issues that M12's alert lifecycle will consume; M11 notifies nobody.
+**Health evaluation.** A recommended profile (CPU ≥95% for 5 minutes, memory ≥90%/97% for 5 minutes, filesystems over 85%/95%, inodes, read-only flips, failed and watched services, interfaces down, temperatures against hardware thresholds, SMART failure, NVMe critical warnings and spare, new media errors, kernel storage errors, probe failures, stale hosts, reduced fidelity) or custom thresholds, with durations and hysteresis so momentary spikes never count. It opens and resolves health issues; the alert lifecycle (§11.4) consumes them. Monitoring itself notifies nobody.
+
+### 11.4 Alerts and notifications
+
+**Issue → alert.** The health evaluation (§11.3) is the only place that decides something is wrong. When a Warning or Critical issue becomes active, DROOL opens an **alert occurrence** in the same database transaction; when the issue recovers, the alert resolves and records how long the problem lasted. Each activation is a new occurrence, linked to earlier ones for the same host, check and subject. Informational issues (reduced monitoring fidelity) stay on the monitoring pages and never alert.
+
+**Lifecycle.** Active → (Acknowledged) → Resolved. Acknowledgement records who, when and an optional note, stops reminders, and is audited; it never resolves anything. Recovery always comes from the source condition. Suppression by maintenance (§12.13) is a separate flag, never a state that hides the alert.
+
+**Storm prevention.** One activation means one opening notification and, later, one recovery notification. Repeated samples, value changes and severity flapping are silent; a rise to Critical notifies once. Reminders for unacknowledged alerts are off by default and, when a route asks for them, bounded (hourly at most often, a dozen at most). Delivery retries are never new alerts.
+
+**Destinations.** Email (SMTP with STARTTLS or TLS, authentication, normal certificate validation; unencrypted only on explicit confirmation and never with a password), Discord and Slack incoming webhooks, and a generic JSON webhook with a documented payload, a delivery id for deduplication and an optional secret header. Webhooks may point at private and local addresses: configuring them is an administrator's privileged, audited action. Each destination has "Send test", which creates no alert, and a small health summary (last success, last failure). Secrets are encrypted with the master key, never returned by the API, never logged.
+
+**Routing.** A default route sends Warning and Critical alerts, with recoveries, to the destinations chosen for it; a new destination joins it unless told otherwise, so setting up notifications is one form. Optional routes add filters (severity, hosts and groups, categories or checks), recovery on/off and reminders. Routes don't have an order: every matching route contributes destinations, and each destination is notified once per event. Recoveries go to the destinations that received the opening.
+
+**Delivery.** Notifications are queued durably with the alert change and sent by a small pool of workers with timeouts on DNS, connection, TLS and the whole exchange, response-size limits, per-destination concurrency and rate limits, and bounded exponential retries with jitter. Misconfigurations (rejected credentials, certificate errors, 4xx) fail at once; outages (timeouts, 5xx, 429) retry, then give up visibly. A controller restart resumes the queue. Delivery is at least once: if a receiver accepted a notification but the answer never arrived, it may be sent again, with the same id. A broken destination never affects monitoring, alert state, jobs, agents or firewall transactions.
+
+**Out of scope:** on-call rotations, escalation trees, paging, incident grouping and correlation, anomaly detection, rule languages, ticketing, SLA reporting, automatic remediation, log alerting. They can build on this lifecycle later (plugins, an advanced module).
 
 ## 12. Automation: Operation Engine
 
@@ -766,7 +796,7 @@ No lock, shared lock or exclusive lock per operation. Conflicting jobs queue.
 
 ### 12.13 Maintenance mode
 
-Per host or group: suppresses alerts, pauses scheduled automation and auto-remediation, records who enabled it, and expires automatically.
+Per host or group: suppresses alert *notifications* (alerts still open, close and show "suppressed by maintenance"), records who started it and why, and expires automatically or runs until ended. It never disables safety mechanisms: monitoring, health evaluation, firewall rollback, agent recovery, host-key checks and capability enforcement are unaffected. An alert still active when maintenance ends is notified once, after a short grace period; one that began and ended inside maintenance is kept in history and never notified. Pausing scheduled automation and auto-remediation joins this when scheduling arrives (§26).
 
 ---
 
@@ -1153,7 +1183,7 @@ Integrity (see §4.2 limitation):
 
 ### 22.8 Event timeline
 
-The dashboard shows an event stream where every event links to its object.
+The dashboard shows an event stream where every event links to its object: alerts opened, critical or escalated, acknowledged and recovered; maintenance started and ended; a notification destination failing and recovering. Routine activity (each delivery attempt, each sample) never appears there.
 
 ---
 

@@ -2,8 +2,8 @@
 // what agents stream and what SSH polls collect, keeps metric history in
 // downsampled tiers, records service state changes, judges storage
 // health evidence, and evaluates host health with the recommended (or
-// custom) thresholds. M12's alerting will consume the issues it opens;
-// nothing here notifies anyone.
+// custom) thresholds. M12's alerting consumes its issue transitions
+// (SetIssueHook); nothing here notifies anyone.
 package monsvc
 
 import (
@@ -46,6 +46,7 @@ type Service struct {
 	now     func() time.Time
 	layouts *layouts
 	eval    *evaluator
+	hook    IssueHook
 
 	mu         sync.Mutex
 	watermarks map[string]map[int]int64

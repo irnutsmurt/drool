@@ -55,6 +55,18 @@ var checkCategory = map[string]string{
 	CheckTemperature: "temperature", CheckStale: "stale", CheckFidelity: "fidelity",
 }
 
+// CheckCategory is the category a check belongs to (cpu, memory, disk,
+// storage, services, network, temperature, stale, fidelity).
+func CheckCategory(check string) string {
+	if c, ok := checkCategory[check]; ok {
+		return c
+	}
+	return "other"
+}
+
+// CheckCategories lists the categories of the checks.
+var CheckCategories = []string{"cpu", "memory", "disk", "storage", "services", "network", "temperature", "stale", "fidelity"}
+
 // FleetFilter selects rows.
 type FleetFilter struct {
 	Category string

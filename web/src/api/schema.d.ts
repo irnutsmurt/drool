@@ -2077,7 +2077,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Health issues found by the evaluation (what M12 alerting will consume), most severe and newest first; at most 500. */
+        /** @description Health issues found by the evaluation (M12 alerting consumes their transitions), most severe and newest first; at most 500. */
         get: operations["monitoringIssues"];
         put?: never;
         post?: never;
@@ -2398,6 +2398,297 @@ export interface paths {
         put?: never;
         /** @description Install the agent on the compatible hosts as a rollout: a canary first, then bounded batches, pausing at the failure limit. Each host uses the single-host install over its pinned SSH connection; a failure leaves that host on SSH. Audited. */
         post: operations["startAgentConversion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Alert occurrences. An alert opens when an M11 health issue becomes active with Warning or Critical severity and resolves only when that issue recovers. Open views (active, acknowledged, open) sort critical first, then newest; history views (resolved, all) newest first. Paged with `next_cursor`; at most 200 per page. */
+        get: operations["listAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alerts/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Open alert counts for the fleet and per host, and hosts in maintenance. `destinations` only with `notifications.read`. */
+        get: operations["alertSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alerts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description An alert with its timeline, source health issue, deliveries and other occurrences of the same condition. Delivery error details need `notifications.read`. */
+        get: operations["getAlert"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alerts/{id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Acknowledge an active alert (audited). It stays open until its condition recovers, stops reminders and changes nothing about the health issue. Requires `alerts.acknowledge`. */
+        post: operations["acknowledgeAlert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The controller's event timeline (alerts opened, critical, acknowledged, recovered; maintenance started and ended; notification destinations failing and recovering), newest first, at most 200. */
+        get: operations["listEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/maintenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Maintenance, newest first, at most 200. */
+        get: operations["listMaintenance"];
+        put?: never;
+        /** @description Start maintenance now for hosts and/or groups, with exactly one of a duration, an end time or "until ended manually". It suppresses notifications only: monitoring, health evaluation, firewall rollback, agent recovery and host-key checks continue. Audited. Requires `maintenance.manage`. */
+        post: operations["startMaintenance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/maintenance/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMaintenance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/maintenance/{id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description End maintenance now (audited). Alerts still active get one opening notification after a short grace period. */
+        post: operations["endMaintenance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Notification destinations with their delivery health. Secrets are never returned, only whether each is set. */
+        get: operations["listDestinations"];
+        put?: never;
+        /** @description Add a destination (audited without secret values). With `notify_for: recommended` (the default) it joins the default route: Warning and Critical alerts plus recoveries. Requires `notifications.manage`. */
+        post: operations["createDestination"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/destinations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDestination"];
+        put?: never;
+        post?: never;
+        /** @description Delete a destination; its unsent notifications are cancelled. Alerts are unaffected. Audited. */
+        delete: operations["deleteDestination"];
+        options?: never;
+        head?: never;
+        /** @description Change a destination. Omitted secrets keep their stored value. Audited. */
+        patch: operations["updateDestination"];
+        trace?: never;
+    };
+    "/notifications/destinations/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Send a test notification (no alert is created). Audited; at most 10 a minute per user. Requires `notifications.test`. */
+        post: operations["testDestination"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Send a test notification to a destination that isn't saved yet. Audited. Requires `notifications.manage`. */
+        post: operations["testUnsavedDestination"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/routes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listRoutes"];
+        put?: never;
+        /** @description Add a route. Empty filters match everything; filters combine with AND and values within one with OR. Every matching route contributes its destinations, and each destination is notified once per alert event. Audited. */
+        post: operations["createRoute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/routes/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Which destinations an alert for this host, check and severity would go to. */
+        post: operations["previewRoute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/routes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Delete a route (not the default one, which can be disabled instead). */
+        delete: operations["deleteRoute"];
+        options?: never;
+        head?: never;
+        patch: operations["updateRoute"];
+        trace?: never;
+    };
+    "/notifications/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Delivery history with attempts, newest first, at most 200 per page. */
+        get: operations["listDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["notificationSettings"];
+        /** @description Link address, time zone and retention (audited). Requires `notifications.manage`. */
+        put: operations["setNotificationSettings"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4709,6 +5000,319 @@ export interface components {
             binary: {
                 [key: string]: string;
             };
+        };
+        /** @description One alert occurrence (one activation of an M11 health issue). */
+        Alert: {
+            id: string;
+            host_id: string;
+            host_name: string;
+            issue_id: string;
+            check: string;
+            subject: string;
+            category: string;
+            /** @enum {string} */
+            severity: "warning" | "critical";
+            /** @enum {string} */
+            peak_severity: "warning" | "critical";
+            /** @enum {string} */
+            state: "active" | "acknowledged" | "resolved";
+            title: string;
+            detail: string;
+            value?: number;
+            value_text?: string;
+            /** @description When the condition was first observed */
+            observed_at?: number;
+            issue_started_at: number;
+            opened_at: number;
+            acknowledgement?: components["schemas"]["Acknowledgement"];
+            resolved_at?: number;
+            duration_ms: number;
+            /** @description Suppressed by maintenance now. */
+            suppressed: boolean;
+            suppressed_by?: components["schemas"]["MaintenanceRef"];
+            ever_suppressed: boolean;
+            /** @description Opening notification due (after maintenance ended). */
+            notify_after?: number;
+            notification: components["schemas"]["NotificationState"];
+        };
+        Acknowledgement: {
+            by: string;
+            at: number;
+            note?: string;
+        };
+        MaintenanceRef: {
+            id: string;
+            reason: string;
+            ends_at?: number;
+        };
+        NotificationState: {
+            /** @enum {string} */
+            status: "none" | "suppressed" | "pending" | "delivered" | "partial" | "failing" | "failed";
+            delivered: number;
+            pending: number;
+            failed: number;
+            cancelled: number;
+            retrying: boolean;
+        };
+        AlertSummary: {
+            /** @description Open and unacknowledged. */
+            active: number;
+            /** @description Open */
+            active_critical: number;
+            acknowledged: number;
+            critical: number;
+            warning: number;
+            suppressed: number;
+            hosts: {
+                [key: string]: {
+                    critical: number;
+                    warning: number;
+                    acknowledged: number;
+                    suppressed: number;
+                };
+            };
+            maintenance: {
+                [key: string]: components["schemas"]["MaintenanceRef"];
+            };
+            destinations?: {
+                configured: number;
+                failing: number;
+            };
+        };
+        AlertDetail: {
+            alert: components["schemas"]["Alert"];
+            timeline: components["schemas"]["AlertTimelineEntry"][];
+            deliveries: components["schemas"]["Delivery"][];
+            issue?: components["schemas"]["AlertSourceIssue"];
+            occurrences: {
+                id: string;
+                state: string;
+                severity: string;
+                opened_at: number;
+                resolved_at?: number;
+            }[];
+        };
+        AlertTimelineEntry: {
+            ts: number;
+            kind: string;
+            text: string;
+            actor?: string;
+        };
+        AlertSourceIssue: {
+            id: string;
+            state: string;
+            severity: string;
+            title: string;
+            detail: string;
+            value?: number;
+            started_at: number;
+            updated_at: number;
+            resolved_at?: number;
+        };
+        TimelineEvent: {
+            id: number;
+            ts: number;
+            kind: string;
+            /** @enum {string} */
+            severity: "info" | "warning" | "critical";
+            host_id?: string;
+            object_type?: string;
+            object_id?: string;
+            title: string;
+        };
+        Maintenance: {
+            id: string;
+            reason: string;
+            created_by: string;
+            started_at: number;
+            /** @description Absent until ended manually. */
+            ends_at?: number;
+            ended_at?: number;
+            ended_by?: string;
+            active: boolean;
+            targets: {
+                /** @enum {string} */
+                kind: "host" | "group";
+                id: string;
+                name: string;
+            }[];
+            host_count: number;
+            /** @description Open alerts it suppresses. */
+            suppressing: number;
+        };
+        MaintenanceInput: {
+            host_ids?: string[];
+            group_ids?: string[];
+            reason?: string;
+            duration_minutes?: number;
+            /** @description End (unix ms). */
+            until?: number;
+            /** @description Until ended manually. */
+            indefinite?: boolean;
+        };
+        /** @description Non-secret settings; which apply depends on the kind. */
+        DestinationConfig: {
+            host?: string;
+            port?: number;
+            /** @enum {string} */
+            security?: "starttls" | "tls" | "none";
+            username?: string;
+            from?: string;
+            to?: string[];
+            allow_plaintext?: boolean;
+            header_name?: string;
+            readonly url_display?: string;
+            timeout_s?: number;
+        };
+        /** @description Write-only secret values. Omitted keeps the stored value; an empty string clears an optional one. */
+        DestinationSecrets: {
+            /** @description Webhook */
+            url?: string;
+            /** @description Webhook authorization header value. */
+            header_value?: string;
+            /** @description SMTP password. */
+            password?: string;
+        };
+        DestinationInput: {
+            name?: string;
+            /** @enum {string} */
+            kind?: "email" | "webhook" | "discord" | "slack";
+            enabled?: boolean;
+            config?: components["schemas"]["DestinationConfig"];
+            secrets?: components["schemas"]["DestinationSecrets"];
+            /**
+             * @description recommended: in the default route (Warning and Critical plus recoveries).
+             * @enum {string}
+             */
+            notify_for?: "recommended" | "custom";
+        };
+        Destination: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            kind: "email" | "webhook" | "discord" | "slack";
+            enabled: boolean;
+            config: components["schemas"]["DestinationConfig"];
+            secrets_set: {
+                url: boolean;
+                header_value: boolean;
+                password: boolean;
+            };
+            /** @enum {string} */
+            notify_for: "recommended" | "custom";
+            routes: string[];
+            health: {
+                /** @enum {string} */
+                status: "ok" | "failing" | "unused" | "disabled";
+                last_success_at?: number;
+                last_failure_at?: number;
+                last_error?: string;
+                consecutive_failures: number;
+                failing_since?: number;
+                queued: number;
+            };
+            last_test?: {
+                at: number;
+                ok: boolean;
+                result: string;
+            };
+            warnings: string[];
+            created_at: number;
+            updated_at: number;
+        };
+        TestResult: {
+            /** @enum {string} */
+            outcome: "delivered" | "transient" | "permanent";
+            /** @enum {string} */
+            category: "ok" | "timeout" | "tls" | "auth" | "rejected" | "rate_limited" | "server_error" | "network" | "config";
+            status_code?: number;
+            message: string;
+            ambiguous?: boolean;
+            duration_ms: number;
+            warnings: string[];
+        };
+        Route: {
+            id: string;
+            name: string;
+            is_default: boolean;
+            enabled: boolean;
+            severities: ("warning" | "critical")[];
+            host_ids: string[];
+            group_ids: string[];
+            categories: string[];
+            checks: string[];
+            recovery: boolean;
+            /** @description 0: no reminders (default); otherwise 60 to 10080. */
+            reminder_minutes: number;
+            destination_ids: string[];
+            created_at: number;
+            updated_at: number;
+        };
+        RouteInput: {
+            name?: string;
+            enabled?: boolean;
+            severities?: ("warning" | "critical")[];
+            host_ids?: string[];
+            group_ids?: string[];
+            categories?: string[];
+            checks?: string[];
+            recovery?: boolean;
+            reminder_minutes?: number;
+            destination_ids?: string[];
+        };
+        RoutePreview: {
+            destinations: {
+                id: string;
+                name: string;
+                kind: string;
+                recovery: boolean;
+                reminder_minutes: number;
+            }[];
+        };
+        Delivery: {
+            /** @description Sent to webhooks as delivery_id / Idempotency-Key. */
+            id: string;
+            alert_id?: string;
+            host_name?: string;
+            alert_title?: string;
+            destination_id?: string;
+            destination: string;
+            destination_kind: string;
+            /** @enum {string} */
+            kind: "opening" | "escalation" | "reminder" | "recovery";
+            /** @enum {string} */
+            status: "queued" | "sending" | "delivered" | "failed" | "cancelled";
+            attempts: number;
+            next_attempt_at?: number;
+            created_at: number;
+            finished_at?: number;
+            last_error?: string;
+            last_category?: string;
+            last_status_code?: number;
+            /** @description An attempt may have reached the receiver without DROOL seeing success; a retry may have delivered it twice. */
+            ambiguous: boolean;
+            attempt_log?: {
+                n: number;
+                started_at: number;
+                finished_at?: number;
+                /** @enum {string} */
+                outcome: "delivered" | "transient" | "permanent" | "interrupted";
+                category?: string;
+                status_code?: number;
+                error?: string;
+            }[];
+        };
+        NotificationSettings: {
+            /** @description DROOL's address for "Open in DROOL" links; empty: no links. */
+            link_base_url: string;
+            /** @description IANA name for times in notifications; empty for the controller's. */
+            time_zone: string;
+            alert_retention_days: number;
+            delivery_retention_days: number;
+        };
+        NotificationSettingsView: {
+            settings: components["schemas"]["NotificationSettings"];
+            kinds: string[];
         };
     };
     responses: {
@@ -9078,6 +9682,630 @@ export interface operations {
                         rollout_id: string;
                         preview: components["schemas"]["ConversionPreview"];
                     };
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    listAlerts: {
+        parameters: {
+            query?: {
+                /** @description active: open and unacknowledged (default); open: active or acknowledged. */
+                view?: "active" | "acknowledged" | "open" | "resolved" | "all";
+                severity?: "warning" | "critical";
+                host_id?: string;
+                group_id?: string;
+                category?: "cpu" | "memory" | "disk" | "storage" | "services" | "network" | "temperature" | "stale" | "fidelity";
+                check?: string;
+                acknowledged?: boolean;
+                /** @description Open views: suppressed by maintenance now. History: was suppressed. */
+                suppressed?: boolean;
+                /** @description Opened at or after (unix ms). */
+                since?: number;
+                /** @description Opened before (unix ms). */
+                until?: number;
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of alerts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Alert"][];
+                        next_cursor?: string;
+                    };
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    alertSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertSummary"];
+                };
+            };
+        };
+    };
+    getAlert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Alert. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertDetail"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    acknowledgeAlert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Acknowledged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Alert"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    listEvents: {
+        parameters: {
+            query?: {
+                host_id?: string;
+                /** @description Kind prefix, e.g. alert. or maintenance. */
+                kind?: string;
+                limit?: number;
+                /** @description Event id cursor. */
+                before?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Events. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        events: components["schemas"]["TimelineEvent"][];
+                    };
+                };
+            };
+        };
+    };
+    listMaintenance: {
+        parameters: {
+            query?: {
+                state?: "active" | "ended" | "all";
+                host_id?: string;
+                limit?: number;
+                /** @description Started before (unix ms). */
+                before?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Maintenance. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        maintenance: components["schemas"]["Maintenance"][];
+                    };
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    startMaintenance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaintenanceInput"];
+            };
+        };
+        responses: {
+            /** @description Started. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Maintenance"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    getMaintenance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Maintenance. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Maintenance"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    endMaintenance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ended. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Maintenance"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    listDestinations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Destinations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        destinations: components["schemas"]["Destination"][];
+                    };
+                };
+            };
+        };
+    };
+    createDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DestinationInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Destination"];
+                };
+            };
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    getDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Destination. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Destination"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    deleteDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    updateDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DestinationInput"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Destination"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    testDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The result (also for failures). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResult"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+        };
+    };
+    testUnsavedDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    kind: "email" | "webhook" | "discord" | "slack";
+                    config: components["schemas"]["DestinationConfig"];
+                    secrets?: components["schemas"]["DestinationSecrets"];
+                };
+            };
+        };
+        responses: {
+            /** @description The result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResult"];
+                };
+            };
+            429: components["responses"]["Problem"];
+        };
+    };
+    listRoutes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Routes (default first), with the category and check names filters accept. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        routes: components["schemas"]["Route"][];
+                        categories: string[];
+                        checks: string[];
+                    };
+                };
+            };
+        };
+    };
+    createRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Route"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    previewRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    host_id: string;
+                    check: string;
+                    /** @enum {string} */
+                    severity: "warning" | "critical";
+                };
+            };
+        };
+        responses: {
+            /** @description Destinations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePreview"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    deleteRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    updateRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteInput"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Route"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    listDeliveries: {
+        parameters: {
+            query?: {
+                destination_id?: string;
+                alert_id?: string;
+                status?: "queued" | "sending" | "delivered" | "failed" | "cancelled";
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deliveries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Delivery"][];
+                        next_cursor?: string;
+                    };
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    notificationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettingsView"];
+                };
+            };
+        };
+    };
+    setNotificationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationSettings"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettingsView"];
                 };
             };
             422: components["responses"]["Problem"];

@@ -59,6 +59,18 @@ const (
 	PermMonitoringRead     Permission = "monitoring.read"
 	PermMonitoringManage   Permission = "monitoring.manage"
 	PermMonitoringSettings Permission = "monitoring.settings"
+
+	// Alerts and notifications (M12). Everyone who sees monitoring sees
+	// alerts. Acknowledging and maintenance are operator work. Destination
+	// configuration (where alerts go, SMTP accounts, webhook URLs) is
+	// admin only; operators and auditors see it without secrets (secrets
+	// are never returned to anyone) and operators may send tests.
+	PermAlertsRead          Permission = "alerts.read"
+	PermAlertsAcknowledge   Permission = "alerts.acknowledge"
+	PermMaintenanceManage   Permission = "maintenance.manage"
+	PermNotificationsRead   Permission = "notifications.read"
+	PermNotificationsManage Permission = "notifications.manage"
+	PermNotificationsTest   Permission = "notifications.test"
 )
 
 // Role names stored in users.role.
@@ -82,6 +94,7 @@ var rolePermissions = map[string][]Permission{
 		PermFirewallRead, PermFirewallWrite, PermFirewallOverride,
 		PermNetworkRead, PermNetworkSnapshot, PermNetworkSettings,
 		PermMonitoringRead, PermMonitoringManage, PermMonitoringSettings,
+		PermAlertsRead, PermAlertsAcknowledge, PermMaintenanceManage, PermNotificationsRead, PermNotificationsManage, PermNotificationsTest,
 	},
 	// Operators can already run commands as root (jobs.execute), so file
 	// elevation adds no power they don't have.
@@ -89,12 +102,14 @@ var rolePermissions = map[string][]Permission{
 		PermHostsRead, PermJobsRead, PermJobsExecute, PermCredentialsUse,
 		PermFilesRead, PermFilesWrite, PermFilesDeploy, PermFilesElevate,
 		PermAgentsRead, PermFirewallRead, PermNetworkRead, PermNetworkSnapshot, PermMonitoringRead, PermMonitoringManage,
+		PermAlertsRead, PermAlertsAcknowledge, PermMaintenanceManage, PermNotificationsRead, PermNotificationsTest,
 	},
 	RoleAuditor: {
 		PermHostsRead, PermJobsRead, PermAuditRead, PermSettingsRead, PermAgentsRead, PermFirewallRead, PermNetworkRead, PermMonitoringRead,
+		PermAlertsRead, PermNotificationsRead,
 	},
 	RoleViewer: {
-		PermHostsRead, PermJobsRead, PermAgentsRead, PermFirewallRead, PermMonitoringRead,
+		PermHostsRead, PermJobsRead, PermAgentsRead, PermFirewallRead, PermMonitoringRead, PermAlertsRead,
 	},
 }
 

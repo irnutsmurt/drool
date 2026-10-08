@@ -74,7 +74,7 @@ func TestBrowser(t *testing.T) {
 	if d := os.Getenv("DROOL_E2E_SHOTS"); d != "" {
 		shots = d
 	}
-	cmd := exec.Command("node", "--test", "--test-concurrency=1", "e2e/designer.test.mjs", "e2e/network.test.mjs", "e2e/monitoring.test.mjs", "e2e/theme.test.mjs", "e2e/contrast.test.mjs")
+	cmd := exec.Command("node", "--test", "--test-concurrency=1", "e2e/designer.test.mjs", "e2e/network.test.mjs", "e2e/monitoring.test.mjs", "e2e/alerts.test.mjs", "e2e/theme.test.mjs", "e2e/contrast.test.mjs")
 	cmd.Dir = filepath.Join(root, "web")
 	cmd.Env = append(os.Environ(), "DROOL_E2E_URL="+ctl.base(), "DROOL_E2E_USER="+adminUser, "DROOL_E2E_PASSWORD="+adminPassword,
 		"CHROME="+chrome, "DROOL_E2E_SHOTS="+shots)

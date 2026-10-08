@@ -13,6 +13,8 @@ import { deviceHealth, SeverityBadge, StatusBadge, statusOf } from "@/components
 import { fmtPct, fmtSince, fmtTemp } from "@/components/monitoring/format";
 import { HelperInstallDialog } from "@/components/monitoring/HelperInstall";
 import { ConvertDialog } from "@/components/monitoring/ConvertDialog";
+import { useAlertSummary } from "@/components/alerts/queries";
+import { AlertCounts } from "@/components/alerts/ui";
 
 const categories = [
   { key: "unhealthy", label: "Needs attention" },
@@ -49,6 +51,8 @@ export function MonitoringPage() {
   const [dialog, setDialog] = useState<"" | "helpers" | "convert">("");
   const { can } = useAuth();
   const f = useFleet({ category, q: q || undefined, sort, limit: PAGE, offset });
+  const alerts = useAlertSummary(can("alerts.read"));
+  const as = alerts.data;
   const d = f.data;
   const setCat = (c: string) => {
     setOffset(0);
@@ -62,6 +66,13 @@ export function MonitoringPage() {
       <PageHeader title="Monitoring"
         description={d ? `${d.monitored} of ${d.hosts} hosts reporting: ${d.agent} with the agent (continuous), ${d.ssh} over SSH (polled)` : undefined} />
       {f.error && <Alert>{errorMessage(f.error)}</Alert>}
+      {as && (
+        <p className="mb-3 rounded-ui border border-line bg-surface px-3 py-2 text-sm" role="status">
+          <Link className="font-medium text-accent" to="/alerts">Alerts</Link>:{" "}
+          {as.active + as.acknowledged === 0 ? "none open" : <><AlertCounts critical={as.critical} warning={as.warning} /> {as.acknowledged > 0 && <span className="text-muted">({as.acknowledged} acknowledged)</span>}</>}
+          {Object.keys(as.maintenance).length > 0 && <span className="text-muted"> · {Object.keys(as.maintenance).length} host{Object.keys(as.maintenance).length === 1 ? "" : "s"} in maintenance</span>}
+        </p>
+      )}
       <div role="group" aria-label="Show hosts" className="mb-4 flex flex-wrap gap-2">
         {categories.map((c) => {
           const n = c.key === "all" ? d?.hosts : d?.counts[c.key];
@@ -101,6 +112,7 @@ export function MonitoringPage() {
                   onChange={() => setSel((s) => { const n = new Set(s); rows.forEach((r) => (allSel ? n.delete(r.host_id) : n.add(r.host_id))); return n; })} /></th>
                 <th className="px-2 py-1 font-medium">Host</th>
                 <th className="px-2 py-1 font-medium">Health</th>
+                {as && <th className="px-2 py-1 font-medium">Alerts</th>}
                 <th className="px-2 py-1 font-medium">Monitoring</th>
                 <th className="px-2 py-1 font-medium">CPU</th>
                 <th className="px-2 py-1 font-medium">Memory</th>
@@ -112,12 +124,18 @@ export function MonitoringPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={11} className="px-2 py-8 text-center text-muted">{d ? "No hosts in this view." : "Loading…"}</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={as ? 12 : 11} className="px-2 py-8 text-center text-muted">{d ? "No hosts in this view." : "Loading…"}</td></tr>}
               {rows.map((r) => (
                 <tr key={r.host_id} className="border-b border-line last:border-0">
                   <td className="px-2 py-1.5"><input type="checkbox" aria-label={`Select ${r.name}`} checked={sel.has(r.host_id)} onChange={() => toggle(r.host_id)} /></td>
                   <td className="px-2 py-1.5"><Link className="text-accent" to={`/hosts/${r.host_id}/monitoring`}>{r.name}</Link></td>
                   <td className="px-2 py-1.5"><Worst r={r} /></td>
+                  {as && (
+                    <td className="px-2 py-1.5">
+                      <AlertCounts critical={as.hosts[r.host_id]?.critical ?? 0} warning={as.hosts[r.host_id]?.warning ?? 0} hostId={r.host_id} />
+                      {as.maintenance[r.host_id] && <div className="text-xs text-muted" title={as.maintenance[r.host_id]!.reason}>⏸ maintenance</div>}
+                    </td>
+                  )}
                   <td className="px-2 py-1.5 text-xs">
                     {r.mode === "continuous" ? "Agent · continuous" : r.mode === "polled" ? "SSH · polled" : "—"}
                     {r.reduced && <div className="text-warn">⚠ reduced fidelity</div>}
@@ -156,7 +174,10 @@ export function MonitoringPage() {
             ))}
           </ul>
         )}
-        <p className="mt-2 text-xs text-muted">Health issues are what M12 alerting will notify about. Nothing is sent anywhere yet.</p>
+        <p className="mt-2 text-xs text-muted">
+          Warning and Critical health issues become <Link className="text-accent" to="/alerts">alerts</Link>, which notify the destinations set up under{" "}
+          <Link className="text-accent" to="/settings/notifications">Settings → Notifications</Link>. Informational issues are shown here only.
+        </p>
       </Card>
       {dialog === "helpers" && <HelperInstallDialog hostIds={[...sel]} onClose={() => setDialog("")} />}
       {dialog === "convert" && <ConvertDialog hostIds={[...sel]} onClose={() => setDialog("")} />}

@@ -1567,8 +1567,8 @@
       "emmc": {
        "life_time_a": "0x02",
        "life_time_b": "0x01",
-       "life_a": "10–20% used",
-       "life_b": "0–10% used",
+       "life_a": "10\u201320% used",
+       "life_b": "0\u201310% used",
        "pre_eol": "normal"
       }
      },
@@ -1846,6 +1846,338 @@
      }
     ]
    }
+  },
+  "crash-01": {
+   "state": {
+    "source": "ssh",
+    "at": 0,
+    "boot_id": "boot-crash-01",
+    "fidelity": {
+     "mode": "polled",
+     "sample_s": 300,
+     "reduced": false
+    },
+    "cpu": {
+     "percent": 3,
+     "iowait": 1.2,
+     "cores": [
+      3,
+      6,
+      9,
+      12
+     ],
+     "count": 4
+    },
+    "load": [
+     0.4,
+     0.5,
+     0.6
+    ],
+    "memory": {
+     "total_bytes": 17179869184,
+     "available_bytes": 13400297963,
+     "used_percent": 22,
+     "swap_total_bytes": 2147483648,
+     "swap_free_bytes": 2147483648,
+     "swap_percent": 0.0
+    },
+    "uptime_s": 864000,
+    "pressure": {
+     "cpu10": 2.1,
+     "cpu60": 1.8,
+     "memory10": 0.2,
+     "memory60": 0.1,
+     "io10": 0.5,
+     "io60": 0.4
+    },
+    "filesystems": [
+     {
+      "mount": "/",
+      "device": "/dev/vda1",
+      "devnum": "254:1",
+      "type": "ext4",
+      "total_bytes": 21474836480,
+      "used_bytes": 20830591385,
+      "avail_bytes": 644245095,
+      "used_percent": 97,
+      "inodes_percent": 8,
+      "read_only": false
+     }
+    ],
+    "interfaces": [
+     {
+      "name": "ens3",
+      "kind": "physical",
+      "state": "up",
+      "carrier": true,
+      "mtu": 1500,
+      "rx_errors": 0,
+      "tx_errors": 0,
+      "rx_drops": 3,
+      "tx_drops": 0,
+      "speed_mbps": 1000,
+      "rx_bps": 1000.0,
+      "tx_bps": 1000.0,
+      "err_ps": 0,
+      "drop_ps": 0
+     }
+    ],
+    "disks": [],
+    "sensors": [],
+    "gpus": [],
+    "gpu_note": "",
+    "collectors": [
+     {
+      "name": "system",
+      "state": "ok"
+     },
+     {
+      "name": "filesystems",
+      "state": "ok"
+     },
+     {
+      "name": "services",
+      "state": "ok"
+     },
+     {
+      "name": "storage",
+      "state": "ok"
+     },
+     {
+      "name": "kernel",
+      "state": "ok"
+     }
+    ],
+    "helpers": [
+     {
+      "package": "smartmontools",
+      "tool": "smartctl",
+      "installed": true,
+      "useful": false,
+      "purpose": "SMART health for SATA/SAS disks and SSDs, USB bridges that pass it through, and NVMe health"
+     },
+     {
+      "package": "nvme-cli",
+      "tool": "nvme",
+      "installed": false,
+      "useful": false,
+      "purpose": "NVMe health: critical warnings, endurance used, available spare, media errors and the error log"
+     },
+     {
+      "package": "lm-sensors",
+      "tool": "sensors",
+      "installed": false,
+      "useful": false,
+      "purpose": "sensors-detect, which can identify motherboard sensor chips"
+     }
+    ]
+   },
+   "services": {
+    "supported": true,
+    "units": [
+     {
+      "name": "ssh.service",
+      "description": "OpenBSD Secure Shell server",
+      "load": "loaded",
+      "active": "active",
+      "sub": "running",
+      "file_state": "enabled",
+      "since": 1791336801,
+      "restarts": 0,
+      "result": "success"
+     }
+    ]
+   },
+   "storage": {
+    "smart": true,
+    "devices": [
+     {
+      "partitions": [],
+      "removable": false,
+      "read_only": false,
+      "evidence": {},
+      "health": {
+       "state": "unknown",
+       "summary": "",
+       "indicators": []
+      },
+      "key": "name:vda",
+      "name": "vda",
+      "kind": "virtual",
+      "transport": "virtio",
+      "size_bytes": 21474836480,
+      "capability": "unavailable",
+      "capability_note": "Virtual disk: the hypervisor owns the physical storage and its health."
+     }
+    ]
+   },
+   "states_twice": true
+  },
+  "crash-02": {
+   "state": {
+    "source": "ssh",
+    "at": 0,
+    "boot_id": "boot-crash-02",
+    "fidelity": {
+     "mode": "polled",
+     "sample_s": 300,
+     "reduced": false
+    },
+    "cpu": {
+     "percent": 3,
+     "iowait": 1.2,
+     "cores": [
+      3,
+      6,
+      9,
+      12
+     ],
+     "count": 4
+    },
+    "load": [
+     0.4,
+     0.5,
+     0.6
+    ],
+    "memory": {
+     "total_bytes": 17179869184,
+     "available_bytes": 13400297963,
+     "used_percent": 22,
+     "swap_total_bytes": 2147483648,
+     "swap_free_bytes": 2147483648,
+     "swap_percent": 0.0
+    },
+    "uptime_s": 864000,
+    "pressure": {
+     "cpu10": 2.1,
+     "cpu60": 1.8,
+     "memory10": 0.2,
+     "memory60": 0.1,
+     "io10": 0.5,
+     "io60": 0.4
+    },
+    "filesystems": [
+     {
+      "mount": "/",
+      "device": "/dev/vda1",
+      "devnum": "254:1",
+      "type": "ext4",
+      "total_bytes": 21474836480,
+      "used_bytes": 20830591385,
+      "avail_bytes": 644245095,
+      "used_percent": 97,
+      "inodes_percent": 8,
+      "read_only": false
+     }
+    ],
+    "interfaces": [
+     {
+      "name": "ens3",
+      "kind": "physical",
+      "state": "up",
+      "carrier": true,
+      "mtu": 1500,
+      "rx_errors": 0,
+      "tx_errors": 0,
+      "rx_drops": 3,
+      "tx_drops": 0,
+      "speed_mbps": 1000,
+      "rx_bps": 1000.0,
+      "tx_bps": 1000.0,
+      "err_ps": 0,
+      "drop_ps": 0
+     }
+    ],
+    "disks": [],
+    "sensors": [],
+    "gpus": [],
+    "gpu_note": "",
+    "collectors": [
+     {
+      "name": "system",
+      "state": "ok"
+     },
+     {
+      "name": "filesystems",
+      "state": "ok"
+     },
+     {
+      "name": "services",
+      "state": "ok"
+     },
+     {
+      "name": "storage",
+      "state": "ok"
+     },
+     {
+      "name": "kernel",
+      "state": "ok"
+     }
+    ],
+    "helpers": [
+     {
+      "package": "smartmontools",
+      "tool": "smartctl",
+      "installed": true,
+      "useful": false,
+      "purpose": "SMART health for SATA/SAS disks and SSDs, USB bridges that pass it through, and NVMe health"
+     },
+     {
+      "package": "nvme-cli",
+      "tool": "nvme",
+      "installed": false,
+      "useful": false,
+      "purpose": "NVMe health: critical warnings, endurance used, available spare, media errors and the error log"
+     },
+     {
+      "package": "lm-sensors",
+      "tool": "sensors",
+      "installed": false,
+      "useful": false,
+      "purpose": "sensors-detect, which can identify motherboard sensor chips"
+     }
+    ]
+   },
+   "services": {
+    "supported": true,
+    "units": [
+     {
+      "name": "ssh.service",
+      "description": "OpenBSD Secure Shell server",
+      "load": "loaded",
+      "active": "active",
+      "sub": "running",
+      "file_state": "enabled",
+      "since": 1791336801,
+      "restarts": 0,
+      "result": "success"
+     }
+    ]
+   },
+   "storage": {
+    "smart": true,
+    "devices": [
+     {
+      "partitions": [],
+      "removable": false,
+      "read_only": false,
+      "evidence": {},
+      "health": {
+       "state": "unknown",
+       "summary": "",
+       "indicators": []
+      },
+      "key": "name:vda",
+      "name": "vda",
+      "kind": "virtual",
+      "transport": "virtio",
+      "size_bytes": 21474836480,
+      "capability": "unavailable",
+      "capability_note": "Virtual disk: the hypervisor owns the physical storage and its health."
+     }
+    ]
+   },
+   "states_twice": true
   }
  }
 }

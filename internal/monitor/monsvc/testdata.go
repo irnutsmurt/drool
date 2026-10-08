@@ -212,3 +212,15 @@ func (s *Service) RunTestFile(ctx context.Context, path string) {
 		}
 	}
 }
+
+// OpenIssueForTest opens (or changes) an issue through the evaluator's
+// normal recording path (its transaction and the issue hook) without the
+// detection in front of it (tests of what consumes issues).
+func (s *Service) OpenIssueForTest(ctx context.Context, hostID, check, subject, severity, title string, value *float64, observed time.Time) {
+	s.eval.openAt(ctx, hostID, check, subject, severity, title, "", value, observed)
+}
+
+// ResolveIssueForTest resolves an issue through the normal path (tests).
+func (s *Service) ResolveIssueForTest(ctx context.Context, hostID, check, subject string) {
+	s.eval.resolve(ctx, hostID, check, subject)
+}

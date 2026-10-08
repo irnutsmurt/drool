@@ -80,6 +80,11 @@ const monitoringPages = (hosts) => {
   return out;
 };
 
+const alertPages = async () => {
+  const a = (await api(page, "GET", "/alerts?view=open&limit=1")).body?.items ?? [];
+  return a.map((x) => `/alerts/${x.id}`);
+};
+
 const pages = async () => {
   const hosts = (await api(page, "GET", "/hosts")).body.items;
   const host = hosts.find((h) => h.name === "web-1") ?? hosts[0];
@@ -93,6 +98,10 @@ const pages = async () => {
     "/firewall?tab=designer&view=topology&topo=observed", "/firewall?tab=designer&view=topology&topo=both",
     // M11: monitoring, the fleet and a host's tabs (fixture hosts), settings.
     ...monitoringPages(hosts),
+    // M12: alerts, an alert's details, maintenance, notification settings.
+    "/alerts", "/alerts?view=acknowledged", "/alerts?view=resolved", "/alerts?view=maintenance",
+    ...(await alertPages()),
+    "/settings/notifications", "/settings/notifications?advanced=1",
   ];
 };
 

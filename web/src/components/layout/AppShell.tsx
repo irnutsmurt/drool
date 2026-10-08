@@ -9,6 +9,8 @@ import { navItems } from "./nav";
 import { usePKI } from "@/components/agents/queries";
 import { Link } from "react-router";
 import { ThemeSwitcher } from "@/components/ui/ThemeSwitcher";
+import { useAlertSummary } from "@/components/alerts/queries";
+import { StatusIcon } from "@/components/monitoring/Status";
 
 export function useSystemInfo() {
   return useQuery({ queryKey: ["system", "info"], queryFn: () => unwrap(api.GET("/system/info")), staleTime: 5 * 60_000 });
@@ -18,6 +20,8 @@ export function AppShell() {
   const { me, can, logout } = useAuth();
   const info = useSystemInfo();
   const pki = usePKI(can("agents.read"));
+  const alerts = useAlertSummary(can("alerts.read"));
+  const open = alerts.data ? alerts.data.active : 0;
 
   return (
     <div className="flex h-full">
@@ -40,6 +44,12 @@ export function AppShell() {
               >
                 {i.label}
                 {i.milestone && <Badge>{i.milestone}</Badge>}
+                {i.alerts && open > 0 && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold tabular-nums"
+                    aria-label={`${open} unacknowledged alert${open === 1 ? "" : "s"}${alerts.data!.active_critical ? `, ${alerts.data!.active_critical} critical` : ""}`}>
+                    <StatusIcon status={alerts.data!.active_critical ? "critical" : "warning"} />{open}
+                  </span>
+                )}
               </NavLink>
             ))}
         </nav>
