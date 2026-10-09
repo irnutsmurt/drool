@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { cx } from "@/components/ui/cx";
-import { formatDateTime } from "@/lib/format";
+import { errorMessage, formatDateTime } from "@/lib/format";
 import { summarizeCounts } from "./jobs/summary";
 import { useAlerts, useAlertSummary, useEvents } from "@/components/alerts/queries";
 import { AlertSeverity } from "@/components/alerts/ui";
@@ -51,6 +51,17 @@ export function DashboardPage() {
   const jobsQ = useJobs();
   const all = hostsQ.data?.items ?? [];
   const managed = all.filter((h) => !h.jump_only);
+
+  // Until the hosts arrive nothing is known: no counts, no "nothing needs
+  // attention".
+  if (!hostsQ.data) {
+    return (
+      <>
+        <PageHeader title="Dashboard" />
+        <p className="text-sm text-muted">{hostsQ.isError ? `Couldn't load the hosts: ${errorMessage(hostsQ.error)}` : "Loading…"}</p>
+      </>
+    );
+  }
 
   if (hostsQ.data && managed.length === 0) {
     return (
@@ -115,7 +126,9 @@ export function DashboardPage() {
         {can("desired.read") && <DesiredCard />}
         {can("alerts.read") && <EventsCard />}
         <Card title="Jobs">
-          {running.length === 0 && recent.length === 0 ? (
+          {!jobsQ.data ? (
+            <p className="text-sm text-muted">{jobsQ.isError ? "Couldn't load jobs." : "Loading…"}</p>
+          ) : running.length === 0 && recent.length === 0 ? (
             <p className="text-sm text-muted">No jobs yet.</p>
           ) : (
             <ul className="space-y-2 text-sm">
@@ -220,7 +233,8 @@ function EventsCard() {
   const rows = ev.data?.events ?? [];
   return (
     <Card title="Recent events">
-      {rows.length === 0 ? <p className="text-sm text-muted">No events yet.</p> : (
+      {!ev.data ? <p className="text-sm text-muted">{ev.isError ? "Couldn't load events." : "Loading…"}</p>
+        : rows.length === 0 ? <p className="text-sm text-muted">No events yet.</p> : (
         <ul className="space-y-2 text-sm">
           {rows.map((e) => (
             <li key={e.id} className="flex items-start gap-2">
