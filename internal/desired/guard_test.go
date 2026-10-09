@@ -429,3 +429,34 @@ func TestHostsListedForABaseline(t *testing.T) {
 		t.Fatalf("all: %+v", r)
 	}
 }
+
+// A priority change that resolves a conflict is shown as resolved (and as
+// drift when the winning value differs), even on a host whose status is
+// dominated by something else (here a failed restore).
+func TestPriorityImpactSeesConflictsBehindOtherProblems(t *testing.T) {
+	e := newEnv(t, "app")
+	e.setUnit("app", "worker.service", "inactive", "enabled")
+	e.reportAll()
+	e.group("g_web", "web", "app")
+	e.group("g_lab", "lab", "app")
+	e.baseline("Worker", []Resource{svc("worker", StateRunning, nil)}, onHost("app"))
+	e.baseline("Web tools", []Resource{pkgR("nano", StateInstalled)}, inGroup("g_web"))
+	e.baseline("Lab minimal", []Resource{pkgR("nano", StateAbsent)}, inGroup("g_lab"))
+	e.step()
+	e.checkAll()
+	e.f.do(func() { e.f.hosts["h_app"].failService["worker.service"] = "Job for worker.service failed" })
+	if _, err := e.s.Restore(e.ctx, Selection{Keys: []string{"service:worker.service"}}, RestoreOptions{}, "", operator); err != nil {
+		t.Fatal(err)
+	}
+	e.waitJobs()
+	if v, _ := e.s.Host(e.ctx, "h_app"); v.Status != StatusFailed {
+		t.Fatalf("host %s", v.Status)
+	}
+	imp, err := e.s.PreviewPriority(e.ctx, "g_web", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if imp.HostsAffected != 1 || imp.Counts.ResolvedConflicts != 1 || imp.Counts.BecomeDrifted != 1 || imp.Counts.Unchanged != 0 {
+		t.Fatalf("%+v", imp.Counts)
+	}
+}

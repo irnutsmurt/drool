@@ -274,6 +274,9 @@ func (s *Service) predict(ctx context.Context, before, after *Snapshot, imp *Imp
 		var cAfter counts
 		var detail []string
 		unknown := false
+		// Conflicts appear or go per resource, whatever else the host's
+		// status is dominated by (a failed restore elsewhere hides nothing).
+		resolvedConflict, newConflict, resolvedToDrift := false, false, false
 		keys := map[string]bool{}
 		for k := range o.Resources {
 			keys[k] = true
@@ -289,6 +292,13 @@ func (s *Service) predict(ctx context.Context, before, after *Snapshot, imp *Imp
 		for _, k := range sorted {
 			oe, had := o.Resources[k]
 			ne, has := n.Resources[k]
+			wasConflict, isConflict := had && oe.Conflict, has && ne.Conflict
+			if wasConflict && !isConflict {
+				resolvedConflict = true
+			}
+			if isConflict && !wasConflict {
+				newConflict = true
+			}
 			cur := StatusUnknown
 			if r := rows[k]; r != nil {
 				cur = r.Status
@@ -329,6 +339,9 @@ func (s *Service) predict(ctx context.Context, before, after *Snapshot, imp *Imp
 			} else {
 				cAfter.add(StatusDrift, false)
 				detail = append(detail, Describe(k)+": "+ne.Resource.Want()+" — differs ("+DiffText(j.Diffs)+")")
+				if wasConflict {
+					resolvedToDrift = true
+				}
 			}
 		}
 		nowStatus := StatusNone
@@ -341,21 +354,25 @@ func (s *Service) predict(ctx context.Context, before, after *Snapshot, imp *Imp
 		}
 		hi := HostImpact{HostID: id, HostName: after.Hosts[id], Now: nowStatus, After: afterStatus, Detail: detail}
 		bad := func(st string) bool { return st == StatusDrift || st == StatusFailed || st == StatusConflict }
-		switch {
-		case afterStatus == StatusConflict && nowStatus != StatusConflict:
+		listed := false
+		if newConflict {
 			add(&imp.NewConflicts, &imp.Counts.NewConflicts, hi)
-		case nowStatus == StatusConflict && afterStatus != StatusConflict:
+			listed = true
+		}
+		if resolvedConflict {
 			add(&imp.ResolvedConflicts, &imp.Counts.ResolvedConflicts, hi)
-			if afterStatus == StatusDrift {
-				add(&imp.BecomeDrifted, &imp.Counts.BecomeDrifted, hi)
-			}
-		case !bad(nowStatus) && bad(afterStatus):
+			listed = true
+		}
+		switch {
+		case resolvedToDrift || !bad(nowStatus) && bad(afterStatus) && !newConflict:
+			// Drift appears (a resolved conflict's value differs, or a
+			// host that was fine would differ).
 			add(&imp.BecomeDrifted, &imp.Counts.BecomeDrifted, hi)
 		case bad(nowStatus) && afterStatus == StatusCompliant:
 			add(&imp.BecomeCompliant, &imp.Counts.BecomeCompliant, hi)
-		case unknown:
+		case unknown && !listed:
 			add(&imp.ToCheck, &imp.Counts.ToCheck, hi)
-		default:
+		case !listed:
 			imp.Counts.Unchanged++
 		}
 		if unknown && afterStatus != StatusUnknown && (afterStatus == StatusConflict || bad(afterStatus) || afterStatus == StatusCompliant) {

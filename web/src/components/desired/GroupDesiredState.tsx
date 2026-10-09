@@ -65,7 +65,7 @@ function PriorityDialog({ groupId, name, current, onClose }: { groupId: string; 
                 <li>{i.hosts_affected} host{i.hosts_affected === 1 ? "" : "s"} affected</li>
                 {i.counts.resolved_conflicts > 0 && <li>{i.counts.resolved_conflicts} conflict{i.counts.resolved_conflicts === 1 ? "" : "s"} resolved</li>}
                 {i.counts.new_conflicts > 0 && <li className="text-danger">{i.counts.new_conflicts} new conflict{i.counts.new_conflicts === 1 ? "" : "s"}</li>}
-                {i.counts.become_drifted > 0 && <li className="text-warn">{i.counts.become_drifted} compliant host{i.counts.become_drifted === 1 ? "" : "s"} would drift</li>}
+                {i.counts.become_drifted > 0 && <li className="text-warn">{i.counts.become_drifted} host{i.counts.become_drifted === 1 ? "" : "s"} would drift</li>}
                 {i.counts.become_compliant > 0 && <li>{i.counts.become_compliant} drifted host{i.counts.become_compliant === 1 ? "" : "s"} would comply</li>}
               </ul>
             )}
