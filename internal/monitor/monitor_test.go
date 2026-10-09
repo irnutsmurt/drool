@@ -255,8 +255,11 @@ func TestSensors(t *testing.T) {
 			t.Errorf("no thresholds were provided for Core 0; none must be invented: %+v", s[1])
 		}
 		nv := s[2]
-		if nv.Kind != "storage" || nv.Device != "nvme0n1" || nv.ID != "nvme:nvme0n1/Composite" || nv.High != nil {
+		if nv.Kind != "storage" || nv.Device != "nvme0n1" || nv.ID != "nvme:nvme0n1/Composite" || nv.High != nil || nv.HW != "nvme0" {
 			t.Errorf("%+v", nv)
+		}
+		if pkg.HW != "" {
+			t.Errorf("no device link: no hardware identity: %+v", pkg)
 		}
 		if s[3].Kind != "board" || s[3].Label != "temp1" {
 			t.Errorf("%+v", s[3])
@@ -321,6 +324,23 @@ func TestGPUs(t *testing.T) {
 		if note != "" || nv.Model != "NVIDIA GeForce RTX 4090" || *nv.UtilPercent != 12 || *nv.MemUsed != 2048<<20 || *nv.Celsius != 44 ||
 			nv.PowerW != nil || nv.PowerState != "P8" {
 			t.Fatalf("[N/A] power must be missing, not 0: %+v", nv)
+		}
+	})
+	t.Run("stable GPU identity", func(t *testing.T) {
+		f := fake(base, links)
+		f.Files["/sys/bus/pci/devices/0000:03:00.0/unique_id"] = "4a1c20b3e1d07a2f\n"
+		f.Tools["nvidia-smi"] = true
+		c := HWSpec.Commands[0]
+		f.Cmds[source.Key(c[0], c[1:]...)] = &source.Result{Stdout: []byte("0, NVIDIA GeForce RTX 4090, 99, 2048, 24564, 71, 410.2, P2, GPU-8f3b5c2e-1111-2222-3333-444455556666, 00000000:01:00.0\n")}
+		g, _ := GPUs(context.Background(), f)
+		if g[1].UUID != "GPU-8f3b5c2e-1111-2222-3333-444455556666" || g[1].PCI != "0000:01:00.0" || *g[1].UtilPercent != 99 {
+			t.Fatalf("NVIDIA GPU UUID and bus id: %+v", g[1])
+		}
+		if g[2].UUID != "amd:4a1c20b3e1d07a2f" || g[2].PCI != "0000:03:00.0" {
+			t.Fatalf("AMD unique_id: %+v", g[2])
+		}
+		if g[0].UUID != "" || g[0].PCI != "0000:00:02.0" {
+			t.Fatalf("no UUID: only the PCI address, honestly weaker: %+v", g[0])
 		}
 	})
 	t.Run("malformed nvidia-smi output", func(t *testing.T) {

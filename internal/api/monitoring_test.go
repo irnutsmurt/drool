@@ -583,15 +583,23 @@ func TestMonitoringPermissionsSettingsAndFleet(t *testing.T) {
 	if r := op.do("PUT", "/api/v1/monitoring/settings", monsvc.DefaultSettings()); r.status != 403 {
 		t.Fatalf("operator changed fleet settings: %d", r.status)
 	}
+	// Thresholds are health overrides since M12.1: a custom profile is refused.
 	bad := monsvc.DefaultSettings()
-	bad.Profile, bad.Custom.DiskWarning, bad.Custom.DiskCritical = "custom", 96, 90
+	bad.Profile, bad.Custom = "custom", &monsvc.Thresholds{}
 	if r := e.c.do("PUT", "/api/v1/monitoring/settings", bad); r.status != 422 {
+		t.Fatalf("custom profile accepted: %d", r.status)
+	}
+	if r := e.c.do("PUT", "/api/v1/monitoring/health/overrides", map[string]any{"scope": "global", "check": "filesystem", "fields": map[string]any{"warning": 96, "critical": 90}}); r.status != 422 {
 		t.Fatalf("warning above critical accepted: %d", r.status)
 	}
-	custom := monsvc.DefaultSettings()
-	custom.Profile, custom.Custom.DiskWarning = "custom", 70
-	if r := e.c.do("PUT", "/api/v1/monitoring/settings", custom); r.status != 200 {
+	if r := op.do("PUT", "/api/v1/monitoring/health/overrides", map[string]any{"scope": "global", "check": "filesystem", "fields": map[string]any{"warning": 70}}); r.status != 403 {
+		t.Fatalf("operator changed fleet thresholds: %d", r.status)
+	}
+	if r := e.c.do("PUT", "/api/v1/monitoring/health/overrides", map[string]any{"scope": "global", "check": "filesystem", "fields": map[string]any{"warning": 70}}); r.status != 200 {
 		t.Fatalf("custom thresholds: %d %s", r.status, r.body)
+	}
+	if r := e.c.do("PUT", "/api/v1/monitoring/settings", monsvc.DefaultSettings()); r.status != 200 {
+		t.Fatalf("settings: %d %s", r.status, r.body)
 	}
 	var audit struct{ Items []struct{ Action string } }
 	e.c.do("GET", "/api/v1/audit?limit=50", nil).json(t, &audit)
@@ -599,7 +607,7 @@ func TestMonitoringPermissionsSettingsAndFleet(t *testing.T) {
 	for _, a := range audit.Items {
 		found[a.Action] = true
 	}
-	if !found["monitoring.settings.update"] || !found["monitoring.host_settings.update"] {
+	if !found["monitoring.settings.update"] || !found["monitoring.host_settings.update"] || !found["monitoring.health_override.create"] {
 		t.Fatalf("settings changes are audited: %v", found)
 	}
 	// Fleet page: categories, filters, paging.

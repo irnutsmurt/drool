@@ -125,9 +125,10 @@ func TestVMMonitoring(t *testing.T) {
 }
 
 type monOverviewT struct {
-	HasData bool   `json:"has_data"`
-	Source  string `json:"source"`
-	State   *struct {
+	HasData   bool   `json:"has_data"`
+	Source    string `json:"source"`
+	UpdatedAt int64  `json:"updated_at"`
+	State     *struct {
 		Fidelity struct {
 			Mode    string   `json:"mode"`
 			SampleS int      `json:"sample_s"`
@@ -263,6 +264,65 @@ func testVMMonitoring(t *testing.T, def vmDef, v *vm, h host, key releaseKey) {
 		}
 	})
 
+	// M12.1: health overrides bind to the real filesystem UUID, over SSH
+	// and then through the agent (the same identity from both paths).
+	rootKey := ""
+	type healthView struct {
+		Subjects []struct{ Key, Kind, Label, Strength string }
+		Checks   []struct {
+			Check  string
+			Fields []struct {
+				Name   string
+				Value  *float64
+				Source struct{ Kind, Label string }
+			}
+		}
+	}
+	rootSubject := func(t *testing.T) string {
+		var hv healthView
+		ctl.must(t, "GET", "/api/v1/hosts/"+h.ID+"/monitoring/health", nil, &hv)
+		for _, s := range hv.Subjects {
+			if s.Kind == "filesystem" && s.Label == "/" {
+				return s.Key
+			}
+		}
+		return ""
+	}
+	t.Run("health overrides: the root filesystem by its real UUID (SSH)", func(t *testing.T) {
+		uuid := strings.TrimSpace(mustVMSSH(t, v, "findmnt -no UUID /"))
+		src := strings.TrimSpace(mustVMSSH(t, v, "findmnt -no SOURCE /"))
+		ctl.must(t, "POST", "/api/v1/hosts/"+h.ID+"/monitoring/refresh", nil, nil)
+		waitFor(t, 10*time.Minute, "the storage report", func() bool { rootKey = rootSubject(t); return strings.HasPrefix(rootKey, "fsuuid:") })
+		if rootKey != "fsuuid:"+uuid {
+			t.Fatalf("/ (%s, UUID %s) bound as %q", src, uuid, rootKey)
+		}
+		// A subject override with an absurdly low warning: an issue after two polls, titled with the custom level.
+		ctl.must(t, "PUT", "/api/v1/monitoring/health/overrides", map[string]any{"scope": "host", "host_id": h.ID, "check": "filesystem", "subject": rootKey,
+			"subject_label": "/", "fields": map[string]any{"warning": 1, "critical": 99}}, nil)
+		for i := 0; i < 2; i++ {
+			before := monOverview(t, h.ID).UpdatedAt
+			ctl.must(t, "POST", "/api/v1/hosts/"+h.ID+"/monitoring/refresh", nil, nil)
+			waitFor(t, 10*time.Minute, "a new poll", func() bool { return monOverview(t, h.ID).UpdatedAt > before })
+		}
+		waitFor(t, 2*time.Minute, "the custom-level issue", func() bool { return hasIssue(monOverview(t, h.ID), "filesystem", "/") })
+		var ov struct{ Items []struct{ ID string } }
+		ctl.must(t, "GET", "/api/v1/monitoring/health/overrides?host_id="+h.ID, nil, &ov)
+		for _, o := range ov.Items {
+			ctl.must(t, "DELETE", "/api/v1/monitoring/health/overrides/"+o.ID, nil, nil)
+		}
+		var is struct {
+			Issues []struct{ Check, Subject, Resolution string }
+		}
+		ctl.must(t, "GET", "/api/v1/monitoring/issues?state=resolved&host_id="+h.ID, nil, &is)
+		ok := false
+		for _, i := range is.Issues {
+			ok = ok || i.Check == "filesystem" && i.Subject == "/" && i.Resolution == "reconfigured"
+		}
+		if !ok || hasIssue(monOverview(t, h.ID), "filesystem", "/") {
+			t.Fatalf("removing the override closes the issue as a configuration change: %+v", is.Issues)
+		}
+	})
+
 	t.Run("install the agent; its budget is enforced", func(t *testing.T) {
 		var res struct {
 			OK            bool
@@ -312,6 +372,14 @@ func testVMMonitoring(t *testing.T, def vmDef, v *vm, h host, key releaseKey) {
 		if pct > 20 {
 			t.Errorf("the agent used %.1f%% CPU on average", pct)
 		}
+	})
+
+	t.Run("health overrides: the same identity through the agent", func(t *testing.T) {
+		if rootKey == "" {
+			t.Skip("no SSH identity to compare")
+		}
+		ctl.must(t, "POST", "/api/v1/hosts/"+h.ID+"/monitoring/refresh", nil, nil)
+		waitFor(t, 5*time.Minute, "the agent's storage report", func() bool { return rootSubject(t) == rootKey })
 	})
 
 	hook := newAlertHook(t) // for the whole VM test (subtests' cleanups would delete it early)

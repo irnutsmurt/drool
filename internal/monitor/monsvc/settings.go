@@ -13,15 +13,16 @@ import (
 	"drool/internal/store/db"
 )
 
-// Profiles.
+// Profiles (M11). Since M12.1 the health profile is always Recommended
+// plus sparse overrides (policy.go); a stored M11 "custom" profile is
+// turned into global overrides once at start (migrateLegacy).
 const (
 	ProfileRecommended = "recommended"
 	ProfileCustom      = "custom"
 )
 
-// Thresholds drive the health evaluation. Durations are minutes; a
-// condition must hold that long before it is an issue, and clears only
-// below the clear level (hysteresis), so momentary spikes never count.
+// Thresholds is M11's complete custom profile, kept only to read and
+// migrate stored settings.
 type Thresholds struct {
 	CPUPercent       float64 `json:"cpu_percent"`
 	CPUMinutes       int     `json:"cpu_minutes"`
@@ -39,8 +40,8 @@ type Thresholds struct {
 	StaleIntervals   int     `json:"stale_intervals"`
 }
 
-// Recommended is the prebuilt profile: useful health states with no
-// configuration.
+// Recommended is M11's prebuilt profile as Thresholds (the same values as
+// the Recommended health configuration).
 func Recommended() Thresholds {
 	return Thresholds{CPUPercent: 95, CPUMinutes: 5, MemoryPercent: 90, MemoryCritical: 97, MemoryMinutes: 5,
 		DiskWarning: 85, DiskCritical: 95, InodeWarning: 90, InodeCritical: 97, ServiceMinutes: 1, WatchedMinutes: 2,
@@ -79,10 +80,12 @@ func (t Thresholds) Validate() error {
 
 // Settings is the fleet's monitoring configuration (audited when changed).
 type Settings struct {
-	Enabled       bool       `json:"enabled"`
-	Profile       string     `json:"profile"`
-	Custom        Thresholds `json:"custom"`
-	RetentionDays int        `json:"retention_days"`
+	Enabled bool `json:"enabled"`
+	// Profile and Custom are M11's (read once and migrated; never stored
+	// again).
+	Profile       string      `json:"profile,omitempty"`
+	Custom        *Thresholds `json:"custom,omitempty"`
+	RetentionDays int         `json:"retention_days"`
 	// Agent sampling (agentmon.Config) and the fleet's default agent budget.
 	SampleS   int              `json:"sample_s"`
 	SlowS     int              `json:"slow_s"`
@@ -106,24 +109,16 @@ const (
 
 // DefaultSettings: monitoring on, recommended thresholds.
 func DefaultSettings() Settings {
-	return Settings{Enabled: true, Profile: ProfileRecommended, Custom: Recommended(), RetentionDays: DefaultRetentionDays,
+	return Settings{Enabled: true, RetentionDays: DefaultRetentionDays,
 		SampleS: agentmon.DefaultSampleS, SlowS: agentmon.DefaultSlowS, ServicesS: agentmon.DefaultServicesS,
 		StorageS: agentmon.DefaultStorageS, SmartS: agentmon.DefaultSmartS, BufferKB: agentmon.DefaultBufferKB,
 		SSHPollS: DefaultSSHPollS, SSHSmartS: DefaultSSHSmartS, SSHSudo: true}
 }
 
-// Thresholds in effect.
-func (s Settings) Thresholds() Thresholds {
-	if s.Profile == ProfileCustom {
-		return s.Custom
-	}
-	return Recommended()
-}
-
 // Validate checks the settings.
 func (s Settings) Validate() error {
-	if s.Profile != ProfileRecommended && s.Profile != ProfileCustom {
-		return errors.New("profile must be recommended or custom")
+	if s.Profile != "" && s.Profile != ProfileRecommended && s.Profile != ProfileCustom {
+		return errors.New("profile must be recommended")
 	}
 	if s.RetentionDays < 7 || s.RetentionDays > 400 {
 		return errors.New("retention must be 7–400 days")
@@ -135,6 +130,9 @@ func (s Settings) Validate() error {
 		return errors.New("the SSH storage health interval must be 10 minutes to 7 days")
 	}
 	if s.Profile == ProfileCustom {
+		if s.Custom == nil {
+			return errors.New("a custom profile needs its thresholds")
+		}
 		if err := s.Custom.Validate(); err != nil {
 			return err
 		}
@@ -166,8 +164,13 @@ func LoadSettings(ctx context.Context, q *db.Queries) Settings {
 	return s
 }
 
-// SaveSettingsTx stores the settings.
+// SaveSettingsTx stores the settings. Health thresholds are not part of
+// them any more: they are overrides (a custom profile is refused).
 func SaveSettingsTx(ctx context.Context, q *db.Queries, s Settings, by string, now int64) error {
+	if s.Profile == ProfileCustom {
+		return errors.New("health thresholds are configured as overrides (Settings → Monitoring → Health checks), not as a custom profile")
+	}
+	s.Profile, s.Custom = "", nil
 	if err := s.Validate(); err != nil {
 		return err
 	}
@@ -186,8 +189,8 @@ type HostSettings struct {
 	ProbeMounts []string         `json:"probe_mounts"`
 	ProbeS      int              `json:"probe_s,omitempty"`
 	Limits      *agentmon.Limits `json:"limits,omitempty"`
-	// DisabledChecks turn individual health checks off for this host.
-	DisabledChecks []string `json:"disabled_checks"`
+	// Turning a check off for a host is a health override since M12.1
+	// (M11's disabled_checks are migrated at start).
 }
 
 // ProbeWarning is shown when the probe runs more often than hourly.
@@ -227,25 +230,10 @@ func (h *HostSettings) Validate() (warning string, err error) {
 	if err := h.Limits.Validate(); err != nil {
 		return "", err
 	}
-	for _, c := range h.DisabledChecks {
-		if !KnownCheck(c) {
-			return "", fmt.Errorf("unknown check %q", c)
-		}
-	}
 	if len(h.ProbeMounts) > 0 && h.ProbeS < 3000 {
 		warning = ProbeWarning
 	}
 	return warning, nil
-}
-
-// Disabled reports whether a check is off for the host.
-func (h HostSettings) Disabled(check string) bool {
-	for _, c := range h.DisabledChecks {
-		if c == check {
-			return true
-		}
-	}
-	return false
 }
 
 // Watched reports whether a unit is watched.

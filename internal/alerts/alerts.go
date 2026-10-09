@@ -280,7 +280,7 @@ func (s *Service) onIssue(ctx context.Context, tx *sql.Tx, t monsvc.IssueTransit
 		if err != nil {
 			return false, err
 		}
-		return s.resolveAlert(ctx, tx, a, t.At, "")
+		return s.resolveAlert(ctx, tx, a, t.At, "", t.Resolution, t.ResolutionNote)
 	}
 	return false, nil
 }
@@ -312,6 +312,11 @@ type Alert struct {
 	EverSuppressed bool              `json:"ever_suppressed"`
 	NotifyAfter    *int64            `json:"notify_after,omitempty"`
 	Notification   NotificationState `json:"notification"`
+	// Resolution: why a resolved alert closed. "recovered" is the only
+	// recovery; disabled, reconfigured and gone are configuration or
+	// inventory changes (M12.1).
+	Resolution     string `json:"resolution,omitempty"`
+	ResolutionNote string `json:"resolution_note,omitempty"`
 
 	suppressedBy  string
 	nextReminder  *int64
@@ -344,7 +349,7 @@ type NotificationState struct {
 
 const alertCols = `id, host_id, host_name, issue_id, check_id, subject, category, severity, peak_severity, state, title, detail, value,
 	observed_at, issue_started_at, opened_at, acknowledged_at, ack_by_name, ack_note, resolved_at, suppressed, suppressed_by,
-	ever_suppressed, notify_after, next_reminder_at, reminders_sent`
+	ever_suppressed, notify_after, next_reminder_at, reminders_sent, COALESCE(resolution, ''), resolution_note`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -357,7 +362,7 @@ func scanAlert(r scanner, now int64) (*Alert, error) {
 	var sup, ever int
 	if err := r.Scan(&a.ID, &a.HostID, &a.HostName, &a.IssueID, &a.Check, &a.Subject, &a.Category, &a.Severity, &a.PeakSeverity,
 		&a.State, &a.Title, &a.Detail, &value, &observed, &a.IssueStartedAt, &a.OpenedAt, &ackAt, &ackBy, &ackNote, &resolved,
-		&sup, &supBy, &ever, &notifyAfter, &nextRem, &a.remindersSent); err != nil {
+		&sup, &supBy, &ever, &notifyAfter, &nextRem, &a.remindersSent, &a.Resolution, &a.ResolutionNote); err != nil {
 		return nil, err
 	}
 	if value.Valid {
@@ -522,26 +527,53 @@ func (s *Service) changeAlert(ctx context.Context, tx *sql.Tx, a *Alert, in issu
 	return n > 0, err
 }
 
-// resolveAlert records the source issue's recovery. Recoveries go to the
-// destinations that were sent the opening (or escalation) and whose
-// routes want recoveries, unless the host is in maintenance.
-func (s *Service) resolveAlert(ctx context.Context, tx *sql.Tx, a *Alert, at int64, note string) (bool, error) {
-	if _, err := tx.ExecContext(ctx, `UPDATE alerts SET state = 'resolved', resolved_at = ?, notify_after = NULL, next_reminder_at = NULL, updated_at = ?
-		WHERE id = ? AND state != 'resolved'`, at, at, a.ID); err != nil {
+// Resolutions that aren't recoveries (M12.1; see monsvc.Res*).
+func clearedBy(why string) bool { return why == "disabled" || why == "reconfigured" || why == "gone" }
+
+// resolveAlert records the end of the source issue. A recovery goes to
+// the destinations that were sent the opening (or escalation) and whose
+// routes want recoveries, unless the host is in maintenance. An issue that
+// ended because of configuration (its check turned off, its threshold
+// changed) or because its subject disappeared closes the alert truthfully:
+// the timeline and the closing notification say "cleared", never
+// "recovered".
+func (s *Service) resolveAlert(ctx context.Context, tx *sql.Tx, a *Alert, at int64, note, why, whyNote string) (bool, error) {
+	if why == "" {
+		why = "recovered"
+	}
+	cleared := clearedBy(why)
+	if _, err := tx.ExecContext(ctx, `UPDATE alerts SET state = 'resolved', resolved_at = ?, notify_after = NULL, next_reminder_at = NULL, updated_at = ?,
+		resolution = ?, resolution_note = ? WHERE id = ? AND state != 'resolved'`, at, at, why, whyNote, a.ID); err != nil {
 		return false, err
 	}
-	a.State, a.ResolvedAt = StateResolved, &at
+	a.State, a.ResolvedAt, a.Resolution, a.ResolutionNote = StateResolved, &at, why, whyNote
 	dur := time.Duration(max(0, at-a.start())) * time.Millisecond
-	rec := "Condition recovered"
-	if note != "" {
-		rec += " — " + note
+	msgKind := notify.MsgRecovery
+	if cleared {
+		msgKind = notify.MsgCleared
+		text := "Cleared by configuration"
+		if why == "gone" {
+			text = "Closed: no longer reported by the host"
+		}
+		if whyNote != "" {
+			text += " — " + whyNote
+		}
+		s.timeline(ctx, tx, a.ID, at, "cleared", text, "")
+		s.timeline(ctx, tx, a.ID, at, "resolved", "Alert closed after "+notify.Duration(dur)+" (not a recovery)", "")
+		s.event(ctx, tx, Event{TS: at, Kind: "alert.cleared", Severity: "info", HostID: a.HostID, ObjectType: "alert", ObjectID: a.ID,
+			Title: "Cleared (" + why + "): " + a.HostName + " — " + a.Title})
+	} else {
+		rec := "Condition recovered"
+		if note != "" {
+			rec += " — " + note
+		}
+		s.timeline(ctx, tx, a.ID, at, "recovered", rec, "")
+		s.timeline(ctx, tx, a.ID, at, "resolved", "Alert resolved after "+notify.Duration(dur), "")
+		s.event(ctx, tx, Event{TS: at, Kind: "alert.recovered", Severity: "info", HostID: a.HostID, ObjectType: "alert", ObjectID: a.ID,
+			Title: "Recovered: " + a.HostName + " — " + a.Title + " (" + notify.Duration(dur) + ")"})
 	}
-	s.timeline(ctx, tx, a.ID, at, "recovered", rec, "")
-	s.timeline(ctx, tx, a.ID, at, "resolved", "Alert resolved after "+notify.Duration(dur), "")
-	s.event(ctx, tx, Event{TS: at, Kind: "alert.recovered", Severity: "info", HostID: a.HostID, ObjectType: "alert", ObjectID: a.ID,
-		Title: "Recovered: " + a.HostName + " — " + a.Title + " (" + notify.Duration(dur) + ")"})
 	// Reminders and escalations that haven't gone out are moot now.
-	if _, err := tx.ExecContext(ctx, `UPDATE notify_deliveries SET status = 'cancelled', finished_at = ?, last_error = 'the alert recovered first'
+	if _, err := tx.ExecContext(ctx, `UPDATE notify_deliveries SET status = 'cancelled', finished_at = ?, last_error = 'the alert closed first'
 		WHERE alert_id = ? AND status = 'queued' AND kind = 'reminder'`, at, a.ID); err != nil {
 		return false, err
 	}
@@ -558,7 +590,7 @@ func (s *Service) resolveAlert(ctx context.Context, tx *sql.Tx, a *Alert, at int
 		var had int
 		tx.QueryRowContext(ctx, `SELECT count(*) FROM notify_deliveries WHERE alert_id = ? AND status = 'delivered'`, a.ID).Scan(&had)
 		if n, _ := res.RowsAffected(); n > 0 || had > 0 {
-			s.timeline(ctx, tx, a.ID, at, "suppressed", "Recovery notification suppressed by maintenance"+reasonSuffix(m.Reason), "")
+			s.timeline(ctx, tx, a.ID, at, "suppressed", "Closing notification suppressed by maintenance"+reasonSuffix(m.Reason), "")
 		}
 		return false, nil
 	}
@@ -578,7 +610,7 @@ func (s *Service) resolveAlert(ctx context.Context, tx *sql.Tx, a *Alert, at int
 		targets = append(targets, t)
 	}
 	rows.Close()
-	msg := s.message(ctx, tx, a, notify.MsgRecovery, 0)
+	msg := s.message(ctx, tx, a, msgKind, 0)
 	for _, t := range targets {
 		if err := s.insertDelivery(ctx, tx, a.ID, t, notify.MsgRecovery, 0, msg, at); err != nil {
 			return false, err
@@ -592,7 +624,7 @@ func (s *Service) resolveAlert(ctx context.Context, tx *sql.Tx, a *Alert, at int
 func (s *Service) timeline(ctx context.Context, qq q, alertID string, ts int64, kind, text, actor string) {
 	var n int
 	qq.QueryRowContext(ctx, `SELECT count(*) FROM alert_events WHERE alert_id = ?`, alertID).Scan(&n)
-	if n >= s.cfg.TimelineMax && kind != "resolved" && kind != "recovered" {
+	if n >= s.cfg.TimelineMax && kind != "resolved" && kind != "recovered" && kind != "cleared" {
 		return // bounded; the lifecycle's end is always kept
 	}
 	if len(text) > 500 {
@@ -744,6 +776,10 @@ func (s *Service) message(ctx context.Context, qq q, a *Alert, kind string, remi
 		m.ResolvedAt = &t
 		d := max(0, *a.ResolvedAt-a.start()) / 1000
 		m.DurationS = &d
+	}
+	if kind == notify.MsgCleared {
+		m.EventID = a.ID + ":" + notify.MsgRecovery // one closing event per alert, whatever its reason
+		m.Resolution, m.ResolutionNote = a.Resolution, a.ResolutionNote
 	}
 	if a.Acknowledgment != nil {
 		m.AckBy, m.AckNote = a.Acknowledgment.By, a.Acknowledgment.Note

@@ -1197,6 +1197,7 @@
       "chip": "k10temp",
       "label": "Tctl",
       "kind": "cpu",
+      "hw": "0000:00:18.3",
       "celsius": 78.4
      },
      {
@@ -1204,6 +1205,7 @@
       "chip": "amdgpu",
       "label": "edge",
       "kind": "gpu",
+      "hw": "0000:0c:00.0",
       "celsius": 42,
       "critical": 100
      }
@@ -1212,6 +1214,8 @@
      {
       "index": 0,
       "vendor": "nvidia",
+      "uuid": "GPU-4a1f6c2e-8d3b-4f5a-9c71-2b0e9d6a1f30",
+      "pci": "0000:01:00.0",
       "model": "NVIDIA GeForce RTX 4090",
       "source": "nvidia-smi",
       "util_percent": 91,
@@ -1224,6 +1228,7 @@
      {
       "index": 1,
       "vendor": "amd",
+      "pci": "0000:0c:00.0",
       "model": "AMD Raphael iGPU [1002:164e]",
       "source": "sysfs",
       "celsius": 42,

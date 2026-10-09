@@ -4,7 +4,6 @@ import (
 	"context"
 	"sort"
 	"strings"
-	"time"
 
 	"drool/internal/monitor/storage"
 )
@@ -52,11 +51,11 @@ var checkCategory = map[string]string{
 	CheckCPU: "cpu", CheckMemory: "memory", CheckFilesystem: "disk", CheckInodes: "disk", CheckFSReadOnly: "storage",
 	CheckDeviceReadOnly: "storage", CheckStorageHealth: "storage", CheckMediaErrors: "storage", CheckKernelStorage: "storage",
 	CheckProbe: "storage", CheckServiceFailed: "services", CheckServiceStopped: "services", CheckInterfaceDown: "network",
-	CheckTemperature: "temperature", CheckStale: "stale", CheckFidelity: "fidelity",
+	CheckTemperature: "temperature", CheckStale: "stale", CheckFidelity: "fidelity", CheckGPUUtil: "gpu",
 }
 
 // CheckCategory is the category a check belongs to (cpu, memory, disk,
-// storage, services, network, temperature, stale, fidelity).
+// storage, services, network, temperature, gpu, stale, fidelity).
 func CheckCategory(check string) string {
 	if c, ok := checkCategory[check]; ok {
 		return c
@@ -65,7 +64,7 @@ func CheckCategory(check string) string {
 }
 
 // CheckCategories lists the categories of the checks.
-var CheckCategories = []string{"cpu", "memory", "disk", "storage", "services", "network", "temperature", "stale", "fidelity"}
+var CheckCategories = []string{"cpu", "memory", "disk", "storage", "services", "network", "temperature", "gpu", "stale", "fidelity"}
 
 // FleetFilter selects rows.
 type FleetFilter struct {
@@ -85,6 +84,7 @@ func (s *Service) Fleet(ctx context.Context, f FleetFilter) (*FleetSummary, erro
 		return nil, err
 	}
 	set := s.Settings(ctx)
+	pol := s.eval.current(ctx)
 	issues, err := s.Issues(ctx, IssueFilter{Limit: 500})
 	if err != nil {
 		return nil, err
@@ -138,11 +138,7 @@ func (s *Service) Fleet(ctx context.Context, f FleetFilter) (*FleetSummary, erro
 			if c.storage != nil {
 				r.StorageText = worstDevice(c.storage.Devices)
 			}
-			interval := time.Minute
-			if c.source == "ssh" {
-				interval = time.Duration(set.SSHPollS) * time.Second
-			}
-			r.Stale = now.Sub(c.at) > time.Duration(set.Thresholds().StaleIntervals)*interval+time.Minute
+			r.Stale = now.Sub(c.at) > staleAfter(pol, h.ID, c.source, set.SSHPollS)
 		}
 		s.mu.Unlock()
 		if r.Source == "" {

@@ -1,3 +1,4 @@
+import { SubjectHealthButton } from "@/components/health/HostHealth";
 import { Fragment, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
@@ -59,6 +60,7 @@ function DeviceCard({ id, d, events, probes, settings, canProbe, fs }: {
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <Badge>{kindWord[d.kind] ?? d.kind}</Badge>
+          <span className="order-last ml-auto"><SubjectHealthButton hostId={id} kind="disk" subjectRef={d.key} label={d.name} /></span>
           <span>{formatBytes(d.size_bytes)}</span>
           <span className="text-muted">Health telemetry: <strong className="text-fg">{capabilityWord[d.capability] ?? d.capability}</strong></span>
           {d.standby && <Badge tone="accent">In standby (not woken)</Badge>}

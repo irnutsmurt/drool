@@ -21,7 +21,7 @@ import (
 
 // HostSettings returns a host's monitoring settings.
 func (s *Service) HostSettings(ctx context.Context, hostID string) HostSettings {
-	h := HostSettings{WatchedServices: []string{}, ProbeMounts: []string{}, DisabledChecks: []string{}, ProbeS: agentmon.DefaultProbeS}
+	h := HostSettings{WatchedServices: []string{}, ProbeMounts: []string{}, ProbeS: agentmon.DefaultProbeS}
 	var j string
 	if err := s.d.Store.Reader.QueryRowContext(ctx, `SELECT settings_json FROM mon_host_settings WHERE host_id = ?`, hostID).Scan(&j); err == nil {
 		json.Unmarshal([]byte(j), &h)
@@ -29,12 +29,17 @@ func (s *Service) HostSettings(ctx context.Context, hostID string) HostSettings 
 	return h
 }
 
-// SaveHostSettingsTx stores a host's settings (the caller audits).
+// SaveHostSettingsTx stores a host's settings (the caller audits). The
+// watched services are part of the health configuration: the evaluator
+// notices the change.
 func SaveHostSettingsTx(ctx context.Context, tx *sql.Tx, hostID string, h HostSettings, by string, now int64) error {
 	b, _ := json.Marshal(h)
 	var byv any
 	if by != "" {
 		byv = by
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE mon_health_gen SET gen = gen + 1 WHERE id = 1`); err != nil {
+		return err
 	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO mon_host_settings (host_id, settings_json, updated_by, updated_at) VALUES (?, ?, ?, ?)
 		ON CONFLICT(host_id) DO UPDATE SET settings_json = excluded.settings_json, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
@@ -218,6 +223,9 @@ type Issue struct {
 	StartedAt  int64    `json:"started_at"`
 	UpdatedAt  int64    `json:"updated_at"`
 	ResolvedAt *int64   `json:"resolved_at,omitempty"`
+	// Resolution: recovered | disabled | reconfigured | gone (M12.1).
+	Resolution     string `json:"resolution,omitempty"`
+	ResolutionNote string `json:"resolution_note,omitempty"`
 }
 
 // IssueFilter selects issues.
@@ -232,7 +240,8 @@ type IssueFilter struct {
 
 // Issues lists issues, newest first (bounded).
 func (s *Service) Issues(ctx context.Context, f IssueFilter) ([]Issue, error) {
-	q := `SELECT i.id, i.host_id, h.name, i.check_id, i.subject, i.severity, i.state, i.title, i.detail, i.value, i.started_at, i.updated_at, i.resolved_at
+	q := `SELECT i.id, i.host_id, h.name, i.check_id, i.subject, i.severity, i.state, i.title, i.detail, i.value, i.started_at, i.updated_at, i.resolved_at,
+		COALESCE(i.resolution, ''), i.resolution_note
 		FROM mon_issues i JOIN hosts h ON h.id = i.host_id WHERE 1=1`
 	var args []any
 	if f.HostID != "" {
@@ -269,7 +278,8 @@ func (s *Service) Issues(ctx context.Context, f IssueFilter) ([]Issue, error) {
 		var i Issue
 		var v sql.NullFloat64
 		var r sql.NullInt64
-		if err := rows.Scan(&i.ID, &i.HostID, &i.HostName, &i.Check, &i.Subject, &i.Severity, &i.State, &i.Title, &i.Detail, &v, &i.StartedAt, &i.UpdatedAt, &r); err != nil {
+		if err := rows.Scan(&i.ID, &i.HostID, &i.HostName, &i.Check, &i.Subject, &i.Severity, &i.State, &i.Title, &i.Detail, &v, &i.StartedAt, &i.UpdatedAt, &r,
+			&i.Resolution, &i.ResolutionNote); err != nil {
 			return nil, err
 		}
 		if v.Valid {
@@ -367,11 +377,7 @@ func (s *Service) Overview(ctx context.Context, hostID string) (*HostOverview, e
 		return o, nil
 	}
 	o.HasData, o.State = true, st
-	interval := time.Minute
-	if o.Source == "ssh" {
-		interval = time.Duration(set.SSHPollS) * time.Second
-	}
-	o.Stale = s.now().Sub(time.UnixMilli(o.UpdatedAt)) > time.Duration(set.Thresholds().StaleIntervals)*interval+time.Minute
+	o.Stale = s.now().Sub(time.UnixMilli(o.UpdatedAt)) > staleAfter(s.eval.current(ctx), hostID, o.Source, set.SSHPollS)
 	sevOf := func(checks ...string) string {
 		st := "ok"
 		for _, i := range issues {

@@ -1979,6 +1979,124 @@ paths:
       responses:
         '200': { description: Saved., content: { application/json: { schema: { $ref: '#/components/schemas/MonSettingsView' } } } }
         '422': { $ref: '#/components/responses/Problem' }
+  /monitoring/health/checks:
+    get:
+      operationId: healthChecks
+      tags: [monitoring]
+      description: The health checks and the fields each honestly supports (a SMART failure has no numeric threshold).
+      responses:
+        '200': { description: Checks., content: { application/json: { schema: { type: object, required: [checks], properties: { checks: { type: array, items: { $ref: '#/components/schemas/HealthCheckSpec' } } } } } } }
+  /monitoring/health/global:
+    get:
+      operationId: healthGlobal
+      tags: [monitoring]
+      description: >-
+        The fleet-wide health configuration: the Recommended profile plus global overrides, each field with its value, its
+        source and what it would be without the global override. Health overrides decide what monitoring considers
+        unhealthy; who is notified is the separate notification routing.
+      responses:
+        '200': { description: Configuration., content: { application/json: { schema: { $ref: '#/components/schemas/HealthView' } } } }
+  /monitoring/health/groups:
+    get:
+      operationId: healthGroups
+      tags: [monitoring]
+      description: Every group with its monitoring override priority and how many fields it overrides.
+      responses:
+        '200': { description: Groups., content: { application/json: { schema: { type: object, required: [groups], properties: { groups: { type: array, items: { $ref: '#/components/schemas/HealthGroup' } } } } } } }
+  /monitoring/health/groups/{id}:
+    get:
+      operationId: healthGroup
+      tags: [monitoring]
+      description: One group's view; `inherited` is what the group gets from global and Recommended.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Configuration., content: { application/json: { schema: { $ref: '#/components/schemas/HealthView' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /monitoring/health/groups/{id}/priority:
+    put:
+      operationId: setHealthGroupPriority
+      tags: [monitoring]
+      description: >-
+        A group's monitoring override priority (-1000–1000, default 0). When a host is in several groups that set the same
+        field, the higher priority wins; equal priorities with different values are a conflict (shown, never resolved
+        silently). Requires `monitoring.settings`; audited.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [priority], properties: { priority: { type: integer, minimum: -1000, maximum: 1000 } } } } } }
+      responses:
+        '200': { description: The group's view., content: { application/json: { schema: { $ref: '#/components/schemas/HealthView' } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /monitoring/health/overrides:
+    get:
+      operationId: listHealthOverrides
+      tags: [monitoring]
+      description: Stored overrides, most general first (at most 1000).
+      parameters:
+        - { name: scope, in: query, schema: { type: string, enum: [global, group, host] } }
+        - { name: group_id, in: query, schema: { type: string } }
+        - { name: host_id, in: query, schema: { type: string } }
+        - { name: check, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Overrides., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/HealthOverride' } } } } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+    put:
+      operationId: putHealthOverride
+      tags: [monitoring]
+      description: >-
+        Sets one scope's complete sparse field set for a check (and, at host scope, optionally one subject). Fields left
+        out are inherited; an empty `fields` removes the override ("Reset to inherited"). Takes effect at once: an
+        active issue still failing under the new rule stays open (its severity follows the rule); one whose check is now
+        off, or whose current value no longer qualifies, closes as `disabled` or `reconfigured` (never a recovery);
+        pending durations restart from the change. Global and group scope require `monitoring.settings`; host and subject
+        scope require `monitoring.manage`, or `monitoring.settings` when the change makes detection less sensitive
+        (a check off, a higher threshold, a longer duration, a sooner clear). Audited.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/HealthOverrideInput' } } } }
+      responses:
+        '200':
+          description: Saved (or removed).
+          content: { application/json: { schema: { type: object, required: [removed], properties: { override: { $ref: '#/components/schemas/HealthOverride' }, removed: { type: boolean } } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /monitoring/health/overrides/{id}:
+    delete:
+      operationId: deleteHealthOverride
+      tags: [monitoring]
+      description: Reset to inherited (the same permissions as changing it). Audited.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '204': { description: Removed. }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /monitoring/health/preview:
+    post:
+      operationId: previewHealthOverride
+      tags: [monitoring]
+      description: >-
+        What a change would do, without making it: hosts whose rule changes, how many are above the previous and the new
+        warning level now, and which active issues would close. With `priority`, previews a group priority change.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/HealthPreviewInput' } } } }
+      responses:
+        '200': { description: Impact., content: { application/json: { schema: { $ref: '#/components/schemas/HealthPreview' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/monitoring/health:
+    get:
+      operationId: hostHealth
+      tags: [monitoring]
+      description: >-
+        A host's effective health configuration with provenance (Recommended, hardware limit, global, group, host or
+        subject), group conflicts, and the subjects that can be customized (including configured ones the host doesn't
+        report now). With `subject`, that subject's checks; with `check`, one check.
+      parameters:
+        - { $ref: '#/components/parameters/HostId' }
+        - { name: check, in: query, schema: { type: string } }
+        - { name: subject, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Configuration., content: { application/json: { schema: { $ref: '#/components/schemas/HealthView' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
   /monitoring/approvals:
     get:
       operationId: listHelperApprovals
@@ -2143,8 +2261,10 @@ paths:
       operationId: setHostMonitoringSettings
       tags: [monitoring]
       description: >-
-        Watched services, the flash probe and disabled checks (`monitoring.manage`); the agent's resource budget needs
+        Watched services and the flash probe (`monitoring.manage`); the agent's resource budget needs
         `monitoring.settings`. Audited; re-sent to the agent. A probe more often than hourly returns a wear warning.
+        Turning a check off is a health override (`PUT /monitoring/health/overrides`); a non-empty `disabled_checks`
+        (M11) is refused.
       parameters: [{ $ref: '#/components/parameters/HostId' }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/MonHostSettings' } } } }
       responses:
@@ -2212,7 +2332,7 @@ paths:
         - { name: severity, in: query, schema: { type: string, enum: [warning, critical] } }
         - { name: host_id, in: query, schema: { type: string } }
         - { name: group_id, in: query, schema: { type: string } }
-        - { name: category, in: query, schema: { type: string, enum: [cpu, memory, disk, storage, services, network, temperature, stale, fidelity] } }
+        - { name: category, in: query, schema: { type: string, enum: [cpu, memory, disk, storage, services, network, temperature, gpu, stale, fidelity] } }
         - { name: check, in: query, schema: { type: string } }
         - { name: acknowledged, in: query, schema: { type: boolean } }
         - { name: suppressed, in: query, schema: { type: boolean }, description: 'Open views: suppressed by maintenance now. History: was suppressed.' }
@@ -4479,6 +4599,8 @@ components:
         started_at: { type: integer }
         updated_at: { type: integer }
         resolved_at: { type: integer }
+        resolution: { type: string, enum: [recovered, disabled, reconfigured, gone], description: 'Why it ended: only `recovered` is a recovery.' }
+        resolution_note: { type: string }
     MonProbe:
       type: object
       required: [mount, at, ok, direct, ms]
@@ -4528,13 +4650,12 @@ components:
         approved: { type: string, enum: [global, group] }
     MonHostSettings:
       type: object
-      required: [watched_services, probe_mounts, disabled_checks]
+      required: [watched_services, probe_mounts]
       properties:
         watched_services: { type: array, items: { type: string } }
         probe_mounts: { type: array, items: { type: string } }
         probe_s: { type: integer, description: Seconds between probes (default 3600). Shorter intervals are allowed but add flash wear. }
         limits: { $ref: '#/components/schemas/MonLimits' }
-        disabled_checks: { type: array, items: { type: string } }
     MonHostOverview:
       type: object
       required: [host_id, has_data, source, stale, updated_at, tiles, issues, probes, settings, helpers, gaps]
@@ -4732,31 +4853,12 @@ components:
       type: object
       required: [time, level, message]
       properties: { time: { type: string }, level: { type: string }, message: { type: string } }
-    MonThresholds:
-      type: object
-      required: [cpu_percent, cpu_minutes, memory_percent, memory_critical_percent, memory_minutes, disk_warning_percent, disk_critical_percent, inode_warning_percent, inode_critical_percent, service_failed_minutes, watched_stopped_minutes, interface_down_minutes, temperature_minutes, stale_intervals]
-      properties:
-        cpu_percent: { type: number }
-        cpu_minutes: { type: integer }
-        memory_percent: { type: number }
-        memory_critical_percent: { type: number }
-        memory_minutes: { type: integer }
-        disk_warning_percent: { type: number }
-        disk_critical_percent: { type: number }
-        inode_warning_percent: { type: number }
-        inode_critical_percent: { type: number }
-        service_failed_minutes: { type: integer }
-        watched_stopped_minutes: { type: integer }
-        interface_down_minutes: { type: integer }
-        temperature_minutes: { type: integer }
-        stale_intervals: { type: integer }
     MonSettings:
       type: object
-      required: [enabled, profile, custom, retention_days, sample_s, slow_s, services_s, storage_s, smart_s, buffer_kb, ssh_poll_s, ssh_smart_s, ssh_sudo]
+      description: Fleet monitoring settings. Health thresholds are not here since M12.1; they are health overrides.
+      required: [enabled, retention_days, sample_s, slow_s, services_s, storage_s, smart_s, buffer_kb, ssh_poll_s, ssh_smart_s, ssh_sudo]
       properties:
         enabled: { type: boolean }
-        profile: { type: string, enum: [recommended, custom] }
-        custom: { $ref: '#/components/schemas/MonThresholds' }
         retention_days: { type: integer, minimum: 7, maximum: 400 }
         sample_s: { type: integer }
         slow_s: { type: integer }
@@ -4768,16 +4870,204 @@ components:
         ssh_poll_s: { type: integer }
         ssh_smart_s: { type: integer }
         ssh_sudo: { type: boolean }
+    HealthFieldSpec:
+      type: object
+      required: [name, label, type, min, max]
+      properties:
+        name: { type: string, enum: [enabled, warning, critical, duration_min, clear, clear_duration_min, missed_intervals] }
+        label: { type: string }
+        type: { type: string, enum: [bool, percent, celsius, minutes, count] }
+        unit: { type: string }
+        min: { type: number }
+        max: { type: number }
+        help: { type: string }
+    HealthCheckSpec:
+      type: object
+      required: [id, label, category, description, fields]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        category: { type: string }
+        description: { type: string }
+        subject: { type: string, enum: [filesystem, disk, gpu, sensor, interface, service, probe], description: What a subject override binds to. }
+        fields: { type: array, items: { $ref: '#/components/schemas/HealthFieldSpec' } }
+        info: { type: boolean, description: Informational; never an alert. }
+        default_off: { type: boolean, description: Off in the Recommended profile (high GPU utilization). }
+    HealthFields:
+      type: object
+      description: A sparse field set; absent (or null) fields are inherited.
+      properties:
+        enabled: { type: boolean }
+        warning: { type: number }
+        critical: { type: number }
+        duration_min: { type: integer }
+        clear: { type: number }
+        clear_duration_min: { type: integer }
+        missed_intervals: { type: integer }
+    HealthGroupRef:
+      type: object
+      required: [id, name, priority]
+      properties: { id: { type: string }, name: { type: string }, priority: { type: integer }, value: { type: number } }
+    HealthProvenance:
+      type: object
+      required: [kind, label]
+      properties:
+        kind: { type: string, enum: [recommended, hardware, derived, global, group, host, subject, unset] }
+        label: { type: string, description: 'For people: "Recommended default", "Hardware-reported limit", "Inherited from group: NAS", "Custom for this host", "Custom for /srv/media".' }
+        groups: { type: array, items: { $ref: '#/components/schemas/HealthGroupRef' } }
+        subject: { type: string }
+        subject_label: { type: string }
+    HealthConflict:
+      type: object
+      required: [priority, groups]
+      properties:
+        priority: { type: integer }
+        groups: { type: array, items: { $ref: '#/components/schemas/HealthGroupRef' } }
+    HealthResolved:
+      type: object
+      required: [value, source]
+      properties:
+        value: { type: number, nullable: true, description: 'null: no value (no hardware limit, no critical level).' }
+        source: { $ref: '#/components/schemas/HealthProvenance' }
+        conflict: { $ref: '#/components/schemas/HealthConflict' }
+    HealthEffectiveField:
+      allOf:
+        - { $ref: '#/components/schemas/HealthFieldSpec' }
+        - { $ref: '#/components/schemas/HealthResolved' }
+        - type: object
+          required: [own, inherited]
+          properties:
+            own: { type: number, nullable: true, description: "This scope's own override of the field (null: inherited)." }
+            inherited: { $ref: '#/components/schemas/HealthResolved' }
+    HealthEffectiveCheck:
+      type: object
+      required: [check, label, category, description, enabled, customized, conflicts, fields]
+      properties:
+        check: { type: string }
+        label: { type: string }
+        category: { type: string }
+        description: { type: string }
+        subject_kind: { type: string }
+        info: { type: boolean }
+        default_off: { type: boolean }
+        enabled: { type: boolean }
+        customized: { type: boolean, description: This scope overrides at least one field. }
+        conflicts: { type: integer }
+        override_id: { type: string }
+        fields: { type: array, items: { $ref: '#/components/schemas/HealthEffectiveField' } }
+    HealthSubject:
+      type: object
+      required: [key, kind, label, identity, strength, present, checks, customized]
+      properties:
+        key: { type: string, description: 'Stable identity: fsuuid:, mount:, disk:, gpu:, sensor:, iface:, unit:.' }
+        kind: { type: string }
+        label: { type: string }
+        identity: { type: string }
+        strength: { type: string, enum: [stable, location, name, weak, ''], description: How stable the identity is (empty for subjects not reported now). }
+        present: { type: boolean, description: 'Reported by the host now; false: configured but currently unavailable.' }
+        checks: { type: array, items: { type: string } }
+        customized: { type: boolean }
+        issue_subject: { type: string, description: 'The subject as health issues name it (a mount, a unit, a sensor id, a GPU id).' }
+        ref: { type: string, description: 'What the current report calls it (a mount, a sensor id, a disk key, an interface, a unit, gpu:<index>), to find the subject of a row.' }
+    HealthSummary:
+      type: object
+      required: [text, global_fields, group_fields, host_fields, subject_fields, conflicts, using_recommended]
+      properties:
+        text: { type: string }
+        global_fields: { type: integer }
+        group_fields: { type: integer }
+        host_fields: { type: integer }
+        subject_fields: { type: integer }
+        conflicts: { type: integer }
+        using_recommended: { type: boolean }
+    HealthGroup:
+      type: object
+      required: [group_id, name, priority, hosts, overrides]
+      properties:
+        group_id: { type: string }
+        name: { type: string }
+        priority: { type: integer }
+        hosts: { type: integer }
+        overrides: { type: integer }
+    HealthView:
+      type: object
+      required: [scope, checks]
+      properties:
+        scope: { type: string, enum: [global, group, host] }
+        group_id: { type: string }
+        host_id: { type: string }
+        subject: { $ref: '#/components/schemas/HealthSubject' }
+        checks: { type: array, items: { $ref: '#/components/schemas/HealthEffectiveCheck' } }
+        summary: { $ref: '#/components/schemas/HealthSummary' }
+        subjects: { type: array, items: { $ref: '#/components/schemas/HealthSubject' } }
+        groups: { type: array, items: { $ref: '#/components/schemas/HealthGroup' } }
+    HealthOverride:
+      type: object
+      required: [id, scope, check, fields, updated_at, created_at]
+      properties:
+        id: { type: string }
+        scope: { type: string, enum: [global, group, host] }
+        group_id: { type: string }
+        group_name: { type: string }
+        host_id: { type: string }
+        host_name: { type: string }
+        check: { type: string }
+        subject: { type: string }
+        subject_label: { type: string }
+        fields: { $ref: '#/components/schemas/HealthFields' }
+        updated_by: { type: string }
+        updated_at: { type: integer }
+        created_at: { type: integer }
+    HealthOverrideInput:
+      type: object
+      required: [scope, check, fields]
+      properties:
+        scope: { type: string, enum: [global, group, host] }
+        group_id: { type: string }
+        host_id: { type: string }
+        check: { type: string }
+        subject: { type: string, description: Host scope only. }
+        subject_label: { type: string, description: What to call the subject while it is unavailable. }
+        fields: { $ref: '#/components/schemas/HealthFields' }
+    HealthPreviewInput:
+      allOf:
+        - { $ref: '#/components/schemas/HealthOverrideInput' }
+        - type: object
+          properties:
+            priority: { type: integer, description: Preview a group priority change instead (with group_id). }
+    HealthPreview:
+      type: object
+      required: [check, affected, in_scope, above_before, above_after, would_close, would_stay, disables, hosts, summary]
+      properties:
+        check: { type: string }
+        affected: { type: integer }
+        in_scope: { type: integer }
+        above_before: { type: integer }
+        above_after: { type: integer }
+        would_close: { type: integer }
+        would_stay: { type: integer }
+        disables: { type: boolean }
+        summary: { type: string }
+        hosts:
+          type: array
+          items:
+            type: object
+            required: [host_id, name, effect]
+            properties:
+              host_id: { type: string }
+              name: { type: string }
+              effect: { type: string }
+              closes: { type: array, items: { type: string } }
+              changes: { type: array, items: { type: string } }
     MonPrune:
       type: object
       required: [at, points, events, service_events, issues, ms]
       properties: { at: { type: string }, points: { type: integer }, events: { type: integer }, service_events: { type: integer }, issues: { type: integer }, ms: { type: integer } }
     MonSettingsView:
       type: object
-      required: [settings, recommended, checks, helpers, last_prune]
+      required: [settings, checks, helpers, last_prune]
       properties:
         settings: { $ref: '#/components/schemas/MonSettings' }
-        recommended: { $ref: '#/components/schemas/MonThresholds' }
         checks: { type: array, items: { type: string } }
         helpers: { type: array, items: { type: string } }
         last_prune: { $ref: '#/components/schemas/MonPrune' }
@@ -4919,6 +5209,14 @@ components:
         ever_suppressed: { type: boolean }
         notify_after: { type: integer, description: Opening notification due (after maintenance ended). }
         notification: { $ref: '#/components/schemas/NotificationState' }
+        resolution:
+          type: string
+          enum: [recovered, disabled, reconfigured, gone]
+          description: >-
+            Why a resolved alert closed. Only `recovered` is a recovery; `disabled` (its check was turned off),
+            `reconfigured` (a threshold changed and the current state no longer qualifies) and `gone` (the subject
+            disappeared) close it with a "cleared" notification, never "recovered".
+        resolution_note: { type: string }
     Acknowledgement:
       type: object
       required: [by, at]
@@ -5154,7 +5452,7 @@ components:
         destination_id: { type: string }
         destination: { type: string }
         destination_kind: { type: string }
-        kind: { type: string, enum: [opening, escalation, reminder, recovery] }
+        kind: { type: string, enum: [opening, escalation, reminder, recovery, cleared], description: '`cleared`: the closing notification of an alert closed by configuration (routed like a recovery).' }
         status: { type: string, enum: [queued, sending, delivered, failed, cancelled] }
         attempts: { type: integer }
         next_attempt_at: { type: integer }

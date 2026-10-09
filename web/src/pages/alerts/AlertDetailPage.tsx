@@ -10,9 +10,9 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { errorMessage } from "@/lib/format";
 import { fmtTime } from "@/components/monitoring/format";
 import { useAcknowledge, useAlert, type AlertDetail, type Delivery } from "@/components/alerts/queries";
-import { AlertSeverity, AlertStateBadge, categoryLabel, checkLabel, fmtDuration, NotificationBadge, untilText } from "@/components/alerts/ui";
+import { AlertSeverity, AlertStateBadge, categoryLabel, checkLabel, clearedBy, fmtDuration, NotificationBadge, resolutionWord, untilText } from "@/components/alerts/ui";
 
-const deliveryWord: Record<string, string> = { opening: "Opening", escalation: "Escalation", reminder: "Reminder", recovery: "Recovery" };
+const deliveryWord: Record<string, string> = { opening: "Opening", escalation: "Escalation", reminder: "Reminder", recovery: "Recovery", cleared: "Cleared (not a recovery)" };
 
 export function AlertDetailPage() {
   const { id = "" } = useParams();
@@ -80,7 +80,8 @@ function Facts({ d }: { d: AlertDetail }) {
     ["Alert opened", fmtTime(a.opened_at)],
     [a.state === "resolved" ? "Lasted" : "Open for", fmtDuration(a.duration_ms)],
   ];
-  if (a.resolved_at) rows.push(["Recovered", fmtTime(a.resolved_at)]);
+  if (a.resolved_at) rows.push([clearedBy(a) ? resolutionWord[a.resolution!]! : "Recovered", fmtTime(a.resolved_at)]);
+  if (a.resolved_at && clearedBy(a) && a.resolution_note) rows.push(["Why", a.resolution_note]);
   return (
     <Card title="Details">
       {a.detail && <p className="mb-3 text-sm">{a.detail}</p>}

@@ -20,6 +20,7 @@ import { ServicesTab } from "./ServicesTab";
 import { StorageTab } from "./StorageTab";
 import { HardwareTab } from "./HardwareTab";
 import { AgentTab } from "./AgentTab";
+import { HostHealthPanel } from "@/components/health/HostHealth";
 
 const tabs = [
   { key: "overview", label: "Overview" },
@@ -27,6 +28,7 @@ const tabs = [
   { key: "services", label: "Services" },
   { key: "storage", label: "Storage health" },
   { key: "hardware", label: "Sensors & GPU" },
+  { key: "health", label: "Health settings" },
   { key: "agent", label: "Collection & helpers" },
 ] as const;
 
@@ -107,6 +109,8 @@ function Panel({ tab, id, o }: { tab: string; id: string; o: MonHostOverview }):
       return <StorageTab id={id} o={o} />;
     case "hardware":
       return <HardwareTab o={o} />;
+    case "health":
+      return <HostHealthPanel hostId={id} />;
     case "agent":
       return <AgentTab id={id} o={o} />;
   }

@@ -1,3 +1,4 @@
+import { SubjectHealthButton } from "@/components/health/HostHealth";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/monitoring/Status";
 import { fmtPct, fmtTemp } from "@/components/monitoring/format";
@@ -28,6 +29,7 @@ export function HardwareTab({ o }: { o: MonHostOverview }) {
             <thead><tr className="border-b border-line text-xs text-muted">
               <th className="py-1 font-medium">Sensor</th><th className="py-1 font-medium">Type</th><th className="py-1 font-medium">Now</th>
               <th className="py-1 font-medium">High</th><th className="py-1 font-medium">Critical</th><th className="py-1 font-medium">State</th>
+              <th className="py-1"><span className="sr-only">Health settings</span></th>
             </tr></thead>
             <tbody>
               {sensors.map((s) => (
@@ -38,12 +40,13 @@ export function HardwareTab({ o }: { o: MonHostOverview }) {
                   <td className="py-1 tabular-nums">{fmtTemp(s.high)}</td>
                   <td className="py-1 tabular-nums">{fmtTemp(s.critical)}</td>
                   <td className="py-1">{sensorStatus(s)}</td>
+                  <td className="py-1 text-right"><SubjectHealthButton hostId={o.host_id} kind="sensor" subjectRef={s.id} label={`${s.chip} ${s.label}`} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-        <p className="mt-2 text-xs text-muted">Limits are the hardware's own. DROOL never applies one "danger temperature" to unrelated hardware.</p>
+        <p className="mt-2 text-xs text-muted">Limits are the hardware's own. DROOL never applies one "danger temperature" to unrelated hardware; a custom limit applies only where you set one (Customize health check).</p>
       </Card>
       <Card title="GPU">
         {gpus.length === 0 && !st?.gpu_note ? (
@@ -53,7 +56,10 @@ export function HardwareTab({ o }: { o: MonHostOverview }) {
             {st?.gpu_note && <p className="text-sm text-muted">{st.gpu_note}</p>}
             {gpus.map((g) => (
               <div key={g.index} className="rounded-ui border border-line p-3 text-sm">
-                <div className="font-medium">{g.model} <span className="text-xs text-muted">({g.vendor}, via {g.source})</span></div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{g.model} <span className="text-xs text-muted">({g.vendor}, via {g.source})</span></span>
+                  <span className="ml-auto"><SubjectHealthButton hostId={o.host_id} kind="gpu" subjectRef={`gpu:${g.index}`} label={g.model} /></span>
+                </div>
                 {g.note && <p className="text-xs text-muted">{g.note}</p>}
                 <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
                   <dt className="text-muted">Utilization</dt><dd>{g.util_percent == null ? "Not available" : fmtPct(g.util_percent)}</dd>
@@ -63,7 +69,7 @@ export function HardwareTab({ o }: { o: MonHostOverview }) {
                 </dl>
               </div>
             ))}
-            <p className="text-xs text-muted">GPU telemetry comes from the vendor's driver tools where installed (nvidia-smi) or the kernel (AMD, Intel). DROOL never installs GPU drivers.</p>
+            <p className="text-xs text-muted">GPU telemetry comes from the vendor's driver tools where installed (nvidia-smi) or the kernel (AMD, Intel). DROOL never installs GPU drivers. High utilization isn't a health problem unless you enable that check: a busy GPU is usually working.</p>
           </div>
         )}
       </Card>

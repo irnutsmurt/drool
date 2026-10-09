@@ -1,3 +1,4 @@
+import { SubjectHealthButton } from "@/components/health/HostHealth";
 import { useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { Chart } from "@/components/monitoring/Chart";
@@ -100,6 +101,7 @@ export function MetricsTab({ id, o, compact }: { id: string; o: MonHostOverview;
               <thead><tr className="border-b border-line text-xs text-muted">
                 <th className="py-1 font-medium">Mount</th><th className="py-1 font-medium">Device</th><th className="py-1 font-medium">Used</th>
                 <th className="py-1 font-medium">Free</th><th className="py-1 font-medium">Inodes</th><th className="py-1 font-medium">State</th>
+                <th className="py-1"><span className="sr-only">Health settings</span></th>
               </tr></thead>
               <tbody>
                 {(st?.filesystems ?? []).map((f) => (
@@ -110,6 +112,7 @@ export function MetricsTab({ id, o, compact }: { id: string; o: MonHostOverview;
                     <td className="py-1 tabular-nums">{formatBytes(f.avail_bytes)} of {formatBytes(f.total_bytes)}</td>
                     <td className="py-1 tabular-nums">{fmtPct(f.inodes_percent)}</td>
                     <td className="py-1">{f.unresponsive ? "⚠ not responding" : f.read_only ? "Read-only" : "Read/write"}</td>
+                    <td className="py-1 text-right"><SubjectHealthButton hostId={id} kind="filesystem" subjectRef={f.mount} label={f.mount} /></td>
                   </tr>
                 ))}
               </tbody>

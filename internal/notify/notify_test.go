@@ -634,3 +634,46 @@ func TestFormat(t *testing.T) {
 		}
 	}
 }
+
+// A configuration-only close (M12.1) is never worded as a recovery, on any
+// destination.
+func TestClearedIsNotARecovery(t *testing.T) {
+	d := int64(3600)
+	for why, head := range map[string]string{"disabled": "CLEARED BY CONFIGURATION: storage01", "reconfigured": "CLEARED BY CONFIGURATION: storage01",
+		"gone": "CLOSED, NO LONGER REPORTED: storage01"} {
+		m := testMsg()
+		m.Kind, m.Resolution, m.ResolutionNote, m.DurationS = MsgCleared, why, "High CPU utilization was turned off (Custom for this host).", &d
+		if Headline(m) != head {
+			t.Errorf("%s: %q", why, Headline(m))
+		}
+		txt := Text(m)
+		if strings.Contains(strings.ToLower(txt+Headline(m)), "recovered") || !strings.Contains(txt, "This is not a recovery") ||
+			!strings.Contains(txt, "Why: High CPU utilization was turned off") || !strings.Contains(txt, "Was open for: 1h 0m") {
+			t.Errorf("%s: %q", why, txt)
+		}
+		var p WebhookPayload
+		b, _ := json.Marshal(webhookBody(m, "ndel_1"))
+		json.Unmarshal(b, &p)
+		if p.Event != "cleared" || p.Alert.State != "resolved" || p.Alert.Resolution != why || p.Alert.ResolutionNote == "" {
+			t.Errorf("%s webhook: %s", why, b)
+		}
+		if c := discordBody(m)["embeds"].([]any)[0].(map[string]any)["color"]; c != 0x546e7a {
+			t.Errorf("%s: a cleared Discord embed isn't green: %v", why, c)
+		}
+		if s := slackBody(m)["text"].(string); !strings.HasPrefix(s, "*"+head+"*") {
+			t.Errorf("%s slack: %q", why, s)
+		}
+		subj, body := Headline(m), Text(m)
+		if strings.Contains(subj, "RECOVERED") || strings.Contains(body, "Recovered:") {
+			t.Errorf("%s email: %q %q", why, subj, body)
+		}
+	}
+	r := testMsg()
+	r.Kind = MsgRecovery
+	var p WebhookPayload
+	b, _ := json.Marshal(webhookBody(r, "ndel_2"))
+	json.Unmarshal(b, &p)
+	if p.Event != "recovered" || p.Alert.Resolution != "recovered" {
+		t.Errorf("a real recovery: %s", b)
+	}
+}

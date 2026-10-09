@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { errorMessage } from "@/lib/format";
+import { GroupHealthButton } from "@/components/health/GlobalHealth";
 
 export function GroupsPage() {
   const qc = useQueryClient();
@@ -66,15 +67,20 @@ export function GroupsPage() {
       <div className="grid gap-4 md:grid-cols-2">
         {(groups.data?.items ?? []).map((g: Group) => (
           <Card key={g.id} title={`${g.name} (${g.host_ids.length})`}
-            actions={can("hosts.write") && (
+            actions={(can("hosts.write") || can("monitoring.read")) && (
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => setEditing(editing === g.id ? undefined : g.id)}>
-                  {editing === g.id ? "Close" : "Members"}
-                </Button>
-                <Button size="sm" variant="danger"
-                  onClick={() => { if (confirm(`Delete group ${g.name}? Hosts are not affected.`)) remove.mutate(g.id); }}>
-                  Delete
-                </Button>
+                {can("monitoring.read") && <GroupHealthButton groupId={g.id} name={g.name} />}
+                {can("hosts.write") && (
+                  <>
+                    <Button size="sm" onClick={() => setEditing(editing === g.id ? undefined : g.id)}>
+                      {editing === g.id ? "Close" : "Members"}
+                    </Button>
+                    <Button size="sm" variant="danger"
+                      onClick={() => { if (confirm(`Delete group ${g.name}? Hosts are not affected.`)) remove.mutate(g.id); }}>
+                      Delete
+                    </Button>
+                  </>
+                )}
               </div>
             )}>
             {editing === g.id ? (

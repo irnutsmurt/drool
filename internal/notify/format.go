@@ -14,6 +14,11 @@ func Headline(m Message) string {
 		return "TEST: DROOL notification test"
 	case MsgRecovery:
 		return "RECOVERED: " + m.Host
+	case MsgCleared:
+		if m.Resolution == "gone" {
+			return "CLOSED, NO LONGER REPORTED: " + m.Host
+		}
+		return "CLEARED BY CONFIGURATION: " + m.Host
 	case MsgEscalation:
 		return sev + " (escalated): " + m.Host
 	case MsgReminder:
@@ -33,7 +38,27 @@ func Lines(m Message) []string {
 		return out
 	}
 	var out []string
-	if m.Kind == MsgRecovery {
+	if m.Kind == MsgCleared {
+		what := "Cleared by configuration: "
+		if m.Resolution == "gone" {
+			what = "No longer reported: "
+		}
+		out = append(out, what+m.Title)
+		if m.ResolutionNote != "" {
+			out = append(out, "Why: "+clip(m.ResolutionNote, 300))
+		}
+		out = append(out, map[string]string{
+			"disabled":     "This is not a recovery: the check was turned off; the condition may still be present.",
+			"reconfigured": "This is not a recovery: the rule changed, not the machine.",
+			"gone":         "This is not a recovery: the host no longer reports it.",
+		}[m.Resolution])
+		if m.DurationS != nil {
+			out = append(out, "Was open for: "+Duration(time.Duration(*m.DurationS)*time.Second))
+		}
+		if m.AckBy != "" {
+			out = append(out, ackLine(m))
+		}
+	} else if m.Kind == MsgRecovery {
 		out = append(out, "Recovered: "+m.Title)
 		if m.DurationS != nil {
 			out = append(out, "Duration: "+Duration(time.Duration(*m.DurationS)*time.Second))

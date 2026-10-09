@@ -263,7 +263,7 @@ type WebhookPayload struct {
 	Schema     string        `json:"schema"`
 	EventID    string        `json:"event_id"`
 	DeliveryID string        `json:"delivery_id"`
-	Event      string        `json:"event"` // opened | escalated | reminder | recovered | test
+	Event      string        `json:"event"` // opened | escalated | reminder | recovered | cleared | test
 	SentAt     time.Time     `json:"sent_at"`
 	Test       bool          `json:"test"`
 	Summary    string        `json:"summary"`
@@ -289,8 +289,12 @@ type WebhookAlert struct {
 	OpenedAt    time.Time   `json:"opened_at"`
 	ResolvedAt  *time.Time  `json:"resolved_at,omitempty"`
 	DurationS   *int64      `json:"duration_s,omitempty"`
-	Acknowledge *WebhookAck `json:"acknowledgement,omitempty"`
-	URL         string      `json:"url,omitempty"`
+	// Resolution: why a resolved alert closed: recovered, or (event
+	// "cleared") disabled | reconfigured | gone, which are not recoveries.
+	Resolution     string      `json:"resolution,omitempty"`
+	ResolutionNote string      `json:"resolution_note,omitempty"`
+	Acknowledge    *WebhookAck `json:"acknowledgement,omitempty"`
+	URL            string      `json:"url,omitempty"`
 }
 
 type WebhookHost struct {
@@ -304,7 +308,8 @@ type WebhookAck struct {
 	Note string     `json:"note,omitempty"`
 }
 
-var eventNames = map[string]string{MsgOpening: "opened", MsgEscalation: "escalated", MsgReminder: "reminder", MsgRecovery: "recovered", MsgTest: "test"}
+var eventNames = map[string]string{MsgOpening: "opened", MsgEscalation: "escalated", MsgReminder: "reminder", MsgRecovery: "recovered",
+	MsgCleared: "cleared", MsgTest: "test"}
 
 func webhookBody(m Message, deliveryID string) WebhookPayload {
 	p := WebhookPayload{Schema: "drool.notification.v1", EventID: m.EventID, DeliveryID: deliveryID, Event: eventNames[m.Kind],
@@ -319,8 +324,11 @@ func webhookBody(m Message, deliveryID string) WebhookPayload {
 		a.State = "acknowledged"
 		a.Acknowledge = &WebhookAck{By: m.AckBy, At: m.AckAt, Note: m.AckNote}
 	}
-	if m.Kind == MsgRecovery {
-		a.State = "resolved"
+	switch m.Kind {
+	case MsgRecovery:
+		a.State, a.Resolution = "resolved", "recovered"
+	case MsgCleared:
+		a.State, a.Resolution, a.ResolutionNote = "resolved", m.Resolution, m.ResolutionNote
 	}
 	p.Alert = a
 	return p
@@ -333,7 +341,7 @@ func discordBody(m Message) map[string]any {
 	if m.Kind == MsgRecovery {
 		color = 0x2e7d32
 	}
-	if m.Kind == MsgTest {
+	if m.Kind == MsgTest || m.Kind == MsgCleared {
 		color = 0x546e7a
 	}
 	lines := Lines(m)

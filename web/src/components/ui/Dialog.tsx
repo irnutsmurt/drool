@@ -3,7 +3,8 @@ import { useEffect, useRef, type ReactNode } from "react";
 const focusable = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /** A modal dialog: focus moves into it, Tab stays inside, Escape closes,
- * and focus returns to where it was. */
+ * and focus returns to where it was. Opened from another dialog, only the
+ * top one reacts to the keyboard. */
 export function Dialog({ title, children, onClose, wide }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -14,6 +15,9 @@ export function Dialog({ title, children, onClose, wide }: { title: string; chil
   }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Only the topmost of nested dialogs handles keys.
+      const all = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+      if (all[all.length - 1] !== box.current) return;
       if (e.key === "Escape") onClose();
       if (e.key === "Tab" && box.current) {
         const items = [...box.current.querySelectorAll<HTMLElement>(focusable)].filter((x) => x.offsetParent !== null);

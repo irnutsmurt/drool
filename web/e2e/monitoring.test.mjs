@@ -185,19 +185,13 @@ test("bulk: helpers and agent conversion previews", async () => {
   assert.deepEqual(page.errors, []);
 });
 
-test("settings: recommended and custom thresholds, validation", async () => {
+test("settings: the Recommended health profile and saving fleet settings", async () => {
+  // Thresholds are health overrides since M12.1 (web/e2e/health.test.mjs);
+  // the fleet's sampling and retention settings still save here.
   await go("/settings/monitoring");
-  await waitText(page, "Health thresholds");
-  const sel = await page.evaluateHandle(() => [...document.querySelectorAll("label")].find((l) => l.textContent.startsWith("Health thresholds"))?.querySelector("select"));
-  assert.equal(await page.evaluate(() => [...document.querySelectorAll("input")].find((i) => i.closest("label")?.textContent.startsWith("Disk space warning"))?.disabled), true);
-  await sel.asElement().select("custom");
-  const disk = await page.evaluateHandle(() => [...document.querySelectorAll("input")].find((i) => i.closest("label")?.textContent.startsWith("Disk space warning")));
-  await disk.asElement().click({ clickCount: 3 });
-  await disk.asElement().type("99");
-  await click(page, "button", "Save monitoring settings");
-  await waitText(page, "warning levels must not exceed critical levels");
-  await sel.asElement().select("recommended");
+  await waitText(page, "Health checks");
+  assert.match(await text(page), /Recommended profile/);
   await click(page, "button", "Save monitoring settings");
   await waitText(page, "Saved and sent to connected agents");
-  assert.deepEqual(page.errors.filter((e) => !e.includes("422")), []);
+  assert.deepEqual(page.errors, []);
 });

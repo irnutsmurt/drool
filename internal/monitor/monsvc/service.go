@@ -1,9 +1,10 @@
 // Package monsvc is the controller's system monitoring (M11): it stores
 // what agents stream and what SSH polls collect, keeps metric history in
 // downsampled tiers, records service state changes, judges storage
-// health evidence, and evaluates host health with the recommended (or
-// custom) thresholds. M12's alerting consumes its issue transitions
-// (SetIssueHook); nothing here notifies anyone.
+// health evidence, and evaluates host health with the Recommended profile
+// and its sparse overrides (M12.1: global, group, host and subject scope).
+// M12's alerting consumes its issue transitions (SetIssueHook); nothing
+// here notifies anyone.
 package monsvc
 
 import (
@@ -158,6 +159,7 @@ func (s *Service) Run(ctx context.Context) {
 
 // load restores the per-host cache and active issues after a restart.
 func (s *Service) load(ctx context.Context) {
+	s.migrateLegacy(ctx)
 	rows, err := s.d.Store.Reader.QueryContext(ctx, `SELECT host_id, source, updated_at, state_json, raw_json, storage_json, probes_json, kernel_json FROM mon_current`)
 	if err != nil {
 		return

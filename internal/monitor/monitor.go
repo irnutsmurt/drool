@@ -178,11 +178,15 @@ type DiskIO struct {
 // Sensor is a temperature reading with the thresholds the hardware itself
 // provides. There is no universal danger temperature.
 type Sensor struct {
-	ID       string   `json:"id"`   // chip/label, stable across samples
-	Chip     string   `json:"chip"` // hwmon driver name, e.g. coretemp
-	Label    string   `json:"label"`
-	Kind     string   `json:"kind"`             // cpu | board | storage | gpu | other
-	Device   string   `json:"device,omitempty"` // block device for storage sensors
+	ID     string `json:"id"`   // chip/label, stable across samples
+	Chip   string `json:"chip"` // hwmon driver name, e.g. coretemp
+	Label  string `json:"label"`
+	Kind   string `json:"kind"`             // cpu | board | storage | gpu | other
+	Device string `json:"device,omitempty"` // block device for storage sensors
+	// HW is the sysfs device the sensor belongs to (a PCI address such as
+	// 0000:00:18.3, or a platform device such as coretemp.0): with Chip
+	// and Label it identifies the sensor across reboots, unlike ID.
+	HW       string   `json:"hw,omitempty"`
 	Celsius  float64  `json:"celsius"`
 	High     *float64 `json:"high,omitempty"`     // tempN_max
 	Critical *float64 `json:"critical,omitempty"` // tempN_crit
@@ -191,8 +195,13 @@ type Sensor struct {
 
 // GPU is one GPU's telemetry; every value may be missing.
 type GPU struct {
-	Index       int      `json:"index"`
-	Vendor      string   `json:"vendor"` // nvidia | amd | intel | other
+	Index  int    `json:"index"`
+	Vendor string `json:"vendor"` // nvidia | amd | intel | other
+	// UUID is the GPU's own identity when the driver reports one (NVIDIA
+	// GPU UUID, AMD unique_id); PCI its PCI address. Index is only the
+	// position in this report.
+	UUID        string   `json:"uuid,omitempty"`
+	PCI         string   `json:"pci,omitempty"`
 	Model       string   `json:"model"`
 	Source      string   `json:"source"` // nvidia-smi | sysfs
 	UtilPercent *float64 `json:"util_percent,omitempty"`

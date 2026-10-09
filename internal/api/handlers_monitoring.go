@@ -135,16 +135,15 @@ func (s *Server) handleMonitoringIssues(w http.ResponseWriter, r *http.Request) 
 }
 
 type monitoringSettingsView struct {
-	Settings    monsvc.Settings    `json:"settings"`
-	Recommended monsvc.Thresholds  `json:"recommended"`
-	Checks      []string           `json:"checks"`
-	Helpers     []string           `json:"helpers"`
-	LastPrune   monsvc.PruneResult `json:"last_prune"`
+	Settings  monsvc.Settings    `json:"settings"`
+	Checks    []string           `json:"checks"`
+	Helpers   []string           `json:"helpers"`
+	LastPrune monsvc.PruneResult `json:"last_prune"`
 }
 
 func (s *Server) monitoringSettingsView(r *http.Request) monitoringSettingsView {
-	return monitoringSettingsView{Settings: s.d.Monitor.Settings(r.Context()), Recommended: monsvc.Recommended(),
-		Checks: monsvc.AllChecks(), Helpers: collect.Helpers, LastPrune: s.d.Monitor.LastPrune()}
+	return monitoringSettingsView{Settings: s.d.Monitor.Settings(r.Context()), Checks: monsvc.AllChecks(), Helpers: collect.Helpers,
+		LastPrune: s.d.Monitor.LastPrune()}
 }
 
 func (s *Server) handleMonitoringSettings(w http.ResponseWriter, r *http.Request) {
@@ -163,6 +162,11 @@ func (s *Server) handleSetMonitoringSettings(w http.ResponseWriter, r *http.Requ
 		writeProblem(w, r, p)
 		return
 	}
+	if in.Profile == monsvc.ProfileCustom {
+		writeProblem(w, r, errValidation("health thresholds are configured as overrides (PUT /monitoring/health/overrides), not as a custom profile"))
+		return
+	}
+	in.Profile, in.Custom = "", nil
 	if err := in.Validate(); err != nil {
 		writeProblem(w, r, errValidation(err.Error()))
 		return
@@ -350,19 +354,26 @@ func (s *Server) handleSetHostMonitoringSettings(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	var in monsvc.HostSettings
-	if p := decodeJSON(w, r, &in); p != nil {
+	var body struct {
+		monsvc.HostSettings
+		// M11's per-host disabled checks are health overrides since M12.1;
+		// an empty list is still accepted from older clients.
+		DisabledChecks []string `json:"disabled_checks"`
+	}
+	if p := decodeJSON(w, r, &body); p != nil {
 		writeProblem(w, r, p)
 		return
 	}
+	if len(body.DisabledChecks) > 0 {
+		writeProblem(w, r, errValidation("turn checks off with health overrides (PUT /monitoring/health/overrides, enabled: false), not disabled_checks"))
+		return
+	}
+	in := body.HostSettings
 	if in.WatchedServices == nil {
 		in.WatchedServices = []string{}
 	}
 	if in.ProbeMounts == nil {
 		in.ProbeMounts = []string{}
-	}
-	if in.DisabledChecks == nil {
-		in.DisabledChecks = []string{}
 	}
 	warning, err := in.Validate()
 	if err == nil {
@@ -397,6 +408,7 @@ func (s *Server) handleSetHostMonitoringSettings(w http.ResponseWriter, r *http.
 	}
 	emit()
 	s.d.Monitor.PushConfig(ctx, id)
+	s.d.Monitor.ApplyHealthConfig(ctx) // watched services changed: judge them now
 	writeJSON(w, http.StatusOK, hostMonitoringSettingsResult{Settings: in, Warning: warning})
 }
 

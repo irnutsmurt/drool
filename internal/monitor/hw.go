@@ -21,11 +21,12 @@ var HWSpec = source.Spec{
 		"/sys/bus/pci/devices/*/class", "/sys/bus/pci/devices/*/vendor", "/sys/bus/pci/devices/*/device",
 		"/sys/bus/pci/devices/*/gpu_busy_percent", "/sys/bus/pci/devices/*/mem_info_vram_used", "/sys/bus/pci/devices/*/mem_info_vram_total",
 		"/sys/bus/pci/devices/*/hwmon/hwmon*/temp1_input", "/sys/bus/pci/devices/*/hwmon/hwmon*/power1_average",
-		"/sys/bus/pci/devices/*/hwmon/hwmon*/power1_input", "/sys/bus/pci/devices/*/power_state"},
+		"/sys/bus/pci/devices/*/hwmon/hwmon*/power1_input", "/sys/bus/pci/devices/*/power_state",
+		"/sys/bus/pci/devices/*/unique_id"},
 	Links: []string{"/sys/class/hwmon/hwmon*/device", "/sys/bus/pci/devices/*/driver"},
 	Tools: []string{"nvidia-smi", "sensors", "lspci"},
 	Commands: [][]string{
-		{"nvidia-smi", "--query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,pstate", "--format=csv,noheader,nounits"},
+		{"nvidia-smi", "--query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,pstate,uuid,pci.bus_id", "--format=csv,noheader,nounits"},
 		{"lspci", "-mm"},
 	},
 }
@@ -111,6 +112,10 @@ func Sensors(ctx context.Context, src source.Source) []Sensor {
 				inst = chip + ":" + blk
 			}
 		}
+		hwDev := ""
+		if l := src.Link(dir + "/device"); l != "" {
+			hwDev = path.Base(l)
+		}
 		inputs := src.Glob(dir + "/temp*_input")
 		sort.Strings(inputs)
 		for _, in := range inputs {
@@ -123,7 +128,7 @@ func Sensors(ctx context.Context, src source.Source) []Sensor {
 			if label == "" {
 				label = path.Base(base)
 			}
-			s := Sensor{ID: inst + "/" + label, Chip: chip, Label: label, Kind: kind, Device: blk, Celsius: v}
+			s := Sensor{ID: inst + "/" + label, Chip: chip, Label: label, Kind: kind, Device: blk, HW: hwDev, Celsius: v}
 			if x, ok := readMilli(src, base+"_max"); ok && x > 0 && x < 250 {
 				s.High = &x
 			}
@@ -341,12 +346,20 @@ func GPUs(ctx context.Context, src source.Source) ([]GPU, string) {
 		}
 		switch vendorName(d.vendor) {
 		case "nvidia":
-			if nvi < len(nvidia) {
-				g := nvidia[nvi]
-				g.Index = i
+			g, ok := GPU{}, false
+			for _, x := range nvidia {
+				if x.PCI != "" && x.PCI == d.slot {
+					g, ok = x, true
+				}
+			}
+			if !ok && nvi < len(nvidia) && nvidia[nvi].PCI == "" {
+				g, ok = nvidia[nvi], true // older nvidia-smi output without the bus id: by order
+			}
+			if ok {
+				g.Index, g.PCI = i, d.slot
 				out = append(out, g)
 			} else {
-				out = append(out, GPU{Index: i, Vendor: "nvidia", Model: model, Source: "none",
+				out = append(out, GPU{Index: i, Vendor: "nvidia", Model: model, Source: "none", PCI: d.slot,
 					Note: "GPU telemetry unavailable: nvidia-smi (installed with the NVIDIA driver) is not available. DROOL never installs GPU drivers."})
 			}
 			nvi++
@@ -369,7 +382,10 @@ func GPUs(ctx context.Context, src source.Source) ([]GPU, string) {
 
 func sysfsGPU(src source.Source, d pciGPU, idx int, vendor, model string) GPU {
 	dir := "/sys/bus/pci/devices/" + d.slot
-	g := GPU{Index: idx, Vendor: vendor, Model: model, Source: "sysfs", PowerState: readText(src, dir+"/power_state")}
+	g := GPU{Index: idx, Vendor: vendor, Model: model, Source: "sysfs", PCI: d.slot, PowerState: readText(src, dir+"/power_state")}
+	if u := readText(src, dir+"/unique_id"); u != "" && vendor == "amd" {
+		g.UUID = "amd:" + u
+	}
 	if b := readText(src, dir+"/gpu_busy_percent"); b != "" {
 		if v, err := strconv.ParseFloat(b, 64); err == nil && v >= 0 && v <= 100 {
 			g.UtilPercent = &v
@@ -423,6 +439,19 @@ func nvidiaSMI(ctx context.Context, src source.Source) ([]GPU, error) {
 	return ParseNvidiaSMI(r.Stdout)
 }
 
+// pciAddr normalises nvidia-smi's bus id ("00000000:01:00.0") to the
+// sysfs form ("0000:01:00.0").
+func pciAddr(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if strings.HasPrefix(s, "[") || s == "" {
+		return ""
+	}
+	if i := strings.Index(s, ":"); i > 4 {
+		s = s[i-4:]
+	}
+	return s
+}
+
 // ParseNvidiaSMI parses the CSV query output. "[N/A]" and "[Not
 // Supported]" are missing values, never zero.
 func ParseNvidiaSMI(b []byte) ([]GPU, error) {
@@ -432,7 +461,7 @@ func ParseNvidiaSMI(b []byte) ([]GPU, error) {
 			continue
 		}
 		f := strings.Split(ln, ",")
-		if len(f) != 8 {
+		if len(f) != 8 && len(f) != 10 { // 10: with uuid and pci.bus_id
 			return out, fmt.Errorf("nvidia-smi output not understood: GPU telemetry unavailable.")
 		}
 		for i := range f {
@@ -466,6 +495,12 @@ func ParseNvidiaSMI(b []byte) ([]GPU, error) {
 		}
 		if v := num(f[6]); v != nil && *v >= 0 && *v < 5000 {
 			g.PowerW = v
+		}
+		if len(f) == 10 {
+			if strings.HasPrefix(f[8], "GPU-") {
+				g.UUID = f[8]
+			}
+			g.PCI = pciAddr(f[9])
 		}
 		out = append(out, g)
 		if len(out) >= MaxGPUs {

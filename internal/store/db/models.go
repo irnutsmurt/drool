@@ -186,6 +186,8 @@ type Alert struct {
 	NextReminderAt sql.NullInt64
 	RemindersSent  int64
 	UpdatedAt      int64
+	Resolution     sql.NullString
+	ResolutionNote string
 }
 
 type AlertEvent struct {
@@ -604,6 +606,33 @@ type MonGap struct {
 	CreatedAt int64
 }
 
+type MonGroupHealth struct {
+	GroupID   string
+	Priority  int64
+	UpdatedBy sql.NullString
+	UpdatedAt int64
+}
+
+type MonHealthGen struct {
+	ID  int64
+	Gen int64
+}
+
+type MonHealthOverride struct {
+	ID           string
+	Scope        string
+	GroupID      sql.NullString
+	HostID       sql.NullString
+	CheckID      string
+	Subject      string
+	SubjectLabel string
+	FieldsJson   string
+	CreatedBy    sql.NullString
+	CreatedAt    int64
+	UpdatedBy    sql.NullString
+	UpdatedAt    int64
+}
+
 type MonHelperApproval struct {
 	ID        string
 	Scope     string
@@ -632,19 +661,21 @@ type MonHostSetting struct {
 }
 
 type MonIssue struct {
-	ID         string
-	HostID     string
-	CheckID    string
-	Subject    string
-	Severity   string
-	State      string
-	Title      string
-	Detail     string
-	Value      sql.NullFloat64
-	StartedAt  int64
-	UpdatedAt  int64
-	ResolvedAt sql.NullInt64
-	ObservedAt sql.NullInt64
+	ID             string
+	HostID         string
+	CheckID        string
+	Subject        string
+	Severity       string
+	State          string
+	Title          string
+	Detail         string
+	Value          sql.NullFloat64
+	StartedAt      int64
+	UpdatedAt      int64
+	ResolvedAt     sql.NullInt64
+	ObservedAt     sql.NullInt64
+	Resolution     sql.NullString
+	ResolutionNote string
 }
 
 type MonLayout struct {

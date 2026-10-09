@@ -7,21 +7,14 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Checkbox } from "@/components/ui/Checkbox";
 import { Field, Input } from "@/components/ui/Field";
 import { errorMessage, formatBytes } from "@/lib/format";
 import { StatusBadge } from "@/components/monitoring/Status";
 import { fmtTime } from "@/components/monitoring/format";
 import { fidelityText } from "@/components/monitoring/HostMonitoringCard";
 import { InstallHelperButton } from "@/components/monitoring/HelperInstall";
-import { useDiagnostics, useMonSettings, useSaveHostSettings, type MonHostOverview, type MonLimits } from "@/components/monitoring/queries";
+import { useDiagnostics, useSaveHostSettings, type MonHostOverview, type MonLimits } from "@/components/monitoring/queries";
 
-const checkWord: Record<string, string> = {
-  cpu: "Sustained CPU", memory: "Memory pressure", filesystem: "Disk space", inodes: "Inodes", filesystem_readonly: "Filesystem turned read-only",
-  device_readonly: "Device turned read-only", service_failed: "Failed services", service_stopped: "Watched services stopped",
-  interface_down: "Interfaces down", temperature: "Temperatures", storage_health: "Storage device health", media_errors: "New media errors",
-  kernel_storage: "Kernel storage errors", probe: "Write/read probe", stale: "No data (stale host)", fidelity: "Reduced monitoring fidelity",
-};
 
 function Budget({ id, o }: { id: string; o: MonHostOverview }) {
   const { can } = useAuth();
@@ -102,9 +95,6 @@ function Diagnostics({ id }: { id: string }) {
 
 export function AgentTab({ id, o }: { id: string; o: MonHostOverview }) {
   const { can } = useAuth();
-  const save = useSaveHostSettings(id);
-  const settings = useMonSettings();
-  const checks = settings.data?.checks ?? Object.keys(checkWord);
   const st = o.state;
   return (
     <div className="space-y-4">
@@ -159,15 +149,10 @@ export function AgentTab({ id, o }: { id: string; o: MonHostOverview }) {
         </ul>
       </Card>
       {(o.agent || o.state?.agent) && <Budget id={id} o={o} />}
-      <Card title="Health checks for this host">
-        <p className="mb-2 text-sm text-muted">Thresholds come from the fleet profile (Settings → Monitoring). Turn a check off here if it doesn't apply to this host.</p>
-        {save.error && <Alert>{errorMessage(save.error)}</Alert>}
-        <div className="grid gap-1 sm:grid-cols-2">
-          {checks.map((c) => (
-            <Checkbox key={c} label={checkWord[c] ?? c} checked={!o.settings.disabled_checks.includes(c)} disabled={!can("monitoring.manage") || save.isPending}
-              onChange={(on) => save.mutate({ ...o.settings, disabled_checks: on ? o.settings.disabled_checks.filter((x) => x !== c) : [...o.settings.disabled_checks, c] })} />
-          ))}
-        </div>
+      <Card title="Health checks">
+        <p className="text-sm text-muted">
+          Which checks run on this host, and their thresholds, are under <Link className="text-accent" to="?tab=health">Health settings</Link>.
+        </p>
       </Card>
       {o.agent?.connected && can("monitoring.manage") && <Diagnostics id={id} />}
     </div>

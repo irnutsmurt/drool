@@ -362,7 +362,7 @@ func (s *Service) record(ctx context.Context, c *claimed, r notify.Result, start
 			return nil
 		}
 		what := map[string]string{notify.MsgOpening: "notification", notify.MsgEscalation: "escalation", notify.MsgReminder: "reminder",
-			notify.MsgRecovery: "recovery notification"}[c.Kind]
+			notify.MsgRecovery: "closing notification"}[c.Kind]
 		if status == "delivered" {
 			if c.Kind != notify.MsgReminder || c.Attempt > 1 {
 				text := c.DestName + ": " + what + " delivered"
@@ -582,19 +582,21 @@ func (s *Service) Reconcile(ctx context.Context) {
 			s.log.Warn("reconcile alert", "issue", in.IssueID, "err", err)
 		}
 	}
-	rows, err = s.d.Store.Reader.QueryContext(ctx, `SELECT a.id, COALESCE((SELECT i.resolved_at FROM mon_issues i WHERE i.id = a.issue_id), 0) FROM alerts a
-		WHERE a.state IN ('active','acknowledged') AND NOT EXISTS (SELECT 1 FROM mon_issues i WHERE i.id = a.issue_id AND i.state = 'active') LIMIT 1000`)
+	rows, err = s.d.Store.Reader.QueryContext(ctx, `SELECT a.id, COALESCE((SELECT i.resolved_at FROM mon_issues i WHERE i.id = a.issue_id), 0),
+		COALESCE((SELECT i.resolution FROM mon_issues i WHERE i.id = a.issue_id), ''), COALESCE((SELECT i.resolution_note FROM mon_issues i WHERE i.id = a.issue_id), '')
+		FROM alerts a WHERE a.state IN ('active','acknowledged') AND NOT EXISTS (SELECT 1 FROM mon_issues i WHERE i.id = a.issue_id AND i.state = 'active') LIMIT 1000`)
 	if err != nil {
 		return
 	}
 	type stale struct {
-		id string
-		at int64
+		id      string
+		at      int64
+		why, wn string
 	}
 	var ss []stale
 	for rows.Next() {
 		var st stale
-		if rows.Scan(&st.id, &st.at) == nil {
+		if rows.Scan(&st.id, &st.at, &st.why, &st.wn) == nil {
 			ss = append(ss, st)
 		}
 	}
@@ -612,7 +614,7 @@ func (s *Service) Reconcile(ctx context.Context) {
 			if at == 0 {
 				at = s.nowMs()
 			}
-			q, err := s.resolveAlert(ctx, tx, a, at, "the health issue is no longer active")
+			q, err := s.resolveAlert(ctx, tx, a, at, "the health issue is no longer active", st.why, st.wn)
 			queued = queued || q
 			return err
 		})

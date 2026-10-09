@@ -538,8 +538,12 @@ func (s *Service) Deliveries(ctx context.Context, f DeliveryFilter) ([]*Delivery
 }
 
 func (s *Service) listDeliveries(ctx context.Context, where string, args []any, limit int, withErrors bool) ([]*Delivery, error) {
+	// A closing delivery of an alert that was cleared rather than
+	// recovered is shown as "cleared" (the outbox row's kind is "recovery":
+	// it is routed like one).
 	rows, err := s.d.Store.Reader.QueryContext(ctx, `SELECT d.id, COALESCE(d.alert_id, ''), COALESCE(a.host_name, ''), COALESCE(a.title, ''),
-		COALESCE(d.destination_id, ''), d.destination_name, d.destination_kind, d.kind, d.status, d.attempts, d.next_attempt_at, d.created_at, d.finished_at,
+		COALESCE(d.destination_id, ''), d.destination_name, d.destination_kind,
+		CASE WHEN d.kind = 'recovery' AND a.resolution IN ('disabled','reconfigured','gone') THEN 'cleared' ELSE d.kind END, d.status, d.attempts, d.next_attempt_at, d.created_at, d.finished_at,
 		d.last_error, d.last_category, d.last_status_code, d.ambiguous
 		FROM notify_deliveries d LEFT JOIN alerts a ON a.id = d.alert_id WHERE `+where+` ORDER BY d.id DESC LIMIT ?`, append(args, limit)...)
 	if err != nil {

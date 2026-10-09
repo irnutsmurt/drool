@@ -274,36 +274,45 @@ const (
 	MsgEscalation = "escalation"
 	MsgReminder   = "reminder"
 	MsgRecovery   = "recovery"
-	MsgTest       = "test"
+	// MsgCleared closes an alert whose issue ended without the machine
+	// recovering: its check was turned off, its threshold changed so the
+	// current state no longer qualifies, or the subject disappeared. It
+	// goes where a recovery would (delivery kind "recovery") but never
+	// says "recovered".
+	MsgCleared = "cleared"
+	MsgTest    = "test"
 )
 
 // Message is one notification, independent of the provider. It is
 // snapshotted when queued so retries send the same content.
 type Message struct {
-	Kind        string     `json:"kind"`
-	EventID     string     `json:"event_id"` // the alert and what happened to it: the same for every destination
-	AlertID     string     `json:"alert_id,omitempty"`
-	Severity    string     `json:"severity,omitempty"` // warning | critical
-	HostID      string     `json:"host_id,omitempty"`
-	Host        string     `json:"host,omitempty"`
-	Title       string     `json:"title"`
-	Detail      string     `json:"detail,omitempty"`
-	Check       string     `json:"check,omitempty"`
-	Category    string     `json:"category,omitempty"`
-	Subject     string     `json:"subject,omitempty"`
-	Value       *float64   `json:"value,omitempty"`
-	ValueText   string     `json:"value_text,omitempty"`
-	ObservedAt  *time.Time `json:"observed_at,omitempty"`
-	OpenedAt    time.Time  `json:"opened_at"`
-	ResolvedAt  *time.Time `json:"resolved_at,omitempty"`
-	DurationS   *int64     `json:"duration_s,omitempty"`
-	AckBy       string     `json:"ack_by,omitempty"`
-	AckNote     string     `json:"ack_note,omitempty"`
-	AckAt       *time.Time `json:"ack_at,omitempty"`
-	Reminder    int        `json:"reminder,omitempty"`
-	URL         string     `json:"url,omitempty"`
-	TimeZone    string     `json:"tz,omitempty"`
-	Fingerprint string     `json:"fingerprint,omitempty"` // host/check/subject: the same for every occurrence
+	Kind       string     `json:"kind"`
+	EventID    string     `json:"event_id"` // the alert and what happened to it: the same for every destination
+	AlertID    string     `json:"alert_id,omitempty"`
+	Severity   string     `json:"severity,omitempty"` // warning | critical
+	HostID     string     `json:"host_id,omitempty"`
+	Host       string     `json:"host,omitempty"`
+	Title      string     `json:"title"`
+	Detail     string     `json:"detail,omitempty"`
+	Check      string     `json:"check,omitempty"`
+	Category   string     `json:"category,omitempty"`
+	Subject    string     `json:"subject,omitempty"`
+	Value      *float64   `json:"value,omitempty"`
+	ValueText  string     `json:"value_text,omitempty"`
+	ObservedAt *time.Time `json:"observed_at,omitempty"`
+	OpenedAt   time.Time  `json:"opened_at"`
+	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
+	DurationS  *int64     `json:"duration_s,omitempty"`
+	// Resolution (cleared): disabled | reconfigured | gone, and why.
+	Resolution     string     `json:"resolution,omitempty"`
+	ResolutionNote string     `json:"resolution_note,omitempty"`
+	AckBy          string     `json:"ack_by,omitempty"`
+	AckNote        string     `json:"ack_note,omitempty"`
+	AckAt          *time.Time `json:"ack_at,omitempty"`
+	Reminder       int        `json:"reminder,omitempty"`
+	URL            string     `json:"url,omitempty"`
+	TimeZone       string     `json:"tz,omitempty"`
+	Fingerprint    string     `json:"fingerprint,omitempty"` // host/check/subject: the same for every occurrence
 }
 
 // Result is how a send ended.

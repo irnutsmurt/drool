@@ -11,14 +11,22 @@ export function AlertSeverity({ severity }: { severity: string }) {
 
 export const categoryLabel: Record<string, string> = {
   cpu: "CPU", memory: "Memory", disk: "Disk space", storage: "Storage health", services: "Services", network: "Interfaces",
-  temperature: "Temperature", stale: "Unreachable / stale", fidelity: "Monitoring fidelity",
+  temperature: "Temperature", gpu: "GPU", stale: "Unreachable / stale", fidelity: "Monitoring fidelity",
 };
 
 export const checkLabel: Record<string, string> = {
   cpu: "Sustained CPU", memory: "Memory pressure", filesystem: "Filesystem space", inodes: "Inodes", filesystem_readonly: "Filesystem read-only",
   device_readonly: "Device read-only", service_failed: "Service failed", service_stopped: "Watched service stopped", interface_down: "Interface down",
   temperature: "Temperature", storage_health: "Storage health", media_errors: "Media errors", kernel_storage: "Kernel storage errors",
-  probe: "Write/read probe", stale: "No monitoring data", fidelity: "Reduced fidelity",
+  probe: "Write/read probe", stale: "No monitoring data", fidelity: "Reduced fidelity", gpu_utilization: "High GPU utilization",
+};
+
+/** Whether a resolved alert closed by configuration (or its subject
+ * disappeared) rather than recovering. */
+export const clearedBy = (a: Alert) => a.resolution === "disabled" || a.resolution === "reconfigured" || a.resolution === "gone";
+
+export const resolutionWord: Record<string, string> = {
+  recovered: "Recovered", disabled: "Cleared: check turned off", reconfigured: "Cleared: threshold changed", gone: "Closed: no longer reported",
 };
 
 /** "7m 42s", "2h 5m", "3d 4h". */
@@ -32,6 +40,7 @@ export function fmtDuration(ms: number | null | undefined): string {
 }
 
 export function AlertStateBadge({ a }: { a: Alert }) {
+  if (a.state === "resolved" && clearedBy(a)) return <Badge tone="neutral">{resolutionWord[a.resolution!]} (not a recovery)</Badge>;
   if (a.state === "resolved") return <StatusBadge status="ok">Resolved</StatusBadge>;
   if (a.state === "acknowledged") return <Badge tone="neutral">✓ Acknowledged</Badge>;
   return <Badge tone="neutral">● Active</Badge>;

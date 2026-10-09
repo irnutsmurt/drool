@@ -18,7 +18,6 @@ export type MonFleet = Schemas["MonFleet"];
 export type MonFleetHost = Schemas["MonFleetHost"];
 export type MonSettings = Schemas["MonSettings"];
 export type MonSettingsView = Schemas["MonSettingsView"];
-export type MonThresholds = Schemas["MonThresholds"];
 export type MonHostSettings = Schemas["MonHostSettings"];
 export type MonHelperPreview = Schemas["MonHelperPreview"];
 export type MonHelperStatus = Schemas["MonHelperStatus"];

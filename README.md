@@ -17,7 +17,9 @@ a few principles:
 - **Network intent:** describing who should talk to whom, with safe firewall automation, is the
   long-term differentiator.
 
-Linux is the product scope.
+Linux is the platform DROOL implements today. A Windows agent is a deferred future product goal;
+the controller's typed operations are intentionally kept platform-neutral so Windows-native
+implementations can be added later.
 
 - **Design:** [`DESIGN.md`](DESIGN.md) (product and trust architecture, including future plans)
 - **Implementation:** [`ARCHITECTURE-ALPHA.md`](ARCHITECTURE-ALPHA.md) (what the Technical Alpha
@@ -75,7 +77,9 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
 - **System monitoring** (on `main`): CPU, memory, disks, network, temperatures, GPUs, services and
   storage device health for every host, with history (hour to 30 days), health issues that need a
   condition to last before they appear, and a fleet view. Agent hosts are continuous, within a
-  small enforced resource budget; SSH hosts are polled every 5 minutes. See
+  small enforced resource budget; SSH hosts are polled every 5 minutes. The Recommended health
+  profile can be adjusted for the whole fleet, a group, a host or a single filesystem, disk, GPU,
+  sensor or service, each setting showing where it comes from. See
   [System monitoring](#system-monitoring).
 - **Alerts and notifications** (on `main`): problems monitoring confirms become alerts you can
   acknowledge, with one message when they start and one when they're fixed — by email, Discord,
@@ -618,11 +622,15 @@ host's monitoring page:
   tell about its own health, and kernel evidence (IO errors, resets, read-only remounts).
 - **Sensors & GPU:** temperatures with the limits the hardware itself reports; GPU use, memory,
   temperature and power where the driver provides them.
+- **Health settings:** where this host's health settings come from (the Recommended profile, your
+  global changes, its groups, the host itself), and customizing one filesystem, disk, GPU, sensor
+  or service (see [Health checks and overrides](#health-checks-and-overrides)).
 - **Collection & helpers:** how the host is monitored, which optional tools would add
   information, and (agent hosts) the agent's resource budget and use.
 
-Nothing is installed, changed or sent anywhere to monitor a host. Health issues are listed in
-DROOL; there are no notifications yet.
+Nothing is installed, changed or sent anywhere to monitor a host. Monitoring itself only evaluates
+health. Warning and Critical health issues feed DROOL's [Alerts](#alerts-and-notifications)
+system, which handles acknowledgement, maintenance suppression and configured notifications.
 
 ### Agent hosts and SSH hosts
 
@@ -685,10 +693,65 @@ exactly as it was, managed over SSH.
 Issues appear only when a condition lasts (for example CPU above 95% for 5 minutes, a disk over
 85% full on two checks in a row) and clear only after it has properly recovered, so short spikes
 don't flap. Temperatures are judged only against limits the hardware reports — DROOL has no
-universal "too hot". **Settings → Monitoring** offers the recommended thresholds or your own, and
-any check can be turned off per host. Warning and Critical issues become
-[alerts](#alerts-and-notifications); informational ones (such as reduced monitoring fidelity) are
-shown here only.
+universal "too hot". Warning and Critical issues become [alerts](#alerts-and-notifications);
+informational ones (such as reduced monitoring fidelity) are shown here only.
+
+### Health checks and overrides
+
+Out of the box every host uses the **Recommended** profile, and most fleets never need anything
+else. But a gaming PC, an LLM server, a NAS and a Raspberry Pi can have good reasons to differ, so
+any single setting can be changed where it matters:
+
+| Where | Example | How |
+|---|---|---|
+| Every host | "Disk warning at 80%" | Settings → Monitoring → Health checks → **Customize** |
+| A group | *AI-Hosts*: high GPU utilization off | Groups → **Customize monitoring** |
+| A host | *gaming-pc*: high CPU utilization off | The host's monitoring page → **Health settings** |
+| One device or service | `/srv/media`: warning 92%, critical 98% (while `/` keeps 85%/95%) | **Customize health check** next to the filesystem, disk, sensor, GPU or service |
+
+The most specific setting wins: a device's own setting, then the host's, then its groups', then
+your fleet-wide change, then Recommended. You change only what you need — everything else keeps
+coming from the level above — and **Reset to inherited** undoes a change without copying any
+values back. Every setting shows where it comes from: *Recommended default*, *Hardware-reported
+limit*, *Global custom setting*, *Inherited from group: NAS*, *Custom for this host*, *Custom for
+/srv/media*.
+
+- **What you can change** depends on the check: on/off, warning and critical levels, how long a
+  condition must last, and the level and time it needs to clear. A yes/no check such as a SMART
+  failure has only on/off.
+- **High GPU utilization** is a check you can turn on, and it is **off by default**: a busy GPU is
+  usually working, not failing. Turning it on (say for a render farm) or off never affects GPU
+  temperature, disk health, memory pressure or anything else.
+- **High CPU utilization** stays on by default (a saturated CPU slows the whole machine); turn it
+  off for compute, render or gaming machines. Memory pressure, temperature and services are
+  separate checks.
+- **Temperatures** use each sensor's own hardware limits. You can turn one sensor off, make it wait
+  longer, or set your own limit for it; a custom limit is marked as such, never shown as the
+  hardware's.
+- **Filesystem space** and **disk health** are separate: raising `/srv/media`'s space threshold
+  never weakens SMART, NVMe, media-error or kernel-error detection for the disk under it.
+- **Devices are recognized by their own identity**: a filesystem by its UUID, a disk by its WWN or
+  serial number, an NVIDIA GPU by its UUID, a service by its unit name — so a setting stays with
+  the device when it is renamed, remounted or reordered after a reboot. Where only a weaker
+  identity exists (a PCI slot, a kernel name), DROOL says so. If a customized device disappears
+  its setting is kept, shown as *currently unavailable*, and applies again if it returns; it is
+  never moved to a different device.
+- **Hosts in several groups:** if two groups set the same thing differently, the group with the
+  higher **priority** (Settings → Monitoring → Health overrides) wins. With equal priorities DROOL
+  doesn't pick one: it shows a *group conflict* and uses your fleet-wide value until you set a
+  priority or a host setting.
+- **Changes apply at once.** A problem that still qualifies stays the same alert. One that no
+  longer qualifies — its check turned off, or its threshold now above the current value — closes
+  as **Cleared by configuration**: the alert history says why, and the closing message says
+  *CLEARED BY CONFIGURATION*, never *RECOVERED*, because the machine itself didn't change. A newly
+  stricter rule starts counting from the change: lowering a threshold never claims a problem
+  existed for the past five minutes.
+- **Fleet-wide and group changes show their impact first**: how many hosts are affected, how many
+  are above the old and the new threshold, and which open problems would close.
+
+Health settings decide *whether something is a problem*. Who hears about it is separate:
+"don't warn me about GPU load on gaming-pc" is a health setting; "send gaming-pc's Critical alerts
+only to Discord" is a [notification route](#advanced-routing).
 
 ### History, size and permissions
 
@@ -699,8 +762,11 @@ for 50, 308 MB for 200.
 | Permission | Roles | Allows |
 |---|---|---|
 | `monitoring.read` | everyone | All monitoring views |
-| `monitoring.manage` | administrators, operators | Watching services, probes, per-host checks, refreshing, helper installs (with `jobs.execute`) |
-| `monitoring.settings` | administrators | Global settings, agent budgets, standing helper approvals (audited) |
+| `monitoring.manage` | administrators, operators | Watching services, probes, refreshing, helper installs (with `jobs.execute`), and host or device health settings that make detection *stricter* |
+| `monitoring.settings` | administrators | Global settings, agent budgets, standing helper approvals, fleet-wide and group health settings, group priorities, and any host or device health change that makes detection less sensitive (a check off, a higher threshold, a longer wait) |
+
+Every health-setting change, reset, turned-off check and priority change is in the audit log with
+where, which check, which device and which fields.
 
 ## Alerts and notifications
 
@@ -739,7 +805,14 @@ RECOVERED: media01
 Recovered: jellyfin.service failed
 Duration: 7m 42s
 Acknowledged by rob: Restarting after the config fix
+
+CLEARED BY CONFIGURATION: render01
+Cleared by configuration: CPU at 95% or more for 5 minutes
+Why: High CPU utilization was turned off (Custom for this host).
+This is not a recovery: the check was turned off; the condition may still be present.
 ```
+
+A *cleared* message goes where a recovery message would; it is never worded as one.
 
 ### Working with alerts
 
@@ -781,7 +854,7 @@ Critical alerts to the destinations that chose it. You can add routes such as:
 - *Service warnings on the Media group* → Discord, without recovery messages
 
 A route filters by severity, hosts and groups, and categories (CPU, memory, disk space, storage
-health, services, interfaces, temperature, unreachable). There's no order to get right: every
+health, services, interfaces, temperature, GPU, unreachable). There's no order to get right: every
 route that matches contributes its destinations, and each destination gets an alert once even
 if several routes chose it. Recovery messages go to the destinations that got the alert.
 
@@ -826,8 +899,12 @@ Discord or Slack destination (60 for email, 120 for a webhook); the rest wait th
 }
 ```
 
-`event` is `opened`, `escalated`, `reminder`, `recovered` or `test`; recoveries add `resolved_at`
-and `duration_s`, acknowledged alerts an `acknowledgement` (`by`, `at`, `note`). `event_id` is the
+`event` is `opened`, `escalated`, `reminder`, `recovered`, `cleared` or `test`; `recovered` and
+`cleared` add `resolved_at`, `duration_s` and `resolution` (`recovered`; for `cleared`: `disabled`
+— the check was turned off, `reconfigured` — a threshold changed and the current value no longer
+qualifies, or `gone` — the device is no longer reported) with a `resolution_note`. Only
+`recovered` means the system got better. Acknowledged alerts carry an `acknowledgement` (`by`,
+`at`, `note`). `event_id` is the
 same for every destination; `fingerprint` is the same for every occurrence of a problem. Headers:
 `X-DROOL-Event`, `X-DROOL-Delivery`, `Idempotency-Key`, and your secret header if set. A 2xx answer
 is success; redirects are followed (up to 3, only to `http(s)`, never from `https` to `http`, and
@@ -1062,6 +1139,11 @@ plain HTTP to the network by accident.
   are not shown; "new" is relative to the retained history (30 days by default); GeoIP/ASN only
   from databases you install and update; observations from M8 agents have no processes until the
   agent is updated.
+- **Health overrides:** per-device settings are per host (a group can't target "/srv/media on
+  every member"); GPU hardware/driver error health (NVIDIA Xid and similar) isn't collected, so
+  only GPU utilization and temperature are judged; NVIDIA GPUs report no temperature limit, so
+  their temperature is judged only against a limit you set; interfaces are identified by name;
+  older agents report GPUs and sensors without their stable identity until updated.
 - **Alerts and notifications:** delivery is at least once (a rare duplicate is possible; webhooks
   get an id to drop it); an SMTP server or webhook with a self-signed certificate needs its CA in
   the controller's system trust store (there is no per-destination certificate setting); no SMS,

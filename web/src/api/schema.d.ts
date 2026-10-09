@@ -2104,6 +2104,160 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/monitoring/health/checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The health checks and the fields each honestly supports (a SMART failure has no numeric threshold). */
+        get: operations["healthChecks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/health/global": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The fleet-wide health configuration: the Recommended profile plus global overrides, each field with its value, its source and what it would be without the global override. Health overrides decide what monitoring considers unhealthy; who is notified is the separate notification routing. */
+        get: operations["healthGlobal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/health/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Every group with its monitoring override priority and how many fields it overrides. */
+        get: operations["healthGroups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/health/groups/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One group's view; `inherited` is what the group gets from global and Recommended. */
+        get: operations["healthGroup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/health/groups/{id}/priority": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description A group's monitoring override priority (-1000–1000, default 0). When a host is in several groups that set the same field, the higher priority wins; equal priorities with different values are a conflict (shown, never resolved silently). Requires `monitoring.settings`; audited. */
+        put: operations["setHealthGroupPriority"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/health/overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Stored overrides, most general first (at most 1000). */
+        get: operations["listHealthOverrides"];
+        /** @description Sets one scope's complete sparse field set for a check (and, at host scope, optionally one subject). Fields left out are inherited; an empty `fields` removes the override ("Reset to inherited"). Takes effect at once: an active issue still failing under the new rule stays open (its severity follows the rule); one whose check is now off, or whose current value no longer qualifies, closes as `disabled` or `reconfigured` (never a recovery); pending durations restart from the change. Global and group scope require `monitoring.settings`; host and subject scope require `monitoring.manage`, or `monitoring.settings` when the change makes detection less sensitive (a check off, a higher threshold, a longer duration, a sooner clear). Audited. */
+        put: operations["putHealthOverride"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/health/overrides/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Reset to inherited (the same permissions as changing it). Audited. */
+        delete: operations["deleteHealthOverride"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/health/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description What a change would do, without making it: hosts whose rule changes, how many are above the previous and the new warning level now, and which active issues would close. With `priority`, previews a group priority change. */
+        post: operations["previewHealthOverride"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/monitoring/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A host's effective health configuration with provenance (Recommended, hardware limit, global, group, host or subject), group conflicts, and the subjects that can be customized (including configured ones the host doesn't report now). With `subject`, that subject's checks; with `check`, one check. */
+        get: operations["hostHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/monitoring/approvals": {
         parameters: {
             query?: never;
@@ -2327,7 +2481,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** @description Watched services, the flash probe and disabled checks (`monitoring.manage`); the agent's resource budget needs `monitoring.settings`. Audited; re-sent to the agent. A probe more often than hourly returns a wear warning. */
+        /** @description Watched services and the flash probe (`monitoring.manage`); the agent's resource budget needs `monitoring.settings`. Audited; re-sent to the agent. A probe more often than hourly returns a wear warning. Turning a check off is a health override (`PUT /monitoring/health/overrides`); a non-empty `disabled_checks` (M11) is refused. */
         put: operations["setHostMonitoringSettings"];
         post?: never;
         delete?: never;
@@ -4587,6 +4741,12 @@ export interface components {
             started_at: number;
             updated_at: number;
             resolved_at?: number;
+            /**
+             * @description Why it ended: only `recovered` is a recovery.
+             * @enum {string}
+             */
+            resolution?: "recovered" | "disabled" | "reconfigured" | "gone";
+            resolution_note?: string;
         };
         MonProbe: {
             mount: string;
@@ -4641,7 +4801,6 @@ export interface components {
             /** @description Seconds between probes (default 3600). Shorter intervals are allowed but add flash wear. */
             probe_s?: number;
             limits?: components["schemas"]["MonLimits"];
-            disabled_checks: string[];
         };
         MonHostOverview: {
             host_id: string;
@@ -4850,27 +5009,9 @@ export interface components {
             level: string;
             message: string;
         };
-        MonThresholds: {
-            cpu_percent: number;
-            cpu_minutes: number;
-            memory_percent: number;
-            memory_critical_percent: number;
-            memory_minutes: number;
-            disk_warning_percent: number;
-            disk_critical_percent: number;
-            inode_warning_percent: number;
-            inode_critical_percent: number;
-            service_failed_minutes: number;
-            watched_stopped_minutes: number;
-            interface_down_minutes: number;
-            temperature_minutes: number;
-            stale_intervals: number;
-        };
+        /** @description Fleet monitoring settings. Health thresholds are not here since M12.1; they are health overrides. */
         MonSettings: {
             enabled: boolean;
-            /** @enum {string} */
-            profile: "recommended" | "custom";
-            custom: components["schemas"]["MonThresholds"];
             retention_days: number;
             sample_s: number;
             slow_s: number;
@@ -4883,6 +5024,185 @@ export interface components {
             ssh_smart_s: number;
             ssh_sudo: boolean;
         };
+        HealthFieldSpec: {
+            /** @enum {string} */
+            name: "enabled" | "warning" | "critical" | "duration_min" | "clear" | "clear_duration_min" | "missed_intervals";
+            label: string;
+            /** @enum {string} */
+            type: "bool" | "percent" | "celsius" | "minutes" | "count";
+            unit?: string;
+            min: number;
+            max: number;
+            help?: string;
+        };
+        HealthCheckSpec: {
+            id: string;
+            label: string;
+            category: string;
+            description: string;
+            /**
+             * @description What a subject override binds to.
+             * @enum {string}
+             */
+            subject?: "filesystem" | "disk" | "gpu" | "sensor" | "interface" | "service" | "probe";
+            fields: components["schemas"]["HealthFieldSpec"][];
+            /** @description Informational; never an alert. */
+            info?: boolean;
+            /** @description Off in the Recommended profile (high GPU utilization). */
+            default_off?: boolean;
+        };
+        /** @description A sparse field set; absent (or null) fields are inherited. */
+        HealthFields: {
+            enabled?: boolean;
+            warning?: number;
+            critical?: number;
+            duration_min?: number;
+            clear?: number;
+            clear_duration_min?: number;
+            missed_intervals?: number;
+        };
+        HealthGroupRef: {
+            id: string;
+            name: string;
+            priority: number;
+            value?: number;
+        };
+        HealthProvenance: {
+            /** @enum {string} */
+            kind: "recommended" | "hardware" | "derived" | "global" | "group" | "host" | "subject" | "unset";
+            /** @description For people: "Recommended default", "Hardware-reported limit", "Inherited from group: NAS", "Custom for this host", "Custom for /srv/media". */
+            label: string;
+            groups?: components["schemas"]["HealthGroupRef"][];
+            subject?: string;
+            subject_label?: string;
+        };
+        HealthConflict: {
+            priority: number;
+            groups: components["schemas"]["HealthGroupRef"][];
+        };
+        HealthResolved: {
+            /** @description null: no value (no hardware limit, no critical level). */
+            value: number | null;
+            source: components["schemas"]["HealthProvenance"];
+            conflict?: components["schemas"]["HealthConflict"];
+        };
+        HealthEffectiveField: components["schemas"]["HealthFieldSpec"] & components["schemas"]["HealthResolved"] & {
+            /** @description This scope's own override of the field (null: inherited). */
+            own: number | null;
+            inherited: components["schemas"]["HealthResolved"];
+        };
+        HealthEffectiveCheck: {
+            check: string;
+            label: string;
+            category: string;
+            description: string;
+            subject_kind?: string;
+            info?: boolean;
+            default_off?: boolean;
+            enabled: boolean;
+            /** @description This scope overrides at least one field. */
+            customized: boolean;
+            conflicts: number;
+            override_id?: string;
+            fields: components["schemas"]["HealthEffectiveField"][];
+        };
+        HealthSubject: {
+            /** @description Stable identity: fsuuid:, mount:, disk:, gpu:, sensor:, iface:, unit:. */
+            key: string;
+            kind: string;
+            label: string;
+            identity: string;
+            /**
+             * @description How stable the identity is (empty for subjects not reported now).
+             * @enum {string}
+             */
+            strength: "stable" | "location" | "name" | "weak" | "";
+            /** @description Reported by the host now; false: configured but currently unavailable. */
+            present: boolean;
+            checks: string[];
+            customized: boolean;
+            /** @description The subject as health issues name it (a mount, a unit, a sensor id, a GPU id). */
+            issue_subject?: string;
+            /** @description What the current report calls it (a mount, a sensor id, a disk key, an interface, a unit, gpu:<index>), to find the subject of a row. */
+            ref?: string;
+        };
+        HealthSummary: {
+            text: string;
+            global_fields: number;
+            group_fields: number;
+            host_fields: number;
+            subject_fields: number;
+            conflicts: number;
+            using_recommended: boolean;
+        };
+        HealthGroup: {
+            group_id: string;
+            name: string;
+            priority: number;
+            hosts: number;
+            overrides: number;
+        };
+        HealthView: {
+            /** @enum {string} */
+            scope: "global" | "group" | "host";
+            group_id?: string;
+            host_id?: string;
+            subject?: components["schemas"]["HealthSubject"];
+            checks: components["schemas"]["HealthEffectiveCheck"][];
+            summary?: components["schemas"]["HealthSummary"];
+            subjects?: components["schemas"]["HealthSubject"][];
+            groups?: components["schemas"]["HealthGroup"][];
+        };
+        HealthOverride: {
+            id: string;
+            /** @enum {string} */
+            scope: "global" | "group" | "host";
+            group_id?: string;
+            group_name?: string;
+            host_id?: string;
+            host_name?: string;
+            check: string;
+            subject?: string;
+            subject_label?: string;
+            fields: components["schemas"]["HealthFields"];
+            updated_by?: string;
+            updated_at: number;
+            created_at: number;
+        };
+        HealthOverrideInput: {
+            /** @enum {string} */
+            scope: "global" | "group" | "host";
+            group_id?: string;
+            host_id?: string;
+            check: string;
+            /** @description Host scope only. */
+            subject?: string;
+            /** @description What to call the subject while it is unavailable. */
+            subject_label?: string;
+            fields: components["schemas"]["HealthFields"];
+        };
+        HealthPreviewInput: components["schemas"]["HealthOverrideInput"] & {
+            /** @description Preview a group priority change instead (with group_id). */
+            priority?: number;
+        };
+        HealthPreview: {
+            check: string;
+            affected: number;
+            in_scope: number;
+            above_before: number;
+            above_after: number;
+            would_close: number;
+            would_stay: number;
+            disables: boolean;
+            summary: string;
+            hosts: {
+                host_id: string;
+                name: string;
+                effect: string;
+                closes?: string[];
+                changes?: string[];
+            }[];
+        };
         MonPrune: {
             at: string;
             points: number;
@@ -4893,7 +5213,6 @@ export interface components {
         };
         MonSettingsView: {
             settings: components["schemas"]["MonSettings"];
-            recommended: components["schemas"]["MonThresholds"];
             checks: string[];
             helpers: string[];
             last_prune: components["schemas"]["MonPrune"];
@@ -5034,6 +5353,12 @@ export interface components {
             /** @description Opening notification due (after maintenance ended). */
             notify_after?: number;
             notification: components["schemas"]["NotificationState"];
+            /**
+             * @description Why a resolved alert closed. Only `recovered` is a recovery; `disabled` (its check was turned off), `reconfigured` (a threshold changed and the current state no longer qualifies) and `gone` (the subject disappeared) close it with a "cleared" notification, never "recovered".
+             * @enum {string}
+             */
+            resolution?: "recovered" | "disabled" | "reconfigured" | "gone";
+            resolution_note?: string;
         };
         Acknowledgement: {
             by: string;
@@ -5278,8 +5603,11 @@ export interface components {
             destination_id?: string;
             destination: string;
             destination_kind: string;
-            /** @enum {string} */
-            kind: "opening" | "escalation" | "reminder" | "recovery";
+            /**
+             * @description `cleared`: the closing notification of an alert closed by configuration (routed like a recovery).
+             * @enum {string}
+             */
+            kind: "opening" | "escalation" | "reminder" | "recovery" | "cleared";
             /** @enum {string} */
             status: "queued" | "sending" | "delivered" | "failed" | "cancelled";
             attempts: number;
@@ -9184,6 +9512,257 @@ export interface operations {
             422: components["responses"]["Problem"];
         };
     };
+    healthChecks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Checks. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        checks: components["schemas"]["HealthCheckSpec"][];
+                    };
+                };
+            };
+        };
+    };
+    healthGlobal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Configuration. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthView"];
+                };
+            };
+        };
+    };
+    healthGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Groups. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        groups: components["schemas"]["HealthGroup"][];
+                    };
+                };
+            };
+        };
+    };
+    healthGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Configuration. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthView"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    setHealthGroupPriority: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    priority: number;
+                };
+            };
+        };
+        responses: {
+            /** @description The group's view. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthView"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    listHealthOverrides: {
+        parameters: {
+            query?: {
+                scope?: "global" | "group" | "host";
+                group_id?: string;
+                host_id?: string;
+                check?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Overrides. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["HealthOverride"][];
+                    };
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    putHealthOverride: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthOverrideInput"];
+            };
+        };
+        responses: {
+            /** @description Saved (or removed). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        override?: components["schemas"]["HealthOverride"];
+                        removed: boolean;
+                    };
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    deleteHealthOverride: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    previewHealthOverride: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthPreviewInput"];
+            };
+        };
+        responses: {
+            /** @description Impact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthPreview"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    hostHealth: {
+        parameters: {
+            query?: {
+                check?: string;
+                subject?: string;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Configuration. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthView"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
     listHelperApprovals: {
         parameters: {
             query?: never;
@@ -9695,7 +10274,7 @@ export interface operations {
                 severity?: "warning" | "critical";
                 host_id?: string;
                 group_id?: string;
-                category?: "cpu" | "memory" | "disk" | "storage" | "services" | "network" | "temperature" | "stale" | "fidelity";
+                category?: "cpu" | "memory" | "disk" | "storage" | "services" | "network" | "temperature" | "gpu" | "stale" | "fidelity";
                 check?: string;
                 acknowledged?: boolean;
                 /** @description Open views: suppressed by maintenance now. History: was suppressed. */

@@ -1,6 +1,6 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.8**
+**Design Document v0.3.9**
 Status: Draft · 2026-10-08 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
@@ -13,6 +13,21 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.8 → v0.3.9 (M12.1: monitoring health overrides)
+
+The Recommended health profile is a good default, but fleets aren't homogeneous. M12.1 makes M11's health evaluation configurable where operators need it, without a rule language and without touching M12's alert lifecycle:
+
+| # | As built | Section |
+|---|---|---|
+| 1 | **Sparse, inherited health settings** at four scopes, most specific first: a subject (one filesystem, disk, GPU, sensor, interface, service or probe target of a host) → host → group → global → Recommended. An override stores only the fields it changes; everything else is inherited. Hosts managed over SSH get the same configuration as agent hosts | §11.3 |
+| 2 | **Honest capabilities.** Each check supports only the fields that mean something for it (on/off; warning and critical levels; duration; clear level and clear duration; missed reports for staleness) | §11.3 |
+| 3 | **Groups decide by an explicit priority.** Equal priorities with different values are a visible conflict that uses the next scope's value; nothing depends on names, ids or ordering | §11.3 |
+| 4 | **Subjects bind to stable identities** (filesystem UUID, disk WWN/EUI/serial, NVIDIA GPU UUID or AMD unique id, sensor chip with its device, unit name) and survive disappearance without being moved to another device | §11.3 |
+| 5 | **Every effective value explains its source** (Recommended, hardware limit, global, a group, the host, the subject), served by the API; the browser never resolves inheritance | §11.3 |
+| 6 | **High GPU utilization** is an optional check, off in Recommended: busy is not unhealthy | §11.3 |
+| 7 | **Configuration changes never fake a recovery.** Health issues record why they ended (recovered, disabled, reconfigured, gone); an alert closed by configuration says "cleared", never "recovered", in its history and its notification | §11.3, §11.4 |
+| 8 | Health overrides are not notification routes: one decides whether something is a problem, the other who hears about it | §11.3, §11.4 |
 
 ### v0.3.7 → v0.3.8 (M12: alerts, notifications and maintenance)
 
@@ -674,11 +689,22 @@ A normal user installs DROOL, adds hosts and immediately sees CPU, memory, stora
 
 **Helpers.** DROOL uses the kernel first, then tools already installed, then optional helpers (smartmontools, nvme-cli, lm-sensors). A missing helper is explained ("NVMe health is unavailable because nvme-cli is not installed; installing it enables …"). Installation needs approval — once for a host, for a selection, for a group or everywhere for an allowlisted helper — and goes through the ordinary package job engine, audited like any install; DROOL records that it asked and never uninstalls. One host's failed installation only reduces that host's monitoring.
 
-**Health evaluation.** A recommended profile (CPU ≥95% for 5 minutes, memory ≥90%/97% for 5 minutes, filesystems over 85%/95%, inodes, read-only flips, failed and watched services, interfaces down, temperatures against hardware thresholds, SMART failure, NVMe critical warnings and spare, new media errors, kernel storage errors, probe failures, stale hosts, reduced fidelity) or custom thresholds, with durations and hysteresis so momentary spikes never count. It opens and resolves health issues; the alert lifecycle (§11.4) consumes them. Monitoring itself notifies nobody.
+**Health evaluation.** A recommended profile (CPU ≥95% for 5 minutes, memory ≥90%/97% for 5 minutes, filesystems over 85%/95%, inodes, read-only flips, failed and watched services, interfaces down, temperatures against hardware thresholds, SMART failure, NVMe critical warnings and spare, new media errors, kernel storage errors, probe failures, stale hosts, reduced fidelity; high GPU utilization available but off), with durations and hysteresis so momentary spikes never count. It opens and resolves health issues; the alert lifecycle (§11.4) consumes them. Monitoring itself notifies nobody.
+
+**Health overrides (M12.1).** A gaming PC, an LLM server, a NAS and a Raspberry Pi can have legitimate reasons to differ, so the profile can be changed sparsely at four scopes, the most specific winning: **subject** (one filesystem, disk, GPU, sensor, interface, service or probe target of a host) → **host** → **group** → **global** → **Recommended**. An override stores only the fields it changes (on/off, warning and critical levels, duration, clear level and clear duration, missed reports for staleness — whichever the check honestly supports: a SMART failure has only on/off); every other field is inherited. Overrides belong to the managed host, never to an agent identity: SSH hosts are configured the same way wherever the check exists.
+
+- *Groups.* A host in several groups takes, for each field, the value of the group with the highest monitoring priority. Groups of equal priority that disagree are a **conflict**: the field uses the next scope's value (global or Recommended), the conflict is shown on the host and in the API, and a priority, host or subject override settles it. No name, id, creation time or query order ever decides.
+- *Subjects* bind to the most stable identity the platform offers — filesystem UUID (with the mount path as context; the mount path when the UUID is unknown or shared), disk WWN / NVMe EUI / model and serial, NVIDIA GPU UUID or AMD unique id (else the PCI address), a sensor's chip with its sysfs device (a drive's sensor by the drive's identity), unit name, interface name — and say how strong that identity is. A configured subject that disappears keeps its override, shown as unavailable; it is never transferred to a new device and applies again if the same identity returns.
+- *Provenance.* The effective value of every field and where it comes from ("Recommended default", "Hardware-reported limit", "Global custom setting", "Inherited from group: NAS", "Custom for this host", "Custom for /srv/media") is computed by the controller and shown by the UI; a custom temperature limit is visibly different from the hardware's own. "Reset to inherited" never requires copying parent values.
+- *Changes take effect at once and never lie.* An active issue that still fails under the new rule stays the same issue (and alert), its severity following the rule. One whose check is turned off, or whose current value no longer qualifies, ends as *disabled* or *reconfigured*; a subject that disappears ends as *gone*; only a condition that improved is *recovered*. A condition that newly qualifies starts its duration at the change, and pending durations restart deliberately. Fleet-wide and group changes show their impact (hosts affected, how many are above the old and new threshold, which issues would close) before they are saved.
+- *Independence.* Disabling high CPU utilization leaves memory, temperature and services alone; GPU utilization (off by default) never affects GPU temperature; a filesystem's capacity threshold never weakens the disk's SMART, NVMe, media-error or kernel-error checks.
+- *Who may.* Global and group settings and priorities need the monitoring-settings permission; host and subject settings need monitoring management, but any change that makes detection less sensitive (a check off, a higher level, a longer duration, a sooner clear) needs monitoring settings. Every change is audited with scope, check, subject and fields.
+
+This is health evaluation, not notification routing: "don't tell me when gaming-pc's GPU is busy" is a health override; "send gaming-pc's Critical alerts only to Discord" is a route (§11.4).
 
 ### 11.4 Alerts and notifications
 
-**Issue → alert.** The health evaluation (§11.3) is the only place that decides something is wrong. When a Warning or Critical issue becomes active, DROOL opens an **alert occurrence** in the same database transaction; when the issue recovers, the alert resolves and records how long the problem lasted. Each activation is a new occurrence, linked to earlier ones for the same host, check and subject. Informational issues (reduced monitoring fidelity) stay on the monitoring pages and never alert.
+**Issue → alert.** The health evaluation (§11.3) is the only place that decides something is wrong. When a Warning or Critical issue becomes active, DROOL opens an **alert occurrence** in the same database transaction; when the issue recovers, the alert resolves and records how long the problem lasted. An issue that ends because of configuration (its check turned off, a threshold that the current value no longer meets) or because its subject disappeared closes the alert as **cleared**, with the reason in its history: the closing notification goes where a recovery would, but says "cleared by configuration" (or "no longer reported"), never "recovered". Each activation is a new occurrence, linked to earlier ones for the same host, check and subject. Informational issues (reduced monitoring fidelity) stay on the monitoring pages and never alert.
 
 **Lifecycle.** Active → (Acknowledged) → Resolved. Acknowledgement records who, when and an optional note, stops reminders, and is audited; it never resolves anything. Recovery always comes from the source condition. Suppression by maintenance (§12.13) is a separate flag, never a state that hides the alert.
 

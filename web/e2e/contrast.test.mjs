@@ -74,8 +74,8 @@ const monitoringPages = (hosts) => {
   const id = (n) => hosts.find((h) => h.name === n)?.id;
   const out = ["/monitoring", "/monitoring?category=unhealthy", "/settings/monitoring"];
   if (id("nas-01")) {
-    for (const tab of ["overview", "metrics", "services", "storage", "hardware", "agent"]) out.push(`/hosts/${id("nas-01")}/monitoring?tab=${tab}`);
-    out.push(`/hosts/${id("pi-sd")}/monitoring?tab=storage`, `/hosts/${id("gpu-01")}/monitoring?tab=hardware`, `/hosts/${id("old-vm")}/monitoring`);
+    for (const tab of ["overview", "metrics", "services", "storage", "hardware", "health", "agent"]) out.push(`/hosts/${id("nas-01")}/monitoring?tab=${tab}`);
+    out.push(`/hosts/${id("pi-sd")}/monitoring?tab=storage`, `/hosts/${id("gpu-01")}/monitoring?tab=hardware`, `/hosts/${id("gpu-01")}/monitoring?tab=health`, `/hosts/${id("old-vm")}/monitoring`);
   }
   return out;
 };
@@ -116,6 +116,25 @@ for (const theme of ["light", "dark"]) {
       const low = await page.evaluate(lowContrast);
       if (low.length) failures.push(`${p}:\n  ${low.join("\n  ")}`);
       await shot(page, `${theme}${p.replace(/[/?&=]+/g, "-")}`);
+    }
+    // M12.1: the fleet's health checks and a check's editor.
+    await page.goto(base + "/settings/monitoring", { waitUntil: "networkidle0" });
+    await sleep(600);
+    const cust = await page.evaluateHandle(() => [...document.querySelectorAll("button")].find((b) => b.textContent === "Customize"));
+    if (cust.asElement()) {
+      await cust.asElement().click();
+      await sleep(400);
+      const t = await page.evaluateHandle(() => [...document.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Customize Temperature"));
+      if (t.asElement()) {
+        await t.asElement().click();
+        await sleep(500);
+        const low = await page.evaluate(lowContrast);
+        if (low.length) failures.push(`health editor:\n  ${low.join("\n  ")}`);
+        await shot(page, `${theme}-health-editor`);
+        await page.keyboard.press("Escape");
+      }
+      const low = await page.evaluate(lowContrast);
+      if (low.length) failures.push(`health checks:\n  ${low.join("\n  ")}`);
     }
     // A dialog and the login page too.
     await page.goto(base + "/firewall?tab=designer&view=rules", { waitUntil: "networkidle0" });

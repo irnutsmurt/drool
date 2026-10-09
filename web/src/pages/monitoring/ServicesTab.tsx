@@ -1,3 +1,4 @@
+import { SubjectHealthButton } from "@/components/health/HostHealth";
 import { useState } from "react";
 import { Link } from "react-router";
 import { useAuth } from "@/auth/AuthContext";
@@ -119,6 +120,7 @@ export function ServicesTab({ id, o }: { id: string; o: MonHostOverview }) {
                         disabled={!can("monitoring.manage") || save.isPending} onChange={(on) => watch(u.name, on)} />
                     </td>
                     <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                      <SubjectHealthButton hostId={id} kind="service" subjectRef={u.name} label={u.name} />
                       <Button size="sm" variant="ghost" onClick={() => setHist(u.name)}>History</Button>
                       {can("jobs.execute") && (
                         <Link className="ml-1 text-xs text-accent" to={`/jobs/new?hosts=${id}&op=service&service=${encodeURIComponent(u.name)}&action=${u.state === "running" ? "restart" : "start"}`}>

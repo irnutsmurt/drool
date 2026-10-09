@@ -174,7 +174,7 @@ function EventsCard() {
         <ul className="space-y-2 text-sm">
           {rows.map((e) => (
             <li key={e.id} className="flex items-start gap-2">
-              <StatusIcon status={e.kind === "alert.recovered" || e.kind === "notifications.recovered" ? "ok" : eventStatus[e.severity] ?? "info"} />
+              <StatusIcon status={e.kind === "alert.recovered" || e.kind === "notifications.recovered" ? "ok" : e.kind === "alert.cleared" ? "info" : eventStatus[e.severity] ?? "info"} />
               {e.object_type === "alert" ? <Link className="min-w-0 text-accent" to={`/alerts/${e.object_id}`}>{e.title}</Link> : <span className="min-w-0">{e.title}</span>}
               <span className="ml-auto shrink-0 text-xs text-muted">{fmtSince(e.ts)}</span>
             </li>

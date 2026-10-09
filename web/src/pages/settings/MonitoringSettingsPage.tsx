@@ -9,24 +9,8 @@ import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { errorMessage } from "@/lib/format";
-import { useApprovals, useMonInvalidate, useMonSettings, type MonSettings, type MonThresholds } from "@/components/monitoring/queries";
-
-const thresholdFields: { key: keyof MonThresholds; label: string; unit: string }[] = [
-  { key: "cpu_percent", label: "CPU busy", unit: "%" },
-  { key: "cpu_minutes", label: "…for at least", unit: "min" },
-  { key: "memory_percent", label: "Memory warning", unit: "%" },
-  { key: "memory_critical_percent", label: "Memory critical", unit: "%" },
-  { key: "memory_minutes", label: "…for at least", unit: "min" },
-  { key: "disk_warning_percent", label: "Disk space warning", unit: "%" },
-  { key: "disk_critical_percent", label: "Disk space critical", unit: "%" },
-  { key: "inode_warning_percent", label: "Inodes warning", unit: "%" },
-  { key: "inode_critical_percent", label: "Inodes critical", unit: "%" },
-  { key: "service_failed_minutes", label: "Service failed for", unit: "min" },
-  { key: "watched_stopped_minutes", label: "Watched service stopped for", unit: "min" },
-  { key: "interface_down_minutes", label: "Interface down for", unit: "min" },
-  { key: "temperature_minutes", label: "Above the hardware's limit for", unit: "min" },
-  { key: "stale_intervals", label: "Stale after missed reports", unit: "×" },
-];
+import { useApprovals, useMonInvalidate, useMonSettings, type MonSettings } from "@/components/monitoring/queries";
+import { HealthChecksCard, HealthOverridesCard } from "@/components/health/GlobalHealth";
 
 export function MonitoringSettingsPage() {
   const { can } = useAuth();
@@ -41,7 +25,6 @@ export function MonitoringSettingsPage() {
   const edit = can("monitoring.settings");
   if (q.error) return <Alert>{errorMessage(q.error)}</Alert>;
   if (!s || !q.data) return <p className="text-sm text-muted">Loading…</p>;
-  const shown = s.profile === "custom" ? s.custom : q.data.recommended;
   const set = <K extends keyof MonSettings>(k: K, v: MonSettings[K]) => setS({ ...s, [k]: v });
   const int = (v: string) => Math.max(0, Number(v) || 0);
   return (
@@ -49,26 +32,9 @@ export function MonitoringSettingsPage() {
       <Card title="Monitoring">
         <div className="space-y-3">
           <Checkbox label="Monitor hosts (agents stream continuously; SSH hosts are polled)" checked={s.enabled} disabled={!edit} onChange={(v) => set("enabled", v)} />
-          <Field label="Health thresholds">
-            <Select value={s.profile} disabled={!edit} onChange={(e) => setS({ ...s, profile: e.target.value as "custom", custom: e.target.value === "custom" && s.profile !== "custom" ? q.data!.recommended : s.custom })} className="max-w-xs">
-              <option value="recommended">Recommended</option>
-              <option value="custom">Custom</option>
-            </Select>
-          </Field>
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {thresholdFields.map((f) => (
-              <Field key={f.key} label={`${f.label} (${f.unit})`}>
-                <Input type="number" value={shown[f.key]} disabled={!edit || s.profile !== "custom"}
-                  onChange={(e) => setS({ ...s, custom: { ...s.custom, [f.key]: Number(e.target.value) } })} />
-              </Field>
-            ))}
-          </div>
-          <p className="text-xs text-muted">
-            Conditions must hold for the whole duration and clear below a lower level (hysteresis), so momentary spikes never count.
-            Temperatures are judged only against each sensor's own hardware limits.
-          </p>
         </div>
       </Card>
+      <HealthChecksCard />
       <Card title="History">
         <Field label="Keep hourly history for (days)" hint="Raw points are kept for a day and five-minute averages for eight days.">
           <Input type="number" min={7} max={400} value={s.retention_days} disabled={!edit} onChange={(e) => set("retention_days", int(e.target.value))} className="max-w-xs" />
@@ -114,6 +80,7 @@ export function MonitoringSettingsPage() {
         </div>
       )}
       <Approvals />
+      <HealthOverridesCard />
     </div>
   );
 }

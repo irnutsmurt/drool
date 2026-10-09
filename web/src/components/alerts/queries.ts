@@ -17,7 +17,7 @@ export type RouteInput = Schemas["RouteInput"];
 export type Delivery = Schemas["Delivery"];
 export type NotificationSettings = Schemas["NotificationSettings"];
 
-export type AlertCategory = "cpu" | "memory" | "disk" | "storage" | "services" | "network" | "temperature" | "stale" | "fidelity";
+export type AlertCategory = "cpu" | "memory" | "disk" | "storage" | "services" | "network" | "temperature" | "gpu" | "stale" | "fidelity";
 
 export type AlertFilter = {
   view?: "active" | "acknowledged" | "open" | "resolved" | "all";
