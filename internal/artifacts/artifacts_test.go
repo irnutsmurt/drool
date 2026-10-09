@@ -83,6 +83,10 @@ func TestGCKeepsReferenced(t *testing.T) {
 	// file for next week's run.
 	inWorkflow, _ := s.Put(ctx, strings.NewReader("workflow step\n"), "e", "")
 	inSchedule, _ := s.Put(ctx, strings.NewReader("scheduled job\n"), "f", "")
+	// Desired state (M14): a baseline revision's managed file (any
+	// revision: history can be reviewed) and a host's accepted content.
+	inBaseline, _ := s.Put(ctx, strings.NewReader("managed file\n"), "g", "")
+	inOverride, _ := s.Put(ctx, strings.NewReader("accepted from a host\n"), "h", "")
 	for _, stmt := range []string{
 		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at, password_changed_at) VALUES ('u','u','x','admin',0,0,0)`,
 		`INSERT INTO hosts (id, name, connect_address, ssh_user, created_at, updated_at) VALUES ('h','h','x','x',0,0)`,
@@ -95,13 +99,20 @@ func TestGCKeepsReferenced(t *testing.T) {
 		 VALUES ('wf',1,'w','[{"type":"file_deploy","artifact":"` + inWorkflow.SHA256 + `"}]','{}',0)`,
 		`INSERT INTO schedules (id, kind, name, config_json, created_at, updated_at)
 		 VALUES ('s','job','s','{"steps":[{"type":"file_deploy","artifact":"` + inSchedule.SHA256 + `"}]}',0,0)`,
+		`INSERT INTO ds_baselines (id, name, revision, created_at, updated_at) VALUES ('bl','b',2,0,0)`,
+		`INSERT INTO ds_baseline_revisions (baseline_id, revision, name, resources_json, assignments_json, content_hash, created_at)
+		 VALUES ('bl',1,'b','[{"kind":"file","path":"/etc/y","artifact":"` + inBaseline.SHA256 + `"}]','[]','x',0)`,
+		`INSERT INTO ds_baseline_revisions (baseline_id, revision, name, resources_json, assignments_json, content_hash, created_at)
+		 VALUES ('bl',2,'b','[]','[]','y',0)`,
+		`INSERT INTO ds_host_overrides (host_id, key, resource_json, created_at, updated_at)
+		 VALUES ('h','file:/etc/z','{"kind":"file","path":"/etc/z","artifact":"` + inOverride.SHA256 + `"}',0,0)`,
 	} {
 		if _, err := st.Writer.Exec(stmt); err != nil {
 			t.Fatal(err)
 		}
 	}
 	old := time.Now().Add(-48 * time.Hour).UnixMilli()
-	for _, a := range []string{kept.SHA256, inJob.SHA256, gone.SHA256, inWorkflow.SHA256, inSchedule.SHA256} {
+	for _, a := range []string{kept.SHA256, inJob.SHA256, gone.SHA256, inWorkflow.SHA256, inSchedule.SHA256, inBaseline.SHA256, inOverride.SHA256} {
 		st.Writer.Exec(`UPDATE artifacts SET last_used_at = ? WHERE sha256 = ?`, old, a)
 	}
 	n, err := s.GC(ctx, 24*time.Hour)
@@ -109,7 +120,7 @@ func TestGCKeepsReferenced(t *testing.T) {
 		t.Fatalf("gc removed %d: %v", n, err)
 	}
 	for sha, want := range map[string]bool{kept.SHA256: true, inJob.SHA256: true, gone.SHA256: false, fresh.SHA256: true,
-		inWorkflow.SHA256: true, inSchedule.SHA256: true} {
+		inWorkflow.SHA256: true, inSchedule.SHA256: true, inBaseline.SHA256: true, inOverride.SHA256: true} {
 		_, err := os.Stat(filepath.Join(dir, RelPath(sha)))
 		if (err == nil) != want {
 			t.Errorf("%s present=%v, want %v", sha[:8], err == nil, want)

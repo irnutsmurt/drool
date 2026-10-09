@@ -129,6 +129,38 @@ func TestAdmissionCapabilities(t *testing.T) {
 	}
 }
 
+// TestStateQueryAdmission: the read-only package query (desired state,
+// M14) is allowed by monitoring (or packages), refused with neither, and
+// validates its names like a package operation.
+func TestStateQueryAdmission(t *testing.T) {
+	query := func(id string, names ...string) *agentrpc.OpEnvelope {
+		return &agentrpc.OpEnvelope{OpID: id, IssuedAt: time.Now(), ExpiresAt: time.Now().Add(time.Minute), Epoch: "epoch-A",
+			Purpose: agentrpc.PurposeQuery, Query: &agentrpc.StateQuery{Packages: names}, TimeoutS: 30}
+	}
+	mon, _ := agentcaps.Preset(agentcaps.PresetMonitor)
+	a := testAgent(t, mon)
+	if r := a.admit(query("q_1", "curl", "telnet")); r != nil {
+		t.Fatalf("query on a monitor-only agent: %+v", r)
+	}
+	if r := a.admit(query("q_2", "bad name")); r == nil || r.Reason != agentrpc.RejectInvalid {
+		t.Errorf("invalid name: %+v", r)
+	}
+	if r := a.admit(query("q_3")); r == nil || r.Reason != agentrpc.RejectInvalid {
+		t.Errorf("empty query: %+v", r)
+	}
+	none := testAgent(t, agentcaps.Caps{})
+	if r := none.admit(query("q_4", "curl")); r == nil || r.Reason != agentrpc.RejectCapability || r.Capability != "monitoring" {
+		t.Errorf("query with neither monitoring nor packages: %+v", r)
+	}
+	pk := testAgent(t, agentcaps.Caps{Packages: agentcaps.Packages{Enabled: true}})
+	if r := pk.admit(query("q_5", "curl")); r != nil {
+		t.Errorf("query with packages only: %+v", r)
+	}
+	if got := opType(query("q_6", "curl")); got != "query" {
+		t.Errorf("op type %q", got)
+	}
+}
+
 func TestAbandonMakesUnknownSafe(t *testing.T) {
 	full, _ := agentcaps.Preset(agentcaps.PresetFull)
 	a := testAgent(t, full)

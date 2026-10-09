@@ -1050,8 +1050,12 @@ func TestAgentBulkConversion(t *testing.T) {
 	if !e.connected(goodID) {
 		t.Fatal("conversion is declared successful only once the agent connected over mTLS")
 	}
+	// The rollout pauses right after it records the failed host.
 	var status string
-	e.h.st.Reader.QueryRow(`SELECT status FROM agent_rollouts WHERE id = ?`, start.RolloutID).Scan(&status)
+	eventually(t, 10*time.Second, "rollout paused", func() bool {
+		e.h.st.Reader.QueryRow(`SELECT status FROM agent_rollouts WHERE id = ?`, start.RolloutID).Scan(&status)
+		return status != "running"
+	})
 	if status != "paused" || !strings.Contains(s[badID].Detail, "drool-agent install exited with status 1") {
 		t.Fatalf("a failure pauses the rollout (max 1 failure): %s %q", status, s[badID].Detail)
 	}

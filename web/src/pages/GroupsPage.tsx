@@ -11,6 +11,7 @@ import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { errorMessage } from "@/lib/format";
 import { GroupHealthButton } from "@/components/health/GlobalHealth";
+import { GroupDesiredState } from "@/components/desired/GroupDesiredState";
 
 export function GroupsPage() {
   const qc = useQueryClient();
@@ -97,6 +98,7 @@ export function GroupsPage() {
             ) : (
               <p className="text-sm text-muted">{g.host_ids.length ? g.host_ids.map(hostName).join(", ") : "No members."}</p>
             )}
+            {can("desired.read") && <GroupDesiredState groupId={g.id} />}
           </Card>
         ))}
       </div>

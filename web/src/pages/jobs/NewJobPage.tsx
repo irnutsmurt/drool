@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, type FormEvent } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type Schemas } from "@/api/client";
 import { jk, useGroups, useHosts } from "@/api/queries";
@@ -100,10 +100,13 @@ export function NewJobPage() {
     file_deploy: !!fd.artifact && fd.path.trim().startsWith("/") && (!fd.serviceAction || fd.serviceName.trim() !== ""),
   }[kind];
 
+  // The step goes with the preview when it decides where it runs (OS
+  // conditions) or could contradict desired state (warnings, M14).
+  const sendStep = stepReady && (conditional || kind === "service" || kind === "package" || kind === "file_deploy");
   const preview = useQuery({
-    queryKey: ["jobs", "preview", targets, conditional && stepReady ? step : null, strategy],
+    queryKey: ["jobs", "preview", targets, sendStep ? step : null, strategy],
     queryFn: () => unwrap(api.POST("/jobs/preview", {
-      body: { targets, steps: conditional && stepReady ? [step] : undefined, strategy },
+      body: { targets, steps: sendStep ? [step] : undefined, strategy },
     })),
     enabled: hasTargets,
     placeholderData: (prev) => prev,
@@ -265,6 +268,15 @@ export function NewJobPage() {
               )}
             </div>
           </Card>
+          {(preview.data?.desired_warnings ?? []).length > 0 && (
+            <Alert tone="warn">
+              <strong>This contradicts desired state.</strong>
+              <ul className="mt-1 list-disc space-y-1 pl-5">
+                {preview.data!.desired_warnings.map((w) => <li key={w.step + w.key + w.message}>{w.message}</li>)}
+              </ul>
+              <span className="mt-1 block text-xs">You can still run it; the hosts will then show drift. <Link className="underline" to="/desired">Desired state</Link></span>
+            </Alert>
+          )}
           {submit.error && <Alert>{errorMessage(submit.error)}</Alert>}
           <div className="flex flex-wrap items-center gap-2">
             <Button type="submit" variant={kind === "reboot" ? "danger" : "primary"} disabled={!count || !stepReady || submit.isPending}>

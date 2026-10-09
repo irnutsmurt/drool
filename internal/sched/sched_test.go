@@ -627,6 +627,10 @@ func TestEditEnableRunNow(t *testing.T) {
 		t.Fatal("the running job keeps its specification")
 	}
 	// Disabling doesn't cancel the running job; cancelling doesn't disable.
+	// (The job starts in the background: wait until it runs.)
+	for deadline := time.Now().Add(10 * time.Second); e.jobStatus(res.JobID) == "pending" && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+	}
 	if _, err := e.s.SetEnabled(ctx, sc.ID, false, func(*sql.Tx, *Schedule) error { return nil }); err != nil {
 		t.Fatal(err)
 	}

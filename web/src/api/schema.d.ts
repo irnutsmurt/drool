@@ -3093,6 +3093,396 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/desired/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The fleet's desired state at a glance, with the firewall's and agents' own drift for linking (not merged). Requires `desired.read`. */
+        get: operations["getDesiredSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/hosts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Managed hosts with their overall status (problems first), at most 1000. */
+        get: operations["listDesiredHosts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/hosts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        /** @description A host's effective desired state, where each value comes from (provenance, computed by the controller), and what differs. */
+        get: operations["getDesiredHost"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/hosts/{id}/resource": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        /** @description One managed resource on a host with its recent history (50 entries). */
+        get: operations["getDesiredResource"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/hosts/{id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * @description Review difference (read-only; nothing on the host changes). Services and packages compare what DROOL observed; a managed file
+         *     is inspected on the host (hashes and metadata) and, when the caller holds `files.read` (and `files.elevate` for files read
+         *     as root), a unified diff of small text files is included (audited as `desired.review`). Binary and large files get hashes only.
+         */
+        get: operations["reviewDesiredDifference"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/hosts/{id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Check the host now (packages, files, fresh service data). Requires `desired.restore`. Audited. */
+        post: operations["refreshDesiredHost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/hosts/{id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Accept current state: the host is checked again, and what it has now becomes its own desired state (a host-specific
+         *     declaration, the most specific scope). No baseline changes. A file's current content is copied into the artifact store
+         *     (up to 64 MiB); a missing file means "not managed on this host"; symlinks can't be accepted. Unknown state can't be accepted.
+         *     History records "resolved by configuration", never a restore. Requires `desired.manage`. Audited.
+         */
+        post: operations["acceptDesiredCurrent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/hosts/{id}/overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Set a host-specific declaration (e.g. to settle a conflict for one host), or exclude a resource on this host (`key` with `excluded`). Requires `desired.manage`. Audited. */
+        put: operations["setDesiredOverride"];
+        post?: never;
+        /** @description Remove a host-specific declaration ("reset to inherited"). Requires `desired.manage`. Audited. */
+        delete: operations["resetDesiredOverride"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Check hosts now (all managed hosts when none are named; at most 1000), spread over a few seconds. Requires `desired.restore`. Audited. */
+        post: operations["refreshDesired"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/restore/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Restore managed state, step 1: the selected hosts are checked again (when their observations are older than a minute) and
+         *     the exact correction is planned — one ordinary job with a step per resource that differs somewhere, each host running only
+         *     its own steps (installs, files, services, removals in that order), the rollout's waves, what is excluded and why (conflicts,
+         *     unknown state, corrections in progress, symlinks, masked units, agent capability ceilings, hosts whose agent belongs to
+         *     another controller epoch or whose file state is ahead), hosts in maintenance, and what removing a prohibited package would
+         *     also remove. Nothing changes. Requires `desired.restore`; `missing_permissions` lists what else the caller would need.
+         */
+        post: operations["previewDesiredRestore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Restore managed state, step 2: submits exactly the previewed plan (`plan_hash`) as ordinary job(s); refused with
+         *     `plan_changed` when what would be corrected changed since, and `nothing_to_restore` when nothing differs (no job is
+         *     created). Resources in a correction can't get a second corrective job until it finishes. After the job each host is
+         *     checked again and only proven compliance is recorded as restored. Requires `desired.restore`, `jobs.execute`, and for
+         *     files `files.deploy` (+ `files.elevate`). Audited (`desired.restore`, `job.create`).
+         */
+        post: operations["restoreDesired"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Meaningful transitions, newest first (drift detected or changed, compliant again and why, conflicts, unknown, restores requested, restored and failed, current state accepted). Unchanged conditions are never recorded. */
+        get: operations["listDesiredHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/baselines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBaselines"];
+        put?: never;
+        /** @description A named collection of typed desired resources and where it applies (revision 1). Requires `desired.manage`. Audited. */
+        post: operations["createBaseline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/baselines/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description What saving a baseline (new, or `id`) would do, judged against the latest observations. Nothing is saved. Requires `desired.manage`. */
+        post: operations["previewBaseline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/baselines/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getBaseline"];
+        /** @description Save a changed baseline as a new immutable revision (nothing changes when nothing differs). Requires `desired.manage`. Audited with the resources added, removed and changed. */
+        put: operations["updateBaseline"];
+        post?: never;
+        /** @description Stop applying the baseline (revisions and history are kept). Requires `desired.manage`. Audited. */
+        delete: operations["archiveBaseline"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/baselines/{id}/revisions/{rev}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                rev: number;
+            };
+            cookie?: never;
+        };
+        get: operations["getBaselineRevision"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/baselines/{id}/auto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * @description Automatic restore (off by default). Turning it on makes the caller the accountable owner — their account and permissions
+         *     are checked before every automatic job — and clears a pause. Requires `desired.auto` (and `desired.restore`, `jobs.execute`
+         *     to own it). Audited.
+         */
+        put: operations["setBaselineAuto"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Every group with its desired-state priority and the baselines assigned to it. */
+        get: operations["listDesiredGroups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/groups/{id}/priority": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** @description A group's precedence (-1000 to 1000) when a host is in several groups whose baselines declare the same resource. Requires `desired.manage`. Audited. */
+        put: operations["setDesiredGroupPriority"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/desired/groups/{id}/priority/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description What changing a group's priority would do (conflicts resolved or created, hosts drifting). Nothing is saved. */
+        post: operations["previewDesiredGroupPriority"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3739,6 +4129,19 @@ export interface components {
             hosts: components["schemas"]["TargetHost"][];
             warnings: string[];
             waves: components["schemas"]["RolloutWave"][];
+            /** @description Steps that would change something desired state manages the other way (M14). Warnings, not refusals. Empty without `desired.read`. */
+            desired_warnings: components["schemas"]["DesiredJobWarning"][];
+        };
+        DesiredJobWarning: {
+            /** @description 0-based step index */
+            step: number;
+            /** @description The resource, e.g. service:jellyfin.service */
+            key: string;
+            /** @description Host names */
+            hosts: string[];
+            message: string;
+            /** @description Automatic restore would put it back after the job (the message then says so) */
+            auto: boolean;
         };
         RolloutWave: {
             index: number;
@@ -3782,6 +4185,15 @@ export interface components {
             workflow_id?: string;
             workflow_name?: string;
             workflow_revision?: number;
+            /** @description A desired-state correction (M14) */
+            reconcile_id?: string;
+            /**
+             * @description Restore managed state, or a baseline's automatic restore (run as its owner)
+             * @enum {string}
+             */
+            reconcile_kind?: "manual" | "auto";
+            baseline_id?: string;
+            baseline_name?: string;
         };
         JobHost: {
             /** @description Management path that ran it: agent, ssh, or empty. */
@@ -3803,6 +4215,8 @@ export interface components {
             finished_at: string | null;
             /** @description Rollout wave (0 is the canary wave of a canary rollout); -1: not part of the run (skipped up front, e.g. in maintenance) */
             wave: number;
+            /** @description The step indexes this host runs when hosts run different subsets of the job's steps (desired-state corrections: each host runs only its own corrections); null: every step. */
+            steps?: number[] | null;
         };
         JobStep: {
             index: number;
@@ -6165,6 +6579,484 @@ export interface components {
         NotificationSettingsView: {
             settings: components["schemas"]["NotificationSettings"];
             kinds: string[];
+        };
+        /**
+         * @description drift: observed differs from desired; conflict: equally applicable declarations disagree (no desired value until resolved); unknown: DROOL can't currently verify it (never "compliant"); reconciling: a corrective job is in progress; failed: the last correction didn't make it comply.
+         * @enum {string}
+         */
+        DesiredStatus: "compliant" | "drift" | "conflict" | "unknown" | "reconciling" | "failed";
+        /**
+         * @description One typed desired resource — no expressions, nothing executes. service: `name` (a .service unit), `state`
+         *     running|stopped and/or `enabled` (empty fields are not managed; restart/reload are actions, not states). package:
+         *     `name`, `state` installed|absent (versions are not managed). file: `path`, `artifact` (SHA-256 of content in the
+         *     artifact store), optional `owner`/`group`/`mode`, and how it is deployed (`elevated`, `validate` with {path},
+         *     `service` reload/restart after a change), exactly as a file deployment (M6).
+         */
+        DesiredResource: {
+            /** @enum {string} */
+            kind: "service" | "package" | "file";
+            name?: string;
+            /** @enum {string} */
+            state?: "running" | "stopped" | "installed" | "absent";
+            enabled?: boolean;
+            path?: string;
+            artifact?: string;
+            /** @description Display only */
+            artifact_name?: string;
+            owner?: string;
+            group?: string;
+            /** @description Octal, e.g. 0644 */
+            mode?: string;
+            elevated?: boolean;
+            validate?: string;
+            service?: {
+                name: string;
+                /** @enum {string} */
+                action: "reload" | "restart";
+            };
+        };
+        DesiredAssignment: {
+            /** @enum {string} */
+            scope: "global" | "group" | "host";
+            group_id?: string;
+            host_id?: string;
+            /** @description The group's or host's name (read-only) */
+            name?: string;
+        };
+        BaselineInput: {
+            name: string;
+            description?: string;
+            resources: components["schemas"]["DesiredResource"][];
+            assignments: components["schemas"]["DesiredAssignment"][];
+        };
+        DesiredPerson: {
+            id: string;
+            name: string;
+        };
+        DesiredAuto: {
+            enabled: boolean;
+            strategy?: components["schemas"]["Strategy"];
+            owner?: components["schemas"]["DesiredPerson"];
+            /** @description Why automatic restore is paused and needs attention */
+            attention?: string;
+            attention_at?: number;
+        };
+        BaselineCounts: {
+            hosts: number;
+            resources: number;
+            compliant: number;
+            drift: number;
+            conflict: number;
+            unknown: number;
+            reconciling: number;
+            failed: number;
+            auto_paused: number;
+        };
+        BaselineRevisionInfo: {
+            revision: number;
+            created_by?: string;
+            created_at: number;
+            resources: number;
+            hash: string;
+        };
+        Baseline: {
+            id: string;
+            name: string;
+            description: string;
+            revision: number;
+            resources: components["schemas"]["DesiredResource"][];
+            assignments: components["schemas"]["DesiredAssignment"][];
+            auto: components["schemas"]["DesiredAuto"];
+            archived: boolean;
+            counts: components["schemas"]["BaselineCounts"];
+            revisions?: components["schemas"]["BaselineRevisionInfo"][];
+            created_at: number;
+            updated_at: number;
+            updated_by?: string;
+        };
+        DesiredCounts: {
+            total: number;
+            compliant: number;
+            drift: number;
+            conflict: number;
+            unknown: number;
+            reconciling: number;
+            failed: number;
+            auto_paused: number;
+        };
+        DesiredSummary: {
+            hosts: components["schemas"]["DesiredCounts"];
+            /** @description Hosts no baseline applies to */
+            unmanaged: number;
+            resources: components["schemas"]["DesiredCounts"];
+            baselines: number;
+            auto_baselines: number;
+            auto_paused: {
+                id: string;
+                name: string;
+                attention: string;
+                at?: number;
+            }[];
+            /** @description Corrections in progress */
+            reconciling: number;
+            changed_at: number;
+            /** @description The firewall's own desired state (managed by Firewall, linked, never merged). With `firewall.read`. */
+            firewall?: {
+                enforced: number;
+                drift: number;
+            };
+            /** @description Hosts whose agent state versions are ahead of or foreign to this controller (resolved on the Agents page). With `agents.read`. */
+            agents?: {
+                state_conflicts: number;
+            };
+        };
+        DesiredBaselineRef: {
+            id: string;
+            name: string;
+            revision: number;
+        };
+        DesiredGroupRef: {
+            id: string;
+            name: string;
+            priority: number;
+        };
+        DesiredHostRow: {
+            host_id: string;
+            name: string;
+            /** @description The most actionable of its resources' statuses (failed, conflict, drift, reconciling, unknown, compliant) */
+            status: string;
+            counts: components["schemas"]["DesiredCounts"];
+            baselines: components["schemas"]["DesiredBaselineRef"][];
+            /** @description The first few resources that differ, in words */
+            problems: string[];
+            unknown?: string;
+            checked_at?: number;
+            changed_at: number;
+            in_maintenance: boolean;
+            reconciles: number;
+        };
+        DesiredDeclaration: {
+            label: string;
+            want: string;
+            /** @enum {string} */
+            level: "host" | "assigned" | "group" | "global";
+            baseline?: components["schemas"]["DesiredBaselineRef"];
+            group?: components["schemas"]["DesiredGroupRef"];
+        };
+        /** @description Where an effective value comes from (computed by the controller; most specific wins; groups by priority; equal priorities that disagree are a conflict). */
+        DesiredSource: {
+            /** @enum {string} */
+            level: "host" | "assigned" | "group" | "global";
+            /** @description "Required by Global baseline Server Defaults", "Inherited from group: Media Servers (baseline …)", "Custom for this host", "Conflict between groups …" */
+            label: string;
+            baselines?: components["schemas"]["DesiredBaselineRef"][];
+            groups?: components["schemas"]["DesiredGroupRef"][];
+            override?: {
+                /** @enum {string} */
+                origin: "accept" | "manual";
+                note?: string;
+                version: number;
+                updated_by?: string;
+                updated_at: number;
+                excluded?: boolean;
+            };
+            /** @description A conflict's declarations */
+            competing?: components["schemas"]["DesiredDeclaration"][];
+            /** @description Less specific declarations this one replaces */
+            shadowed?: components["schemas"]["DesiredDeclaration"][];
+            auto: boolean;
+            auto_baseline?: components["schemas"]["DesiredBaselineRef"];
+        };
+        DesiredObservation: {
+            service?: {
+                found: boolean;
+                load?: string;
+                active?: string;
+                sub?: string;
+                file_state?: string;
+            };
+            package?: {
+                installed: boolean;
+                version?: string;
+                manager?: string;
+            };
+            file?: {
+                exists: boolean;
+                /** @enum {string} */
+                type?: "file" | "symlink" | "dir" | "other";
+                target?: string;
+                sha256?: string;
+                size?: number;
+                owner?: string;
+                group?: string;
+                uid?: number;
+                gid?: number;
+                mode?: string;
+            };
+            /** @description This resource couldn't be observed (never compliant) */
+            error?: string;
+            /** @enum {string} */
+            source?: "monitoring" | "check";
+            at: number;
+        };
+        DesiredDiff: {
+            /** @enum {string} */
+            field: "state" | "enabled" | "installed" | "exists" | "type" | "content" | "owner" | "group" | "mode";
+            desired: string;
+            current: string;
+        };
+        DesiredResourceView: {
+            key: string;
+            /** @enum {string} */
+            kind: "service" | "package" | "file";
+            name: string;
+            status: components["schemas"]["DesiredStatus"];
+            since: number;
+            desired?: components["schemas"]["DesiredResource"];
+            want: string;
+            current: string;
+            observed?: components["schemas"]["DesiredObservation"];
+            observed_at?: number;
+            diffs: components["schemas"]["DesiredDiff"][];
+            /** @description Why it is unknown */
+            note?: string;
+            source: components["schemas"]["DesiredSource"];
+            restorable: boolean;
+            blocker?: string;
+            acceptable: boolean;
+            /** @description A correction in progress */
+            job_id?: string;
+            last_job_id?: string;
+            auto: {
+                enabled: boolean;
+                baseline?: components["schemas"]["DesiredBaselineRef"];
+                paused?: string;
+                attempts: number;
+                next_at?: number;
+            };
+        };
+        DesiredHost: {
+            host_id: string;
+            name: string;
+            status: string;
+            counts: components["schemas"]["DesiredCounts"];
+            resources: components["schemas"]["DesiredResourceView"][];
+            excluded: {
+                key: string;
+                name: string;
+                kind: string;
+                source: components["schemas"]["DesiredSource"];
+            }[];
+            groups: components["schemas"]["DesiredGroupRef"][];
+            baselines: (components["schemas"]["DesiredBaselineRef"] & {
+                via: string;
+            })[];
+            packages_at?: number;
+            packages_note?: string;
+            files_at?: number;
+            files_note?: string;
+            services_at?: number;
+            unknown_since?: number;
+            /** @description The maintenance reason when the host is in maintenance */
+            maintenance?: string;
+            path: {
+                agent_connected: boolean;
+                agent_state?: string;
+                blocked: boolean;
+                reason?: string;
+            };
+            check_every_s: number;
+            /** @description The host's firewall policy is managed by the Firewall (designer and transactions), not by desired state; this is its state, for a link. Only for callers with firewall.read. */
+            firewall?: {
+                /** @enum {string} */
+                mode: "off" | "monitor" | "guided" | "enforce";
+                enforced: boolean;
+                drift?: string;
+            };
+        };
+        DesiredHistoryEntry: {
+            id: number;
+            ts: number;
+            host_id: string;
+            host_name: string;
+            key?: string;
+            resource?: string;
+            /** @description drift_detected, drift_changed, compliant, resolved_by_configuration, accepted, no_longer_managed, conflict_detected, conflict_resolved, unknown, observed, restore_requested, restored, restore_failed, restore_unverified */
+            kind: string;
+            status?: string;
+            prev_status?: string;
+            /**
+             * @description How drift ended: a corrective job proven by a fresh check; a change of desired state (the host didn't change); the host changed by other means
+             * @enum {string}
+             */
+            resolution?: "restored" | "configuration" | "observed";
+            detail: string;
+            desired?: components["schemas"]["DesiredResource"];
+            diffs: components["schemas"]["DesiredDiff"][];
+            baseline?: components["schemas"]["DesiredBaselineRef"];
+            source_label?: string;
+            job_id?: string;
+            actor?: string;
+        };
+        DesiredReview: {
+            resource: components["schemas"]["DesiredResourceView"];
+            content_allowed?: boolean;
+            file_error?: string;
+            file?: {
+                /** @enum {string} */
+                state: "create" | "identical" | "replace" | "metadata";
+                current?: {
+                    exists: boolean;
+                    sha256?: string;
+                    owner: string;
+                    group: string;
+                    mode: string;
+                    size: number;
+                    captured: boolean;
+                };
+                desired: {
+                    owner: string;
+                    group: string;
+                    mode: string;
+                    size: number;
+                };
+                diff?: string;
+                diff_note?: string;
+                artifact: string;
+                artifact_size: number;
+                artifact_text: boolean;
+            };
+        };
+        DesiredAcceptResult: {
+            accepted: {
+                key: string;
+                was: string;
+                now: string;
+                resource?: components["schemas"]["DesiredResource"];
+                excluded?: boolean;
+            }[];
+        };
+        DesiredRestoreRequest: {
+            host_ids?: string[];
+            keys?: string[];
+            baseline_id?: string;
+            strategy?: components["schemas"]["Strategy"];
+            /** @description Let removing a prohibited package also remove packages that depend on it (off by default; then such a removal fails safely) */
+            allow_removals?: boolean;
+            /** @description Required to restore: the preview's hash */
+            plan_hash?: string;
+        };
+        DesiredPlanItem: {
+            host_id: string;
+            host_name: string;
+            key: string;
+            kind: string;
+            want: string;
+            current: string;
+            diffs: components["schemas"]["DesiredDiff"][];
+            job: number;
+            step: number;
+            source_label: string;
+            baseline?: components["schemas"]["DesiredBaselineRef"];
+            desired: components["schemas"]["DesiredResource"];
+        };
+        DesiredPlanJob: {
+            name: string;
+            steps: components["schemas"]["Operation"][];
+            step_text: string[];
+            /** @description How many hosts run each step */
+            step_hosts: number[];
+            hosts: {
+                host_id: string;
+                host_name: string;
+                steps: number[];
+                wave: number;
+            }[];
+            waves: components["schemas"]["RolloutWave"][];
+            strategy: components["schemas"]["Strategy"];
+            wave_note?: string;
+        };
+        DesiredPlan: {
+            items: components["schemas"]["DesiredPlanItem"][];
+            excluded: {
+                host_id: string;
+                host_name: string;
+                key: string;
+                status: string;
+                reason: string;
+            }[];
+            jobs: components["schemas"]["DesiredPlanJob"][];
+            warnings: {
+                host_id?: string;
+                host_name?: string;
+                key?: string;
+                message: string;
+            }[];
+            removals: {
+                host_id: string;
+                host_name: string;
+                package: string;
+                also: string[];
+                error?: string;
+            }[];
+            options: {
+                strategy?: components["schemas"]["Strategy"];
+                allow_removals?: boolean;
+            };
+            hosts: number;
+            hash: string;
+            at: number;
+            /** @description Permissions the corrections need beyond desired.restore and jobs.execute */
+            needs: string[];
+        };
+        DesiredRestoreResult: {
+            jobs: string[];
+            plan: components["schemas"]["DesiredPlan"];
+        };
+        DesiredResourceChange: {
+            key: string;
+            name: string;
+            kind: string;
+            from?: string;
+            to?: string;
+        };
+        DesiredHostImpact: {
+            host_id: string;
+            host_name: string;
+            now: string;
+            after: string;
+            detail: string[];
+        };
+        DesiredImpact: {
+            changed: boolean;
+            added: components["schemas"]["DesiredResourceChange"][];
+            removed: components["schemas"]["DesiredResourceChange"][];
+            modified: components["schemas"]["DesiredResourceChange"][];
+            assignments_added: components["schemas"]["DesiredAssignment"][];
+            assignments_removed: components["schemas"]["DesiredAssignment"][];
+            hosts_affected: number;
+            become_drifted: components["schemas"]["DesiredHostImpact"][];
+            become_compliant: components["schemas"]["DesiredHostImpact"][];
+            new_conflicts: components["schemas"]["DesiredHostImpact"][];
+            resolved_conflicts: components["schemas"]["DesiredHostImpact"][];
+            to_check: components["schemas"]["DesiredHostImpact"][];
+            counts: {
+                become_drifted: number;
+                become_compliant: number;
+                new_conflicts: number;
+                resolved_conflicts: number;
+                to_check: number;
+                unchanged: number;
+            };
+            auto: boolean;
+            warnings: string[];
+        };
+        DesiredGroupPriority: {
+            group_id: string;
+            name: string;
+            priority: number;
+            hosts: number;
+            baselines: string[];
         };
     };
     responses: {
@@ -11944,6 +12836,656 @@ export interface operations {
                 };
             };
             422: components["responses"]["Problem"];
+        };
+    };
+    getDesiredSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesiredSummary"];
+                };
+            };
+        };
+    };
+    listDesiredHosts: {
+        parameters: {
+            query?: {
+                status?: "attention" | "compliant" | "drift" | "conflict" | "unknown" | "reconciling" | "failed";
+                /** @description Host name contains */
+                q?: string;
+                baseline?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Hosts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["DesiredHostRow"][];
+                    };
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    getDesiredHost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The host. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesiredHost"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    getDesiredResource: {
+        parameters: {
+            query: {
+                /** @description service:<unit>, package:<name> or file:<path> */
+                key: string;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The resource. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        resource: components["schemas"]["DesiredResourceView"];
+                        history: components["schemas"]["DesiredHistoryEntry"][];
+                    };
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    reviewDesiredDifference: {
+        parameters: {
+            query: {
+                key: string;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The difference. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesiredReview"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    refreshDesiredHost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Checking. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        hosts: number;
+                    };
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    acceptDesiredCurrent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    keys: string[];
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Accepted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesiredAcceptResult"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    setDesiredOverride: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    resource?: components["schemas"]["DesiredResource"];
+                    key?: string;
+                    excluded?: boolean;
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The host. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesiredHost"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    resetDesiredOverride: {
+        parameters: {
+            query: {
+                key: string;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The host. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesiredHost"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    refreshDesired: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    host_ids?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Checking. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        hosts: number;
+                    };
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    previewDesiredRestore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DesiredRestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description The plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        plan: components["schemas"]["DesiredPlan"];
+                        missing_permissions: string[];
+                    };
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    restoreDesired: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DesiredRestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Submitted. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesiredRestoreResult"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    listDesiredHistory: {
+        parameters: {
+            query?: {
+                host?: string;
+                key?: string;
+                baseline?: string;
+                kind?: string;
+                /** @description An entry id (paging) */
+                before?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description History. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["DesiredHistoryEntry"][];
+                        next_cursor?: string;
+                    };
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    listBaselines: {
+        parameters: {
+            query?: {
+                archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Baselines (at most 500). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Baseline"][];
+                    };
+                };
+            };
+        };
+    };
+    createBaseline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BaselineInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Baseline"];
+                };
+            };
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    previewBaseline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BaselineInput"] & {
+                    id?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Impact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesiredImpact"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    getBaseline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The baseline with its revisions and compliance. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Baseline"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    updateBaseline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BaselineInput"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Baseline"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    archiveBaseline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archived. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    getBaselineRevision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                rev: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The revision exactly as saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        revision: components["schemas"]["BaselineRevisionInfo"];
+                        baseline: components["schemas"]["BaselineInput"];
+                    };
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    setBaselineAuto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                    strategy?: components["schemas"]["Strategy"];
+                };
+            };
+        };
+        responses: {
+            /** @description The baseline. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Baseline"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    listDesiredGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Groups. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["DesiredGroupPriority"][];
+                    };
+                };
+            };
+        };
+    };
+    setDesiredGroupPriority: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    priority: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Groups. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["DesiredGroupPriority"][];
+                    };
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    previewDesiredGroupPriority: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    priority: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Impact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesiredImpact"];
+                };
+            };
+            404: components["responses"]["Problem"];
         };
     };
 }

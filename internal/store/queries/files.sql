@@ -20,6 +20,8 @@ WHERE a.last_used_at < ?
   AND NOT EXISTS (SELECT 1 FROM jobs j WHERE instr(j.spec_json, a.sha256) > 0)
   AND NOT EXISTS (SELECT 1 FROM workflow_revisions w WHERE instr(w.steps_json, a.sha256) > 0)
   AND NOT EXISTS (SELECT 1 FROM schedules s WHERE instr(s.config_json, a.sha256) > 0)
+  AND NOT EXISTS (SELECT 1 FROM ds_baseline_revisions b WHERE instr(b.resources_json, a.sha256) > 0)
+  AND NOT EXISTS (SELECT 1 FROM ds_host_overrides o WHERE instr(o.resource_json, a.sha256) > 0)
   AND NOT EXISTS (SELECT 1 FROM agent_releases r WHERE r.sha256 = a.sha256);
 
 -- name: DeleteArtifact :exec

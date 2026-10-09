@@ -303,6 +303,36 @@ func (r *Router) Simulate(ctx context.Context, hostID string, op model.Operation
 	return r.SSH.Simulate(ctx, conn.Target, conn.Become, op)
 }
 
+// PackageVersions reads which packages are installed on the host's path
+// (desired state, M14): the agent's read-only query, or SSH as the login
+// user. Nothing changes on the host.
+func (r *Router) PackageVersions(ctx context.Context, hostID string, names []string) (string, map[string]string, error) {
+	h, err := r.St.R.GetHost(ctx, hostID)
+	if err != nil {
+		return "", nil, err
+	}
+	d := r.Decide(ctx, h)
+	if d.Blocked {
+		return "", nil, &model.OpError{Class: model.ClassAuthorization, Message: d.Reason}
+	}
+	if d.UseAgent {
+		mgr, vs, err := r.Agents.PackageVersions(ctx, hostID, names)
+		if err == nil || !driver.IsNotStarted(err) {
+			return mgr, vs, err
+		}
+		d.Reason = model.AsOpError(err).Message
+		d.SSHAllowed = h.ManagementFallback == "ssh" && h.SshConfigured != 0
+	}
+	if !d.SSHAllowed {
+		return "", nil, &model.OpError{Class: model.ClassConnection, Message: d.Reason}
+	}
+	conn, err := r.Inv.Resolve(ctx, hostID, true)
+	if err != nil {
+		return "", nil, err
+	}
+	return r.SSH.PackageVersions(ctx, conn.Target, conn.Become, names)
+}
+
 // AgentHealthy reports whether a host's inventory comes from its agent
 // (so the poller doesn't also poll it over SSH).
 func (r *Router) AgentHealthy(ctx context.Context, h db.Host) bool {

@@ -235,6 +235,149 @@ type AuditEvent struct {
 	PrevHash    []byte
 }
 
+type DsAssignment struct {
+	BaselineID string
+	Scope      string
+	GroupID    sql.NullString
+	HostID     sql.NullString
+}
+
+type DsBaseline struct {
+	ID               string
+	Name             string
+	Description      string
+	Revision         int64
+	AutoEnabled      int64
+	AutoStrategyJson string
+	OwnerID          sql.NullString
+	Attention        string
+	AttentionAt      sql.NullInt64
+	CreatedBy        sql.NullString
+	CreatedAt        int64
+	UpdatedBy        sql.NullString
+	UpdatedAt        int64
+	ArchivedAt       sql.NullInt64
+}
+
+type DsBaselineRevision struct {
+	BaselineID      string
+	Revision        int64
+	Name            string
+	Description     string
+	ResourcesJson   string
+	AssignmentsJson string
+	ContentHash     string
+	CreatedBy       sql.NullString
+	CreatedByName   string
+	CreatedAt       int64
+}
+
+type DsGen struct {
+	ID  int64
+	Gen int64
+}
+
+type DsGroupPriority struct {
+	GroupID   string
+	Priority  int64
+	UpdatedBy sql.NullString
+	UpdatedAt int64
+}
+
+type DsHistory struct {
+	ID               int64
+	Ts               int64
+	HostID           string
+	HostName         string
+	Key              string
+	Kind             string
+	Status           string
+	PrevStatus       string
+	Resolution       string
+	Detail           string
+	DesiredJson      string
+	ObservedJson     string
+	DiffsJson        string
+	BaselineID       string
+	BaselineRevision int64
+	SourceLabel      string
+	JobID            string
+	ActorID          string
+	ActorName        string
+}
+
+type DsHostOverride struct {
+	HostID       string
+	Key          string
+	ResourceJson string
+	Excluded     int64
+	Origin       string
+	Note         string
+	Version      int64
+	CreatedBy    sql.NullString
+	CreatedAt    int64
+	UpdatedBy    sql.NullString
+	UpdatedAt    int64
+}
+
+type DsHostState struct {
+	HostID       string
+	EffHash      string
+	Status       string
+	NTotal       int64
+	NCompliant   int64
+	NDrift       int64
+	NConflict    int64
+	NUnknown     int64
+	NReconciling int64
+	NFailed      int64
+	NAutoPaused  int64
+	PackagesAt   sql.NullInt64
+	PackagesNote string
+	FilesAt      sql.NullInt64
+	FilesNote    string
+	UnknownSince sql.NullInt64
+	ChangedAt    int64
+}
+
+type DsReconcile struct {
+	ID          string
+	Kind        string
+	BaselineID  string
+	RequestedBy sql.NullString
+	JobID       string
+	Status      string
+	ItemsJson   string
+	Summary     string
+	CreatedAt   int64
+	FinishedAt  sql.NullInt64
+}
+
+type DsResourceState struct {
+	HostID       string
+	Key          string
+	Kind         string
+	Status       string
+	DesiredJson  string
+	SourceJson   string
+	ObservedJson string
+	ObservedAt   sql.NullInt64
+	DiffsJson    string
+	Sig          string
+	LastKnown    string
+	Note         string
+	Since        int64
+	ReconcileID  sql.NullString
+	JobID        sql.NullString
+	LastJobID    string
+	AutoAttempts int64
+	AutoNextAt   sql.NullInt64
+	AutoPaused   string
+	RestoredAt   sql.NullInt64
+	Redrifts     int64
+	RedriftSince sql.NullInt64
+}
+
 type Event struct {
 	ID         int64
 	Ts         int64
@@ -509,6 +652,7 @@ type Job struct {
 	OccurrenceID     sql.NullString
 	WorkflowID       sql.NullString
 	WorkflowRevision sql.NullInt64
+	ReconcileID      sql.NullString
 }
 
 type JobHost struct {
@@ -529,6 +673,7 @@ type JobHost struct {
 	Transport     string
 	TransportNote string
 	Wave          int64
+	Steps         sql.NullString
 }
 
 type JobOutput struct {

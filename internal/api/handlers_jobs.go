@@ -12,6 +12,7 @@ import (
 
 	"drool/internal/audit"
 	"drool/internal/auth"
+	"drool/internal/desired"
 	"drool/internal/engine"
 	"drool/internal/mgmt"
 	"drool/internal/model"
@@ -45,6 +46,12 @@ type jobOriginJSON struct {
 	WorkflowID       string `json:"workflow_id,omitempty"`
 	WorkflowName     string `json:"workflow_name,omitempty"`
 	WorkflowRevision int    `json:"workflow_revision,omitempty"`
+	// A desired-state correction (M14): manual (Restore managed state)
+	// or automatic (a baseline's automatic restore, run as its owner).
+	ReconcileID   string `json:"reconcile_id,omitempty"`
+	ReconcileKind string `json:"reconcile_kind,omitempty"` // manual | auto
+	BaselineID    string `json:"baseline_id,omitempty"`
+	BaselineName  string `json:"baseline_name,omitempty"`
 }
 
 func (s *Server) toJobJSON(r *http.Request, j db.Job) jobJSON {
@@ -79,6 +86,16 @@ func (s *Server) toJobJSON(r *http.Request, j db.Job) jobJSON {
 		}
 		out.Origin = o
 	}
+	if j.ReconcileID.Valid {
+		o := out.Origin
+		if o == nil {
+			o = &jobOriginJSON{}
+		}
+		o.ReconcileID = j.ReconcileID.String
+		s.d.Store.Reader.QueryRowContext(r.Context(), `SELECT c.kind, c.baseline_id, COALESCE(b.name, '') FROM ds_reconciles c
+			LEFT JOIN ds_baselines b ON b.id = c.baseline_id WHERE c.id = ?`, o.ReconcileID).Scan(&o.ReconcileKind, &o.BaselineID, &o.BaselineName)
+		out.Origin = o
+	}
 	return out
 }
 
@@ -101,12 +118,18 @@ type jobHostJSON struct {
 	// Wave is the host's rollout wave (0 is the canary wave of a canary
 	// rollout); -1: not part of the run (skipped up front).
 	Wave int64 `json:"wave"`
+	// Steps: the step indexes this host runs when hosts run different
+	// subsets of the job's steps (desired-state corrections); null: all.
+	Steps []int `json:"steps"`
 }
 
 func toJobHostJSON(h db.JobHost) jobHostJSON {
 	out := jobHostJSON{HostID: h.HostID, HostName: h.HostName, State: h.State, CurrentStep: h.CurrentStep,
 		Attempt: h.Attempt, ErrorClass: h.ErrorClass, ErrorMessage: h.ErrorMessage, ErrorHint: h.ErrorHint,
 		StartedAt: nullMsTime(h.StartedAt), FinishedAt: nullMsTime(h.FinishedAt), Transport: h.Transport, TransportNote: h.TransportNote, Wave: h.Wave}
+	if h.Steps.Valid {
+		_ = json.Unmarshal([]byte(h.Steps.String), &out.Steps)
+	}
 	if h.ExitCode.Valid {
 		out.ExitCode = &h.ExitCode.Int64
 	}
@@ -143,6 +166,9 @@ type previewResponse struct {
 	Hosts    []engine.TargetHost `json:"hosts"`
 	Warnings []string            `json:"warnings"`
 	Waves    []previewWave       `json:"waves"`
+	// DesiredWarnings: steps that would change something desired state
+	// manages the other way (M14). A warning, not a refusal.
+	DesiredWarnings []desired.JobWarning `json:"desired_warnings"`
 }
 
 func (s *Server) handlePreviewJob(w http.ResponseWriter, r *http.Request) {
@@ -199,7 +225,19 @@ func (s *Server) handlePreviewJob(w http.ResponseWriter, r *http.Request) {
 			warnings = append(warnings, plan.Note)
 		}
 	}
-	writeJSON(w, http.StatusOK, previewResponse{Hosts: hosts, Warnings: warnings, Waves: waves})
+	dws := []desired.JobWarning{}
+	if s.d.Desired != nil && len(req.Steps) > 0 && principalFrom(r.Context()).Can(auth.PermDesiredRead) {
+		ids := make([]string, 0, len(hosts))
+		for _, h := range hosts {
+			if !h.Skip {
+				ids = append(ids, h.ID)
+			}
+		}
+		if ws := s.d.Desired.JobWarnings(r.Context(), ids, req.Steps); ws != nil {
+			dws = ws
+		}
+	}
+	writeJSON(w, http.StatusOK, previewResponse{Hosts: hosts, Warnings: warnings, Waves: waves, DesiredWarnings: dws})
 }
 
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
@@ -594,6 +632,13 @@ func (s *Server) handleRerunJob(w http.ResponseWriter, r *http.Request) {
 	var req rerunRequest
 	if p := decodeJSON(w, r, &req); p != nil {
 		writeProblem(w, r, p)
+		return
+	}
+	if j.ReconcileID.Valid {
+		// Each host ran only its own corrections; re-running the job
+		// would run every correction everywhere, from stale information.
+		writeProblem(w, r, errConflict("desired_state_job",
+			"this job restored managed state; use Restore managed state again: it checks the hosts first and corrects only what still differs"))
 		return
 	}
 	var spec model.JobSpec

@@ -105,6 +105,21 @@ func (a *Agent) admit(env *agentrpc.OpEnvelope) *agentrpc.Rejection {
 		if !caps.Files.Enabled {
 			cerr = caps.AllowPath("/")
 		}
+	case agentrpc.PurposeQuery:
+		// Read-only: what monitoring may see (or what package operations
+		// could change anyway).
+		q := env.Query
+		if q == nil || len(q.Packages) == 0 || len(q.Packages) > agentrpc.MaxQueryPackages {
+			return &agentrpc.Rejection{Reason: agentrpc.RejectInvalid, Message: "the query names no resources, or too many"}
+		}
+		probe := model.Operation{Type: model.OpPackage, Package: &model.PackageOp{Action: "install", Names: append([]string(nil), q.Packages...)}}
+		if err := probe.Normalize(); err != nil {
+			return &agentrpc.Rejection{Reason: agentrpc.RejectInvalid, Message: err.Error()}
+		}
+		if !caps.Monitoring && !caps.Packages.Enabled {
+			cerr = &agentcaps.Error{Capability: "monitoring",
+				Message: "the agent's capability ceiling allows neither monitoring nor package operations, so it doesn't report package state"}
+		}
 	case agentrpc.PurposeOp, agentrpc.PurposeSimulate:
 		if env.Operation == nil {
 			return &agentrpc.Rejection{Reason: agentrpc.RejectInvalid, Message: "the command has no operation"}
@@ -133,6 +148,9 @@ func (a *Agent) admit(env *agentrpc.OpEnvelope) *agentrpc.Rejection {
 }
 
 func opType(env *agentrpc.OpEnvelope) string {
+	if env.Purpose == agentrpc.PurposeQuery {
+		return "query"
+	}
 	if env.Purpose == agentrpc.PurposeFiles || env.Operation == nil {
 		return "files"
 	}
@@ -260,7 +278,14 @@ func (a *Agent) runOp(env *agentrpc.OpEnvelope, c *channel, controller string) {
 	}
 	var res *driver.OpResult
 	var err error
-	if env.Purpose == agentrpc.PurposeSimulate {
+	if env.Purpose == agentrpc.PurposeQuery {
+		started()
+		var mgr string
+		var vs map[string]string
+		mgr, vs, err = hostops.Host{R: a.run, B: hostops.Become{Method: "none"}}.PackageVersions(ctx, env.Query.Packages)
+		zero := 0
+		res = &driver.OpResult{ExitCode: &zero, Data: map[string]any{"packages": map[string]any{"manager": mgr, "versions": vs}}}
+	} else if env.Purpose == agentrpc.PurposeSimulate {
 		var sr *hostops.SimResult
 		sr, err = hostops.Host{R: a.run, B: hostops.Become{Method: "none"}}.Simulate(ctx, *env.Operation)
 		zero := 0

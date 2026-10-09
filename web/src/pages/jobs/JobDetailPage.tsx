@@ -70,6 +70,8 @@ export function JobDetailPage() {
   const o = j.origin;
   const waves = waveGroups(items, strategy);
   const outside = items.filter((h) => h.wave < 0);
+  // Hosts that run only some of the steps (a desired-state correction).
+  const perHost = items.some((h) => h.steps != null);
 
   return (
     <>
@@ -95,12 +97,21 @@ export function JobDetailPage() {
                 Cancel
               </Button>
             )}
-            {!active && failedCount > 0 && (
+            {!active && failedCount > 0 && !o?.reconcile_id && (
               <Button onClick={() => action.mutate("rerun")} disabled={action.isPending}>Re-run unsuccessful hosts</Button>
             )}
           </>
         )}
       />
+      {o?.reconcile_id && (
+        <p className="-mt-3 mb-4 text-sm text-muted">
+          {o.reconcile_kind === "auto"
+            ? <>Automatic restore of baseline <Link className={plainLink} to={`/desired/baselines/${o.baseline_id}`}>{o.baseline_name || o.baseline_id}</Link>, run with its owner {j.created_by}'s permissions. </>
+            : <>Restore managed state, started by {j.created_by}. </>}
+          Each host runs only its own corrections; afterwards DROOL checks every host again and records what it finds on its{" "}
+          <Link className={plainLink} to="/desired">desired-state</Link> page.
+        </p>
+      )}
       {o && (o.schedule_id || o.workflow_id) && (
         <p className="-mt-3 mb-4 text-sm text-muted">
           {o.schedule_id && (
@@ -140,7 +151,11 @@ export function JobDetailPage() {
           <ol className="space-y-3">
             {steps.map((st, i) => (
               <li key={i} className={steps.length > 1 ? "border-l-2 border-line pl-3" : undefined}>
-                {steps.length > 1 && <div className="mb-1 text-xs font-medium uppercase text-muted">Step {i + 1}</div>}
+                {steps.length > 1 && (
+                  <div className="mb-1 text-xs font-medium uppercase text-muted">
+                    Step {i + 1}{perHost && <span className="normal-case"> — on {items.filter((h) => !h.steps || h.steps.includes(i)).length} of {items.length} hosts</span>}
+                  </div>
+                )}
                 <StepText step={st} />
               </li>
             ))}
@@ -208,6 +223,9 @@ function HostOutput({ jobId, host, live, onOutput }: {
     <Card title={`Output: ${host.host_name}`}>
       {host.transport_note && (
         <div className="mb-3"><Alert tone="warn">{host.transport_note}</Alert></div>
+      )}
+      {host.steps && (
+        <p className="mb-3 text-sm text-muted">This host runs step{host.steps.length === 1 ? "" : "s"} {host.steps.map((s) => s + 1).join(", ")}: only the corrections it needs.</p>
       )}
       {host.error_class && (
         <div className="mb-3">

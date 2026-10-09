@@ -38,6 +38,8 @@ type env struct {
 	mon     *monsvc.Service
 	agentOn atomic.Bool
 	reach   atomic.Bool
+	probes  atomic.Int32
+	upAfter int32 // > 0: the host answers after this many refused probes
 	polls   atomic.Int32
 	// onPoll runs inside each SSH poll (after the poll "collected").
 	onPoll func()
@@ -69,6 +71,9 @@ func newEnv(t *testing.T) *env {
 	e.x = New(Deps{Store: st, Monitor: e.mon, Log: logs.App, Interval: 10 * time.Millisecond, Fresh: 50 * time.Millisecond,
 		AgentConnected: func(_ context.Context, h db.Host) bool { return h.ManagementMethod == "agent" && e.agentOn.Load() },
 		Probe: func(context.Context, string) Reachability {
+			if n := e.probes.Add(1); e.upAfter > 0 && n > e.upAfter {
+				e.reach.Store(true)
+			}
 			if e.reach.Load() {
 				return Reachability{OK: true, Detail: "SSH connection test passed"}
 			}
@@ -151,7 +156,7 @@ func TestVerifyHost(t *testing.T) {
 	op := model.Operation{Type: model.OpVerifyHost, VerifyHost: &model.VerifyHostOp{TimeoutS: 1}}
 	t.Run("ssh host comes back", func(t *testing.T) {
 		e := newEnv(t)
-		time.AfterFunc(100*time.Millisecond, func() { e.reach.Store(true) })
+		e.upAfter = 2
 		out, err := e.run("h1", op)
 		if err != nil {
 			t.Fatal(err)

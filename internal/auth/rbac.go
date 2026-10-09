@@ -82,6 +82,19 @@ const (
 	PermSchedulesAdmin  Permission = "schedules.admin"
 	PermWorkflowsRead   Permission = "workflows.read"
 	PermWorkflowsManage Permission = "workflows.manage"
+
+	// Desired state (M14). Everyone who sees hosts sees compliance and
+	// drift (file contents need files.read, as in the file manager).
+	// Restoring managed state is operator work and additionally needs the
+	// permissions of the corrective operations (jobs.execute; files.deploy
+	// and files.elevate for files). Baselines, assignments, priorities and
+	// Accept current state change policy: administrators. Automatic
+	// restore persists authority, so turning it on is administrator-only
+	// and the owner's permissions are checked before every automatic job.
+	PermDesiredRead    Permission = "desired.read"
+	PermDesiredRestore Permission = "desired.restore"
+	PermDesiredManage  Permission = "desired.manage"
+	PermDesiredAuto    Permission = "desired.auto"
 )
 
 // Role names stored in users.role.
@@ -107,6 +120,7 @@ var rolePermissions = map[string][]Permission{
 		PermMonitoringRead, PermMonitoringManage, PermMonitoringSettings,
 		PermAlertsRead, PermAlertsAcknowledge, PermMaintenanceManage, PermNotificationsRead, PermNotificationsManage, PermNotificationsTest,
 		PermSchedulesRead, PermSchedulesManage, PermSchedulesAdmin, PermWorkflowsRead, PermWorkflowsManage,
+		PermDesiredRead, PermDesiredRestore, PermDesiredManage, PermDesiredAuto,
 	},
 	// Operators can already run commands as root (jobs.execute), so file
 	// elevation adds no power they don't have.
@@ -116,13 +130,15 @@ var rolePermissions = map[string][]Permission{
 		PermAgentsRead, PermFirewallRead, PermNetworkRead, PermNetworkSnapshot, PermMonitoringRead, PermMonitoringManage,
 		PermAlertsRead, PermAlertsAcknowledge, PermMaintenanceManage, PermNotificationsRead, PermNotificationsTest,
 		PermSchedulesRead, PermSchedulesManage, PermWorkflowsRead, PermWorkflowsManage,
+		PermDesiredRead, PermDesiredRestore,
 	},
 	RoleAuditor: {
 		PermHostsRead, PermJobsRead, PermAuditRead, PermSettingsRead, PermAgentsRead, PermFirewallRead, PermNetworkRead, PermMonitoringRead,
-		PermAlertsRead, PermNotificationsRead, PermSchedulesRead, PermWorkflowsRead,
+		PermAlertsRead, PermNotificationsRead, PermSchedulesRead, PermWorkflowsRead, PermDesiredRead,
 	},
 	RoleViewer: {
 		PermHostsRead, PermJobsRead, PermAgentsRead, PermFirewallRead, PermMonitoringRead, PermAlertsRead, PermSchedulesRead, PermWorkflowsRead,
+		PermDesiredRead,
 	},
 }
 

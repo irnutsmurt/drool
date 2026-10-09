@@ -48,6 +48,9 @@ type Service struct {
 	layouts *layouts
 	eval    *evaluator
 	hook    IssueHook
+	// svcHook is told after a host's service list was stored, and
+	// whether any unit changed (desired state, M14).
+	svcHook func(hostID string, changed bool)
 
 	mu         sync.Mutex
 	watermarks map[string]map[int]int64
@@ -469,6 +472,7 @@ func (s *Service) IngestServices(ctx context.Context, hostID string, r *services
 	if len(r.Units) > services.MaxUnits {
 		r.Units = r.Units[:services.MaxUnits]
 	}
+	anyChange := len(prev) == 0
 	err = s.d.Store.InRawTx(ctx, func(tx *sql.Tx) error {
 		if err := ensureCurrentTx(ctx, tx, hostID, fromSSH); err != nil {
 			return err
@@ -490,6 +494,7 @@ func (s *Service) IngestServices(ctx context.Context, hostID string, r *services
 			if same {
 				continue
 			}
+			anyChange = true
 			changedAt := o.ChangedAt
 			if changed {
 				changedAt = now
@@ -525,6 +530,7 @@ func (s *Service) IngestServices(ctx context.Context, hostID string, r *services
 		}
 		for name := range old {
 			if !seen[name] {
+				anyChange = true
 				if _, err := tx.ExecContext(ctx, `DELETE FROM mon_services WHERE host_id = ? AND unit = ?`, hostID, name); err != nil {
 					return err
 				}
@@ -536,8 +542,15 @@ func (s *Service) IngestServices(ctx context.Context, hostID string, r *services
 		return err
 	}
 	s.eval.onServices(ctx, hostID)
+	if fn := s.svcHook; fn != nil {
+		fn(hostID, anyChange)
+	}
 	return nil
 }
+
+// SetServicesHook installs fn, told after every stored service list
+// (desired state judges services from monitoring's data).
+func (s *Service) SetServicesHook(fn func(hostID string, changed bool)) { s.svcHook = fn }
 
 // ensureCurrentTx makes sure a host has its mon_current row (reports can
 // arrive before the first state).

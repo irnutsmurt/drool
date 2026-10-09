@@ -403,6 +403,16 @@ type PreviewResult struct {
 
 // Preview inspects the destination without changing anything.
 func Preview(ctx context.Context, fs files.FS, src Source, op *model.FileDeployOp) (*PreviewResult, error) {
+	return preview(ctx, fs, src, op, true)
+}
+
+// PreviewMeta is Preview without reading any content: hashes and
+// metadata only, no text diff (for callers not allowed to see contents).
+func PreviewMeta(ctx context.Context, fs files.FS, op *model.FileDeployOp) (*PreviewResult, error) {
+	return preview(ctx, fs, nil, op, false)
+}
+
+func preview(ctx context.Context, fs files.FS, src Source, op *model.FileDeployOp, withDiff bool) (*PreviewResult, error) {
 	cur, curSHA, err := inspect(ctx, fs, op.Path)
 	if err != nil {
 		return nil, err
@@ -437,7 +447,9 @@ func Preview(ctx context.Context, fs files.FS, src Source, op *model.FileDeployO
 	default:
 		pr.State = StateReplace
 	}
-	pr.Diff, pr.DiffNote = diffAgainst(ctx, fs, src, op, cur)
+	if withDiff {
+		pr.Diff, pr.DiffNote = diffAgainst(ctx, fs, src, op, cur)
+	}
 	return pr, nil
 }
 

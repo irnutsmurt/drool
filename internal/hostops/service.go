@@ -48,12 +48,20 @@ func ParseUnitState(out string) (UnitState, bool) {
 	return u, found && u.Load != ""
 }
 
-func (u UnitState) running() bool { return u.Active == "active" || u.Active == "reloading" }
-func (u UnitState) enabled() bool {
-	return u.UnitFile == "enabled" || u.UnitFile == "enabled-runtime" || u.UnitFile == "alias"
+func (u UnitState) running() bool      { return UnitRunning(u.Active) }
+func (u UnitState) enabled() bool      { return UnitEnabled(u.UnitFile) }
+func (u UnitState) transitional() bool { return UnitTransitional(u.Active) }
+
+// UnitRunning, UnitEnabled and UnitTransitional are what the service
+// operation considers running, enabled at boot and in transition; desired
+// state (M14) judges observed units the same way, so a correction that
+// has nothing left to do is always compliant.
+func UnitRunning(active string) bool { return active == "active" || active == "reloading" }
+func UnitEnabled(fileState string) bool {
+	return fileState == "enabled" || fileState == "enabled-runtime" || fileState == "alias"
 }
-func (u UnitState) transitional() bool {
-	return u.Active == "activating" || u.Active == "deactivating" || u.Active == "reloading"
+func UnitTransitional(active string) bool {
+	return active == "activating" || active == "deactivating" || active == "reloading"
 }
 
 // classifySystemctl explains systemctl failures that aren't about the unit.

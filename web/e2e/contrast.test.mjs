@@ -12,7 +12,10 @@ before(async () => {
   browser = await launch();
   page = await session(browser);
 });
-after(async () => { await browser?.close(); });
+after(async () => {
+  await cleanupDesired().catch(() => {});
+  await browser?.close();
+});
 
 /** Runs in the page: returns texts below the required contrast. */
 function lowContrast() {
@@ -105,6 +108,42 @@ const automationPages = async () => {
   ];
 };
 
+// M14: desired state with a drift, an unknown and a conflict (its own
+// baselines, archived afterwards).
+let desiredFixture;
+const desiredPages = async (hosts) => {
+  const gpu = hosts.find((h) => h.name === "gpu-01");
+  if (!gpu) return ["/desired", "/desired/baselines", "/desired/baselines/new", "/desired/history"];
+  if (!desiredFixture) {
+    const tag = Date.now().toString(36).slice(-4);
+    const mk = async (name, assignments, resources) => (await api(page, "POST", "/desired/baselines", { name: `${name} ${tag}`, assignments, resources })).body;
+    const g1 = (await api(page, "POST", "/groups", { name: `contrast-a-${tag}` })).body.id;
+    const g2 = (await api(page, "POST", "/groups", { name: `contrast-b-${tag}` })).body.id;
+    for (const g of [g1, g2]) await api(page, "PATCH", `/groups/${g}`, { host_ids: [gpu.id] });
+    const b = await mk("Contrast", [{ scope: "host", host_id: gpu.id }], [
+      { kind: "service", name: "ollama", state: "running", enabled: true },
+      { kind: "service", name: "nvidia-persistenced", state: "stopped" },
+      { kind: "package", name: "htop", state: "absent" },
+    ]);
+    await mk("Contrast A", [{ scope: "group", group_id: g1 }], [{ kind: "service", name: "ssh", state: "running" }]);
+    await mk("Contrast B", [{ scope: "group", group_id: g2 }], [{ kind: "service", name: "ssh", state: "stopped" }]);
+    await api(page, "POST", `/desired/hosts/${gpu.id}/refresh`);
+    await sleep(3000);
+    desiredFixture = { baseline: b.id, groups: [g1, g2], tag, host: gpu.id };
+  }
+  const f = desiredFixture;
+  return ["/desired", "/desired?status=all", "/desired/baselines", `/desired/baselines/${f.baseline}`, `/desired/baselines/${f.baseline}/edit`,
+    "/desired/baselines/new", "/desired/history", `/hosts/${f.host}/desired`];
+};
+
+async function cleanupDesired() {
+  if (!desiredFixture || !page) return;
+  for (const b of (await api(page, "GET", "/desired/baselines")).body?.items ?? []) {
+    if (b.name.endsWith(desiredFixture.tag)) await api(page, "DELETE", `/desired/baselines/${b.id}`);
+  }
+  for (const g of desiredFixture.groups) await api(page, "DELETE", `/groups/${g}`);
+}
+
 const pages = async () => {
   const hosts = (await api(page, "GET", "/hosts")).body.items;
   const host = hosts.find((h) => h.name === "web-1") ?? hosts[0];
@@ -123,6 +162,7 @@ const pages = async () => {
     ...(await alertPages()),
     "/settings/notifications", "/settings/notifications?advanced=1",
     ...(await automationPages()),
+    ...(await desiredPages(hosts)),
   ];
 };
 
@@ -156,6 +196,32 @@ for (const theme of ["light", "dark"]) {
       }
       const low = await page.evaluate(lowContrast);
       if (low.length) failures.push(`health checks:\n  ${low.join("\n  ")}`);
+    }
+    // M14: a conflict's details, Review difference and the restore plan.
+    if (desiredFixture) {
+      await page.goto(base + `/hosts/${desiredFixture.host}/desired`, { waitUntil: "networkidle0" });
+      await sleep(800);
+      // One resource's details are open at a time: the conflict, then a drift.
+      let low;
+      for (const [name, what] of [["ssh.service", "conflict"], ["nvidia-persistenced.service", "drift"]]) {
+        const row = await page.evaluateHandle((n) => [...document.querySelectorAll('ul[aria-label="Managed resources"] > li > button')].find((b) => b.textContent.includes(n)), name);
+        if (!row.asElement()) continue;
+        await row.asElement().click();
+        await sleep(600);
+        low = await page.evaluate(lowContrast);
+        if (low.length) failures.push(`desired ${what} details:\n  ${low.join("\n  ")}`);
+        await shot(page, `${theme}-desired-${what}-details`);
+      }
+      const rv = await page.evaluateHandle(() => [...document.querySelectorAll("button")].find((b) => b.textContent === "Review difference"));
+      if (rv.asElement()) {
+        await rv.asElement().click();
+        await sleep(1200);
+        low = await page.evaluate(lowContrast);
+        if (low.length) failures.push(`review difference:\n  ${low.join("\n  ")}`);
+        await shot(page, `${theme}-desired-review`);
+        await page.keyboard.press("Escape");
+        await sleep(300);
+      }
     }
     // A dialog and the login page too.
     await page.goto(base + "/firewall?tab=designer&view=rules", { waitUntil: "networkidle0" });

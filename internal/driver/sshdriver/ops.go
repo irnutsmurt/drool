@@ -25,3 +25,14 @@ func (x *Executor) Simulate(ctx context.Context, t *sshx.Target, b Become, op mo
 	defer sess.Release()
 	return x.host(sess.Client, t, b).Simulate(ctx, op)
 }
+
+// PackageVersions reads which packages are installed, as the login user
+// (the package database is world-readable): no sudo, no transaction.
+func (x *Executor) PackageVersions(ctx context.Context, t *sshx.Target, b Become, names []string) (string, map[string]string, error) {
+	sess, err := x.Pool.Get(ctx, t)
+	if err != nil {
+		return "", nil, err
+	}
+	defer sess.Release()
+	return x.host(sess.Client, t, b).PackageVersions(ctx, names)
+}

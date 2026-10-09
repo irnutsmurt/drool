@@ -90,6 +90,12 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
   SSH are running afterwards" — set up in the browser, without cron or playbooks. Rollouts with a
   canary and batches, reusable workflows with revisions, recurring maintenance windows. See
   [Scheduling and workflows](#scheduling-and-workflows).
+- **Desired state** (on `main`): say what a machine should look like — these services running
+  and enabled, these packages installed or absent, these files with exactly this content — for
+  the whole fleet, a group or one host. DROOL tells you whether each machine still matches
+  (*Compliant*, *Drift detected*), shows exactly what differs, and lets you **review** it,
+  **accept** what's there for that host, or **restore** it with an ordinary job. Optional
+  automatic restore, off by default. See [Desired state](#desired-state).
 - **Appearance:** Light, Dark or System (follows your OS), from the header or *Settings → Account*.
 - **Accounts and audit:** local users with roles (admin, operator, auditor, viewer), API tokens,
   credentials encrypted at rest, an append-only audit log of every change.
@@ -100,9 +106,10 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
 These are planned (see `DESIGN.md`) but **do not exist yet**:
 
 - firewall support for Docker and container networks, WireGuard identity networking
-- desired state / drift detection, automatic remediation
-- templated files, directory sync, desired-state file baselines (file management and single-file
-  deployment exist on `main`; see [Files](#files))
+- desired state beyond services, packages and files (users, cron, sysctl, containers), package
+  version policy, compliance benchmarks (CIS, STIG) or policy expressions, remediation scripts
+- templated files, directory sync (file management, single-file deployment and managed files in
+  desired state exist on `main`; see [Files](#files) and [Desired state](#desired-state))
 - plugins
 - MFA, single sign-on, high availability, Windows
 - workflow branching, conditions or approval steps; notifications about job results
@@ -1078,6 +1085,142 @@ attention.
 Creating, changing, enabling, disabling, archiving, running now and changing owners are all in the
 audit log.
 
+## Desired state
+
+*What should this machine look like, is it still that way, and how do I safely put it back?*
+
+A **baseline** is a named list of things a machine should have, for example *Server Defaults*:
+
+- `ssh` running and enabled at boot
+- `unattended-upgrades` installed, `telnet` absent
+- `/etc/motd` with exactly this content, owned by root, mode 0644
+
+That's all a baseline can say: a **service** is running or stopped, and/or enabled or disabled
+at boot; a **package** is installed or absent (no versions); a **file** has exact content, and
+optionally an owner, group and mode, a validation command (e.g. `sshd -t`) and a service to
+reload or restart after it changes. There are no expressions, scripts or conditions — DROOL
+doesn't evaluate statements like "SSH root login must be disabled", but you can manage the
+`sshd_config` drop-in that does it. The firewall isn't part of desired state: its policy has its
+own page, and a host's desired-state view links to it.
+
+### Getting started
+
+**Desired state → Baselines → New baseline:** name it, choose where it applies (*everywhere*,
+groups or hosts), add resources, check the **impact preview** — which hosts are affected, which
+would start to differ and which would comply — and save. DROOL checks the hosts and shows each
+one as **Compliant**, **Drift detected**, **Conflict**, **Unknown**, **Restoring…** or **Restore
+failed**, with exactly what differs:
+
+```
+jellyfin.service  wants running, enabled at boot  is failed, enabled at boot   Drift detected
+/etc/motd         content: sha256 4f1e2a9c03b7… → sha256 9a07b3d1e8c2…; mode: 0644 → 0664
+```
+
+The **Overview** shows hosts that need attention; a host's **Desired state** page shows every
+managed resource, where each desired value comes from ("Required by Global baseline Server
+Defaults", "Inherited from group: media-servers", "Custom for this host"), and its history.
+
+### Where desired values come from
+
+The most specific declaration of a resource wins: **this host** → **baselines assigned to the
+host** → **baselines of its groups** → **everywhere**. When two of a host's groups declare the
+same resource differently, the group with the higher **priority** wins (set on the Groups page,
+default 0). Same priority, different values: that's a **Conflict**. DROOL never picks one:
+the resource is shown as a conflict with both values and where they come from, is never checked
+against either, and can't be restored (by hand or automatically) until you resolve it — give one
+group a higher priority, change a baseline, or accept the current state for that host.
+
+### Review, accept or restore
+
+Open a resource that differs:
+
+- **Review difference** — read-only: desired and current state; for packages the installed
+  version; for files both hashes, owner, group and mode, and a line-by-line diff for text files
+  up to 1 MiB (showing file contents needs file permissions and is logged).
+- **Accept current state** — what the host has now becomes its desired state **for this host
+  only** ("Custom for this host"). Baselines and other hosts don't change. A file's current
+  content is stored in DROOL's file store (up to 64 MiB); a file that doesn't exist becomes *not
+  managed on this host*. *Reset to inherited* undoes it.
+- **Change baseline** — opens the baseline's editor with its impact preview, for when the
+  baseline itself should change.
+- **Restore managed state** — DROOL checks the hosts again, works out exactly what to change, and
+  shows it before anything happens: each host and resource (*now → will be*), the job's steps,
+  the rollout, and what can't be restored and why. Confirm and DROOL creates an **ordinary job**
+  — under **Jobs** with live output, locks, retries, cancellation and audit like any other.
+  Several hosts or resources become **one job** (one canary host first, then batches of five,
+  pausing after two failures). Afterwards DROOL checks again and shows **Restored** only when it
+  sees the result; otherwise *Restore failed* with the reason. If nothing differs, no job is
+  created.
+
+Restoring keeps every safeguard of the underlying operation: removing a package that would also
+remove others fails safely unless you explicitly allow it; files are deployed with backup,
+validation and rollback; DROOL never follows or replaces a symlink where a managed file should
+be; a host's agent limits still apply. Hosts DROOL must not change right now — an agent that
+belongs to another (restored) controller, a quarantined agent, file state that is newer on the
+host than in DROOL — are left out with the reason.
+
+### History
+
+Each resource keeps a history of what changed: drift detected, a conflict, restore requested,
+**Restored** (DROOL corrected it and saw the result), **Resolved by configuration** (the desired
+state changed, or you accepted the current state), **Compliant again (changed on the host)**
+(someone fixed it by hand). Checks that find nothing new aren't recorded.
+
+### How DROOL checks
+
+- **Services** come from system monitoring (it must be on). Agents report every change within
+  about a minute; SSH hosts are polled every 5 minutes. Before restoring or accepting, and after a correction,
+  DROOL asks for fresh data and waits for it. (Agents from before this version only report
+  changes; update them so DROOL can confirm a service's state on request.)
+- **Packages** are checked with a read-only query of just those packages — no updates, no
+  package transaction, no root needed.
+- **Files** are checked by size, owner, group, mode and a SHA-256 computed on the host; their
+  content is only transferred when you review or accept.
+
+Packages and files are checked every 15 minutes per host (spread out), and sooner after a
+change, a reconnect, a correction or **Check now**. Data that is too old, an unreachable host or
+monitoring being off makes a resource **Unknown** — never compliant.
+
+### Automatic restore (optional)
+
+Off by default. An administrator can turn on **Automatically restore managed state** for a
+baseline (*Edit → Advanced*); they become its owner, and DROOL checks before every automatic job that
+the owner still exists, is enabled and has the permissions. Automatic restore uses the same
+ordinary jobs and rollouts, only for services, packages and files, and is careful not to fight
+anyone:
+
+- it never touches hosts in maintenance, and waits 5 minutes after maintenance ends;
+- it never restores a host's own accepted values or conflicts, and never removes packages that
+  would take others with them;
+- a failed restore is retried after 15 minutes, then after an hour, then paused for that resource;
+- something that keeps drifting back (three times in a day) is paused for that resource;
+- if an automatic job's rollout pauses (a canary failed, too many failures), or the owner loses
+  the permissions, automatic restore for that baseline pauses — *Automatic restore paused — needs
+  attention* — until an administrator resumes it.
+
+At most one automatic job per baseline and three in total run at once.
+
+### Maintenance and warnings
+
+During **maintenance** DROOL keeps checking and showing drift, but restores nothing
+automatically; restoring by hand is possible, with a warning. **New job** warns you when a job
+would contradict desired state ("On media-01: jellyfin.service is managed to keep running …
+Stopping it will create desired-state drift"), adding that automatic restore may undo it when
+that's on — use maintenance, or change desired state, if the change is intentional.
+
+### Permissions
+
+| Permission | Allows |
+|---|---|
+| `desired.read` | see baselines, desired and current state, drift and history (all roles) |
+| `desired.restore` | check now and restore managed state (operators, admins) — restoring also needs `jobs.execute` and what the operations need (`files.deploy`, `files.elevate` for files) |
+| `desired.manage` | create and change baselines and group priorities, accept current state, set or reset a host's own values (admins) |
+| `desired.auto` | turn automatic restore on or off (admins) |
+
+Creating, changing and archiving baselines, priorities, accepting, restoring (by hand and
+automatically, with the owner), reviewing file contents and automatic-restore changes and pauses
+are all in the audit log.
+
 ## Network monitoring
 
 **Network** in the sidebar shows what your hosts actually talk to; every host page has a
@@ -1257,6 +1400,16 @@ plain HTTP to the network by accident.
   which runs 20 hosts at a time.
 - **Workflows** are a list of steps — no branches, conditions, loops or approval steps. *Verify
   services* and *Verify health* need system monitoring to be on.
+- **Desired state:** services, packages and managed files only (no users, cron, sysctl or
+  containers; no package versions). Services are read from system monitoring, so they need it to
+  be on, and only `.service` units can be managed (not masked or static units' boot state).
+  Packages and files are checked every 15 minutes, so drift made in between shows up then (or
+  with *Check now*). A baseline holds at most 200 resources; one correction at most 50 different
+  changes per job (larger ones are split by host, or refused for a single host — restore it in
+  parts). Agents from before this version can't report packages, or confirm services on request,
+  until updated. Desired state doesn't
+  reconcile a restored controller with newer host state: such hosts are left out of restores
+  until reconciled on the Agents page.
 - **If the controller crashes or restarts during a job,** commands already running on hosts keep
   running; those hosts are marked *interrupted (outcome unknown)*. Check them before re-running.
 - **If a connection drops while a command runs,** the outcome is reported as unknown; only

@@ -39,6 +39,12 @@ const ScheduleEditorPage = lazy(() => import("@/pages/automation/ScheduleEditorP
 const ScheduleDetailPage = lazy(() => import("@/pages/automation/ScheduleDetailPage").then((x) => ({ default: x.ScheduleDetailPage })));
 const WorkflowsPage = lazy(() => import("@/pages/automation/WorkflowsPage").then((x) => ({ default: x.WorkflowsPage })));
 const WorkflowEditorPage = lazy(() => import("@/pages/automation/WorkflowEditorPage").then((x) => ({ default: x.WorkflowEditorPage })));
+const DesiredOverviewPage = lazy(() => import("@/pages/desired/DesiredOverviewPage").then((x) => ({ default: x.DesiredOverviewPage })));
+const BaselinesPage = lazy(() => import("@/pages/desired/BaselinesPage").then((x) => ({ default: x.BaselinesPage })));
+const BaselineDetailPage = lazy(() => import("@/pages/desired/BaselineDetailPage").then((x) => ({ default: x.BaselineDetailPage })));
+const BaselineEditorPage = lazy(() => import("@/pages/desired/BaselineEditorPage").then((x) => ({ default: x.BaselineEditorPage })));
+const DesiredHistoryPage = lazy(() => import("@/pages/desired/DesiredHistoryPage").then((x) => ({ default: x.DesiredHistoryPage })));
+const HostDesiredPage = lazy(() => import("@/pages/desired/HostDesiredPage").then((x) => ({ default: x.HostDesiredPage })));
 const later = (el: ReactNode) => <Suspense fallback={null}>{el}</Suspense>;
 
 export const router = createBrowserRouter([
@@ -74,6 +80,13 @@ export const router = createBrowserRouter([
       { path: "jobs/workflows", element: <RequirePermission permission="workflows.read">{later(<WorkflowsPage />)}</RequirePermission> },
       { path: "jobs/workflows/new", element: <RequirePermission permission="workflows.manage">{later(<WorkflowEditorPage />)}</RequirePermission> },
       { path: "jobs/workflows/:id", element: <RequirePermission permission="workflows.read">{later(<WorkflowEditorPage />)}</RequirePermission> },
+      { path: "desired", element: <RequirePermission permission="desired.read">{later(<DesiredOverviewPage />)}</RequirePermission> },
+      { path: "desired/baselines", element: <RequirePermission permission="desired.read">{later(<BaselinesPage />)}</RequirePermission> },
+      { path: "desired/baselines/new", element: <RequirePermission permission="desired.manage">{later(<BaselineEditorPage />)}</RequirePermission> },
+      { path: "desired/baselines/:id", element: <RequirePermission permission="desired.read">{later(<BaselineDetailPage />)}</RequirePermission> },
+      { path: "desired/baselines/:id/edit", element: <RequirePermission permission="desired.manage">{later(<BaselineEditorPage key="edit" />)}</RequirePermission> },
+      { path: "desired/history", element: <RequirePermission permission="desired.read">{later(<DesiredHistoryPage />)}</RequirePermission> },
+      { path: "hosts/:id/desired", element: <RequirePermission permission="desired.read">{later(<HostDesiredPage />)}</RequirePermission> },
       { path: "agents", element: <RequirePermission permission="agents.read">{later(<AgentsPage />)}</RequirePermission> },
       { path: "firewall", element: <RequirePermission permission="firewall.read">{later(<FirewallPage />)}</RequirePermission> },
       { path: "network", element: <RequirePermission permission="network.read">{later(<NetworkPage />)}</RequirePermission> },

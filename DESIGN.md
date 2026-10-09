@@ -1,6 +1,6 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.10**
+**Design Document v0.3.11**
 Status: Draft · 2026-10-09 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
@@ -13,6 +13,22 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.10 → v0.3.11 (M14: desired state, drift and reconciliation)
+
+"What should this machine look like, is it still that way, and how do I safely put it back?" — answered with a few typed facts per host, not a configuration language:
+
+| # | As built | Section |
+|---|---|---|
+| 1 | **Typed resources only:** a systemd service (running/stopped, enabled/disabled), a package (installed/absent, no versions), a managed file (exact content, owner, group, mode). No expressions, shell predicates, templates or remediation hooks; firewall policy stays with the Firewall | §14.1 |
+| 2 | **Baselines with immutable revisions** and an impact preview before saving (hosts affected, resources added/removed/changed, compliant hosts that would drift, drifting hosts that would comply, new conflicts) | §14.2 |
+| 3 | **Global → group → host, most specific wins;** groups ordered by explicit priority; equal priority with different values is a **Conflict** — explained, never chosen, never restored, never compliant | §14.3, §14.4 |
+| 4 | **Sparse configuration:** only declarations are stored; the server computes each host's effective state with provenance ("Required by Global baseline …", "Inherited from group: …", "Custom for this host") | §14.3 |
+| 5 | **Observation is transport-neutral and fresh:** services from M11 (fresh reports, proof after a change), packages from a read-only query of just those packages, files by metadata and an on-host SHA-256 without downloading. Stale or missing data is *Unknown*, never compliant | §14.5, §14.6 |
+| 6 | **Review difference / Accept current state / Restore managed state.** Accept is host-specific by default and never silently changes a baseline. Restore creates ordinary typed jobs after a fresh check and a preview — one aggregated job per correction, with the M13 rollout; no difference means no job; only a fresh observation proves it restored | §14.8–§14.10 |
+| 7 | **Optional automatic restore** per baseline, off by default, owned by the administrator who enabled it: bounded, re-authorized before every job, never during maintenance, backs off, pauses with "needs attention" instead of fighting a person | §14.11 |
+| 8 | **Truthful history** (Restored vs Resolved by configuration vs Changed on the host), only on transitions, bounded; aggregated events; warnings in New job's preview when a job contradicts desired state | §14.7, §14.12 |
+| 9 | **Restores respect state versioning:** hosts ahead of the controller or of another controller epoch are refused with the reason; desired state is not the §10.3 reconciliation | §14.9, §10.3 |
 
 ### v0.3.9 → v0.3.10 (M13: scheduling, fleet automation and workflows)
 
@@ -753,6 +769,8 @@ Both produce the same typed **Operations** (`ServiceOperation`, `PackageOperatio
 
 The reconciler: observe → compare desired with current → no difference means no operation → otherwise generate a corrective operation.
 
+As built (M14, §14): the reconciler's corrections are ordinary jobs of `ServiceOperation`, `PackageOperation` and `FileDeployOperation`, submitted through the same engine (locks, capabilities, privilege, retries, rollouts, cancellation, audit). Firewall policy keeps its own transaction path (§17) and is never part of desired state; scripts are never generated.
+
 Operations are idempotent wherever the domain allows it (raw scripts are explicitly not).
 
 ### 12.2 Services
@@ -871,11 +889,109 @@ Restricted by the agent's `files.allowed_paths`.
 
 ---
 
-## 14. Desired State, Compliance and Drift
+## 14. Desired State, Drift and Reconciliation
 
-Baselines (e.g. SSH root login disabled, required services, prohibited packages) are evaluated by the reconciler, with results of *Compliant* or *Drift Detected*.
+*"What should this machine look like, is it still that way, and how do I safely put it back?"*
 
-Drift actions: **Accept current state** (becomes desired), **Restore managed state**, **Review difference**.
+Desired state declares a few typed facts about hosts and compares them with what DROOL observes. Each resource is *Compliant* or *Drift detected* (or honestly *Unknown*, or a *Conflict*), and three actions stay central: **Review difference**, **Accept current state**, **Restore managed state**. It is not a configuration-management language: there are no expressions, conditions, shell predicates, templates, loops, remediation scripts or compliance-benchmark rules. A statement such as "SSH root login must be disabled" is not something desired state evaluates; what can be declared is, for example, a managed `sshd_config` drop-in with exact content, the `ssh` service running and enabled, or a package absent.
+
+### 14.1 Resources
+
+| Type | Desired | Observed by | Corrected by |
+|---|---|---|---|
+| **Service** (a systemd `.service` unit) | running or stopped, and/or enabled or disabled at boot. Restart and reload are actions, not states | M11's service inventory, fresh (§14.5) | `ServiceOperation` (start/stop, enable/disable) |
+| **Package** | installed or absent. No versions (no pinning, no "latest") | a read-only query of exactly the declared packages | `PackageOperation` install/remove (the removal safeguard: a removal that would take other packages fails unless explicitly allowed) |
+| **Managed file** | exact content (an artifact, by SHA-256) at a path; optionally owner, group and mode; optionally a validation command and a reload or restart of a service after a change; whether administrator privileges are used | the file transport (`files.FS`): type, size, owner, group, mode and a SHA-256 computed on the host — never a download | `FileDeployOperation` (§13: atomic replace, backup and rollback, validation, symlink protection, the agent's allowed paths, elevation) |
+
+Firewall policy is not a desired-state resource: a host's desired-state view shows **"Firewall policy — managed by Firewall"** with its state and a link, and nothing in desired state can accept, restore or bypass the Designer or the dead-man transactions (§17). Containers, users, cron entries, sysctls and anything else are not resource types yet; the model is keyed by type so more can be added without changing the precedence, history or restore machinery.
+
+### 14.2 Baselines and revisions
+
+A **baseline** is a named, described collection of resources (at most 200) and where it applies: everywhere, groups, or hosts. Every saved change is a new **immutable revision**; history entries and corrective jobs record the exact revision they came from. Saving shows an **impact preview** first: hosts affected, resources added, removed and changed, compliant hosts that would drift, drifting hosts that would comply, and conflicts that would appear. Baselines are archived, never deleted: an archived baseline no longer applies and its revisions stay readable.
+
+### 14.3 Scope and precedence
+
+A resource is identified by its type and name (`service:nginx.service`, `package:htop`, `file:/etc/motd`) and is decided **as a whole** — fields are never merged across declarations. The most specific declaration wins:
+
+1. **Custom for this host** — a host-level declaration (a value, or *Not managed on this host*), created by *Accept current state* or set explicitly.
+2. **Baselines assigned to the host.**
+3. **Baselines assigned to the host's groups**, ordered by each group's explicit **priority** (−1000…1000, default 0): the highest wins.
+4. **Global baselines** (everywhere).
+
+At the deciding level, identical declarations agree. Different declarations at the same level — two baselines assigned to the host, groups sharing the highest priority, two global baselines — are a **Conflict**. Membership order, names, ids and creation times never decide.
+
+Only declarations are stored; the server computes each host's effective desired state with its **provenance** — "Required by Global baseline Server Defaults", "Inherited from group: media-servers (baseline Media Server)", "Baseline AI box, assigned to this host", "Custom for this host", "Conflict between groups lab and media (same priority 0)" — and what each effective value replaces. The UI shows this; it never computes precedence itself.
+
+### 14.4 Conflicts
+
+A conflict is first-class: visible on the host, the fleet view and the dashboard, explained with every competing declaration and where it comes from, never compliant, never checked against either value, and **never restored, manually or automatically, until resolved**. It is resolved by giving one group a higher priority (with an impact preview), changing a baseline, or a host-level declaration — *Accept current state* resolves it for that host.
+
+### 14.5 Observation and freshness
+
+Observation works the same over SSH and the agent (through the management path, §8):
+
+- **Services** come from M11's service inventory. SSH data counts as fresh within 3× the poll interval + 1 min. An agent reports every change within its collection interval (a stopped unit's boot state within 10 minutes) and its full list at least every 30 minutes, so while it is connected its list is current; after it disconnects, its last report counts only for a few minutes. Where proof matters — before a restore, after a correction, before *Accept* — DROOL asks for new data (an agent report, an SSH poll) and accepts only a report newer than the request (the M13 verification semantics).
+- **Packages** are checked by a read-only query of exactly the declared packages (`dpkg-query`/`rpm -q`): never a package transaction, never a metadata refresh. Agents answer a new read-only query that their monitoring or package capability allows; an older agent leaves packages *Unknown* ("update the agent").
+- **Files** are checked by metadata and a SHA-256 computed on the host, without transferring content. Content is read only for an explicit *Review difference* (§14.8) or *Accept current state* (§14.10).
+
+Packages and files are checked every 15 minutes per host, spread over the interval by a stable per-host offset, by a fixed pool of workers. Checks come forward after a configuration change (spread over a minute), an agent reconnect, a corrective job, and an explicit **Check now**/refresh; monitoring's service reports trigger an evaluation when a service changes. Nothing runs per baseline, host or resource, and only meaningful changes are written. Stale or missing data is never compliant.
+
+### 14.6 Statuses and drift
+
+| Status | Meaning |
+|---|---|
+| **Compliant** | fresh observation matches |
+| **Drift detected** | fresh observation differs — exactly how, below |
+| **Conflict** | §14.4 |
+| **Unknown** | no fresh or no usable data, with the reason: not checked yet, host unreachable, monitoring off, the check failed, the agent can't answer, permission denied |
+| **Restoring** | a corrective job is in progress (*reconciliation in progress*) |
+| **Restore failed** | the last correction failed or couldn't be verified; the drift stays visible (*reconciliation failed*) |
+
+A host's status is its worst resource: restore failed, conflict, drift, restoring, unknown, compliant. Drift states exactly what differs: "Desired: running, enabled / Current: failed, enabled"; "Desired: absent / Current: installed (2.4.1-1)"; content as both SHA-256 values; "Mode: desired 0644, current 0664"; owner and group; a missing file. A symlink or other non-regular file where a managed file should be is drift that needs a person: DROOL never follows or replaces it, and a masked or static unit can't be enabled or disabled by a restore.
+
+### 14.7 History
+
+Only **transitions** are recorded: drift detected or changed, compliant again, conflict appeared or resolved, unknown and observed again, restore requested, restored, restore failed or not verified, current state accepted, no longer managed. Unchanged rechecks record nothing. Each entry keeps the desired and observed values, the source baseline and revision, the job and the actor. History is truthful about *why* something became compliant:
+
+- **Restored** — a corrective job ran and a fresh observation proved the result;
+- **Resolved by configuration** — desired state changed (a baseline edit, *Accept current state*, a priority);
+- **Compliant again (changed on the host)** — the host changed back by itself.
+
+History is bounded (180 days and 100 entries per host and resource).
+
+### 14.8 Review difference
+
+Read-only; reviewing never changes the host. Services: desired and current state and enablement. Packages: desired and current state, with the installed version. Files: both hashes, owner, group and mode, and a unified diff for text files up to 1 MiB (binary or larger files: hashes only). Showing file content needs the file permissions (§24) and is audited.
+
+### 14.9 Restore managed state
+
+Restoring never executes anything itself: it creates **ordinary typed jobs** (§12). Before anything is submitted DROOL re-observes the selected hosts, computes the exact correction (only what differs) and shows a preview: hosts and resources (*now → will be*), the job's steps, the rollout, removal safeguards (what else each removal would take, refused unless explicitly allowed), file changes with their validation, maintenance and capability warnings, and what is excluded and why (a conflict, unknown, already restoring, a blocked host). Executing re-computes the plan and refuses if it differs from the preview. If nothing differs, no job is created.
+
+A correction is **one job** — never one per resource: the distinct corrective steps in a safe order (installs, files, services, removals), each host running only its own steps, with the M13 rollout (canary, batches, failure threshold; one canary and batches of five by default for more than one host). A host or resource is never in two corrections at once. After the job, DROOL observes again and marks a resource **Restored** only on proof; otherwise *Restore failed* (or *not verified*), with the job's explanation. A job interrupted by a controller restart is settled from a fresh observation and never re-run.
+
+**Restores and state versioning (§9, §10.3).** Desired state integrates with state versioning but is not the restore reconciliation of §10.3. A host whose agent belongs to another controller epoch, a host DROOL may not change (quarantined or revoked identity), or a host whose managed-file state is ahead of this controller is excluded from restore with the reason, and must be reconciled first (Agents page). Desired state never overwrites newer host state and never starts an epoch.
+
+### 14.10 Accept current state
+
+Accepting makes what the host has now its desired state **for that host only** (example: Global baseline *nginx running*, `lab-box` has it stopped → `lab-box: nginx → stopped`, custom for this host). It never silently changes a global or group baseline; **Change baseline** is a separate, explicit path through the baseline editor and its impact preview. Accept re-observes first and refuses on unknown data. A file's current content is imported into the artifact store (size-limited); a missing file becomes *Not managed on this host*. Accept can resolve a conflict for one host. Host-level declarations can be reset to inherit again. Everything is audited.
+
+### 14.11 Automatic restore (optional)
+
+Off by default. An administrator may enable **Automatically restore managed state** per baseline; services, packages and files only — never scripts, firewall changes or arbitrary commands. The administrator who enables it becomes its **owner**: before every automatic job the owner must exist, be enabled and hold the desired-state permissions and the permissions of the generated operations; otherwise automatic restore pauses with *needs attention*, is audited and records one event. Automatic restore:
+
+- creates the same ordinary jobs, under the same capability ceilings, RBAC, locks and rollouts (at most one job per baseline and three fleet-wide at a time);
+- never corrects a host in maintenance, and waits a short grace after maintenance ends (re-observing first);
+- re-observes after every job; retries a failed correction after 15 minutes, then after an hour, then pauses for that resource;
+- **never fights an operator:** a resource that drifts again three times within 24 hours of being restored pauses automatic restore for it; a rollout that pauses (canary or threshold) pauses the baseline's automatic restore with *Automatic reconciliation paused — needs attention*;
+- never restores host-level declarations, conflicts, unknown resources, or package removals that would take other packages.
+
+### 14.12 Maintenance, warnings, events and the summary
+
+During **maintenance** (§12.13) observation continues and drift stays visible; nothing is restored automatically. A manual restore is allowed, with a warning. After maintenance DROOL re-checks and resumes after a short grace.
+
+New job's preview **warns** when an ordinary operation contradicts desired state ("On media-01: jellyfin.service is managed to keep running (Inherited from group: media-servers (baseline Media Server)). Stopping it will create desired-state drift."; "On lab-box: htop is prohibited by baseline “Server Defaults”. Installing it will create drift."). With automatic restore on, the warning adds: "Automatic reconciliation may restore this setting after the job completes. Use maintenance or change desired state if this change is intentional."
+
+Events (never alerts or notifications): drift detected, a conflict appeared, automatic restore paused — aggregated, never one per resource or check. The dashboard and the fleet view show one compact summary ("Desired state: 3 drifted · Firewall: 1 drifted"); firewall drift and agent state-version problems are linked, not merged.
 
 ---
 
@@ -1246,7 +1362,7 @@ Integrity (see §4.2 limitation):
 
 ### 22.8 Event timeline
 
-The dashboard shows an event stream where every event links to its object: alerts opened, critical or escalated, acknowledged and recovered; maintenance started and ended; a notification destination failing and recovering. Routine activity (each delivery attempt, each sample) never appears there.
+The dashboard shows an event stream where every event links to its object: alerts opened, critical or escalated, acknowledged and recovered; maintenance started and ended; a notification destination failing and recovering; desired-state drift detected, conflicts appearing, automatic restore paused (§14.12, aggregated). Routine activity (each delivery attempt, each sample, each unchanged check) never appears there.
 
 ---
 
@@ -1370,7 +1486,8 @@ Using Go on both sides shares models and protocol code and gives easy static dep
 Host, HostIdentity, HostAddress, AddressObservation, ManagementPath, HostGroup, Tag
 Agent, AgentCapabilityCeiling, SSHHostKey, SSHCredential
 StateVersion (domain, epoch, revision, hash)
-Operation, Job, JobTarget, JobExecution, JobResult, Workflow, DesiredState
+Operation, Job, JobTarget, JobExecution, JobResult, Workflow, Schedule
+Baseline, BaselineRevision, Assignment, HostDeclaration, ResourceState, DriftHistory
 Service, Package, ManagedFile
 NetworkPolicy, NetworkGroup, NamedService, PolicySet, FirewallTransaction, ObservedConnection
 Container, ContainerNetwork, ContainerProvider, ResourceOwnership
@@ -1444,16 +1561,16 @@ M8 delivered the firewall core of this stage for plain-nftables hosts: policies,
 - Controller backup/restore with reconciliation
 
 ### 1.0
-Beta plus hardening, MFA, hash-chained audit with remote sink. Scheduling, batch/canary rollouts and workflows were delivered in M13 (§12.4, §12.6, §26); file deployment with diffs in M6. **Firewalling ships before 1.0.** Without it we're competing directly with Semaphore/Rundeck without our main differentiator.
+Beta plus hardening, MFA, hash-chained audit with remote sink. Scheduling, batch/canary rollouts and workflows were delivered in M13 (§12.4, §12.6, §26); file deployment with diffs in M6; desired-state baselines with drift detection, review, accept and restore (optionally automatic) in M14 (§14). **Firewalling ships before 1.0.** Without it we're competing directly with Semaphore/Rundeck without our main differentiator.
 
 ### Later
-Desired-state baselines, dynamic groups, network visualization, Docker discovery/segmentation/exposure audit, Dockhand, learning mode, Explain Host, dependency awareness, plugin ecosystem (Arr, Jellyfin, Proxmox, Caddy, Tailscale, WireGuard, Syncthing, ZFS), WireGuard identity backend.
+Dynamic groups, more desired-state resource types, network visualization, Docker discovery/segmentation/exposure audit, Dockhand, learning mode, Explain Host, dependency awareness, plugin ecosystem (Arr, Jellyfin, Proxmox, Caddy, Tailscale, WireGuard, Syncthing, ZFS), WireGuard identity backend.
 
 ---
 
 ## 34. Explicitly Out of Scope (initially)
 
-Kubernetes replacement, SIEM, log analytics, vulnerability scanner, full configuration management language, Ansible compatibility layer, general endpoint management. Also deferred: the enterprise identity features listed in §1.1.
+Kubernetes replacement, SIEM, log analytics, vulnerability scanner, full configuration management language, compliance benchmarks and policy expressions (CIS, STIG), remediation scripts, Ansible compatibility layer, general endpoint management. Also deferred: the enterprise identity features listed in §1.1.
 
 **Deferred future work (in scope eventually, not scheduled):** a **Windows agent** implementing the platform-neutral typed operations and telemetry (§2.6).
 
@@ -1506,6 +1623,7 @@ Not "Ansible with a web UI." Instead:
 16. Distributed updates are never assumed to be atomic fleet-wide. Convergence is tracked and visible.
 17. Local audit is not evidence after full controller compromise. Integrity comes from chaining and off-box sinks.
 18. **Schedules decide when; the job engine decides how.** Every scheduled run is an ordinary job (or ordinary maintenance), created in the same transaction as its durable, unique occurrence, under its owner's re-checked authority.
+19. **Desired state observes and proposes; the job engine changes hosts.** Drift is corrected only by ordinary typed jobs after a fresh observation and a preview; a conflict is never resolved by choosing; stale data is never compliant; nothing is marked restored without proof.
 
 ---
 

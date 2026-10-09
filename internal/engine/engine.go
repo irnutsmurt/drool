@@ -153,6 +153,7 @@ type Engine struct {
 	hostChanged func(hostID string)
 	local       LocalExecutor
 	onPause     func(jobID, kind, reason string)
+	onDone      func(jobID, status string)
 
 	base      context.Context // never cancelled: jobs are not aborted on shutdown
 	pruneStop context.CancelFunc
@@ -248,12 +249,13 @@ type Submission struct {
 	Plan    model.WavePlan
 }
 
-// Origin says where a job came from (M13).
+// Origin says where a job came from (M13, M14).
 type Origin struct {
 	ScheduleID       string
 	OccurrenceID     string
 	WorkflowID       string
 	WorkflowRevision int
+	ReconcileID      string // a desired-state correction
 }
 
 // SubmitOptions are a submission's context.
@@ -265,6 +267,13 @@ type SubmitOptions struct {
 	// Skip leaves hosts out of the run up front with a reason (they are
 	// listed as skipped in the job, e.g. "maintenance active").
 	Skip map[string]string
+	// HostSteps limits a host to some of the job's steps (step indexes),
+	// for jobs whose hosts need different subsets of the same typed
+	// operations (desired-state corrections, M14). Hosts not listed run
+	// every step.
+	HostSteps map[string][]int
+	// MaxSteps raises the step limit (corrections); 0: model.MaxSteps.
+	MaxSteps int
 }
 
 // SubmitTx validates spec, resolves its targets and stores the job and its
@@ -277,8 +286,22 @@ func (e *Engine) SubmitTx(ctx context.Context, q *db.Queries, spec model.JobSpec
 // plan (canary wave, batches) is computed here from the hosts in their
 // resolved order and stored with each host, so it never changes later.
 func (e *Engine) Submit(ctx context.Context, q *db.Queries, spec model.JobSpec, opt SubmitOptions) (*Submission, error) {
-	if err := spec.Normalize(); err != nil {
+	maxSteps := model.MaxSteps
+	if opt.MaxSteps > 0 {
+		maxSteps = opt.MaxSteps
+	}
+	if err := spec.NormalizeLimit(maxSteps); err != nil {
 		return nil, &ValidationError{Msg: err.Error()}
+	}
+	for h, steps := range opt.HostSteps {
+		if len(steps) == 0 {
+			return nil, &ValidationError{Msg: "host " + h + " has no steps to run"}
+		}
+		for _, i := range steps {
+			if i < 0 || i >= len(spec.Steps) {
+				return nil, &ValidationError{Msg: fmt.Sprintf("host %s: step %d does not exist", h, i+1)}
+			}
+		}
 	}
 	if opt.IdemKey != "" {
 		if j, err := q.GetJobByIdempotencyKey(ctx, db.GetJobByIdempotencyKeyParams{
@@ -325,7 +348,13 @@ func (e *Engine) Submit(ctx context.Context, q *db.Queries, spec model.JobSpec, 
 		CreatedBy: opt.UserID, CreatedAt: now}); err != nil {
 		return nil, err
 	}
-	if o := opt.Origin; o != (Origin{}) {
+	if o := opt.Origin; o.ReconcileID != "" {
+		j.ReconcileID = sql.NullString{String: o.ReconcileID, Valid: true}
+		if err := q.SetJobReconcile(ctx, db.SetJobReconcileParams{ReconcileID: j.ReconcileID, ID: j.ID}); err != nil {
+			return nil, err
+		}
+	}
+	if o := opt.Origin; o.ScheduleID != "" || o.OccurrenceID != "" || o.WorkflowID != "" {
 		j.ScheduleID = sql.NullString{String: o.ScheduleID, Valid: o.ScheduleID != ""}
 		j.OccurrenceID = sql.NullString{String: o.OccurrenceID, Valid: o.OccurrenceID != ""}
 		j.WorkflowID = sql.NullString{String: o.WorkflowID, Valid: o.WorkflowID != ""}
@@ -343,6 +372,13 @@ func (e *Engine) Submit(ctx context.Context, q *db.Queries, spec model.JobSpec, 
 			if err := q.InsertJobHostInWave(ctx, db.InsertJobHostInWaveParams{JobID: j.ID, HostID: h.ID, HostName: h.Name,
 				Position: int64(pos), Wave: int64(w)}); err != nil {
 				return nil, err
+			}
+			if steps, ok := opt.HostSteps[h.ID]; ok {
+				b, _ := json.Marshal(steps)
+				if err := q.SetJobHostSteps(ctx, db.SetJobHostStepsParams{Steps: sql.NullString{String: string(b), Valid: true},
+					JobID: j.ID, HostID: h.ID}); err != nil {
+					return nil, err
+				}
 			}
 			ordered = append(ordered, h)
 			pos++
@@ -429,7 +465,11 @@ func (e *Engine) Cancel(ctx context.Context, jobID string) error {
 			return err
 		}
 		if j.Status == JobPending {
-			return e.st.W.FinishJob(ctx, db.FinishJobParams{Status: JobCancelled, FinishedAt: e.nowNull(), ID: jobID})
+			if err := e.st.W.FinishJob(ctx, db.FinishJobParams{Status: JobCancelled, FinishedAt: e.nowNull(), ID: jobID}); err != nil {
+				return err
+			}
+			e.jobDone(jobID, JobCancelled)
+			return nil
 		}
 		return ErrJobNotActive
 	}
@@ -501,6 +541,24 @@ func (e *Engine) OnPause(fn func(jobID, kind, reason string)) {
 	e.mu.Lock()
 	e.onPause = fn
 	e.mu.Unlock()
+}
+
+// OnJobDone registers fn to be told when a job reaches a final status
+// (completed or cancelled). Jobs interrupted by a restart are not
+// reported here; their status is in the database.
+func (e *Engine) OnJobDone(fn func(jobID, status string)) {
+	e.mu.Lock()
+	e.onDone = fn
+	e.mu.Unlock()
+}
+
+func (e *Engine) jobDone(jobID, status string) {
+	e.mu.Lock()
+	fn := e.onDone
+	e.mu.Unlock()
+	if fn != nil {
+		fn(jobID, status)
+	}
 }
 
 // SetLocal installs the executor of controller-side steps.
@@ -630,6 +688,7 @@ func (e *Engine) runJob(jr *jobRun) error {
 	}
 	e.publishJob(jr.id)
 	e.hub.Publish(jr.id, "end", map[string]string{"status": status})
+	e.jobDone(jr.id, status)
 	return nil
 }
 
@@ -809,7 +868,11 @@ func (e *Engine) runHost(jr *jobRun, h db.JobHost) {
 	}
 	ran := 0
 	var skipped []string
+	only := hostSteps(h)
 	for i, spec := range jr.spec.Steps {
+		if only != nil && !only[i] {
+			continue // another host's correction (M14): not part of this host's run
+		}
 		step, applies, why := spec.ForHost(hostOS)
 		if !applies {
 			skipped = append(skipped, fmt.Sprintf("step %d: %s", i+1, why))
@@ -878,6 +941,22 @@ func (e *Engine) runHost(jr *jobRun, h db.JobHost) {
 	jr.mu.Unlock()
 }
 
+// hostSteps returns the steps a host is limited to, or nil for all.
+func hostSteps(h db.JobHost) map[int]bool {
+	if !h.Steps.Valid {
+		return nil
+	}
+	var idx []int
+	if err := json.Unmarshal([]byte(h.Steps.String), &idx); err != nil {
+		return nil
+	}
+	out := make(map[int]bool, len(idx))
+	for _, i := range idx {
+		out[i] = true
+	}
+	return out
+}
+
 // runLocal runs a controller-side step (wait, verification).
 func (e *Engine) runLocal(ctx context.Context, jr *jobRun, h db.JobHost, step, attempt int, op model.Operation, out *outputWriter) (*driver.OpResult, error) {
 	e.mu.Lock()
@@ -932,10 +1011,13 @@ func (e *Engine) hostFailed(jr *jobRun, h db.JobHost, res *driver.OpResult, err 
 	case model.ClassCancelled:
 		state = HostCancelled
 	}
-	e.finishHost(jr.id, h, state, res, err)
 	if state == HostCancelled {
+		e.finishHost(jr.id, h, state, res, err)
 		return
 	}
+	// Counted before the failure is recorded: anyone who sees this host
+	// failed, and the dispatcher taking a slot freed after it, sees the
+	// failure threshold too (no host starts past it).
 	jr.mu.Lock()
 	jr.failures++
 	trip := false
@@ -951,6 +1033,7 @@ func (e *Engine) hostFailed(jr *jobRun, h db.JobHost, res *driver.OpResult, err 
 	}
 	n := jr.breakerCount
 	jr.mu.Unlock()
+	e.finishHost(jr.id, h, state, res, err)
 	if trip {
 		e.pause(jr, PauseBreaker, fmt.Sprintf("%d consecutive %s failures; likely a shared credential or configuration problem", n, oe.Class))
 	}

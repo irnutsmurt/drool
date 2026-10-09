@@ -33,6 +33,7 @@ import (
 	"drool/internal/audit"
 	"drool/internal/auth"
 	"drool/internal/config"
+	"drool/internal/desired"
 	"drool/internal/driver/sshdriver"
 	"drool/internal/engine"
 	"drool/internal/filedeploy"
@@ -474,9 +475,13 @@ func cmdServe(path string, explicit bool) error {
 			return verify.Reachability{OK: out.Status == inventory.StatusReady || out.Status == inventory.StatusUnsupported, Detail: out.Detail}
 		},
 		PollSSH: poll.Monitor}))
+	var desiredPaused func(jobID, kind, reason string)
 	eng.OnPause(func(jobID, kind, reason string) {
 		if kind == engine.PauseBreaker {
 			return // shown on the job page; not a rollout decision
+		}
+		if desiredPaused != nil {
+			desiredPaused(jobID, kind, reason)
 		}
 		_ = alertSvc.RecordEvent(context.Background(), alerts.Event{Kind: "job.paused", Severity: "warning", ObjectType: "job", ObjectID: jobID,
 			Title: "Rollout paused: " + reason})
@@ -488,6 +493,38 @@ func cmdServe(path string, explicit bool) error {
 		schedTuning.MisfireGrace = 20 * time.Second
 	}
 	scheduler := sched.New(sched.Deps{Store: st, Engine: eng, Alerts: alertSvc, Audit: auditW, Log: logs.App.With("component", "scheduler"), Tuning: schedTuning})
+	// Desired state (M14): observation and comparison, and corrections as
+	// ordinary jobs through the engine.
+	desiredTuning := desired.Tuning{}
+	if os.Getenv("DROOL_TEST_DESIRED_TIMING") == "fast" {
+		log.Warn("TEST MODE: desired-state checks every 20 s, automatic restore every 2 s, 3 s after maintenance; never use this in production")
+		desiredTuning = desired.Tuning{Tick: 500 * time.Millisecond, CheckEvery: 20 * time.Second, AutoEvery: 2 * time.Second,
+			MaintenanceGrace: 3 * time.Second, ProofWait: 30 * time.Second}
+	}
+	desiredSvc := desired.New(desired.Deps{Store: st, Engine: eng, Monitor: mon, Alerts: alertSvc, Prober: router, Artifacts: arts,
+		Audit: auditW, Log: logs.App.With("component", "desired"), Tuning: desiredTuning, PollSSH: poll.Monitor,
+		Path: func(ctx context.Context, h db.Host) desired.PathInfo {
+			d := router.Decide(ctx, h)
+			return desired.PathInfo{AgentConnected: d.UseAgent, AgentState: d.AgentState, Blocked: d.Blocked, Reason: d.Reason}
+		},
+		Removals: func(ctx context.Context, hostID, pkg string) ([]string, error) {
+			res, err := router.Simulate(ctx, hostID, model.Operation{Type: model.OpPackage, Package: &model.PackageOp{Action: "remove", Names: []string{pkg}}})
+			if err != nil {
+				return nil, err
+			}
+			var also []string
+			for _, c := range res.ExtraRemovals {
+				also = append(also, c.Name)
+			}
+			return also, nil
+		}})
+	mon.SetServicesHook(desiredSvc.OnServices)
+	eng.OnJobDone(desiredSvc.OnJobDone)
+	desiredPaused = desiredSvc.OnJobPaused
+	if agents != nil {
+		agents.SetMonitorHooks(sessionTee{mon, desiredSvc})
+	}
+	go desiredSvc.Run(ctx)
 	go scheduler.Run(ctx)
 	go artifactGC(ctx, arts, log)
 
@@ -497,7 +534,7 @@ func cmdServe(path string, explicit bool) error {
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
 		Poller: poll, StaleAfter: pollCfg.StaleAfter(), Simulator: router, Files: router, Artifacts: arts,
 		Agents: agents, Router: router, WebPin: webPin(tlsRes), Firewall: fw, Network: network, Monitor: mon, Alerts: alertSvc,
-		Sched: scheduler,
+		Sched: scheduler, Desired: desiredSvc,
 	})
 	if err != nil {
 		return err
@@ -652,4 +689,20 @@ func artifactGC(ctx context.Context, arts *artifacts.Store, log *slog.Logger) {
 		case <-t.C:
 		}
 	}
+}
+
+// sessionTee forwards agent sessions and telemetry to monitoring, and
+// tells desired state when an agent (re)connects.
+type sessionTee struct {
+	mon     *monsvc.Service
+	desired *desired.Service
+}
+
+func (t sessionTee) OnSession(hostID string, features []string, effectiveJSON []byte) {
+	t.mon.OnSession(hostID, features, effectiveJSON)
+	t.desired.OnHostConnected(hostID)
+}
+
+func (t sessionTee) OnTelemetry(hostID, kind string, payload []byte) {
+	t.mon.OnTelemetry(hostID, kind, payload)
 }

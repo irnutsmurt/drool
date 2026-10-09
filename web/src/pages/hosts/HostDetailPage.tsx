@@ -12,6 +12,7 @@ import { statusHelp } from "@/components/hosts/statusHelp";
 import { FactsCard, HealthCard, NetworkCard, ServicesCard } from "@/components/hosts/InventoryCards";
 import { ProbeSteps } from "@/components/hosts/ProbeSteps";
 import { ManagedFilesCard } from "@/components/files/ManagedFilesCard";
+import { DesiredStateCard } from "@/components/desired/DesiredStateCard";
 import { ManagementCard } from "@/components/agents/ManagementCard";
 import { FirewallCard } from "@/components/firewall/FirewallCard";
 import { HostNetworkCard } from "@/components/network/HostNetworkCard";
@@ -171,6 +172,7 @@ export function HostDetailPage() {
           <>
             <FactsCard host={h} />
             <HealthCard host={h} />
+            {can("desired.read") && <DesiredStateCard hostId={h.id} />}
             <div className="lg:col-span-2"><NetworkCard host={h} /></div>
             <div className="lg:col-span-2"><ServicesCard host={h} /></div>
             {can("files.read") && <div className="lg:col-span-2"><ManagedFilesCard hostId={h.id} /></div>}

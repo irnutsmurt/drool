@@ -14,6 +14,7 @@ import { useAlerts, useAlertSummary, useEvents } from "@/components/alerts/queri
 import { AlertSeverity } from "@/components/alerts/ui";
 import { StatusIcon } from "@/components/monitoring/Status";
 import { fmtSince } from "@/components/monitoring/format";
+import { useDesiredSummary } from "@/components/desired/queries";
 
 function Stat({ label, value, detail, tone, to }: {
   label: string;
@@ -111,6 +112,7 @@ export function DashboardPage() {
           )}
         </Card>
         {can("alerts.read") && <AlertsCard />}
+        {can("desired.read") && <DesiredCard />}
         {can("alerts.read") && <EventsCard />}
         <Card title="Jobs">
           {running.length === 0 && recent.length === 0 ? (
@@ -163,6 +165,33 @@ function AlertsCard() {
   );
 }
 
+/** Desired state at a glance: what differs and what needs a decision;
+ * compliance recedes. */
+function DesiredCard() {
+  const sum = useDesiredSummary();
+  const s = sum.data;
+  if (!s || s.baselines === 0) return null;
+  const problems = [
+    s.hosts.drift > 0 && { text: `${s.hosts.drift} host${s.hosts.drift === 1 ? "" : "s"} with drift`, tone: "text-warn", to: "/desired?status=drift" },
+    s.resources.conflict > 0 && { text: `${s.resources.conflict} conflict${s.resources.conflict === 1 ? "" : "s"}`, tone: "text-danger", to: "/desired?status=conflict" },
+    s.resources.failed > 0 && { text: `${s.resources.failed} failed restore${s.resources.failed === 1 ? "" : "s"}`, tone: "text-danger", to: "/desired?status=failed" },
+    s.auto_paused.length > 0 && { text: `automatic restore paused for ${s.auto_paused.length} baseline${s.auto_paused.length === 1 ? "" : "s"}`, tone: "text-warn", to: "/desired" },
+  ].filter(Boolean) as { text: string; tone: string; to: string }[];
+  return (
+    <Card title="Desired state" actions={<Link className="text-sm text-accent" to="/desired">Overview</Link>}>
+      {problems.length === 0 ? (
+        <p className="text-sm text-muted">{s.hosts.compliant} of {s.hosts.total} managed hosts compliant{s.resources.unknown > 0 ? ` · ${s.resources.unknown} unknown` : ""}.</p>
+      ) : (
+        <ul className="space-y-1 text-sm">
+          {problems.map((p) => <li key={p.text}><Link className={cx("font-medium underline", p.tone)} to={p.to}>{p.text}</Link></li>)}
+          <li className="text-xs text-muted">{s.hosts.compliant} of {s.hosts.total} managed hosts compliant{s.resources.unknown > 0 ? ` · ${s.resources.unknown} resources unknown` : ""}</li>
+        </ul>
+      )}
+      {s.firewall && s.firewall.drift > 0 && <p className="mt-2 text-xs text-muted">Firewall: <Link className="text-accent" to="/firewall">{s.firewall.drift} host{s.firewall.drift === 1 ? "" : "s"} drifted</Link> (managed by Firewall)</p>}
+    </Card>
+  );
+}
+
 const eventStatus: Record<string, "critical" | "warning" | "info"> = { critical: "critical", warning: "warning", info: "info" };
 
 /** Where an event's object lives in the UI. */
@@ -176,6 +205,12 @@ function eventLink(e: { object_type?: string; object_id?: string }): string | un
       return e.object_id ? `/jobs/schedules/${e.object_id}` : "/jobs/schedules";
     case "maintenance":
       return "/alerts?view=maintenance";
+    case "baseline":
+      return e.object_id ? `/desired/baselines/${e.object_id}` : "/desired/baselines";
+    case "desired_host":
+      return e.object_id ? `/hosts/${e.object_id}/desired` : "/desired";
+    case "desired":
+      return "/desired";
   }
   return undefined;
 }

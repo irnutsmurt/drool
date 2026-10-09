@@ -24,6 +24,7 @@ import (
 	"drool/internal/audit"
 	"drool/internal/auth"
 	"drool/internal/config"
+	"drool/internal/desired"
 	"drool/internal/driver/sshdriver"
 	"drool/internal/engine"
 	"drool/internal/filedeploy"
@@ -67,6 +68,9 @@ type harness struct {
 	alerts *alerts.Service
 	sched  *sched.Service
 	box    *secrets.Box
+	// desired is desired state (M14); its loop doesn't run in tests:
+	// call Step and SettleNow.
+	desired *desired.Service
 }
 
 func newHarness(t *testing.T) *harness {
@@ -134,10 +138,21 @@ func newHarness(t *testing.T) *harness {
 		Config: alerts.Config{DisableWorkers: true, BackoffBase: time.Second, BackoffMax: 4 * time.Second, Grace: 2 * time.Minute, RatePerMinute: 6000}})
 	alertSvc.Attach(mon)
 	schedSvc := sched.New(sched.Deps{Store: st, Engine: eng, Alerts: alertSvc, Audit: auditW, Log: logs.App})
+	desiredSvc := desired.New(desired.Deps{Store: st, Engine: eng, Monitor: mon, Alerts: alertSvc, Prober: router, Artifacts: arts,
+		Audit: auditW, Log: logs.App, Tuning: desired.Tuning{ProofWait: time.Second},
+		Path: func(ctx context.Context, h db.Host) desired.PathInfo {
+			d := router.Decide(ctx, h)
+			return desired.PathInfo{AgentConnected: d.UseAgent, AgentState: d.AgentState, Blocked: d.Blocked, Reason: d.Reason}
+		}})
+	if err := desiredSvc.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	eng.OnJobDone(desiredSvc.OnJobDone)
+	mon.SetServicesHook(desiredSvc.OnServices)
 	srv, err := New(Deps{
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng, Simulator: router, Files: router, Artifacts: arts,
-		Agents: agents, Router: router, Firewall: fw, Network: network, Monitor: mon, Alerts: alertSvc, Sched: schedSvc,
+		Agents: agents, Router: router, Firewall: fw, Network: network, Monitor: mon, Alerts: alertSvc, Sched: schedSvc, Desired: desiredSvc,
 		UI: fstest.MapFS{
 			"index.html":    {Data: []byte("<!doctype html><title>ui</title>")},
 			"assets/app.js": {Data: []byte("console.log(1)")},
@@ -151,7 +166,8 @@ func newHarness(t *testing.T) *harness {
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return &harness{t: t, srv: srv, ts: ts, auth: authSvc, st: st, eng: eng, agents: agents, pki: pki, router: router,
-		fw: fw, fwSSH: fwSSH, fwFake: fwFake, net: network, geoDir: geoDir, mon: mon, alerts: alertSvc, box: box, sched: schedSvc}
+		fw: fw, fwSSH: fwSSH, fwFake: fwFake, net: network, geoDir: geoDir, mon: mon, alerts: alertSvc, box: box, sched: schedSvc,
+		desired: desiredSvc}
 }
 
 func (h *harness) mkUser(name, role string) {

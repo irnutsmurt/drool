@@ -155,7 +155,9 @@ func (e *fwEnv) apply(t *testing.T, hostID string, extra map[string]any) (jobHos
 	}
 	var j jobJSON
 	r.json(t, &j)
-	deadline := time.Now().Add(3 * time.Minute)
+	// Generous: the agent-death case waits out the host's rollback timer,
+	// which takes longer under the race detector and a busy machine.
+	deadline := time.Now().Add(6 * time.Minute)
 	for {
 		var cur jobJSON
 		e.c.do("GET", "/api/v1/jobs/"+j.ID, nil).json(t, &cur)

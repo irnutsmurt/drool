@@ -2799,6 +2799,294 @@ paths:
         '200': { description: Saved., content: { application/json: { schema: { $ref: '#/components/schemas/NotificationSettingsView' } } } }
         '422': { $ref: '#/components/responses/Problem' }
 
+  # --- desired state (M14) ---
+  /desired/summary:
+    get:
+      operationId: getDesiredSummary
+      tags: [desired]
+      description: The fleet's desired state at a glance, with the firewall's and agents' own drift for linking (not merged). Requires `desired.read`.
+      responses:
+        '200': { description: Summary., content: { application/json: { schema: { $ref: '#/components/schemas/DesiredSummary' } } } }
+  /desired/hosts:
+    get:
+      operationId: listDesiredHosts
+      tags: [desired]
+      description: Managed hosts with their overall status (problems first), at most 1000.
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [attention, compliant, drift, conflict, unknown, reconciling, failed] } }
+        - { name: q, in: query, schema: { type: string }, description: Host name contains }
+        - { name: baseline, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Hosts., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/DesiredHostRow' } } } } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /desired/hosts/{id}:
+    parameters: [{ $ref: '#/components/parameters/HostId' }]
+    get:
+      operationId: getDesiredHost
+      tags: [desired]
+      description: A host's effective desired state, where each value comes from (provenance, computed by the controller), and what differs.
+      responses:
+        '200': { description: The host., content: { application/json: { schema: { $ref: '#/components/schemas/DesiredHost' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /desired/hosts/{id}/resource:
+    parameters: [{ $ref: '#/components/parameters/HostId' }]
+    get:
+      operationId: getDesiredResource
+      tags: [desired]
+      description: One managed resource on a host with its recent history (50 entries).
+      parameters: [{ name: key, in: query, required: true, schema: { type: string }, description: 'service:<unit>, package:<name> or file:<path>' }]
+      responses:
+        '200':
+          description: The resource.
+          content: { application/json: { schema: { type: object, required: [resource, history], properties: { resource: { $ref: '#/components/schemas/DesiredResourceView' }, history: { type: array, items: { $ref: '#/components/schemas/DesiredHistoryEntry' } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /desired/hosts/{id}/review:
+    parameters: [{ $ref: '#/components/parameters/HostId' }]
+    get:
+      operationId: reviewDesiredDifference
+      tags: [desired]
+      description: |
+        Review difference (read-only; nothing on the host changes). Services and packages compare what DROOL observed; a managed file
+        is inspected on the host (hashes and metadata) and, when the caller holds `files.read` (and `files.elevate` for files read
+        as root), a unified diff of small text files is included (audited as `desired.review`). Binary and large files get hashes only.
+      parameters: [{ name: key, in: query, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: The difference., content: { application/json: { schema: { $ref: '#/components/schemas/DesiredReview' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /desired/hosts/{id}/refresh:
+    parameters: [{ $ref: '#/components/parameters/HostId' }]
+    post:
+      operationId: refreshDesiredHost
+      tags: [desired]
+      description: Check the host now (packages, files, fresh service data). Requires `desired.restore`. Audited.
+      responses:
+        '202': { description: Checking., content: { application/json: { schema: { type: object, required: [hosts], properties: { hosts: { type: integer } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /desired/hosts/{id}/accept:
+    parameters: [{ $ref: '#/components/parameters/HostId' }]
+    post:
+      operationId: acceptDesiredCurrent
+      tags: [desired]
+      description: |
+        Accept current state: the host is checked again, and what it has now becomes its own desired state (a host-specific
+        declaration, the most specific scope). No baseline changes. A file's current content is copied into the artifact store
+        (up to 64 MiB); a missing file means "not managed on this host"; symlinks can't be accepted. Unknown state can't be accepted.
+        History records "resolved by configuration", never a restore. Requires `desired.manage`. Audited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [keys], properties: { keys: { type: array, items: { type: string }, maxItems: 200 }, note: { type: string, maxLength: 500 } } }
+      responses:
+        '200': { description: Accepted., content: { application/json: { schema: { $ref: '#/components/schemas/DesiredAcceptResult' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /desired/hosts/{id}/overrides:
+    parameters: [{ $ref: '#/components/parameters/HostId' }]
+    put:
+      operationId: setDesiredOverride
+      tags: [desired]
+      description: Set a host-specific declaration (e.g. to settle a conflict for one host), or exclude a resource on this host (`key` with `excluded`). Requires `desired.manage`. Audited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resource: { $ref: '#/components/schemas/DesiredResource' }
+                key: { type: string }
+                excluded: { type: boolean }
+                note: { type: string, maxLength: 500 }
+      responses:
+        '200': { description: The host., content: { application/json: { schema: { $ref: '#/components/schemas/DesiredHost' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: resetDesiredOverride
+      tags: [desired]
+      description: Remove a host-specific declaration ("reset to inherited"). Requires `desired.manage`. Audited.
+      parameters: [{ name: key, in: query, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: The host., content: { application/json: { schema: { $ref: '#/components/schemas/DesiredHost' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /desired/refresh:
+    post:
+      operationId: refreshDesired
+      tags: [desired]
+      description: Check hosts now (all managed hosts when none are named; at most 1000), spread over a few seconds. Requires `desired.restore`. Audited.
+      requestBody: { content: { application/json: { schema: { type: object, properties: { host_ids: { type: array, items: { type: string } } } } } } }
+      responses:
+        '202': { description: Checking., content: { application/json: { schema: { type: object, required: [hosts], properties: { hosts: { type: integer } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /desired/restore/preview:
+    post:
+      operationId: previewDesiredRestore
+      tags: [desired]
+      description: |
+        Restore managed state, step 1: the selected hosts are checked again (when their observations are older than a minute) and
+        the exact correction is planned — one ordinary job with a step per resource that differs somewhere, each host running only
+        its own steps (installs, files, services, removals in that order), the rollout's waves, what is excluded and why (conflicts,
+        unknown state, corrections in progress, symlinks, masked units, agent capability ceilings, hosts whose agent belongs to
+        another controller epoch or whose file state is ahead), hosts in maintenance, and what removing a prohibited package would
+        also remove. Nothing changes. Requires `desired.restore`; `missing_permissions` lists what else the caller would need.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/DesiredRestoreRequest' } } } }
+      responses:
+        '200':
+          description: The plan.
+          content: { application/json: { schema: { type: object, required: [plan, missing_permissions], properties: { plan: { $ref: '#/components/schemas/DesiredPlan' }, missing_permissions: { type: array, items: { type: string } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /desired/restore:
+    post:
+      operationId: restoreDesired
+      tags: [desired]
+      description: |
+        Restore managed state, step 2: submits exactly the previewed plan (`plan_hash`) as ordinary job(s); refused with
+        `plan_changed` when what would be corrected changed since, and `nothing_to_restore` when nothing differs (no job is
+        created). Resources in a correction can't get a second corrective job until it finishes. After the job each host is
+        checked again and only proven compliance is recorded as restored. Requires `desired.restore`, `jobs.execute`, and for
+        files `files.deploy` (+ `files.elevate`). Audited (`desired.restore`, `job.create`).
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/DesiredRestoreRequest' } } } }
+      responses:
+        '201': { description: Submitted., content: { application/json: { schema: { $ref: '#/components/schemas/DesiredRestoreResult' } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /desired/history:
+    get:
+      operationId: listDesiredHistory
+      tags: [desired]
+      description: Meaningful transitions, newest first (drift detected or changed, compliant again and why, conflicts, unknown, restores requested, restored and failed, current state accepted). Unchanged conditions are never recorded.
+      parameters:
+        - { name: host, in: query, schema: { type: string } }
+        - { name: key, in: query, schema: { type: string } }
+        - { name: baseline, in: query, schema: { type: string } }
+        - { name: kind, in: query, schema: { type: string } }
+        - { name: before, in: query, schema: { type: integer }, description: An entry id (paging) }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500 } }
+      responses:
+        '200': { description: History., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/DesiredHistoryEntry' } }, next_cursor: { type: string } } } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /desired/baselines:
+    get:
+      operationId: listBaselines
+      tags: [desired]
+      parameters: [{ name: archived, in: query, schema: { type: boolean } }]
+      responses:
+        '200': { description: Baselines (at most 500)., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Baseline' } } } } } } }
+    post:
+      operationId: createBaseline
+      tags: [desired]
+      description: A named collection of typed desired resources and where it applies (revision 1). Requires `desired.manage`. Audited.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BaselineInput' } } } }
+      responses:
+        '201': { description: Created., content: { application/json: { schema: { $ref: '#/components/schemas/Baseline' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /desired/baselines/preview:
+    post:
+      operationId: previewBaseline
+      tags: [desired]
+      description: What saving a baseline (new, or `id`) would do, judged against the latest observations. Nothing is saved. Requires `desired.manage`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/BaselineInput'
+                - { type: object, properties: { id: { type: string } } }
+      responses:
+        '200': { description: Impact., content: { application/json: { schema: { $ref: '#/components/schemas/DesiredImpact' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /desired/baselines/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: getBaseline
+      tags: [desired]
+      responses:
+        '200': { description: The baseline with its revisions and compliance., content: { application/json: { schema: { $ref: '#/components/schemas/Baseline' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      operationId: updateBaseline
+      tags: [desired]
+      description: Save a changed baseline as a new immutable revision (nothing changes when nothing differs). Requires `desired.manage`. Audited with the resources added, removed and changed.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BaselineInput' } } } }
+      responses:
+        '200': { description: Saved., content: { application/json: { schema: { $ref: '#/components/schemas/Baseline' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: archiveBaseline
+      tags: [desired]
+      description: Stop applying the baseline (revisions and history are kept). Requires `desired.manage`. Audited.
+      responses:
+        '204': { description: Archived. }
+        '404': { $ref: '#/components/responses/Problem' }
+  /desired/baselines/{id}/revisions/{rev}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: rev, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: getBaselineRevision
+      tags: [desired]
+      responses:
+        '200':
+          description: The revision exactly as saved.
+          content: { application/json: { schema: { type: object, required: [revision, baseline], properties: { revision: { $ref: '#/components/schemas/BaselineRevisionInfo' }, baseline: { $ref: '#/components/schemas/BaselineInput' } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /desired/baselines/{id}/auto:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    put:
+      operationId: setBaselineAuto
+      tags: [desired]
+      description: |
+        Automatic restore (off by default). Turning it on makes the caller the accountable owner — their account and permissions
+        are checked before every automatic job — and clears a pause. Requires `desired.auto` (and `desired.restore`, `jobs.execute`
+        to own it). Audited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [enabled], properties: { enabled: { type: boolean }, strategy: { $ref: '#/components/schemas/Strategy' } } }
+      responses:
+        '200': { description: The baseline., content: { application/json: { schema: { $ref: '#/components/schemas/Baseline' } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /desired/groups:
+    get:
+      operationId: listDesiredGroups
+      tags: [desired]
+      description: Every group with its desired-state priority and the baselines assigned to it.
+      responses:
+        '200': { description: Groups., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/DesiredGroupPriority' } } } } } } }
+  /desired/groups/{id}/priority:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    put:
+      operationId: setDesiredGroupPriority
+      tags: [desired]
+      description: A group's precedence (-1000 to 1000) when a host is in several groups whose baselines declare the same resource. Requires `desired.manage`. Audited.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [priority], properties: { priority: { type: integer, minimum: -1000, maximum: 1000 } } } } } }
+      responses:
+        '200': { description: Groups., content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/DesiredGroupPriority' } } } } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /desired/groups/{id}/priority/preview:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: previewDesiredGroupPriority
+      tags: [desired]
+      description: What changing a group's priority would do (conflicts resolved or created, hosts drifting). Nothing is saved.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [priority], properties: { priority: { type: integer } } } } } }
+      responses:
+        '200': { description: Impact., content: { application/json: { schema: { $ref: '#/components/schemas/DesiredImpact' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+
 components:
   securitySchemes:
     session: { type: apiKey, in: cookie, name: drool_session }
@@ -3540,11 +3828,25 @@ components:
 
     JobPreview:
       type: object
-      required: [hosts, warnings, waves]
+      required: [hosts, warnings, waves, desired_warnings]
       properties:
         hosts: { type: array, items: { $ref: '#/components/schemas/TargetHost' } }
         warnings: { type: array, items: { type: string } }
         waves: { type: array, items: { $ref: '#/components/schemas/RolloutWave' } }
+        desired_warnings:
+          type: array
+          description: Steps that would change something desired state manages the other way (M14). Warnings, not refusals. Empty without `desired.read`.
+          items: { $ref: '#/components/schemas/DesiredJobWarning' }
+
+    DesiredJobWarning:
+      type: object
+      required: [step, key, hosts, message, auto]
+      properties:
+        step: { type: integer, description: 0-based step index }
+        key: { type: string, description: 'The resource, e.g. service:jellyfin.service' }
+        hosts: { type: array, items: { type: string }, description: Host names }
+        message: { type: string }
+        auto: { type: boolean, description: Automatic restore would put it back after the job (the message then says so) }
 
     RolloutWave:
       type: object
@@ -3585,6 +3887,10 @@ components:
         workflow_id: { type: string }
         workflow_name: { type: string }
         workflow_revision: { type: integer }
+        reconcile_id: { type: string, description: A desired-state correction (M14) }
+        reconcile_kind: { type: string, enum: [manual, auto], description: 'Restore managed state, or a baseline''s automatic restore (run as its owner)' }
+        baseline_id: { type: string }
+        baseline_name: { type: string }
 
     JobHost:
       type: object
@@ -3604,6 +3910,10 @@ components:
         started_at: { type: [string, 'null'], format: date-time }
         finished_at: { type: [string, 'null'], format: date-time }
         wave: { type: integer, description: 'Rollout wave (0 is the canary wave of a canary rollout); -1: not part of the run (skipped up front, e.g. in maintenance)' }
+        steps:
+          type: [array, 'null']
+          items: { type: integer }
+          description: 'The step indexes this host runs when hosts run different subsets of the job''s steps (desired-state corrections: each host runs only its own corrections); null: every step.'
 
     JobStep:
       type: object
@@ -5978,3 +6288,493 @@ components:
       properties:
         settings: { $ref: '#/components/schemas/NotificationSettings' }
         kinds: { type: array, items: { type: string } }
+
+    # --- desired state (M14) ---
+    DesiredStatus:
+      type: string
+      enum: [compliant, drift, conflict, unknown, reconciling, failed]
+      description: 'drift: observed differs from desired; conflict: equally applicable declarations disagree (no desired value until resolved); unknown: DROOL can''t currently verify it (never "compliant"); reconciling: a corrective job is in progress; failed: the last correction didn''t make it comply.'
+    DesiredResource:
+      type: object
+      description: |
+        One typed desired resource — no expressions, nothing executes. service: `name` (a .service unit), `state`
+        running|stopped and/or `enabled` (empty fields are not managed; restart/reload are actions, not states). package:
+        `name`, `state` installed|absent (versions are not managed). file: `path`, `artifact` (SHA-256 of content in the
+        artifact store), optional `owner`/`group`/`mode`, and how it is deployed (`elevated`, `validate` with {path},
+        `service` reload/restart after a change), exactly as a file deployment (M6).
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [service, package, file] }
+        name: { type: string }
+        state: { type: string, enum: [running, stopped, installed, absent] }
+        enabled: { type: boolean }
+        path: { type: string }
+        artifact: { type: string }
+        artifact_name: { type: string, description: Display only }
+        owner: { type: string }
+        group: { type: string }
+        mode: { type: string, description: 'Octal, e.g. 0644' }
+        elevated: { type: boolean }
+        validate: { type: string }
+        service:
+          type: object
+          required: [name, action]
+          properties:
+            name: { type: string }
+            action: { type: string, enum: [reload, restart] }
+    DesiredAssignment:
+      type: object
+      required: [scope]
+      properties:
+        scope: { type: string, enum: [global, group, host] }
+        group_id: { type: string }
+        host_id: { type: string }
+        name: { type: string, description: The group's or host's name (read-only) }
+    BaselineInput:
+      type: object
+      required: [name, resources, assignments]
+      properties:
+        name: { type: string, maxLength: 100 }
+        description: { type: string }
+        resources: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/DesiredResource' } }
+        assignments: { type: array, items: { $ref: '#/components/schemas/DesiredAssignment' } }
+    DesiredPerson:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+    DesiredAuto:
+      type: object
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
+        strategy: { $ref: '#/components/schemas/Strategy' }
+        owner: { $ref: '#/components/schemas/DesiredPerson' }
+        attention: { type: string, description: Why automatic restore is paused and needs attention }
+        attention_at: { type: integer }
+    BaselineCounts:
+      type: object
+      required: [hosts, resources, compliant, drift, conflict, unknown, reconciling, failed, auto_paused]
+      properties:
+        hosts: { type: integer }
+        resources: { type: integer }
+        compliant: { type: integer }
+        drift: { type: integer }
+        conflict: { type: integer }
+        unknown: { type: integer }
+        reconciling: { type: integer }
+        failed: { type: integer }
+        auto_paused: { type: integer }
+    BaselineRevisionInfo:
+      type: object
+      required: [revision, created_at, resources, hash]
+      properties:
+        revision: { type: integer }
+        created_by: { type: string }
+        created_at: { type: integer }
+        resources: { type: integer }
+        hash: { type: string }
+    Baseline:
+      type: object
+      required: [id, name, description, revision, resources, assignments, auto, archived, counts, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        revision: { type: integer }
+        resources: { type: array, items: { $ref: '#/components/schemas/DesiredResource' } }
+        assignments: { type: array, items: { $ref: '#/components/schemas/DesiredAssignment' } }
+        auto: { $ref: '#/components/schemas/DesiredAuto' }
+        archived: { type: boolean }
+        counts: { $ref: '#/components/schemas/BaselineCounts' }
+        revisions: { type: array, items: { $ref: '#/components/schemas/BaselineRevisionInfo' } }
+        created_at: { type: integer }
+        updated_at: { type: integer }
+        updated_by: { type: string }
+    DesiredCounts:
+      type: object
+      required: [total, compliant, drift, conflict, unknown, reconciling, failed, auto_paused]
+      properties:
+        total: { type: integer }
+        compliant: { type: integer }
+        drift: { type: integer }
+        conflict: { type: integer }
+        unknown: { type: integer }
+        reconciling: { type: integer }
+        failed: { type: integer }
+        auto_paused: { type: integer }
+    DesiredSummary:
+      type: object
+      required: [hosts, unmanaged, resources, baselines, auto_baselines, auto_paused, reconciling, changed_at]
+      properties:
+        hosts: { $ref: '#/components/schemas/DesiredCounts' }
+        unmanaged: { type: integer, description: Hosts no baseline applies to }
+        resources: { $ref: '#/components/schemas/DesiredCounts' }
+        baselines: { type: integer }
+        auto_baselines: { type: integer }
+        auto_paused:
+          type: array
+          items: { type: object, required: [id, name, attention], properties: { id: { type: string }, name: { type: string }, attention: { type: string }, at: { type: integer } } }
+        reconciling: { type: integer, description: Corrections in progress }
+        changed_at: { type: integer }
+        firewall:
+          type: object
+          description: The firewall's own desired state (managed by Firewall, linked, never merged). With `firewall.read`.
+          required: [enforced, drift]
+          properties: { enforced: { type: integer }, drift: { type: integer } }
+        agents:
+          type: object
+          description: Hosts whose agent state versions are ahead of or foreign to this controller (resolved on the Agents page). With `agents.read`.
+          required: [state_conflicts]
+          properties: { state_conflicts: { type: integer } }
+    DesiredBaselineRef:
+      type: object
+      required: [id, name, revision]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        revision: { type: integer }
+    DesiredGroupRef:
+      type: object
+      required: [id, name, priority]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        priority: { type: integer }
+    DesiredHostRow:
+      type: object
+      required: [host_id, name, status, counts, baselines, problems, changed_at, in_maintenance, reconciles]
+      properties:
+        host_id: { type: string }
+        name: { type: string }
+        status: { type: string, description: 'The most actionable of its resources'' statuses (failed, conflict, drift, reconciling, unknown, compliant)' }
+        counts: { $ref: '#/components/schemas/DesiredCounts' }
+        baselines: { type: array, items: { $ref: '#/components/schemas/DesiredBaselineRef' } }
+        problems: { type: array, items: { type: string }, description: 'The first few resources that differ, in words' }
+        unknown: { type: string }
+        checked_at: { type: integer }
+        changed_at: { type: integer }
+        in_maintenance: { type: boolean }
+        reconciles: { type: integer }
+    DesiredDeclaration:
+      type: object
+      required: [label, want, level]
+      properties:
+        label: { type: string }
+        want: { type: string }
+        level: { type: string, enum: [host, assigned, group, global] }
+        baseline: { $ref: '#/components/schemas/DesiredBaselineRef' }
+        group: { $ref: '#/components/schemas/DesiredGroupRef' }
+    DesiredSource:
+      type: object
+      description: Where an effective value comes from (computed by the controller; most specific wins; groups by priority; equal priorities that disagree are a conflict).
+      required: [level, label, auto]
+      properties:
+        level: { type: string, enum: [host, assigned, group, global] }
+        label: { type: string, description: '"Required by Global baseline Server Defaults", "Inherited from group: Media Servers (baseline …)", "Custom for this host", "Conflict between groups …"' }
+        baselines: { type: array, items: { $ref: '#/components/schemas/DesiredBaselineRef' } }
+        groups: { type: array, items: { $ref: '#/components/schemas/DesiredGroupRef' } }
+        override:
+          type: object
+          required: [origin, version, updated_at]
+          properties:
+            origin: { type: string, enum: [accept, manual] }
+            note: { type: string }
+            version: { type: integer }
+            updated_by: { type: string }
+            updated_at: { type: integer }
+            excluded: { type: boolean }
+        competing: { type: array, items: { $ref: '#/components/schemas/DesiredDeclaration' }, description: A conflict's declarations }
+        shadowed: { type: array, items: { $ref: '#/components/schemas/DesiredDeclaration' }, description: Less specific declarations this one replaces }
+        auto: { type: boolean }
+        auto_baseline: { $ref: '#/components/schemas/DesiredBaselineRef' }
+    DesiredObservation:
+      type: object
+      required: [at]
+      properties:
+        service:
+          type: object
+          required: [found]
+          properties: { found: { type: boolean }, load: { type: string }, active: { type: string }, sub: { type: string }, file_state: { type: string } }
+        package:
+          type: object
+          required: [installed]
+          properties: { installed: { type: boolean }, version: { type: string }, manager: { type: string } }
+        file:
+          type: object
+          required: [exists]
+          properties:
+            exists: { type: boolean }
+            type: { type: string, enum: [file, symlink, dir, other] }
+            target: { type: string }
+            sha256: { type: string }
+            size: { type: integer }
+            owner: { type: string }
+            group: { type: string }
+            uid: { type: integer }
+            gid: { type: integer }
+            mode: { type: string }
+        error: { type: string, description: This resource couldn't be observed (never compliant) }
+        source: { type: string, enum: [monitoring, check] }
+        at: { type: integer }
+    DesiredDiff:
+      type: object
+      required: [field, desired, current]
+      properties:
+        field: { type: string, enum: [state, enabled, installed, exists, type, content, owner, group, mode] }
+        desired: { type: string }
+        current: { type: string }
+    DesiredResourceView:
+      type: object
+      required: [key, kind, name, status, since, want, current, diffs, source, restorable, acceptable, auto]
+      properties:
+        key: { type: string }
+        kind: { type: string, enum: [service, package, file] }
+        name: { type: string }
+        status: { $ref: '#/components/schemas/DesiredStatus' }
+        since: { type: integer }
+        desired: { $ref: '#/components/schemas/DesiredResource' }
+        want: { type: string }
+        current: { type: string }
+        observed: { $ref: '#/components/schemas/DesiredObservation' }
+        observed_at: { type: integer }
+        diffs: { type: array, items: { $ref: '#/components/schemas/DesiredDiff' } }
+        note: { type: string, description: Why it is unknown, why a restore failed, or why it can't be restored }
+        source: { $ref: '#/components/schemas/DesiredSource' }
+        restorable: { type: boolean }
+        blocker: { type: string }
+        acceptable: { type: boolean }
+        job_id: { type: string, description: A correction in progress }
+        last_job_id: { type: string }
+        auto:
+          type: object
+          required: [enabled, attempts]
+          properties:
+            enabled: { type: boolean }
+            baseline: { $ref: '#/components/schemas/DesiredBaselineRef' }
+            paused: { type: string }
+            attempts: { type: integer }
+            next_at: { type: integer }
+    DesiredHost:
+      type: object
+      required: [host_id, name, status, counts, resources, excluded, groups, baselines, path, check_every_s]
+      properties:
+        host_id: { type: string }
+        name: { type: string }
+        status: { type: string }
+        counts: { $ref: '#/components/schemas/DesiredCounts' }
+        resources: { type: array, items: { $ref: '#/components/schemas/DesiredResourceView' } }
+        excluded:
+          type: array
+          items: { type: object, required: [key, name, kind, source], properties: { key: { type: string }, name: { type: string }, kind: { type: string }, source: { $ref: '#/components/schemas/DesiredSource' } } }
+        groups: { type: array, items: { $ref: '#/components/schemas/DesiredGroupRef' } }
+        baselines:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/DesiredBaselineRef'
+              - { type: object, required: [via], properties: { via: { type: string } } }
+        packages_at: { type: integer }
+        packages_note: { type: string }
+        files_at: { type: integer }
+        files_note: { type: string }
+        services_at: { type: integer }
+        unknown_since: { type: integer }
+        maintenance: { type: string, description: 'The maintenance reason when the host is in maintenance' }
+        path:
+          type: object
+          required: [agent_connected, blocked]
+          properties: { agent_connected: { type: boolean }, agent_state: { type: string }, blocked: { type: boolean }, reason: { type: string } }
+        check_every_s: { type: integer }
+        firewall:
+          type: object
+          description: The host's firewall policy is managed by the Firewall (designer and transactions), not by desired state; this is its state, for a link. Only for callers with firewall.read.
+          required: [mode, enforced]
+          properties:
+            mode: { type: string, enum: ['off', monitor, guided, enforce] }
+            enforced: { type: boolean }
+            drift: { type: string }
+    DesiredHistoryEntry:
+      type: object
+      required: [id, ts, host_id, host_name, kind, detail, diffs]
+      properties:
+        id: { type: integer }
+        ts: { type: integer }
+        host_id: { type: string }
+        host_name: { type: string }
+        key: { type: string }
+        resource: { type: string }
+        kind: { type: string, description: 'drift_detected, drift_changed, compliant, resolved_by_configuration, accepted, no_longer_managed, conflict_detected, conflict_resolved, unknown, observed, restore_requested, restored, restore_failed, restore_unverified' }
+        status: { type: string }
+        prev_status: { type: string }
+        resolution: { type: string, enum: [restored, configuration, observed], description: 'How drift ended: a corrective job proven by a fresh check; a change of desired state (the host didn''t change); the host changed by other means' }
+        detail: { type: string }
+        desired: { $ref: '#/components/schemas/DesiredResource' }
+        diffs: { type: array, items: { $ref: '#/components/schemas/DesiredDiff' } }
+        baseline: { $ref: '#/components/schemas/DesiredBaselineRef' }
+        source_label: { type: string }
+        job_id: { type: string }
+        actor: { type: string }
+    DesiredReview:
+      type: object
+      required: [resource]
+      properties:
+        resource: { $ref: '#/components/schemas/DesiredResourceView' }
+        content_allowed: { type: boolean }
+        file_error: { type: string }
+        file:
+          type: object
+          required: [state, desired, artifact, artifact_size, artifact_text]
+          properties:
+            state: { type: string, enum: [create, identical, replace, metadata] }
+            current:
+              type: object
+              required: [exists, owner, group, mode, size, captured]
+              properties: { exists: { type: boolean }, sha256: { type: string }, owner: { type: string }, group: { type: string }, mode: { type: string }, size: { type: integer }, captured: { type: boolean } }
+            desired:
+              type: object
+              required: [owner, group, mode, size]
+              properties: { owner: { type: string }, group: { type: string }, mode: { type: string }, size: { type: integer } }
+            diff: { type: string }
+            diff_note: { type: string }
+            artifact: { type: string }
+            artifact_size: { type: integer }
+            artifact_text: { type: boolean }
+    DesiredAcceptResult:
+      type: object
+      required: [accepted]
+      properties:
+        accepted:
+          type: array
+          items:
+            type: object
+            required: [key, was, now]
+            properties:
+              key: { type: string }
+              was: { type: string }
+              now: { type: string }
+              resource: { $ref: '#/components/schemas/DesiredResource' }
+              excluded: { type: boolean }
+    DesiredRestoreRequest:
+      type: object
+      properties:
+        host_ids: { type: array, items: { type: string } }
+        keys: { type: array, items: { type: string } }
+        baseline_id: { type: string }
+        strategy: { $ref: '#/components/schemas/Strategy' }
+        allow_removals: { type: boolean, description: Let removing a prohibited package also remove packages that depend on it (off by default; then such a removal fails safely) }
+        plan_hash: { type: string, description: 'Required to restore: the preview''s hash' }
+    DesiredPlanItem:
+      type: object
+      required: [host_id, host_name, key, kind, want, current, diffs, job, step, source_label, desired]
+      properties:
+        host_id: { type: string }
+        host_name: { type: string }
+        key: { type: string }
+        kind: { type: string }
+        want: { type: string }
+        current: { type: string }
+        diffs: { type: array, items: { $ref: '#/components/schemas/DesiredDiff' } }
+        job: { type: integer }
+        step: { type: integer }
+        source_label: { type: string }
+        baseline: { $ref: '#/components/schemas/DesiredBaselineRef' }
+        desired: { $ref: '#/components/schemas/DesiredResource' }
+    DesiredPlanJob:
+      type: object
+      required: [name, steps, step_text, step_hosts, hosts, waves, strategy]
+      properties:
+        name: { type: string }
+        steps: { type: array, items: { $ref: '#/components/schemas/Operation' } }
+        step_text: { type: array, items: { type: string } }
+        step_hosts: { type: array, items: { type: integer }, description: How many hosts run each step }
+        hosts:
+          type: array
+          items: { type: object, required: [host_id, host_name, steps, wave], properties: { host_id: { type: string }, host_name: { type: string }, steps: { type: array, items: { type: integer } }, wave: { type: integer } } }
+        waves: { type: array, items: { $ref: '#/components/schemas/RolloutWave' } }
+        strategy: { $ref: '#/components/schemas/Strategy' }
+        wave_note: { type: string }
+    DesiredPlan:
+      type: object
+      required: [items, excluded, jobs, warnings, removals, options, hosts, hash, at, needs]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/DesiredPlanItem' } }
+        excluded:
+          type: array
+          items: { type: object, required: [host_id, host_name, key, status, reason], properties: { host_id: { type: string }, host_name: { type: string }, key: { type: string }, status: { type: string }, reason: { type: string } } }
+        jobs: { type: array, items: { $ref: '#/components/schemas/DesiredPlanJob' } }
+        warnings:
+          type: array
+          items: { type: object, required: [message], properties: { host_id: { type: string }, host_name: { type: string }, key: { type: string }, message: { type: string } } }
+        removals:
+          type: array
+          items: { type: object, required: [host_id, host_name, package, also], properties: { host_id: { type: string }, host_name: { type: string }, package: { type: string }, also: { type: array, items: { type: string } }, error: { type: string } } }
+        options:
+          type: object
+          properties: { strategy: { $ref: '#/components/schemas/Strategy' }, allow_removals: { type: boolean } }
+        hosts: { type: integer }
+        hash: { type: string }
+        at: { type: integer }
+        needs: { type: array, items: { type: string }, description: Permissions the corrections need beyond desired.restore and jobs.execute }
+    DesiredRestoreResult:
+      type: object
+      required: [jobs, plan]
+      properties:
+        jobs: { type: array, items: { type: string } }
+        plan: { $ref: '#/components/schemas/DesiredPlan' }
+    DesiredResourceChange:
+      type: object
+      required: [key, name, kind]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        kind: { type: string }
+        from: { type: string }
+        to: { type: string }
+    DesiredHostImpact:
+      type: object
+      required: [host_id, host_name, now, after, detail]
+      properties:
+        host_id: { type: string }
+        host_name: { type: string }
+        now: { type: string }
+        after: { type: string }
+        detail: { type: array, items: { type: string } }
+    DesiredImpact:
+      type: object
+      required: [changed, added, removed, modified, assignments_added, assignments_removed, hosts_affected, become_drifted, become_compliant, new_conflicts, resolved_conflicts, to_check, counts, auto, warnings]
+      properties:
+        changed: { type: boolean }
+        added: { type: array, items: { $ref: '#/components/schemas/DesiredResourceChange' } }
+        removed: { type: array, items: { $ref: '#/components/schemas/DesiredResourceChange' } }
+        modified: { type: array, items: { $ref: '#/components/schemas/DesiredResourceChange' } }
+        assignments_added: { type: array, items: { $ref: '#/components/schemas/DesiredAssignment' } }
+        assignments_removed: { type: array, items: { $ref: '#/components/schemas/DesiredAssignment' } }
+        hosts_affected: { type: integer }
+        become_drifted: { type: array, items: { $ref: '#/components/schemas/DesiredHostImpact' } }
+        become_compliant: { type: array, items: { $ref: '#/components/schemas/DesiredHostImpact' } }
+        new_conflicts: { type: array, items: { $ref: '#/components/schemas/DesiredHostImpact' } }
+        resolved_conflicts: { type: array, items: { $ref: '#/components/schemas/DesiredHostImpact' } }
+        to_check: { type: array, items: { $ref: '#/components/schemas/DesiredHostImpact' } }
+        counts:
+          type: object
+          required: [become_drifted, become_compliant, new_conflicts, resolved_conflicts, to_check, unchanged]
+          properties:
+            become_drifted: { type: integer }
+            become_compliant: { type: integer }
+            new_conflicts: { type: integer }
+            resolved_conflicts: { type: integer }
+            to_check: { type: integer }
+            unchanged: { type: integer }
+        auto: { type: boolean }
+        warnings: { type: array, items: { type: string } }
+    DesiredGroupPriority:
+      type: object
+      required: [group_id, name, priority, hosts, baselines]
+      properties:
+        group_id: { type: string }
+        name: { type: string }
+        priority: { type: integer }
+        hosts: { type: integer }
+        baselines: { type: array, items: { type: string } }

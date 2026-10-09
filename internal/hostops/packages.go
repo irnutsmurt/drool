@@ -129,6 +129,36 @@ func rebootRequired(ctx context.Context, c hostexec.Runner, be pkg.Backend) (*bo
 	return be.ParseRebootRequired(string(r.Stdout))
 }
 
+// PackageVersions reports which of names are installed (name → version,
+// "" when not installed) and the package manager. It only reads the
+// package database: no metadata refresh, no transaction, no root. The
+// package manager's own package is queried with them, so a query that
+// silently failed can never report everything as "not installed".
+func (h Host) PackageVersions(ctx context.Context, names []string) (string, map[string]string, error) {
+	be, err := backendFor(ctx, h.R)
+	if err != nil {
+		return "", nil, err
+	}
+	sentinel := map[string]string{"apt": "dpkg", "dnf": "rpm"}[be.Name()]
+	q := append([]string{}, names...)
+	if sentinel != "" {
+		q = append(q, sentinel)
+	}
+	v, err := versions(ctx, h.R, be, q)
+	if err != nil {
+		return be.Name(), nil, err
+	}
+	if sentinel != "" && v[sentinel] == "" {
+		return be.Name(), nil, &model.OpError{Class: model.ClassPackageManager,
+			Message: "could not read the package database (" + sentinel + " itself reads as not installed)"}
+	}
+	out := make(map[string]string, len(names))
+	for _, n := range names {
+		out[n] = v[n]
+	}
+	return be.Name(), out, nil
+}
+
 // SimResult is a dry run of a package or system-update operation.
 type SimResult struct {
 	PackageManager string       `json:"package_manager"`

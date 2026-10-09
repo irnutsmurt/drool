@@ -456,13 +456,21 @@ type JobSpec struct {
 	Strategy Strategy    `json:"strategy"`
 }
 
+// MaxCorrectiveSteps bounds a desired-state correction (M14): one step
+// per resource that differs somewhere among its hosts; each host runs only
+// the steps it needs (engine.SubmitOptions.HostSteps).
+const MaxCorrectiveSteps = 50
+
 // Normalize validates the spec and applies defaults.
-func (j *JobSpec) Normalize() error {
+func (j *JobSpec) Normalize() error { return j.NormalizeLimit(MaxSteps) }
+
+// NormalizeLimit is Normalize with another step limit (corrections).
+func (j *JobSpec) NormalizeLimit(maxSteps int) error {
 	if len(j.Steps) == 0 {
 		return errors.New("a job needs at least one step")
 	}
-	if len(j.Steps) > MaxSteps {
-		return fmt.Errorf("a job may have at most %d steps", MaxSteps)
+	if len(j.Steps) > maxSteps {
+		return fmt.Errorf("a job may have at most %d steps", maxSteps)
 	}
 	for i := range j.Steps {
 		if j.Steps[i].Type == OpFirewall {

@@ -16,6 +16,7 @@ export const navItems: NavItem[] = [
   { to: "/monitoring", label: "Monitoring", permission: "monitoring.read" },
   { to: "/groups", label: "Groups", permission: "hosts.read" },
   { to: "/jobs", label: "Jobs", permission: "jobs.read" },
+  { to: "/desired", label: "Desired state", permission: "desired.read" },
   { to: "/firewall", label: "Firewall", permission: "firewall.read" },
   { to: "/network", label: "Network", permission: "network.read" },
   { to: "/agents", label: "Agents", permission: "agents.read" },

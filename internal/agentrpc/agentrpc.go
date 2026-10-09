@@ -82,13 +82,26 @@ type OpEnvelope struct {
 	// Summary is a short, non-secret description for the agent's own log
 	// (e.g. the deployment's path).
 	Summary string `json:"summary,omitempty"`
+	// Query is a read-only state query (Purpose "query", M14).
+	Query *StateQuery `json:"query,omitempty"`
 }
+
+// StateQuery asks for the state of named resources without changing
+// anything (desired state, M14). Result data "packages": {"manager",
+// "versions": name → version ("" not installed)}.
+type StateQuery struct {
+	Packages []string `json:"packages,omitempty"`
+}
+
+// MaxQueryPackages bounds one query.
+const MaxQueryPackages = 500
 
 // Purposes.
 const (
 	PurposeOp       = "op"
 	PurposeFiles    = "files"
 	PurposeSimulate = "simulate" // package/system-update dry run; result data "simulation"
+	PurposeQuery    = "query"    // read-only state query (StateQuery); agents before M14 refuse it
 )
 
 // StateVersion is a managed state domain's version (DESIGN §9). Revisions

@@ -138,7 +138,7 @@ func (q *Queries) FinishJobStep(ctx context.Context, arg FinishJobStepParams) er
 }
 
 const getJob = `-- name: GetJob :one
-SELECT id, name, spec_json, spec_version, idempotency_key, status, pause_reason, rerun_of, created_by, created_at, started_at, finished_at, schedule_id, occurrence_id, workflow_id, workflow_revision FROM jobs WHERE id = ?
+SELECT id, name, spec_json, spec_version, idempotency_key, status, pause_reason, rerun_of, created_by, created_at, started_at, finished_at, schedule_id, occurrence_id, workflow_id, workflow_revision, reconcile_id FROM jobs WHERE id = ?
 `
 
 func (q *Queries) GetJob(ctx context.Context, id string) (Job, error) {
@@ -161,12 +161,13 @@ func (q *Queries) GetJob(ctx context.Context, id string) (Job, error) {
 		&i.OccurrenceID,
 		&i.WorkflowID,
 		&i.WorkflowRevision,
+		&i.ReconcileID,
 	)
 	return i, err
 }
 
 const getJobByIdempotencyKey = `-- name: GetJobByIdempotencyKey :one
-SELECT id, name, spec_json, spec_version, idempotency_key, status, pause_reason, rerun_of, created_by, created_at, started_at, finished_at, schedule_id, occurrence_id, workflow_id, workflow_revision FROM jobs WHERE created_by = ? AND idempotency_key = ?
+SELECT id, name, spec_json, spec_version, idempotency_key, status, pause_reason, rerun_of, created_by, created_at, started_at, finished_at, schedule_id, occurrence_id, workflow_id, workflow_revision, reconcile_id FROM jobs WHERE created_by = ? AND idempotency_key = ?
 `
 
 type GetJobByIdempotencyKeyParams struct {
@@ -194,12 +195,13 @@ func (q *Queries) GetJobByIdempotencyKey(ctx context.Context, arg GetJobByIdempo
 		&i.OccurrenceID,
 		&i.WorkflowID,
 		&i.WorkflowRevision,
+		&i.ReconcileID,
 	)
 	return i, err
 }
 
 const getJobHost = `-- name: GetJobHost :one
-SELECT job_id, host_id, host_name, position, state, current_step, attempt, exit_code, error_class, error_message, error_hint, retryable, started_at, finished_at, transport, transport_note, wave FROM job_hosts WHERE job_id = ? AND host_id = ?
+SELECT job_id, host_id, host_name, position, state, current_step, attempt, exit_code, error_class, error_message, error_hint, retryable, started_at, finished_at, transport, transport_note, wave, steps FROM job_hosts WHERE job_id = ? AND host_id = ?
 `
 
 type GetJobHostParams struct {
@@ -228,6 +230,7 @@ func (q *Queries) GetJobHost(ctx context.Context, arg GetJobHostParams) (JobHost
 		&i.Transport,
 		&i.TransportNote,
 		&i.Wave,
+		&i.Steps,
 	)
 	return i, err
 }
@@ -410,7 +413,7 @@ func (q *Queries) InterruptActiveJobs(ctx context.Context, finishedAt sql.NullIn
 }
 
 const listJobHosts = `-- name: ListJobHosts :many
-SELECT job_id, host_id, host_name, position, state, current_step, attempt, exit_code, error_class, error_message, error_hint, retryable, started_at, finished_at, transport, transport_note, wave FROM job_hosts WHERE job_id = ? ORDER BY position
+SELECT job_id, host_id, host_name, position, state, current_step, attempt, exit_code, error_class, error_message, error_hint, retryable, started_at, finished_at, transport, transport_note, wave, steps FROM job_hosts WHERE job_id = ? ORDER BY position
 `
 
 func (q *Queries) ListJobHosts(ctx context.Context, jobID string) ([]JobHost, error) {
@@ -440,6 +443,7 @@ func (q *Queries) ListJobHosts(ctx context.Context, jobID string) ([]JobHost, er
 			&i.Transport,
 			&i.TransportNote,
 			&i.Wave,
+			&i.Steps,
 		); err != nil {
 			return nil, err
 		}
@@ -552,7 +556,7 @@ func (q *Queries) ListJobSteps(ctx context.Context, arg ListJobStepsParams) ([]J
 }
 
 const listJobs = `-- name: ListJobs :many
-SELECT id, name, spec_json, spec_version, idempotency_key, status, pause_reason, rerun_of, created_by, created_at, started_at, finished_at, schedule_id, occurrence_id, workflow_id, workflow_revision FROM jobs
+SELECT id, name, spec_json, spec_version, idempotency_key, status, pause_reason, rerun_of, created_by, created_at, started_at, finished_at, schedule_id, occurrence_id, workflow_id, workflow_revision, reconcile_id FROM jobs
 WHERE (CAST(?1 AS TEXT) = '' OR id < CAST(?1 AS TEXT))
   AND (CAST(?2 AS TEXT) = '' OR status = CAST(?2 AS TEXT))
   AND (CAST(?3 AS TEXT) = '' OR id IN (SELECT job_id FROM job_hosts WHERE host_id = CAST(?3 AS TEXT)))
@@ -598,6 +602,7 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, erro
 			&i.OccurrenceID,
 			&i.WorkflowID,
 			&i.WorkflowRevision,
+			&i.ReconcileID,
 		); err != nil {
 			return nil, err
 		}
@@ -656,6 +661,23 @@ func (q *Queries) SetJobHostState(ctx context.Context, arg SetJobHostStateParams
 	return err
 }
 
+const setJobHostSteps = `-- name: SetJobHostSteps :exec
+UPDATE job_hosts SET steps = ? WHERE job_id = ? AND host_id = ?
+`
+
+type SetJobHostStepsParams struct {
+	Steps  sql.NullString
+	JobID  string
+	HostID string
+}
+
+// The steps this host runs when they differ per host (a desired-state
+// correction): a JSON list of step indexes.
+func (q *Queries) SetJobHostSteps(ctx context.Context, arg SetJobHostStepsParams) error {
+	_, err := q.db.ExecContext(ctx, setJobHostSteps, arg.Steps, arg.JobID, arg.HostID)
+	return err
+}
+
 const setJobOrigin = `-- name: SetJobOrigin :exec
 UPDATE jobs SET schedule_id = ?, occurrence_id = ?, workflow_id = ?, workflow_revision = ? WHERE id = ?
 `
@@ -690,6 +712,20 @@ type SetJobPausedParams struct {
 
 func (q *Queries) SetJobPaused(ctx context.Context, arg SetJobPausedParams) error {
 	_, err := q.db.ExecContext(ctx, setJobPaused, arg.PauseReason, arg.ID)
+	return err
+}
+
+const setJobReconcile = `-- name: SetJobReconcile :exec
+UPDATE jobs SET reconcile_id = ? WHERE id = ?
+`
+
+type SetJobReconcileParams struct {
+	ReconcileID sql.NullString
+	ID          string
+}
+
+func (q *Queries) SetJobReconcile(ctx context.Context, arg SetJobReconcileParams) error {
+	_, err := q.db.ExecContext(ctx, setJobReconcile, arg.ReconcileID, arg.ID)
 	return err
 }
 

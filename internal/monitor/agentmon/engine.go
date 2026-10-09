@@ -72,6 +72,8 @@ type Engine struct {
 	svcPrev    []services.Unit
 	svcFiles   map[string]string
 	svcSent    time.Time
+	svcFilesAt time.Time // when unit-file states were last read
+	svcForce   bool      // a report was asked for: re-read unit files, send even if unchanged
 	svcNote    string
 	svcSupport bool
 	devs       []storage.Device
@@ -172,6 +174,9 @@ func (e *Engine) Run(ctx context.Context) {
 			switch k {
 			case "services", "storage", "smart", "slow":
 				next[k] = time.Time{}
+				if k == "services" {
+					e.svcForce = true
+				}
 			case KindState:
 				e.flushState(e.opt.Now())
 			}
@@ -383,22 +388,50 @@ func (e *Engine) ok(name string) {
 	}
 }
 
+// bootStateChanged reports whether a unit was enabled or disabled (no
+// state transition, but the controller's list must say so).
+func bootStateChanged(prev, cur []services.Unit) bool {
+	old := make(map[string]string, len(prev))
+	for _, u := range prev {
+		old[u.Name] = u.FileState
+	}
+	for _, u := range cur {
+		if fs, ok := old[u.Name]; ok && fs != u.FileState {
+			return true
+		}
+	}
+	return false
+}
+
+// ServicesResend is how often the full service list is sent even when
+// nothing changed (changes are sent at once). The controller relies on
+// it: while the agent is connected, a list this old is still current.
+const ServicesResend = 30 * time.Minute
+
 // services collects service states; changes become events (kept even
-// when routine telemetry is dropped) and the full list is re-sent.
+// when routine telemetry is dropped) and the full list is re-sent. A
+// requested collection (the controller needs proof of the current state,
+// e.g. after a change) re-reads unit files and is always sent.
 func (e *Engine) services(ctx context.Context, now time.Time) {
 	btime := int64(0)
 	if e.lastRaw != nil {
 		btime = e.lastRaw.BootTime
 	}
-	if now.Sub(e.svcSent) > 10*time.Minute {
-		e.svcFiles = nil // refresh unit-file states now and then
+	force := e.svcForce
+	e.svcForce = false
+	if force || now.Sub(e.svcFilesAt) > 10*time.Minute {
+		e.svcFiles = nil // re-read unit-file states every 10 minutes, and when asked
 	}
+	reread := e.svcFiles == nil
 	rep, files, err := services.Collect(ctx, e.src, btime, e.svcFiles)
 	if err != nil || rep == nil {
 		e.fail("services", err)
 		return
 	}
 	e.ok("services")
+	if reread {
+		e.svcFilesAt = now
+	}
 	e.svcFiles, e.svcNote, e.svcSupport = files, rep.Note, rep.Supported
 	rep.At = now.UnixMilli()
 	changes := services.Diff(e.svcPrev, rep.Units)
@@ -412,7 +445,7 @@ func (e *Engine) services(ctx context.Context, now time.Time) {
 				BootID: e.bootID()})
 		}
 	}
-	if len(changes) > 0 || e.svcPrev == nil || now.Sub(e.svcSent) > 30*time.Minute {
+	if force || len(changes) > 0 || e.svcPrev == nil || bootStateChanged(e.svcPrev, rep.Units) || now.Sub(e.svcSent) > ServicesResend {
 		b, _ := json.Marshal(rep)
 		e.out.SetLatest(KindServices, b)
 		e.svcSent = now

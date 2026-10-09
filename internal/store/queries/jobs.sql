@@ -93,3 +93,11 @@ INSERT INTO job_hosts (job_id, host_id, host_name, position, state, wave) VALUES
 -- name: SkipJobHost :exec
 UPDATE job_hosts SET state = 'skipped', error_class = ?, error_message = ?, finished_at = ?, wave = -1
 WHERE job_id = ? AND host_id = ?;
+
+-- name: SetJobReconcile :exec
+UPDATE jobs SET reconcile_id = ? WHERE id = ?;
+
+-- name: SetJobHostSteps :exec
+-- The steps this host runs when they differ per host (a desired-state
+-- correction): a JSON list of step indexes.
+UPDATE job_hosts SET steps = ? WHERE job_id = ? AND host_id = ?;

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -462,6 +463,33 @@ func (s *Service) Simulate(ctx context.Context, hostID string, op model.Operatio
 		return nil, err
 	}
 	return &sr, nil
+}
+
+// PackageVersions asks the agent which packages are installed (a
+// read-only query; agents older than M14 refuse it).
+func (s *Service) PackageVersions(ctx context.Context, hostID string, names []string) (string, map[string]string, error) {
+	se, err := s.usable(ctx, hostID)
+	if err != nil {
+		return "", nil, err
+	}
+	env := s.envelope(driver.StepInfo{HostID: hostID}, agentrpc.PurposeQuery, nil, 120, nil, "package state")
+	env.Query = &agentrpc.StateQuery{Packages: names}
+	res, err := s.runEnvelope(ctx, se, env, discardSink{}, nil, nil)
+	if err != nil {
+		if oe := model.AsOpError(err); strings.Contains(oe.Message, "unknown purpose") {
+			return "", nil, &model.OpError{Class: model.ClassConfiguration, Message: "this agent version can't report package state; update the agent"}
+		}
+		return "", nil, err
+	}
+	var out struct {
+		Manager  string            `json:"manager"`
+		Versions map[string]string `json:"versions"`
+	}
+	b, _ := json.Marshal(res.Data["packages"])
+	if err := json.Unmarshal(b, &out); err != nil || out.Versions == nil {
+		return "", nil, &model.OpError{Class: model.ClassConfiguration, Message: "the agent's package report is malformed"}
+	}
+	return out.Manager, out.Versions, nil
 }
 
 type discardSink struct{}

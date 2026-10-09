@@ -359,3 +359,105 @@ func TestEngineProducesPointsStateAndServiceEvents(t *testing.T) {
 		t.Fatalf("no cgroup in the fixture: limits are not enforced and say so: %+v", st.Agent)
 	}
 }
+
+// The controller relies on a connected agent's service list being
+// current: a unit's state or boot state (enabled/disabled) changing is
+// sent at once; a stopped unit's boot state comes from the unit files,
+// re-read every 10 minutes; and a requested report (proof after a change)
+// re-reads them and is sent even when nothing changed.
+func TestServicesReportedWhenAskedAndOnBootStateChanges(t *testing.T) {
+	root, bin := fixtureHost(t)
+	os.WriteFile(filepath.Join(root, "appfs"), []byte("enabled"), 0o644)
+	os.WriteFile(filepath.Join(root, "idlefs"), []byte("enabled"), 0o644)
+	os.WriteFile(filepath.Join(bin, "systemctl"), []byte(`#!/bin/sh
+case "$1" in
+show) printf 'Id=app.service\nLoadState=loaded\nActiveState=%s\nSubState=%s\nUnitFileState=%s\nNRestarts=0\n' "$(cat `+root+`/state)" "$(cat `+root+`/sub)" "$(cat `+root+`/appfs)";;
+list-unit-files) echo "app.service $(cat `+root+`/appfs) enabled"; echo "idle.service $(cat `+root+`/idlefs) enabled";;
+esac
+`), 0o755)
+	var mu sync.Mutex
+	clock := time.Unix(1_700_000_000, 0)
+	now := func() time.Time { mu.Lock(); defer mu.Unlock(); return clock }
+	e := New(Options{Source: &source.Local{Root: root, Path: bin + ":" + os.Getenv("PATH")}, Now: now, KmsgPath: "-", Tick: 5 * time.Millisecond,
+		CgroupRoot: root})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go e.Run(ctx)
+	advance := func(d time.Duration) {
+		for i := time.Duration(0); i < d; i += 10 * time.Second {
+			mu.Lock()
+			clock = clock.Add(10 * time.Second)
+			mu.Unlock()
+			time.Sleep(15 * time.Millisecond)
+		}
+	}
+	// report moves the clock by up to d (d = 0: until the first report,
+	// bounded in real time) and returns the boot states of the services
+	// report sent meanwhile, or nil if there was none.
+	report := func(d time.Duration) map[string]string {
+		var got []byte
+		drain := func() {
+			if g := e.Outbox().Drain(1000).Latest[KindServices]; g != nil {
+				got = g
+			}
+		}
+		if d == 0 {
+			for deadline := time.Now().Add(10 * time.Second); got == nil && time.Now().Before(deadline); {
+				advance(10 * time.Second)
+				drain()
+			}
+		}
+		for moved := time.Duration(0); got == nil && moved < d; moved += 10 * time.Second {
+			advance(10 * time.Second)
+			drain()
+		}
+		// On a busy machine the engine may lag behind the clock: let it
+		// catch up (the clock stands still meanwhile).
+		for end := time.Now().Add(time.Second); got == nil && time.Now().Before(end); {
+			time.Sleep(20 * time.Millisecond)
+			drain()
+		}
+		if got == nil {
+			return nil
+		}
+		var r struct {
+			Units []struct {
+				Name      string `json:"name"`
+				FileState string `json:"file_state"`
+			} `json:"units"`
+		}
+		if err := json.Unmarshal(got, &r); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]string{}
+		for _, u := range r.Units {
+			out[u.Name] = u.FileState
+		}
+		return out
+	}
+	if r := report(0); r["app.service"] != "enabled" || r["idle.service"] != "enabled" {
+		t.Fatalf("first report: %v", r)
+	}
+	if r := report(2 * time.Minute); r != nil {
+		t.Fatalf("an unchanged list was re-sent: %v", r)
+	}
+	// A loaded unit is disabled (no state transition): sent at once.
+	os.WriteFile(filepath.Join(root, "appfs"), []byte("disabled"), 0o644)
+	if r := report(time.Minute); r["app.service"] != "disabled" {
+		t.Fatalf("boot state change of a loaded unit: %v", r)
+	}
+	// A stopped (unloaded) unit is disabled: its unit file is read again
+	// later; asking for a report reads it now, and the list is sent.
+	os.WriteFile(filepath.Join(root, "idlefs"), []byte("disabled"), 0o644)
+	if r := report(time.Minute); r != nil {
+		t.Fatalf("unit files are cached between refreshes: %v", r)
+	}
+	e.Request("services")
+	if r := report(time.Minute); r["idle.service"] != "disabled" {
+		t.Fatalf("a requested report: %v", r)
+	}
+	e.Request("services")
+	if r := report(time.Minute); r == nil {
+		t.Fatal("a requested report is sent even when nothing changed")
+	}
+}

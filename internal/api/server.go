@@ -27,6 +27,7 @@ import (
 	"drool/internal/audit"
 	"drool/internal/auth"
 	"drool/internal/config"
+	"drool/internal/desired"
 	"drool/internal/engine"
 	"drool/internal/inventory"
 	"drool/internal/logging"
@@ -63,6 +64,7 @@ type Deps struct {
 	Monitor   *monsvc.Service   // system monitoring (M11); nil disables its routes
 	Alerts    *alerts.Service   // alerts, maintenance, notifications (M12); nil disables their routes
 	Sched     *sched.Service    // schedules and workflows (M13); nil disables their routes
+	Desired   *desired.Service  // desired state (M14); nil disables its routes
 	Artifacts *artifacts.Store  // deployment artifacts
 	// StaleAfter is how old a status check may be before it is shown as stale.
 	StaleAfter time.Duration
@@ -210,6 +212,31 @@ func (s *Server) routes() []route {
 		{method: "POST", path: APIPrefix + "/schedules/{id}/run-now", auth: authed, perm: auth.PermSchedulesManage, h: s.handleRunScheduleNow},
 		{method: "POST", path: APIPrefix + "/schedules/{id}/owner", auth: authed, perm: auth.PermSchedulesAdmin, h: s.handleReassignSchedule},
 		{method: "GET", path: APIPrefix + "/schedules/{id}/occurrences", auth: authed, perm: auth.PermSchedulesRead, h: s.handleScheduleOccurrences},
+		// Desired state (M14).
+		{method: "GET", path: APIPrefix + "/desired/summary", auth: authed, perm: auth.PermDesiredRead, h: s.handleDesiredSummary},
+		{method: "GET", path: APIPrefix + "/desired/hosts", auth: authed, perm: auth.PermDesiredRead, h: s.handleDesiredHosts},
+		{method: "GET", path: APIPrefix + "/desired/hosts/{id}", auth: authed, perm: auth.PermDesiredRead, h: s.handleDesiredHost},
+		{method: "GET", path: APIPrefix + "/desired/hosts/{id}/resource", auth: authed, perm: auth.PermDesiredRead, h: s.handleDesiredResource},
+		{method: "GET", path: APIPrefix + "/desired/hosts/{id}/review", auth: authed, perm: auth.PermDesiredRead, h: s.handleDesiredReview},
+		{method: "POST", path: APIPrefix + "/desired/hosts/{id}/refresh", auth: authed, perm: auth.PermDesiredRestore, h: s.handleDesiredRefresh},
+		{method: "POST", path: APIPrefix + "/desired/hosts/{id}/accept", auth: authed, perm: auth.PermDesiredManage, h: s.handleDesiredAccept},
+		{method: "PUT", path: APIPrefix + "/desired/hosts/{id}/overrides", auth: authed, perm: auth.PermDesiredManage, h: s.handleDesiredSetOverride},
+		{method: "DELETE", path: APIPrefix + "/desired/hosts/{id}/overrides", auth: authed, perm: auth.PermDesiredManage, h: s.handleDesiredResetOverride},
+		{method: "POST", path: APIPrefix + "/desired/refresh", auth: authed, perm: auth.PermDesiredRestore, h: s.handleDesiredRefresh},
+		{method: "POST", path: APIPrefix + "/desired/restore/preview", auth: authed, perm: auth.PermDesiredRestore, h: s.handleDesiredRestorePreview},
+		{method: "POST", path: APIPrefix + "/desired/restore", auth: authed, perm: auth.PermDesiredRestore, h: s.handleDesiredRestore},
+		{method: "GET", path: APIPrefix + "/desired/history", auth: authed, perm: auth.PermDesiredRead, h: s.handleDesiredHistory},
+		{method: "GET", path: APIPrefix + "/desired/baselines", auth: authed, perm: auth.PermDesiredRead, h: s.handleListBaselines},
+		{method: "POST", path: APIPrefix + "/desired/baselines", auth: authed, perm: auth.PermDesiredManage, h: s.handleCreateBaseline},
+		{method: "POST", path: APIPrefix + "/desired/baselines/preview", auth: authed, perm: auth.PermDesiredManage, h: s.handlePreviewBaseline},
+		{method: "GET", path: APIPrefix + "/desired/baselines/{id}", auth: authed, perm: auth.PermDesiredRead, h: s.handleGetBaseline},
+		{method: "PUT", path: APIPrefix + "/desired/baselines/{id}", auth: authed, perm: auth.PermDesiredManage, h: s.handleUpdateBaseline},
+		{method: "DELETE", path: APIPrefix + "/desired/baselines/{id}", auth: authed, perm: auth.PermDesiredManage, h: s.handleArchiveBaseline},
+		{method: "GET", path: APIPrefix + "/desired/baselines/{id}/revisions/{rev}", auth: authed, perm: auth.PermDesiredRead, h: s.handleBaselineRevision},
+		{method: "PUT", path: APIPrefix + "/desired/baselines/{id}/auto", auth: authed, perm: auth.PermDesiredAuto, h: s.handleBaselineAuto},
+		{method: "GET", path: APIPrefix + "/desired/groups", auth: authed, perm: auth.PermDesiredRead, h: s.handleDesiredGroups},
+		{method: "PUT", path: APIPrefix + "/desired/groups/{id}/priority", auth: authed, perm: auth.PermDesiredManage, h: s.handleSetDesiredPriority},
+		{method: "POST", path: APIPrefix + "/desired/groups/{id}/priority/preview", auth: authed, perm: auth.PermDesiredManage, h: s.handlePreviewDesiredPriority},
 
 		// Agents (M7).
 		{method: "GET", path: APIPrefix + "/agents", auth: authed, perm: auth.PermAgentsRead, h: s.handleListAgents},
