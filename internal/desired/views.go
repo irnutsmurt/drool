@@ -207,20 +207,38 @@ func (s *Service) Hosts(ctx context.Context, f HostFilter) ([]HostRow, error) {
 		byHost[hr.HostID] = &hr
 	}
 	rows.Close()
-	// What differs, in words (a few per host).
-	prob, err := s.d.Store.Reader.QueryContext(ctx, `SELECT host_id, key, status, note FROM ds_resource_state WHERE status <> 'compliant' ORDER BY host_id, key`)
+	// What differs, in words (a few per host). Listed for one baseline, a
+	// host's status, counts and problems are those of the resources that
+	// baseline decides there (not the host's other baselines').
+	byBaseline := map[string]*counts{}
+	if f.BaselineID != "" {
+		for id := range byHost {
+			byBaseline[id] = &counts{}
+		}
+	}
+	prob, err := s.d.Store.Reader.QueryContext(ctx, `SELECT host_id, key, status, note, auto_paused FROM ds_resource_state
+		WHERE status <> 'compliant' OR ? <> '' ORDER BY host_id, key`, f.BaselineID)
 	if err != nil {
 		return nil, err
 	}
 	for prob.Next() {
-		var hid, key, st, note string
-		if err := prob.Scan(&hid, &key, &st, &note); err != nil {
+		var hid, key, st, note, paused string
+		if err := prob.Scan(&hid, &key, &st, &note, &paused); err != nil {
 			prob.Close()
 			return nil, err
 		}
 		hr := byHost[hid]
 		if hr == nil {
 			continue
+		}
+		if f.BaselineID != "" {
+			if !hasBaseline(eff[hid].Resources[key].Source.Baselines, f.BaselineID) {
+				continue
+			}
+			byBaseline[hid].add(st, paused != "")
+			if st == StatusCompliant {
+				continue
+			}
 		}
 		if st == StatusUnknown && hr.Unknown == "" {
 			hr.Unknown = note
@@ -233,6 +251,9 @@ func (s *Service) Hosts(ctx context.Context, f HostFilter) ([]HostRow, error) {
 		}
 	}
 	prob.Close()
+	for id, c := range byBaseline {
+		byHost[id].Status, byHost[id].Counts = hostStatus(*c), toCounts(*c)
+	}
 	q := strings.ToLower(strings.TrimSpace(f.Query))
 	var out []HostRow
 	for id, name := range snap.Hosts {

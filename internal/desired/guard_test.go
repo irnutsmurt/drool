@@ -401,3 +401,31 @@ func TestAgentServiceDataFreshness(t *testing.T) {
 		t.Fatalf("silent agent: %s %q", r.Status, r.Note)
 	}
 }
+
+// Listed for one baseline, a host shows that baseline's state only: drift
+// another baseline decides isn't this baseline's.
+func TestHostsListedForABaseline(t *testing.T) {
+	e := newEnv(t, "web-1")
+	e.reportAll()
+	e.f.do(func() { e.f.hosts["h_web-1"].packages["sudo"] = "1.9" })
+	a := e.baseline("Tools", []Resource{pkgR("curl", StateInstalled)}, everywhere)
+	b := e.baseline("Base", []Resource{pkgR("sudo", StateInstalled)}, everywhere)
+	e.step()
+	e.checkAll()
+	rows, err := e.s.Hosts(e.ctx, HostFilter{BaselineID: b.ID})
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("%v %v", rows, err)
+	}
+	if r := rows[0]; r.Status != StatusCompliant || len(r.Problems) != 0 || r.Counts.Total != 1 || r.Counts.Compliant != 1 {
+		t.Fatalf("for Base: %+v", r)
+	}
+	rows, _ = e.s.Hosts(e.ctx, HostFilter{BaselineID: a.ID})
+	if r := rows[0]; r.Status != StatusDrift || len(r.Problems) != 1 || r.Problems[0] != "package curl (drift)" || r.Counts.Total != 1 {
+		t.Fatalf("for Tools: %+v", r)
+	}
+	// Unfiltered: the host as a whole.
+	rows, _ = e.s.Hosts(e.ctx, HostFilter{})
+	if r := rows[0]; r.Status != StatusDrift || r.Counts.Total != 2 {
+		t.Fatalf("all: %+v", r)
+	}
+}
