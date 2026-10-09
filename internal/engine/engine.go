@@ -52,6 +52,22 @@ var (
 	ErrJobNotActive  = errors.New("job is not running")
 	ErrJobNotPaused  = errors.New("job is not paused")
 	ErrJobIdempotent = errors.New("job already submitted with this idempotency key")
+	// ErrNothingToRun: every target was left out of the run (e.g. all in
+	// maintenance).
+	ErrNothingToRun = errors.New("every target was skipped")
+)
+
+// LocalExecutor runs controller-side workflow steps (wait, verification)
+// for one host inside its job (model.IsLocal).
+type LocalExecutor interface {
+	Execute(ctx context.Context, hostID string, op model.Operation, out driver.OutputSink) (*driver.OpResult, error)
+}
+
+// Pause kinds.
+const (
+	PauseBreaker   = "breaker"
+	PauseCanary    = "canary"
+	PauseThreshold = "threshold"
 )
 
 // Executor chooses how a job reaches a host (its management path: SSH,
@@ -135,6 +151,8 @@ type Engine struct {
 	mu          sync.Mutex
 	runs        map[string]*jobRun
 	hostChanged func(hostID string)
+	local       LocalExecutor
+	onPause     func(jobID, kind, reason string)
 
 	base      context.Context // never cancelled: jobs are not aborted on shutdown
 	pruneStop context.CancelFunc
@@ -224,18 +242,47 @@ func (e *Engine) pruneLoop() {
 // Submission is a validated job ready to launch.
 type Submission struct {
 	Job   db.Job
-	Hosts []TargetHost
+	Hosts []TargetHost // the hosts that take part, in execution order
+	// Skipped hosts were left out up front, with the reason.
+	Skipped []TargetHost
+	Plan    model.WavePlan
+}
+
+// Origin says where a job came from (M13).
+type Origin struct {
+	ScheduleID       string
+	OccurrenceID     string
+	WorkflowID       string
+	WorkflowRevision int
+}
+
+// SubmitOptions are a submission's context.
+type SubmitOptions struct {
+	UserID  string
+	IdemKey string
+	RerunOf string
+	Origin  Origin
+	// Skip leaves hosts out of the run up front with a reason (they are
+	// listed as skipped in the job, e.g. "maintenance active").
+	Skip map[string]string
 }
 
 // SubmitTx validates spec, resolves its targets and stores the job and its
 // host rows in q's transaction. Call Launch after the transaction commits.
 func (e *Engine) SubmitTx(ctx context.Context, q *db.Queries, spec model.JobSpec, userID, idemKey, rerunOf string) (*Submission, error) {
+	return e.Submit(ctx, q, spec, SubmitOptions{UserID: userID, IdemKey: idemKey, RerunOf: rerunOf})
+}
+
+// Submit is SubmitTx with an origin and hosts to leave out. The rollout
+// plan (canary wave, batches) is computed here from the hosts in their
+// resolved order and stored with each host, so it never changes later.
+func (e *Engine) Submit(ctx context.Context, q *db.Queries, spec model.JobSpec, opt SubmitOptions) (*Submission, error) {
 	if err := spec.Normalize(); err != nil {
 		return nil, &ValidationError{Msg: err.Error()}
 	}
-	if idemKey != "" {
+	if opt.IdemKey != "" {
 		if j, err := q.GetJobByIdempotencyKey(ctx, db.GetJobByIdempotencyKeyParams{
-			CreatedBy: userID, IdempotencyKey: sql.NullString{String: idemKey, Valid: true}}); err == nil {
+			CreatedBy: opt.UserID, IdempotencyKey: sql.NullString{String: opt.IdemKey, Valid: true}}); err == nil {
 			return &Submission{Job: j}, ErrJobIdempotent
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return nil, err
@@ -248,26 +295,74 @@ func (e *Engine) SubmitTx(ctx context.Context, q *db.Queries, spec model.JobSpec
 	if len(hosts) == 0 {
 		return nil, invalid("the selected targets match no hosts")
 	}
+	var eligible, skipped []TargetHost
+	for _, h := range hosts {
+		if why, ok := opt.Skip[h.ID]; ok {
+			h.Warning = why
+			skipped = append(skipped, h)
+		} else {
+			eligible = append(eligible, h)
+		}
+	}
+	if len(eligible) == 0 {
+		return &Submission{Skipped: skipped}, ErrNothingToRun
+	}
+	ids := make([]string, len(eligible))
+	for i, h := range eligible {
+		ids[i] = h.ID
+	}
+	plan := model.PlanWaves(ids, spec.Strategy)
 	specJSON, err := json.Marshal(spec)
 	if err != nil {
 		return nil, err
 	}
 	now := e.now().UnixMilli()
-	j := db.Job{ID: ids.New(ids.Job), Name: spec.Name, SpecJson: string(specJSON), SpecVersion: model.SpecVersion,
-		IdempotencyKey: sql.NullString{String: idemKey, Valid: idemKey != ""}, Status: JobPending,
-		RerunOf: sql.NullString{String: rerunOf, Valid: rerunOf != ""}, CreatedBy: userID, CreatedAt: now}
+	j := db.Job{ID: ids0(), Name: spec.Name, SpecJson: string(specJSON), SpecVersion: model.SpecVersion,
+		IdempotencyKey: sql.NullString{String: opt.IdemKey, Valid: opt.IdemKey != ""}, Status: JobPending,
+		RerunOf: sql.NullString{String: opt.RerunOf, Valid: opt.RerunOf != ""}, CreatedBy: opt.UserID, CreatedAt: now}
 	if err := q.InsertJob(ctx, db.InsertJobParams{ID: j.ID, Name: j.Name, SpecJson: j.SpecJson,
 		SpecVersion: j.SpecVersion, IdempotencyKey: j.IdempotencyKey, RerunOf: j.RerunOf,
-		CreatedBy: userID, CreatedAt: now}); err != nil {
+		CreatedBy: opt.UserID, CreatedAt: now}); err != nil {
 		return nil, err
 	}
-	for i, h := range hosts {
-		if err := q.InsertJobHost(ctx, db.InsertJobHostParams{JobID: j.ID, HostID: h.ID, HostName: h.Name, Position: int64(i)}); err != nil {
+	if o := opt.Origin; o != (Origin{}) {
+		j.ScheduleID = sql.NullString{String: o.ScheduleID, Valid: o.ScheduleID != ""}
+		j.OccurrenceID = sql.NullString{String: o.OccurrenceID, Valid: o.OccurrenceID != ""}
+		j.WorkflowID = sql.NullString{String: o.WorkflowID, Valid: o.WorkflowID != ""}
+		j.WorkflowRevision = sql.NullInt64{Int64: int64(o.WorkflowRevision), Valid: o.WorkflowID != ""}
+		if err := q.SetJobOrigin(ctx, db.SetJobOriginParams{ScheduleID: j.ScheduleID, OccurrenceID: j.OccurrenceID,
+			WorkflowID: j.WorkflowID, WorkflowRevision: j.WorkflowRevision, ID: j.ID}); err != nil {
 			return nil, err
 		}
 	}
-	return &Submission{Job: j, Hosts: hosts}, nil
+	pos := 0
+	var ordered []TargetHost
+	for w, wave := range plan.Waves {
+		for _, i := range wave {
+			h := eligible[i]
+			if err := q.InsertJobHostInWave(ctx, db.InsertJobHostInWaveParams{JobID: j.ID, HostID: h.ID, HostName: h.Name,
+				Position: int64(pos), Wave: int64(w)}); err != nil {
+				return nil, err
+			}
+			ordered = append(ordered, h)
+			pos++
+		}
+	}
+	for _, h := range skipped {
+		if err := q.InsertJobHostInWave(ctx, db.InsertJobHostInWaveParams{JobID: j.ID, HostID: h.ID, HostName: h.Name,
+			Position: int64(pos), Wave: -1}); err != nil {
+			return nil, err
+		}
+		if err := q.SkipJobHost(ctx, db.SkipJobHostParams{ErrorClass: string(model.ClassValidation), ErrorMessage: "skipped: " + h.Warning,
+			FinishedAt: sql.NullInt64{Int64: now, Valid: true}, JobID: j.ID, HostID: h.ID}); err != nil {
+			return nil, err
+		}
+		pos++
+	}
+	return &Submission{Job: j, Hosts: ordered, Skipped: skipped, Plan: plan}, nil
 }
+
+func ids0() string { return ids.New(ids.Job) }
 
 // jobRun is the in-memory state of a running job.
 type jobRun struct {
@@ -282,9 +377,12 @@ type jobRun struct {
 	resume          chan struct{}
 	cancelRequested bool
 	failures        int
-	thresholdHit    bool
-	breakerClass    model.ErrorClass
-	breakerCount    int
+	// thresholdBase: failures before the last resume; the threshold
+	// counts failures since then (a resumed job gets its full allowance
+	// again; failed hosts stay failed).
+	thresholdBase int
+	breakerClass  model.ErrorClass
+	breakerCount  int
 }
 
 // Launch starts running a submitted job in the background.
@@ -360,6 +458,7 @@ func (e *Engine) Resume(ctx context.Context, jobID string) error {
 	jr.paused = false
 	jr.breakerCount = 0
 	jr.breakerClass = ""
+	jr.thresholdBase = jr.failures
 	close(jr.resume)
 	jr.mu.Unlock()
 	if err := e.st.W.SetJobRunning(ctx, db.SetJobRunningParams{StartedAt: e.nowNull(), ID: jobID}); err != nil {
@@ -373,7 +472,7 @@ func (e *Engine) nowNull() sql.NullInt64 {
 	return sql.NullInt64{Int64: e.now().UnixMilli(), Valid: true}
 }
 
-func (e *Engine) pause(jr *jobRun, reason string) {
+func (e *Engine) pause(jr *jobRun, kind, reason string) {
 	jr.mu.Lock()
 	if jr.paused || jr.cancelRequested {
 		jr.mu.Unlock()
@@ -386,9 +485,29 @@ func (e *Engine) pause(jr *jobRun, reason string) {
 		e.log.Error("pause job", "job_id", jr.id, "err", err)
 	}
 	_ = e.audit.Record(e.base, audit.Event{Action: "job.pause", Actor: &audit.System, TargetType: "job", TargetID: jr.id,
-		Details: map[string]any{"reason": reason}})
+		Details: map[string]any{"reason": reason, "kind": kind}})
 	e.log.Warn("job paused", "job_id", jr.id, "reason", reason)
 	e.publishJob(jr.id)
+	e.mu.Lock()
+	fn := e.onPause
+	e.mu.Unlock()
+	if fn != nil {
+		fn(jr.id, kind, reason)
+	}
+}
+
+// OnPause registers fn to be told when a job pauses (the event timeline).
+func (e *Engine) OnPause(fn func(jobID, kind, reason string)) {
+	e.mu.Lock()
+	e.onPause = fn
+	e.mu.Unlock()
+}
+
+// SetLocal installs the executor of controller-side steps.
+func (e *Engine) SetLocal(l LocalExecutor) {
+	e.mu.Lock()
+	e.local = l
+	e.mu.Unlock()
 }
 
 // waitIfPaused blocks while the job is paused. It returns false if the job
@@ -428,15 +547,43 @@ func (e *Engine) runJob(jr *jobRun) error {
 	}
 	e.publishJob(jr.id)
 
+	// Waves (M13): a wave starts only when the previous one has finished.
+	// Wave 0 of a canary rollout is the canaries: if one fails, the job
+	// pauses before anything else starts. Reaching the failure threshold
+	// stops starting hosts, lets running ones finish, and pauses.
+	canary := jr.spec.Strategy.HasCanary()
+	if canary {
+		canary = false
+		for _, h := range hosts {
+			canary = canary || h.Wave >= 1
+		}
+	}
 	slots := make(chan struct{}, jr.spec.Strategy.Concurrency)
 	var wg sync.WaitGroup
+	curWave := int64(-1)
 	next := 0
 	for next < len(hosts) {
-		if hosts[next].State != HostQueued {
+		h := hosts[next]
+		if h.State != HostQueued || h.Wave < 0 {
 			next++
 			continue
 		}
-		if !jr.waitIfPaused() || jr.stopScheduling() {
+		if h.Wave != curWave {
+			wg.Wait() // the previous wave reaches terminal states first
+			if curWave == 0 && canary {
+				if failed := e.failedInWave(jr.id, 0); len(failed) > 0 {
+					e.pause(jr, PauseCanary, canaryReason(failed, queuedFrom(hosts, next)))
+				}
+			}
+			curWave = h.Wave
+		}
+		if jr.thresholdReached() {
+			wg.Wait() // running hosts reach a safe terminal point
+			if jr.thresholdReached() {
+				e.pause(jr, PauseThreshold, thresholdReason(jr, queuedFrom(hosts, next)))
+			}
+		}
+		if !jr.waitIfPaused() || jr.isCancelled() {
 			break
 		}
 		if !acquire(jr.ctx, slots) {
@@ -448,12 +595,11 @@ func (e *Engine) runJob(jr *jobRun) error {
 		}
 		// A failure elsewhere may have paused the job or hit the threshold while
 		// this host waited for a slot; go back to the top to wait or stop.
-		if jr.isPaused() || jr.stopScheduling() {
+		if jr.isPaused() || jr.thresholdReached() || jr.isCancelled() {
 			<-e.global
 			<-slots
 			continue
 		}
-		h := hosts[next]
 		next++
 		wg.Add(1)
 		go func() {
@@ -464,20 +610,15 @@ func (e *Engine) runJob(jr *jobRun) error {
 	}
 	wg.Wait()
 
-	// Hosts that never started.
-	jr.mu.Lock()
-	cancelled, threshold := jr.cancelRequested, jr.thresholdHit
-	jr.mu.Unlock()
+	// Hosts that never started (the job was cancelled).
+	cancelled := jr.isCancelled()
 	for ; next < len(hosts); next++ {
 		h := hosts[next]
-		if h.State != HostQueued {
+		if h.State != HostQueued || h.Wave < 0 {
 			continue
 		}
-		switch {
-		case cancelled:
+		if cancelled {
 			e.finishHost(jr.id, h, HostCancelled, nil, &model.OpError{Class: model.ClassCancelled, Message: "job cancelled before this host started"})
-		case threshold:
-			e.finishHost(jr.id, h, HostSkipped, nil, &model.OpError{Class: model.ClassExecution, Message: "skipped: the job's failure threshold was reached"})
 		}
 	}
 	status := JobCompleted
@@ -492,10 +633,69 @@ func (e *Engine) runJob(jr *jobRun) error {
 	return nil
 }
 
-func (jr *jobRun) stopScheduling() bool {
+func queuedFrom(hosts []db.JobHost, from int) int {
+	n := 0
+	for _, h := range hosts[from:] {
+		if h.State == HostQueued && h.Wave >= 0 {
+			n++
+		}
+	}
+	return n
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, one)
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
+// failedInWave lists the hosts of a wave that failed or timed out.
+func (e *Engine) failedInWave(jobID string, wave int64) []db.JobHost {
+	hs, err := e.st.R.ListJobHosts(e.base, jobID)
+	if err != nil {
+		return nil
+	}
+	var out []db.JobHost
+	for _, h := range hs {
+		if h.Wave == wave && (h.State == HostFailed || h.State == HostTimedOut) {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+func canaryReason(failed []db.JobHost, notStarted int) string {
+	names := make([]string, 0, len(failed))
+	for _, h := range failed {
+		names = append(names, h.HostName)
+	}
+	what := "Canary " + strings.Join(names, ", ") + " failed"
+	if len(failed) == 1 && failed[0].ErrorMessage != "" {
+		what += ": " + failed[0].ErrorMessage
+	}
+	return fmt.Sprintf("%s. %s not started; resume to continue the rollout, or cancel", what, plural(notStarted, "host has", "hosts have"))
+}
+
+func thresholdReason(jr *jobRun, notStarted int) string {
+	jr.mu.Lock()
+	n, t := jr.failures-jr.thresholdBase, *jr.spec.Strategy.FailureThreshold
+	jr.mu.Unlock()
+	return fmt.Sprintf("Paused after %s (the failure threshold is %d). %s not started; resume to continue, or cancel",
+		plural(n, "failure", "failures"), t, plural(notStarted, "host has", "hosts have"))
+}
+
+func (jr *jobRun) thresholdReached() bool {
 	jr.mu.Lock()
 	defer jr.mu.Unlock()
-	return jr.thresholdHit || jr.cancelRequested
+	t := jr.spec.Strategy.FailureThreshold
+	return t != nil && jr.failures-jr.thresholdBase >= *t
+}
+
+func (jr *jobRun) isCancelled() bool {
+	jr.mu.Lock()
+	defer jr.mu.Unlock()
+	return jr.cancelRequested
 }
 
 func (jr *jobRun) isPaused() bool {
@@ -631,8 +831,14 @@ func (e *Engine) runHost(jr *jobRun, h db.JobHost) {
 			}
 			sctx, cancel := context.WithTimeout(ctx, time.Duration(meta.TimeoutS)*time.Second)
 			sctx = driver.WithStepInfo(sctx, driver.StepInfo{JobID: jr.id, HostID: h.HostID, UserID: jr.createdBy, Step: i, Attempt: attempt})
-			res, err := path.Execute(sctx, step, out,
-				func() { e.setState(jr.id, h, HostRunning, i, attempt, nil) })
+			var res *driver.OpResult
+			var err error
+			if model.IsLocal(step.Type) {
+				res, err = e.runLocal(sctx, jr, h, i, attempt, step, out)
+			} else {
+				res, err = path.Execute(sctx, step, out,
+					func() { e.setState(jr.id, h, HostRunning, i, attempt, nil) })
+			}
 			cancel()
 			if err != nil && ctx.Err() != nil && model.ClassOf(err) != model.ClassCancelled {
 				err = &model.OpError{Class: model.ClassCancelled, Message: "cancelled", Err: err}
@@ -670,6 +876,22 @@ func (e *Engine) runHost(jr *jobRun, h db.JobHost) {
 	jr.mu.Lock()
 	jr.breakerCount, jr.breakerClass = 0, ""
 	jr.mu.Unlock()
+}
+
+// runLocal runs a controller-side step (wait, verification).
+func (e *Engine) runLocal(ctx context.Context, jr *jobRun, h db.JobHost, step, attempt int, op model.Operation, out *outputWriter) (*driver.OpResult, error) {
+	e.mu.Lock()
+	l := e.local
+	e.mu.Unlock()
+	if l == nil {
+		return nil, &model.OpError{Class: model.ClassConfiguration, Message: "workflow steps (" + op.Type + ") are not available on this controller"}
+	}
+	state := "verifying"
+	if op.Type == model.OpWait {
+		state = HostRunning
+	}
+	e.setState(jr.id, h, state, step, attempt, nil)
+	return l.Execute(ctx, h.HostID, op, out)
 }
 
 // retryable implements ARCHITECTURE-ALPHA §11.4.
@@ -716,9 +938,6 @@ func (e *Engine) hostFailed(jr *jobRun, h db.JobHost, res *driver.OpResult, err 
 	}
 	jr.mu.Lock()
 	jr.failures++
-	if t := jr.spec.Strategy.FailureThreshold; t != nil && jr.failures >= *t {
-		jr.thresholdHit = true
-	}
 	trip := false
 	if breakerClasses[oe.Class] {
 		if jr.breakerClass == oe.Class {
@@ -733,7 +952,7 @@ func (e *Engine) hostFailed(jr *jobRun, h db.JobHost, res *driver.OpResult, err 
 	n := jr.breakerCount
 	jr.mu.Unlock()
 	if trip {
-		e.pause(jr, fmt.Sprintf("%d consecutive %s failures; likely a shared credential or configuration problem", n, oe.Class))
+		e.pause(jr, PauseBreaker, fmt.Sprintf("%d consecutive %s failures; likely a shared credential or configuration problem", n, oe.Class))
 	}
 }
 

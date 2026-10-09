@@ -349,11 +349,14 @@ SELECT a.sha256, a.size, a.name, a.is_text, a.created_by, a.created_at, a.last_u
 WHERE a.last_used_at < ?
   AND NOT EXISTS (SELECT 1 FROM file_deployments d WHERE d.before_artifact = a.sha256 OR d.after_artifact = a.sha256)
   AND NOT EXISTS (SELECT 1 FROM jobs j WHERE instr(j.spec_json, a.sha256) > 0)
+  AND NOT EXISTS (SELECT 1 FROM workflow_revisions w WHERE instr(w.steps_json, a.sha256) > 0)
+  AND NOT EXISTS (SELECT 1 FROM schedules s WHERE instr(s.config_json, a.sha256) > 0)
   AND NOT EXISTS (SELECT 1 FROM agent_releases r WHERE r.sha256 = a.sha256)
 `
 
 // Candidates for garbage collection: not part of any deployment history,
-// not named by any job spec still kept, and not used recently.
+// not named by any job spec still kept, by any workflow revision (a
+// schedule may pin any of them) or schedule, and not used recently.
 func (q *Queries) ListUnreferencedArtifacts(ctx context.Context, lastUsedAt int64) ([]Artifact, error) {
 	rows, err := q.db.QueryContext(ctx, listUnreferencedArtifacts, lastUsedAt)
 	if err != nil {

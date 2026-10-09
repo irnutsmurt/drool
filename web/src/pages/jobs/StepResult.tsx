@@ -44,6 +44,14 @@ export function describeStep(s: Schemas["Operation"]): string {
     }
     case "reboot":
       return s.wait === false ? "Reboot (don't wait)" : `Reboot and wait up to ${s.timeout_s ?? 900}s for the host`;
+    case "wait":
+      return `Wait ${secs(s.seconds)}`;
+    case "verify_host":
+      return `Verify the host is reachable (keep trying up to ${secs(s.timeout_s ?? 300)})`;
+    case "verify_services":
+      return `Verify services are running: ${(s.services ?? []).join(", ") || "(none named yet)"}`;
+    case "verify_health":
+      return `Verify health: no active ${s.policy === "no_warning" ? "Warning or Critical" : "Critical"} issues`;
     case "file_deploy":
       if (s.rollback_of) return s.remove ? `Roll back ${s.path} (remove it)` : `Roll back ${s.path} to its previous version`;
       return [`Deploy ${s.path}`, s.elevated ? "as root" : "", s.owner || s.group ? `owner ${s.owner ?? "keep"}:${s.group ?? "keep"}` : "",
@@ -58,7 +66,8 @@ export function describeStep(s: Schemas["Operation"]): string {
 interface UnitState { load: string; active: string; sub: string; unit_file: string }
 interface RebootResult { boot_id_before?: string; boot_id_after?: string; down_seconds?: number; total_seconds?: number }
 
-const secs = (n?: number) => (n == null ? "" : n < 90 ? `${Math.round(n)}s` : `${Math.floor(n / 60)}m ${Math.round(n % 60)}s`);
+const secs = (n?: number) => (n == null ? "" : n < 90 ? `${Math.round(n)}s` : n % 60 === 0 ? `${n / 60} min`
+  : `${Math.floor(n / 60)}m ${Math.round(n % 60)}s`);
 
 function RebootSummary({ r }: { r: RebootResult }) {
   return (
@@ -80,6 +89,7 @@ export function StepResult({ step }: { step: Schemas["JobStep"] }) {
   const before = r.before as UnitState | undefined;
   const after = r.after as UnitState | undefined;
   const reboot = r.reboot as RebootResult | undefined;
+  const services = r.services as Record<string, string> | undefined;
   const changedBadge = step.changed == null ? null : step.changed
     ? <Badge tone="accent">changed</Badge> : <Badge>no change</Badge>;
 
@@ -110,6 +120,17 @@ export function StepResult({ step }: { step: Schemas["JobStep"] }) {
         </dl>
       )}
       {reboot && <RebootSummary r={reboot} />}
+      {services && Object.keys(services).length > 0 && (
+        <dl className="grid grid-cols-[12rem_1fr] gap-y-1 text-sm">
+          {Object.entries(services).map(([name, st]) => (
+            <div key={name} className="contents">
+              <dt className="font-mono text-xs">{name}</dt>
+              <dd className={st.startsWith("active") ? "text-ok" : "text-danger"}>{st}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {typeof r.detail === "string" && <p className="text-sm text-muted">{r.detail}</p>}
     </div>
   );
 }

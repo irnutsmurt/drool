@@ -45,4 +45,5 @@ export const errorExplanations: Record<string, string> = {
   InterruptedError: "The controller restarted while this host was running; the outcome is unknown.",
   InternalError: "Something went wrong inside DROOL. The controller log has details.",
   CapabilityError: "Refused by the host's agent.",
+  VerificationError: "A check after the change didn't pass (the host, its services or its health).",
 };

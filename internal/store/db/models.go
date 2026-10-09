@@ -493,18 +493,22 @@ type HostTag struct {
 }
 
 type Job struct {
-	ID             string
-	Name           string
-	SpecJson       string
-	SpecVersion    int64
-	IdempotencyKey sql.NullString
-	Status         string
-	PauseReason    string
-	RerunOf        sql.NullString
-	CreatedBy      string
-	CreatedAt      int64
-	StartedAt      sql.NullInt64
-	FinishedAt     sql.NullInt64
+	ID               string
+	Name             string
+	SpecJson         string
+	SpecVersion      int64
+	IdempotencyKey   sql.NullString
+	Status           string
+	PauseReason      string
+	RerunOf          sql.NullString
+	CreatedBy        string
+	CreatedAt        int64
+	StartedAt        sql.NullInt64
+	FinishedAt       sql.NullInt64
+	ScheduleID       sql.NullString
+	OccurrenceID     sql.NullString
+	WorkflowID       sql.NullString
+	WorkflowRevision sql.NullInt64
 }
 
 type JobHost struct {
@@ -524,6 +528,7 @@ type JobHost struct {
 	FinishedAt    sql.NullInt64
 	Transport     string
 	TransportNote string
+	Wave          int64
 }
 
 type JobOutput struct {
@@ -562,6 +567,8 @@ type Maintenance struct {
 	EndsAt        sql.NullInt64
 	EndedAt       sql.NullInt64
 	EndedByName   string
+	ScheduleID    sql.NullString
+	OccurrenceID  sql.NullString
 }
 
 type MaintenanceTarget struct {
@@ -808,6 +815,54 @@ type NotifyRouteDestination struct {
 	DestinationID string
 }
 
+type Schedule struct {
+	ID               string
+	Kind             string
+	Name             string
+	Enabled          int64
+	ArchivedAt       sql.NullInt64
+	OwnerID          sql.NullString
+	Revision         int64
+	ConfigJson       string
+	WorkflowID       sql.NullString
+	WorkflowRevision sql.NullInt64
+	WindowID         sql.NullString
+	NextRunAt        sql.NullInt64
+	Attention        string
+	AttentionAt      sql.NullInt64
+	CreatedBy        sql.NullString
+	CreatedAt        int64
+	UpdatedBy        sql.NullString
+	UpdatedAt        int64
+}
+
+type ScheduleOccurrence struct {
+	ID               string
+	ScheduleID       string
+	ScheduleRevision int64
+	ScheduledFor     int64
+	Manual           int64
+	Status           string
+	Reason           string
+	MissedCount      int64
+	MissedUntil      sql.NullInt64
+	DispatchedAt     sql.NullInt64
+	JobID            sql.NullString
+	MaintenanceID    sql.NullString
+	TriggeredBy      string
+	SkippedHosts     int64
+	CreatedAt        int64
+}
+
+type ScheduleRevision struct {
+	ScheduleID    string
+	Revision      int64
+	ConfigJson    string
+	OwnerID       sql.NullString
+	ChangedByName string
+	ChangedAt     int64
+}
+
 type Secret struct {
 	ID          string
 	Name        string
@@ -885,4 +940,27 @@ type User struct {
 	UpdatedAt         int64
 	PasswordChangedAt int64
 	LastLoginAt       sql.NullInt64
+}
+
+type Workflow struct {
+	ID             string
+	Name           string
+	Description    string
+	LatestRevision int64
+	CreatedBy      sql.NullString
+	CreatedAt      int64
+	UpdatedAt      int64
+	ArchivedAt     sql.NullInt64
+}
+
+type WorkflowRevision struct {
+	WorkflowID    string
+	Revision      int64
+	Name          string
+	Description   string
+	StepsJson     string
+	StrategyJson  string
+	CreatedBy     sql.NullString
+	CreatedByName string
+	CreatedAt     int64
 }

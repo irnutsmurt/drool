@@ -481,6 +481,250 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workflows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listWorkflows"];
+        put?: never;
+        /** @description A reusable, ordered list of typed steps with a default rollout (revision 1). Audited. */
+        post: operations["createWorkflow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflows/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Recommended starting points (ordinary, editable workflows once saved). */
+        get: operations["workflowTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflows/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getWorkflow"];
+        /** @description Stores a new revision (nothing when nothing changed). Schedules keep the revision they pinned. Audited. */
+        put: operations["updateWorkflow"];
+        post?: never;
+        /** @description Archive (schedules keep running their pinned revision; new schedules can't choose it). Audited. */
+        delete: operations["archiveWorkflow"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflows/{id}/revisions/{rev}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getWorkflowRevision"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflows/{id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Runs a revision (default the latest) now as an ordinary job on the given targets. Needs jobs.execute and each step's own permissions. Repeating a request with the same `Idempotency-Key` returns the original job. */
+        post: operations["runWorkflow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Schedules (jobs, workflows and recurring maintenance windows), the ones needing attention first. At most 1000. */
+        get: operations["listSchedules"];
+        put?: never;
+        /** @description A job (inline steps, or a pinned workflow revision) on a recurrence, or a recurring maintenance window. The creator owns it; every run uses the owner's permissions, checked again before each occurrence. Needs schedules.manage plus what running it needs (jobs.execute and step permissions, or maintenance.manage). Audited. */
+        post: operations["createSchedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description What a schedule would do, without saving it — targets now, canary and batch waves, concurrency, threshold, steps, reboot and verification, the maintenance-window relationship, the next runs in its zone, and its missed-run and overlap behaviour. */
+        post: operations["previewSchedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules/next-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description The next occurrences of a recurrence in a time zone (with DST notes). */
+        post: operations["scheduleNextRuns"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getSchedule"];
+        /** @description A new revision, for future occurrences only (a running job, created occurrences and past jobs never change). Only the owner, or someone with schedules.admin, may edit; an editor who isn't the owner becomes the owner. Adopting a newer workflow revision is an edit. Audited. */
+        put: operations["updateSchedule"];
+        post?: never;
+        /** @description Archive (history and jobs are kept; a running job continues). Owner or schedules.admin. Audited. */
+        delete: operations["archiveSchedule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules/{id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Enable (owner or schedules.admin; the owner must be able to run it). Clears the attention flag; starts from the next occurrence after now. Audited. */
+        post: operations["enableSchedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules/{id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Disable future occurrences. A job already running continues (cancel it on its page). Audited. */
+        post: operations["disableSchedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules/{id}/run-now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Run once now as the caller (with the caller's permissions; hosts in maintenance are not skipped — a deliberate action). Doesn't change the next run. 409 while the previous run is active. Audited. */
+        post: operations["runScheduleNow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules/{id}/owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Give a schedule a new owner (schedules.admin). The new owner must hold what running it needs. Audited. */
+        post: operations["reassignSchedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules/{id}/occurrences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The schedule's history, newest first (bounded; page with before/before_id). */
+        get: operations["scheduleOccurrences"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/jobs/simulate": {
         parameters: {
             query?: never;
@@ -3373,7 +3617,52 @@ export interface components {
             host_ids?: string[];
         };
         /** @description One typed step. Discriminated by `type`. */
-        Operation: components["schemas"]["CommandOp"] | components["schemas"]["ScriptOp"] | components["schemas"]["PackageOp"] | components["schemas"]["SystemUpdateOp"] | components["schemas"]["ServiceOp"] | components["schemas"]["RebootOp"] | components["schemas"]["FileDeployOp"];
+        Operation: components["schemas"]["CommandOp"] | components["schemas"]["ScriptOp"] | components["schemas"]["PackageOp"] | components["schemas"]["SystemUpdateOp"] | components["schemas"]["ServiceOp"] | components["schemas"]["RebootOp"] | components["schemas"]["FileDeployOp"] | components["schemas"]["WaitOp"] | components["schemas"]["VerifyHostOp"] | components["schemas"]["VerifyServicesOp"] | components["schemas"]["VerifyHealthOp"];
+        /** @description Controller-side workflow step (M13). Pauses the host's run; nothing runs on the host. */
+        WaitOp: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "wait";
+            seconds: number;
+        };
+        /** @description Controller-side workflow step (M13). Passes when the host answers on its management path (its agent is connected, or an SSH connection test passes), retrying until the timeout. */
+        VerifyHostOp: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "verify_host";
+            /** @default 300 */
+            timeout_s?: number;
+        };
+        /** @description Controller-side workflow step (M13). Passes when every named systemd unit is active, from freshly collected monitoring data, retrying until the timeout; otherwise the host fails. */
+        VerifyServicesOp: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "verify_services";
+            services: string[];
+            /** @default 120 */
+            timeout_s?: number;
+        };
+        /** @description Controller-side workflow step (M13). Passes when the host has no active health issue of the policy's severity (from fresh monitoring data), retrying until the timeout. Deliberately not an expression language. */
+        VerifyHealthOp: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "verify_health";
+            /**
+             * @default no_critical
+             * @enum {string}
+             */
+            policy?: "no_critical" | "no_warning";
+            /** @default 120 */
+            timeout_s?: number;
+        };
         CommandOp: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -3420,12 +3709,20 @@ export interface components {
             name?: string;
             steps: components["schemas"]["Operation"][];
             targets: components["schemas"]["TargetSpec"];
-            strategy?: {
-                /** @default 10 */
-                concurrency?: number;
-                /** @description Stop starting hosts after this many failures */
-                failure_threshold?: number | null;
-            };
+            strategy?: components["schemas"]["Strategy"];
+        };
+        /** @description Rollout. Hosts run in waves fixed when the job is created (in the targets' name order): optional canaries first — if one fails, the job pauses before any other host starts — then batches of `batch_size` (0: all remaining at once); a wave starts only when the previous one has finished. `concurrency` limits hosts running at once inside a wave. Reaching `failure_threshold` failures stops starting hosts, lets running ones finish, and pauses the job (resume continues with a renewed allowance; failed hosts stay failed). */
+        Strategy: {
+            /** @default 10 */
+            concurrency?: number;
+            /** @description Pause after this many failures */
+            failure_threshold?: number | null;
+            /** @description The first N hosts by name are the canaries */
+            canary_count?: number;
+            /** @description Explicit canary hosts (instead of a count) */
+            canary_hosts?: string[];
+            /** @description Hosts per wave after the canaries (0: all at once) */
+            batch_size?: number;
         };
         /** @enum {string} */
         JobStatus: "pending" | "running" | "paused" | "completed" | "cancelled" | "interrupted";
@@ -3441,6 +3738,13 @@ export interface components {
         JobPreview: {
             hosts: components["schemas"]["TargetHost"][];
             warnings: string[];
+            waves: components["schemas"]["RolloutWave"][];
+        };
+        RolloutWave: {
+            index: number;
+            canary: boolean;
+            /** @description Host names */
+            hosts: string[];
         };
         Job: {
             id: string;
@@ -3462,6 +3766,22 @@ export interface components {
                 [key: string]: number;
             };
             host_count: number;
+            origin?: components["schemas"]["JobOrigin"];
+        };
+        /** @description The schedule occurrence or workflow revision that produced the job (M13). */
+        JobOrigin: {
+            schedule_id?: string;
+            schedule_name?: string;
+            occurrence_id?: string;
+            /** @description Nominal time (unix ms) */
+            scheduled_for?: number;
+            /** @description "Run now" (by the job's creator) rather than the schedule's clock */
+            manual?: boolean;
+            /** @description The schedule's current owner (the job's created_by is who it ran as) */
+            owner?: string;
+            workflow_id?: string;
+            workflow_name?: string;
+            workflow_revision?: number;
         };
         JobHost: {
             /** @description Management path that ran it: agent, ssh, or empty. */
@@ -3481,6 +3801,8 @@ export interface components {
             started_at: string | null;
             /** Format: date-time */
             finished_at: string | null;
+            /** @description Rollout wave (0 is the canary wave of a canary rollout); -1: not part of the run (skipped up front, e.g. in maintenance) */
+            wave: number;
         };
         JobStep: {
             index: number;
@@ -5445,6 +5767,206 @@ export interface components {
             object_id?: string;
             title: string;
         };
+        WorkflowInput: {
+            name: string;
+            description?: string;
+            steps: components["schemas"]["Operation"][];
+            strategy?: components["schemas"]["Strategy"];
+        };
+        Workflow: {
+            id: string;
+            name: string;
+            description: string;
+            latest_revision: number;
+            steps: components["schemas"]["Operation"][];
+            strategy: components["schemas"]["Strategy"];
+            archived: boolean;
+            created_at: number;
+            updated_at: number;
+            /** @description Schedules using it */
+            schedules: number;
+            /** @description Schedules pinned to an older revision */
+            outdated_schedules: number;
+            summary: string[];
+            revisions?: {
+                revision: number;
+                steps: number;
+                created_by: string;
+                created_at: number;
+            }[];
+        };
+        WorkflowRevision: {
+            revision: number;
+            name: string;
+            description: string;
+            steps: components["schemas"]["Operation"][];
+            strategy: components["schemas"]["Strategy"];
+            created_by: string;
+            created_at: number;
+        };
+        WorkflowTemplate: {
+            key: string;
+            name: string;
+            description: string;
+            steps: components["schemas"]["Operation"][];
+            strategy: components["schemas"]["Strategy"];
+            /** @description Fields to complete before saving */
+            fill?: string[];
+        };
+        /** @description When a schedule runs, in its time zone (no cron). Wall-clock kinds (once, daily, weekly, monthly) follow the local clock: a time that doesn't exist (spring forward) runs at the first valid time after the gap; a time that happens twice (fall back) runs once, at its first occurrence. Hourly counts elapsed hours. */
+        Recurrence: {
+            /** @enum {string} */
+            kind: "once" | "hourly" | "daily" | "weekly" | "monthly";
+            /** @description once, and hourly's first run: local "YYYY-MM-DDTHH:MM" */
+            at?: string;
+            every_hours?: number;
+            /** @description daily, weekly, monthly: local "HH:MM" */
+            time?: string;
+            weekdays?: ("sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat")[];
+            /** @description Days a month doesn't have mean its last day */
+            day_of_month?: number;
+        };
+        ScheduleConfig: {
+            recurrence: components["schemas"]["Recurrence"];
+            /** @description An explicit IANA zone, e.g. Europe/Berlin (never the controller's own) */
+            time_zone: string;
+            workflow?: {
+                id: string;
+                /** @description 0 or absent: the latest when saved */
+                revision?: number;
+            };
+            /** @description An inline job (instead of a workflow) */
+            steps?: components["schemas"]["Operation"][];
+            targets: components["schemas"]["TargetSpec"];
+            strategy?: components["schemas"]["Strategy"];
+            /**
+             * @description Recurring: skip what was missed while DROOL was down (default), or run the most recent missed occurrence once
+             * @enum {string}
+             */
+            missed_policy?: "skip" | "run_once";
+            /** @description One-time: don't start when DROOL returns more than this late (0: no limit) */
+            late_limit_minutes?: number;
+            /**
+             * @description While the previous run is active: skip (default) or queue one
+             * @enum {string}
+             */
+            overlap_policy?: "skip" | "queue_one";
+            /** @description A recurring maintenance window this job runs inside (it runs only while that window is active, and may run on the hosts it covers) */
+            window_id?: string;
+            /** @description Maintenance windows */
+            duration_minutes?: number;
+            /** @description Maintenance windows */
+            reason?: string;
+        };
+        ScheduleInput: components["schemas"]["ScheduleConfig"] & {
+            /**
+             * @default job
+             * @enum {string}
+             */
+            kind?: "job" | "maintenance";
+            name: string;
+            enabled?: boolean;
+        };
+        Schedule: {
+            id: string;
+            /** @enum {string} */
+            kind: "job" | "maintenance";
+            name: string;
+            enabled: boolean;
+            archived: boolean;
+            /** @description null: the owner's account was deleted */
+            owner: null | {
+                id: string;
+                name: string;
+            };
+            revision: number;
+            config: components["schemas"]["ScheduleConfig"];
+            when: string;
+            next_run_at?: number;
+            next_run_local?: string;
+            /** @description A DST shift of the next run */
+            next_run_note?: string;
+            /** @description Why it needs attention (empty when fine) */
+            attention?: string;
+            attention_at?: number;
+            workflow_name?: string;
+            workflow_latest?: number;
+            workflow_update_available: boolean;
+            workflow_archived?: boolean;
+            window_name?: string;
+            action: string;
+            targets_text: string;
+            last_occurrence?: components["schemas"]["Occurrence"];
+            active_job_id?: string;
+            active_maintenance_id?: string;
+            created_at: number;
+            updated_at: number;
+            updated_by?: string;
+        };
+        Occurrence: {
+            id: string;
+            schedule_id: string;
+            /** @description The schedule configuration that produced it */
+            schedule_revision: number;
+            /** @description Nominal time (unix ms) */
+            scheduled_for: number;
+            manual: boolean;
+            /** @enum {string} */
+            status: "queued" | "dispatched" | "skipped" | "missed" | "expired" | "blocked" | "failed";
+            reason?: string;
+            missed_count?: number;
+            missed_until?: number;
+            dispatched_at?: number;
+            job_id?: string;
+            job_status?: string;
+            job_counts?: {
+                [key: string]: number;
+            };
+            job_pause_reason?: string;
+            maintenance_id?: string;
+            triggered_by?: string;
+            skipped_hosts: number;
+            created_at: number;
+            outcome: string;
+        };
+        NextRun: {
+            at: number;
+            local: string;
+            note?: string;
+        };
+        SchedulePreview: {
+            kind: string;
+            when: string;
+            time_zone: string;
+            next_runs: components["schemas"]["NextRun"][];
+            targets: {
+                id: string;
+                name: string;
+                status: string;
+                warning?: string;
+                /** @description In maintenance now (a scheduled run would skip it) */
+                maintenance?: string;
+                wave: number;
+            }[];
+            waves: components["schemas"]["RolloutWave"][];
+            concurrency: number;
+            failure_threshold?: number;
+            steps: string[];
+            reboot: string;
+            verification: string[];
+            window?: {
+                id: string;
+                name: string;
+                next_start?: number;
+                next_end?: number;
+                inside: boolean;
+                note: string;
+            };
+            duration?: string;
+            policies: string[];
+            notes: string[];
+            warnings: string[];
+        };
         Maintenance: {
             id: string;
             reason: string;
@@ -5464,6 +5986,8 @@ export interface components {
             host_count: number;
             /** @description Open alerts it suppresses. */
             suppressing: number;
+            /** @description The recurring window (M13 schedule) that started it. */
+            schedule_id?: string;
         };
         MaintenanceInput: {
             host_ids?: string[];
@@ -6608,11 +7132,12 @@ export interface operations {
                     targets: components["schemas"]["TargetSpec"];
                     /** @description Optional; hosts on which no step would run are marked `skip` with a reason. */
                     steps?: components["schemas"]["Operation"][];
+                    strategy?: components["schemas"]["Strategy"];
                 };
             };
         };
         responses: {
-            /** @description Resolved hosts. */
+            /** @description Resolved hosts (and, with a strategy, the rollout's waves). */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6622,6 +7147,537 @@ export interface operations {
                 };
             };
             422: components["responses"]["Problem"];
+        };
+    };
+    listWorkflows: {
+        parameters: {
+            query?: {
+                archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workflows (at most 500). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Workflow"][];
+                    };
+                };
+            };
+        };
+    };
+    createWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    workflowTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Templates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["WorkflowTemplate"][];
+                    };
+                };
+            };
+        };
+    };
+    getWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workflow */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    updateWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowInput"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        workflow: components["schemas"]["Workflow"];
+                        changed: boolean;
+                    };
+                };
+            };
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    archiveWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archived. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    getWorkflowRevision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                rev: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One immutable revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRevision"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    runWorkflow: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision?: number;
+                    targets: components["schemas"]["TargetSpec"];
+                    strategy?: components["schemas"]["Strategy"];
+                    name?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The job. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    listSchedules: {
+        parameters: {
+            query?: {
+                kind?: "job" | "maintenance";
+                archived?: boolean;
+                owner?: "me";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Schedules. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Schedule"][];
+                    };
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    createSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Schedule"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    previewSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleInput"];
+            };
+        };
+        responses: {
+            /** @description Preview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulePreview"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    scheduleNextRuns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    recurrence: components["schemas"]["Recurrence"];
+                    time_zone: string;
+                    count?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Next runs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        when: string;
+                        runs: components["schemas"]["NextRun"][];
+                    };
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    getSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The schedule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Schedule"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    updateSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleInput"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Schedule"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    archiveSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archived. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    enableSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Enabled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Schedule"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    disableSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disabled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Schedule"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    runScheduleNow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Started. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        occurrence_id: string;
+                        status: string;
+                        job_id?: string;
+                        maintenance_id?: string;
+                    };
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    reassignSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    user_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Reassigned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Schedule"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    scheduleOccurrences: {
+        parameters: {
+            query?: {
+                /** @description Scheduled time (unix ms) of the last item seen */
+                before?: number;
+                before_id?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Occurrences. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Occurrence"][];
+                    };
+                };
+            };
+            404: components["responses"]["Problem"];
         };
     };
     simulateJob: {

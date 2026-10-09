@@ -85,6 +85,11 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
   acknowledge, with one message when they start and one when they're fixed — by email, Discord,
   Slack or webhook — and maintenance mode to keep quiet while you work. See
   [Alerts and notifications](#alerts-and-notifications).
+- **Scheduling and workflows** (on `main`): "update these machines every Sunday at 3:00, try one
+  first, then five at a time, stop if two fail, reboot only if needed, and check that Jellyfin and
+  SSH are running afterwards" — set up in the browser, without cron or playbooks. Rollouts with a
+  canary and batches, reusable workflows with revisions, recurring maintenance windows. See
+  [Scheduling and workflows](#scheduling-and-workflows).
 - **Appearance:** Light, Dark or System (follows your OS), from the header or *Settings → Account*.
 - **Accounts and audit:** local users with roles (admin, operator, auditor, viewer), API tokens,
   credentials encrypted at rest, an append-only audit log of every change.
@@ -95,16 +100,16 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
 These are planned (see `DESIGN.md`) but **do not exist yet**:
 
 - firewall support for Docker and container networks, WireGuard identity networking
-- scheduling (jobs run when you start them)
-- desired state / drift detection
+- desired state / drift detection, automatic remediation
 - templated files, directory sync, desired-state file baselines (file management and single-file
   deployment exist on `main`; see [Files](#files))
 - plugins
-- batch/canary rollouts for jobs (agent updates do have them), workflows, MFA, single sign-on, high availability, Windows
+- MFA, single sign-on, high availability, Windows
+- workflow branching, conditions or approval steps; notifications about job results
 - network security features beyond visibility: blocking by address or country, threat scores or
   reputation, packet capture, intrusion detection, alerting on network activity
-- on-call rotations, escalation and paging, incident grouping, alert rule expressions, recurring
-  maintenance windows (they come with scheduling), custom dashboards, log collection
+- on-call rotations, escalation and paging, incident grouping, alert rule expressions, custom
+  dashboards, log collection
 
 ## Supported hosts
 
@@ -841,8 +846,9 @@ During maintenance DROOL **doesn't send notifications** for those hosts — and 
 monitoring, health issues and alerts carry on (marked *Suppressed by maintenance*), and firewall
 rollback, agent recovery and host-key checks keep protecting you. A problem that starts and ends
 during maintenance is kept in the history and never sent. One still there when maintenance ends
-is sent once, after a two-minute grace period (in case it was just finishing). Recurring windows
-("every Sunday at 3:00") come with scheduling.
+is sent once, after a two-minute grace period (in case it was just finishing). For maintenance
+that happens on a timetable ("every Sunday 02:00–04:00"), create a
+[recurring window](#maintenance-windows) under **Alerts → Maintenance → Recurring windows**.
 
 ### Advanced: routing
 
@@ -929,6 +935,148 @@ and details stay around a millisecond.
 | `notifications.read` | administrators, operators, auditors | Destinations (without secrets), routes, delivery history |
 | `notifications.test` | administrators, operators | Sending a test to an existing destination (audited) |
 | `notifications.manage` | administrators | Adding, changing and deleting destinations and routes, testing unsaved ones, settings (audited) |
+
+## Scheduling and workflows
+
+A **schedule** runs something at the times you choose: a job, a saved workflow, or a maintenance
+window. Every scheduled run is an ordinary job — it appears under **Jobs → Runs** with live output
+and per-host results, and it is checked, locked, logged and cancellable exactly like a job you
+start by hand. You never write cron expressions or playbooks.
+
+### Schedule a job
+
+The quickest way: set up a job as usual (**Jobs → New job**), then choose **Schedule this job**
+instead of running it. Pick when, check the preview, save. **Save as workflow** keeps the job as a
+reusable workflow instead.
+
+Or go to **Jobs → Schedules → New schedule** and fill in three things:
+
+1. **When.** *Once*, *every few hours*, *every day*, *selected weekdays*, *every week* or *every
+   month*, at a time, in a **time zone** you choose (your browser's is suggested). DROOL never
+   uses the server's own time zone, so moving the server doesn't move your schedules. The next
+   runs are shown as you edit.
+2. **Targets.** Hosts, groups or tags. Groups and tags are looked up again at every run: a host
+   you add to the group next month takes part from then on. Each run keeps the list of hosts it
+   started with.
+3. **What to run.** Steps (the same ones as a job), or a saved workflow.
+
+The **preview** shows exactly what would happen if the schedule ran now: which hosts, in which
+order and batches, the steps, whether hosts may reboot, which checks run afterwards, how missed
+runs and overlaps are handled, and the next run times. For package updates it reminds you that
+today's preview can't promise what next week's run installs (repositories change).
+
+**Daylight saving time:** if a time doesn't exist on a given day (the clocks jump from 02:00 to
+03:00 and you chose 02:30), that day's run happens at the first valid time after the jump (03:00).
+If a time happens twice (the clocks go back), it runs once, the first time. Either way there is
+exactly one run per day. "Every few hours" counts real hours, so its clock times shift by an hour
+across a change.
+
+### Rollouts: try one first, then a few at a time
+
+For a change to several hosts, DROOL recommends a careful rollout — **one canary host first, then
+batches of five, pausing after two failures** — and applies it with one click. Under
+**Advanced** you can choose:
+
+- **Canary:** the first hosts by name, or hosts you pick. They run on their own first. If a canary
+  fails, the job **pauses** before any other host starts.
+- **Batch size:** after the canaries, hosts run in batches; a batch starts only when the previous
+  one has finished.
+- **Hosts at a time:** how many run in parallel inside a batch.
+- **Pause after failures:** after that many failures DROOL starts no more hosts, lets the running
+  ones finish, and pauses: "Paused after 2 failures. 13 hosts have not started."
+
+A paused job shows why, and waits for you: look at the failed hosts, then **Resume** (the rest
+continue; failed hosts stay failed) or **Cancel**. The order of hosts and batches is fixed when
+the run starts and shown on the job page (*Rollout progress*).
+
+### Workflows
+
+A **workflow** is a named list of steps that runs in order on each host, for example:
+
+1. System update, rebooting only if the update requires it (DROOL waits for the host to come back)
+2. Verify the host is reachable
+3. Verify services are running: `jellyfin`, `ssh`
+4. Verify health: no active Critical issues
+
+Steps are the usual job operations (commands, scripts, packages, system updates, services,
+reboots, file deployments) plus checks DROOL runs itself, with nothing executed on the host for
+them: **Wait**, **Verify host is reachable**, **Verify services are running** and **Verify health**
+(no active Critical — or no Warning or Critical — health issues). Checks use fresh monitoring data
+and keep trying for a while (a service still starting gets two minutes by default); a check that
+doesn't pass fails that host, with the reason. There are no branches or conditions: if a step
+fails, that host stops.
+
+**Templates** (*Scheduled system update*, *Safe fleet update*, *Update and verify services*) are
+starting points; once saved they're ordinary workflows you can change.
+
+**Revisions:** every change to a workflow is saved as a new revision. A schedule runs the exact
+revision you reviewed when you saved it. When the workflow changes, the schedule says *A newer
+workflow revision is available*, and keeps running its revision until you choose **Use revision
+N** and save. Past runs always show exactly what they ran.
+
+### If DROOL wasn't running
+
+- **Recurring schedules** skip runs missed while DROOL was down and continue with the next one.
+  The history records "Missed 3 runs while DROOL was not running" — one entry, not three. Under
+  *Advanced* you can choose *Run one missed occurrence when DROOL returns* instead (only the most
+  recent one; never a backlog of five daily updates in a row).
+- **One-time schedules** run when DROOL returns, marked *started late*. Optionally: *don't start
+  if more than N minutes late*.
+- A run that was in progress when DROOL stopped is marked *interrupted* like any job, and is not
+  started again automatically.
+
+### If the previous run is still going
+
+By default the new run is skipped ("Skipped: previous run still active"). Under *Advanced*,
+*Queue one run* starts it when the previous one finishes — at most one waits.
+
+**Disabling a schedule doesn't stop a run in progress, and cancelling a run doesn't disable its
+schedule.** The pages say so where it matters.
+
+### Maintenance windows
+
+**Alerts → Maintenance → Recurring windows** creates maintenance on a timetable: hosts and groups,
+when, how long, and a reason. Each window is ordinary maintenance (notifications paused, everything
+else carries on; group membership is checked live while it lasts).
+
+- **Scheduled jobs skip hosts that are in maintenance** ("skipped: maintenance active"), so a
+  nightly job doesn't run on a machine you're working on. Jobs you start by hand, and **Run now**,
+  still run.
+- A schedule can be **tied to a recurring window** (*Advanced → Maintenance window*): it then runs
+  only while that window is active and may work on the hosts the window put in maintenance. Other
+  maintenance still applies: a window doesn't let a job past someone else's maintenance.
+- If DROOL was down when a window should have started, it starts the window when it returns — with
+  the original end time — or records it as missed if the window has already ended. It never sends
+  notifications late.
+
+### Who a schedule runs as
+
+Every schedule has an **owner**: whoever created it, or whoever last edited it (editing someone
+else's schedule makes you its owner, so it never runs your changes with their rights). Scheduled runs
+use the owner's permissions, and DROOL checks them **before every run**: if the owner's account was
+disabled or deleted, or no longer has the permissions the steps need, the run is **blocked**, the
+schedule is **disabled** and marked *needs attention*, with the reason. An administrator can
+**Change owner**. The audit log records each scheduled run as "system execution via schedule X,
+owned by Y". **Run now** runs with *your* permissions, as you. Schedules never get around a host's agent
+limits, the SSH privilege settings or permission checks: a host that can't do a step fails or is
+skipped with the reason, as in any job.
+
+### History and permissions
+
+Each schedule keeps its own **History**: when a run was due, when it started, what happened
+(succeeded, failed on 2 hosts, skipped and why, missed, blocked) and a link to the job. The list
+under **Jobs → Schedules** shows the next run, the last result, the owner, and which schedules need
+attention.
+
+| Permission | Allows |
+|---|---|
+| `schedules.read`, `workflows.read` | see schedules, their history and workflows (all roles) |
+| `schedules.manage` | create schedules, change or archive your own, enable, disable, run now (operators, admins) — you also need the permissions the steps need |
+| `workflows.manage` | create and change workflows (operators, admins) |
+| `schedules.admin` | change anyone's schedule and change owners (admins) |
+
+Creating, changing, enabling, disabling, archiving, running now and changing owners are all in the
+audit log.
 
 ## Network monitoring
 
@@ -1100,8 +1248,15 @@ plain HTTP to the network by accident.
   Restoring a backup older than the hosts' agent state is detected and shown (*host ahead*), but
   full reconciliation is manual (*Adopt host state*). Agent updates need a release-signing key that
   you manage yourself.
-- **No scheduling, no rollout batches:** a job runs on its targets now, a configurable number of
-  hosts at a time, optionally stopping after N failures.
+- **Scheduling:** times have minute precision; the scheduler looks for due work every 15 seconds,
+  so a run starts within about that of its time. A recurring run that would start more than
+  5 minutes late counts as missed (one-time runs start late instead). One controller only:
+  schedules don't fail over. Job results aren't sent as
+  notifications (watch the schedule's history or the dashboard's events). A burst of thousands of
+  runs due in the same minute is handled (tested with 3 000), but they queue in the job engine,
+  which runs 20 hosts at a time.
+- **Workflows** are a list of steps — no branches, conditions, loops or approval steps. *Verify
+  services* and *Verify health* need system monitoring to be on.
 - **If the controller crashes or restarts during a job,** commands already running on hosts keep
   running; those hosts are marked *interrupted (outcome unknown)*. Check them before re-running.
 - **If a connection drops while a command runs,** the outcome is reported as unknown; only
@@ -1148,8 +1303,7 @@ plain HTTP to the network by accident.
   get an id to drop it); an SMTP server or webhook with a self-signed certificate needs its CA in
   the controller's system trust store (there is no per-destination certificate setting); no SMS,
   push apps or plugins beyond the four built-in destinations (a webhook can feed ntfy, Gotify or
-  Home Assistant); maintenance starts now (no recurring windows until scheduling); deleting a host
-  deletes its alert history.
+  Home Assistant); deleting a host deletes its alert history.
 - **Local accounts only;** no MFA or single sign-on yet.
 - **Backup and restore are command-line only** (Settings → System shows the commands).
 - The **web UI is functional, not polished**; a visual design pass comes later.
@@ -1189,10 +1343,11 @@ make test-integration   # real distributions in unprivileged containers (Docker,
 The VM tests for real systemd and reboots are opt-in and slow (software emulation, no special
 privileges): `go test -tags integration ./test/integration -run TestVM -vm debian-12 -v -timeout 4h`.
 
-Browser tests (`web/e2e`: the Firewall Designer, network monitoring, Light/Dark/System, contrast
-in both themes) run against containers with
-`go test -tags integration ./test/integration -run TestBrowser -v`. They need
+Browser tests (`web/e2e`: the Firewall Designer, network and system monitoring, alerts, health
+settings, scheduling and workflows, Light/Dark/System, contrast in both themes) run against
+containers with `go test -tags integration ./test/integration -run TestBrowser -v`. They need
 Chromium (`CHROME=/path/to/chromium`, default `/usr/bin/chromium`) and `npm ci` in `web/`.
+`DROOL_E2E_FILES=automation,contrast` runs only those files (handy while iterating).
 
 The REST contract lives in [`api/openapi.yaml`](api/openapi.yaml). A Go test fails if routes
 and the spec drift apart. The UI's TypeScript client types are generated from the spec.

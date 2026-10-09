@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -253,22 +254,247 @@ func TestNotStartedConnectionErrorRetried(t *testing.T) {
 	}
 }
 
-func TestFailureThresholdSkipsRemaining(t *testing.T) {
-	hosts := []string{"a", "b", "c", "d", "e"}
-	v := newEnv(t, Config{}, hosts...)
-	v.exec.do = func(context.Context, string, int, driver.OutputSink) (*driver.OpResult, error) {
-		return nil, model.Errorf(model.ClassExecution, false, "boom")
+func (v *env) waitPaused(job string) db.Job {
+	v.t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if j, err := v.st.R.GetJob(context.Background(), job); err == nil && j.Status == JobPaused {
+			return j
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
-	spec := cmdSpec(hosts...)
-	spec.Strategy.Concurrency = 1
+	j, _ := v.st.R.GetJob(context.Background(), job)
+	v.t.Fatalf("job %s never paused (status %s)", job, j.Status)
+	return db.Job{}
+}
+
+func TestFailureThresholdPausesThenResumesOrCancels(t *testing.T) {
+	hosts := []string{"a", "b", "c", "d", "e", "f", "g"}
 	two := 2
-	spec.Strategy.FailureThreshold = &two
-	job := v.run(spec)
-	v.wait(job)
-	counts, _ := Counts(context.Background(), v.st.R, job)
-	if counts[HostFailed] != 2 || counts[HostSkipped] != 3 {
-		t.Fatalf("counts %v", counts)
+	failing := func(v *env) {
+		v.exec.do = func(_ context.Context, host string, _ int, _ driver.OutputSink) (*driver.OpResult, error) {
+			if host == "a" || host == "b" || host == "e" {
+				return nil, model.Errorf(model.ClassExecution, false, "boom")
+			}
+			return ok()
+		}
 	}
+	t.Run("pause, explain, resume: failed hosts stay failed", func(t *testing.T) {
+		v := newEnv(t, Config{}, hosts...)
+		failing(v)
+		spec := cmdSpec(hosts...)
+		spec.Strategy.Concurrency = 1
+		spec.Strategy.FailureThreshold = &two
+		job := v.run(spec)
+		j := v.waitPaused(job)
+		if j.PauseReason != "Paused after 2 failures (the failure threshold is 2). 5 hosts have not started; resume to continue, or cancel" {
+			t.Fatalf("reason %q", j.PauseReason)
+		}
+		counts, _ := Counts(context.Background(), v.st.R, job)
+		if counts[HostFailed] != 2 || counts[HostQueued] != 5 {
+			t.Fatalf("no host starts while paused: %v", counts)
+		}
+		if err := v.e.Resume(context.Background(), job); err != nil {
+			t.Fatal(err)
+		}
+		v.wait(job)
+		counts, _ = Counts(context.Background(), v.st.R, job)
+		if counts[HostFailed] != 3 || counts[HostSucceeded] != 4 {
+			t.Fatalf("after resume (one more failure is under the renewed allowance): %v", counts)
+		}
+	})
+	t.Run("cancel instead", func(t *testing.T) {
+		v := newEnv(t, Config{}, hosts...)
+		failing(v)
+		spec := cmdSpec(hosts...)
+		spec.Strategy.Concurrency = 1
+		spec.Strategy.FailureThreshold = &two
+		job := v.run(spec)
+		v.waitPaused(job)
+		if err := v.e.Cancel(context.Background(), job); err != nil {
+			t.Fatal(err)
+		}
+		if j := v.wait(job); j.Status != JobCancelled {
+			t.Fatal(j.Status)
+		}
+		counts, _ := Counts(context.Background(), v.st.R, job)
+		if counts[HostFailed] != 2 || counts[HostCancelled] != 5 {
+			t.Fatalf("%v", counts)
+		}
+	})
+	t.Run("running hosts finish before the pause", func(t *testing.T) {
+		v := newEnv(t, Config{}, hosts...)
+		release := make(chan struct{})
+		v.exec.do = func(_ context.Context, host string, _ int, _ driver.OutputSink) (*driver.OpResult, error) {
+			if host == "a" || host == "b" {
+				return nil, model.Errorf(model.ClassExecution, false, "boom")
+			}
+			<-release
+			return ok()
+		}
+		spec := cmdSpec(hosts...)
+		spec.Strategy.Concurrency = 3
+		spec.Strategy.FailureThreshold = &two
+		job := v.run(spec)
+		// Wait for the two failures (not a fixed time: under the race
+		// detector they can take a while), then check nothing pauses
+		// while the hosts already running are still running.
+		deadline := time.Now().Add(10 * time.Second)
+		for hs := v.hosts(job); hs["a"].State != HostFailed || hs["b"].State != HostFailed; hs = v.hosts(job) {
+			if time.Now().After(deadline) {
+				t.Fatalf("a and b didn't fail: %v %v", hs["a"].State, hs["b"].State)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		time.Sleep(50 * time.Millisecond)
+		if j, _ := v.st.R.GetJob(context.Background(), job); j.Status == JobPaused {
+			t.Fatal("paused while a host was still running")
+		}
+		close(release)
+		v.waitPaused(job)
+		counts, _ := Counts(context.Background(), v.st.R, job)
+		if counts[HostFailed] != 2 || counts[HostSucceeded]+counts[HostQueued] != 5 || counts[HostQueued] < 3 {
+			t.Fatalf("running hosts finished, nothing new started: %v", counts)
+		}
+		v.e.Cancel(context.Background(), job)
+		v.wait(job)
+	})
+	t.Run("threshold on the last hosts: nothing left to pause for", func(t *testing.T) {
+		v := newEnv(t, Config{}, "a", "b")
+		v.exec.do = func(context.Context, string, int, driver.OutputSink) (*driver.OpResult, error) {
+			return nil, model.Errorf(model.ClassExecution, false, "boom")
+		}
+		spec := cmdSpec("a", "b")
+		spec.Strategy.FailureThreshold = &two
+		job := v.run(spec)
+		if j := v.wait(job); j.Status != JobCompleted {
+			t.Fatal(j.Status)
+		}
+	})
+}
+
+func TestCanaryAndBatches(t *testing.T) {
+	var hosts []string
+	for i := range 12 {
+		hosts = append(hosts, fmt.Sprintf("h%02d", i))
+	}
+	t.Run("canary first, then batches; next batch only after the current one", func(t *testing.T) {
+		v := newEnv(t, Config{}, hosts...)
+		var mu sync.Mutex
+		var order []string
+		running := map[string]bool{}
+		v.exec.do = func(_ context.Context, host string, _ int, _ driver.OutputSink) (*driver.OpResult, error) {
+			mu.Lock()
+			order = append(order, host)
+			running[host] = true
+			mu.Unlock()
+			time.Sleep(15 * time.Millisecond)
+			mu.Lock()
+			delete(running, host)
+			mu.Unlock()
+			return ok()
+		}
+		spec := cmdSpec(hosts...)
+		spec.Strategy = model.Strategy{Concurrency: 2, CanaryCount: 1, BatchSize: 5}
+		job := v.run(spec)
+		v.wait(job)
+		hs, _ := v.st.R.ListJobHosts(context.Background(), job)
+		waves := map[int64][]string{}
+		for _, h := range hs {
+			waves[h.Wave] = append(waves[h.Wave], h.HostID)
+		}
+		if len(waves[0]) != 1 || waves[0][0] != "h00" || len(waves[1]) != 5 || len(waves[2]) != 5 || len(waves[3]) != 1 {
+			t.Fatalf("waves %v", waves)
+		}
+		pos := map[string]int{}
+		for i, h := range order {
+			pos[h] = i
+		}
+		for w := int64(1); w <= 3; w++ {
+			for _, a := range waves[w-1] {
+				for _, b := range waves[w] {
+					if pos[a] > pos[b] {
+						t.Fatalf("%s (wave %d) started after %s (wave %d): %v", a, w-1, b, w, order)
+					}
+				}
+			}
+		}
+		if p := v.exec.peak.Load(); p > 2 {
+			t.Fatalf("concurrency inside a batch exceeded: %d", p)
+		}
+	})
+	t.Run("a failed canary pauses before the rest of the fleet starts", func(t *testing.T) {
+		v := newEnv(t, Config{}, hosts...)
+		v.exec.do = func(_ context.Context, host string, _ int, _ driver.OutputSink) (*driver.OpResult, error) {
+			if host == "h03" {
+				c := 1
+				return &driver.OpResult{ExitCode: &c}, model.Errorf(model.ClassExecution, false, "exited with status 1")
+			}
+			return ok()
+		}
+		spec := cmdSpec(hosts...)
+		spec.Strategy = model.Strategy{Concurrency: 5, CanaryHosts: []string{"h03"}, BatchSize: 4}
+		job := v.run(spec)
+		j := v.waitPaused(job)
+		if j.PauseReason != "Canary h03 failed: exited with status 1. 11 hosts have not started; resume to continue the rollout, or cancel" {
+			t.Fatalf("%q", j.PauseReason)
+		}
+		if calls := len(v.exec.calls); calls != 1 {
+			t.Fatalf("only the canary ran: %v", v.exec.calls)
+		}
+		if err := v.e.Resume(context.Background(), job); err != nil {
+			t.Fatal(err)
+		}
+		v.wait(job)
+		counts, _ := Counts(context.Background(), v.st.R, job)
+		if counts[HostFailed] != 1 || counts[HostSucceeded] != 11 {
+			t.Fatalf("the failed canary stays failed: %v", counts)
+		}
+	})
+	t.Run("a successful canary continues on its own", func(t *testing.T) {
+		v := newEnv(t, Config{}, hosts...)
+		spec := cmdSpec(hosts...)
+		spec.Strategy = model.Strategy{Concurrency: 10, CanaryCount: 2, BatchSize: 3}
+		job := v.run(spec)
+		if j := v.wait(job); j.Status != JobCompleted {
+			t.Fatal(j.Status)
+		}
+		counts, _ := Counts(context.Background(), v.st.R, job)
+		if counts[HostSucceeded] != 12 {
+			t.Fatalf("%v", counts)
+		}
+	})
+	t.Run("hosts left out up front", func(t *testing.T) {
+		v := newEnv(t, Config{}, hosts...)
+		var sub *Submission
+		err := v.st.InTx(context.Background(), func(q *db.Queries) error {
+			var err error
+			sub, err = v.e.Submit(context.Background(), q, cmdSpec("h00", "h01", "h02"), SubmitOptions{UserID: v.user,
+				Skip: map[string]string{"h01": "maintenance active (kernel upgrade)"}, Origin: Origin{ScheduleID: "sch_1", OccurrenceID: "occ_1"}})
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		v.e.Launch(sub.Job.ID)
+		v.wait(sub.Job.ID)
+		hs := v.hosts(sub.Job.ID)
+		if hs["h01"].State != HostSkipped || hs["h01"].Wave != -1 || hs["h01"].ErrorMessage != "skipped: maintenance active (kernel upgrade)" ||
+			hs["h00"].State != HostSucceeded || v.exec.calls["h01"] != 0 {
+			t.Fatalf("%+v", hs)
+		}
+		j, _ := v.st.R.GetJob(context.Background(), sub.Job.ID)
+		if j.ScheduleID.String != "sch_1" || j.OccurrenceID.String != "occ_1" {
+			t.Fatalf("origin %+v", j)
+		}
+		err = v.st.InTx(context.Background(), func(q *db.Queries) error {
+			_, err := v.e.Submit(context.Background(), q, cmdSpec("h00"), SubmitOptions{UserID: v.user, Skip: map[string]string{"h00": "x"}})
+			return err
+		})
+		if !errors.Is(err, ErrNothingToRun) {
+			t.Fatal(err)
+		}
+	})
 }
 
 func TestCircuitBreakerPausesAndResumes(t *testing.T) {
@@ -371,9 +597,16 @@ func TestExclusiveLockSerializesJobs(t *testing.T) {
 		return ok()
 	}
 	j1 := v.run(cmdSpec("a"))
-	time.Sleep(50 * time.Millisecond)
-	j2 := v.run(cmdSpec("a"))
+	// The first job holds the host before the second is submitted.
 	deadline := time.Now().Add(5 * time.Second)
+	for v.hosts(j1)["a"].State != HostRunning {
+		if time.Now().After(deadline) {
+			t.Fatalf("first job not running: %s", v.hosts(j1)["a"].State)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	j2 := v.run(cmdSpec("a"))
+	deadline = time.Now().Add(5 * time.Second)
 	for v.hosts(j2)["a"].State != HostWaitingLock {
 		if time.Now().After(deadline) {
 			t.Fatalf("second job not waiting for lock: %s", v.hosts(j2)["a"].State)

@@ -16,10 +16,14 @@ import (
 // collection and evaluation continue, issues and alerts stay visible
 // (marked "suppressed by maintenance"), and no safety mechanism
 // (firewall rollback, agent recovery, host-key checks, capabilities) is
-// touched. Recurring windows are M13's scheduling.
+// touched. Recurring windows (M13 schedules of kind "maintenance") start
+// and end ordinary maintenance like this.
 type Maintenance struct {
-	ID          string              `json:"id"`
-	Reason      string              `json:"reason"`
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
+	// ScheduleID: the recurring window that started it ("" when a person
+	// did).
+	ScheduleID  string              `json:"schedule_id,omitempty"`
 	CreatedBy   string              `json:"created_by"`
 	StartedAt   int64               `json:"started_at"`
 	EndsAt      *int64              `json:"ends_at,omitempty"` // nil: until ended manually
@@ -46,6 +50,9 @@ type MaintenanceInput struct {
 	DurationMinutes int      `json:"duration_minutes"` // or
 	Until           *int64   `json:"until"`            // unix ms, or
 	Indefinite      bool     `json:"indefinite"`       // until ended manually
+	// A recurring window's occurrence (M13; not settable over the API).
+	ScheduleID   string `json:"-"`
+	OccurrenceID string `json:"-"`
 }
 
 // MaxMaintenance bounds a timed window (longer: "until ended manually").
@@ -111,14 +118,19 @@ func (s *Service) StartMaintenance(ctx context.Context, in MaintenanceInput, by 
 	if n != 1 {
 		return nil, &ValidationError{"choose one of: a duration, an end time, or until ended manually"}
 	}
-	m := &Maintenance{ID: ids.New(ids.Maintenance), Reason: in.Reason, CreatedBy: by.Name, StartedAt: now.UnixMilli(), EndsAt: ends, Active: true}
+	m := &Maintenance{ID: ids.New(ids.Maintenance), Reason: in.Reason, CreatedBy: by.Name, StartedAt: now.UnixMilli(), EndsAt: ends, Active: true,
+		ScheduleID: in.ScheduleID}
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		var uid any
 		if by.UserID != "" {
 			uid = by.UserID
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO maintenance (id, reason, created_by, created_by_name, started_at, ends_at) VALUES (?, ?, ?, ?, ?, ?)`,
-			m.ID, m.Reason, uid, by.Name, m.StartedAt, m.EndsAt); err != nil {
+		var sch, occ any
+		if in.ScheduleID != "" {
+			sch, occ = in.ScheduleID, in.OccurrenceID
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO maintenance (id, reason, created_by, created_by_name, started_at, ends_at, schedule_id, occurrence_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			m.ID, m.Reason, uid, by.Name, m.StartedAt, m.EndsAt, sch, occ); err != nil {
 			return err
 		}
 		for _, x := range []struct {
@@ -417,7 +429,7 @@ func (s *Service) ListMaintenance(ctx context.Context, f MaintenanceFilter) ([]*
 
 func (s *Service) listMaintenance(ctx context.Context, qq q, where string, args []any, now int64, limit int) ([]*Maintenance, error) {
 	rows, err := qq.QueryContext(ctx, `SELECT m.id, m.reason, m.created_by_name, m.started_at, m.ends_at, m.ended_at, m.ended_by_name,
-		(SELECT count(*) FROM alerts a WHERE a.suppressed_by = m.id AND a.state IN ('active','acknowledged'))
+		(SELECT count(*) FROM alerts a WHERE a.suppressed_by = m.id AND a.state IN ('active','acknowledged')), COALESCE(m.schedule_id, '')
 		FROM maintenance m WHERE `+where+` ORDER BY m.started_at DESC, m.id DESC LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, err
@@ -426,7 +438,7 @@ func (s *Service) listMaintenance(ctx context.Context, qq q, where string, args 
 	for rows.Next() {
 		var m Maintenance
 		var ends, ended sql.NullInt64
-		if err := rows.Scan(&m.ID, &m.Reason, &m.CreatedBy, &m.StartedAt, &ends, &ended, &m.EndedBy, &m.Suppressing); err != nil {
+		if err := rows.Scan(&m.ID, &m.Reason, &m.CreatedBy, &m.StartedAt, &ends, &ended, &m.EndedBy, &m.Suppressing, &m.ScheduleID); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -463,6 +475,73 @@ func (s *Service) listMaintenance(ctx context.Context, qq q, where string, args 
 			m.ID, m.ID).Scan(&m.HostCount)
 	}
 	return out, nil
+}
+
+// Cover is one active maintenance covering a host.
+type Cover struct {
+	MaintenanceID string
+	Reason        string
+	ScheduleID    string // the recurring window that started it, if any
+}
+
+// Covers lists, for each of hosts, every active maintenance covering it
+// now (by host or live group membership).
+func (s *Service) Covers(ctx context.Context, hostIDs []string) (map[string][]Cover, error) {
+	out := map[string][]Cover{}
+	if len(hostIDs) == 0 {
+		return out, nil
+	}
+	want := map[string]bool{}
+	for _, h := range hostIDs {
+		want[h] = true
+	}
+	now := s.nowMs()
+	rows, err := s.d.Store.Reader.QueryContext(ctx, `SELECT h, id, reason, sch FROM (
+		SELECT t.target_id AS h, m.id, m.reason, COALESCE(m.schedule_id, '') AS sch, m.started_at FROM maintenance m JOIN maintenance_targets t ON t.maintenance_id = m.id
+			WHERE t.kind = 'host' AND m.ended_at IS NULL AND m.started_at <= ? AND (m.ends_at IS NULL OR m.ends_at > ?)
+		UNION
+		SELECT gm.host_id, m.id, m.reason, COALESCE(m.schedule_id, ''), m.started_at FROM maintenance m JOIN maintenance_targets t ON t.maintenance_id = m.id
+			JOIN group_members gm ON gm.group_id = t.target_id WHERE t.kind = 'group' AND m.ended_at IS NULL AND m.started_at <= ? AND (m.ends_at IS NULL OR m.ends_at > ?))
+		ORDER BY started_at, id`, now, now, now, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var h string
+		var c Cover
+		if err := rows.Scan(&h, &c.MaintenanceID, &c.Reason, &c.ScheduleID); err != nil {
+			return nil, err
+		}
+		if want[h] {
+			out[h] = append(out[h], c)
+		}
+	}
+	return out, rows.Err()
+}
+
+// ActiveWindow returns the active maintenance a recurring window started,
+// or nil.
+func (s *Service) ActiveWindow(ctx context.Context, scheduleID string) (*Maintenance, error) {
+	now := s.nowMs()
+	ms, err := s.listMaintenance(ctx, s.d.Store.Reader, `m.schedule_id = ? AND m.ended_at IS NULL AND m.started_at <= ? AND (m.ends_at IS NULL OR m.ends_at > ?)`,
+		[]any{scheduleID, now, now}, now, 1)
+	if err != nil || len(ms) == 0 {
+		return nil, err
+	}
+	return ms[0], nil
+}
+
+// RecordEvent adds an entry to the controller's event timeline (M13's
+// automation events).
+func (s *Service) RecordEvent(ctx context.Context, e Event) error {
+	if e.TS == 0 {
+		e.TS = s.nowMs()
+	}
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		s.event(ctx, tx, e)
+		return nil
+	})
 }
 
 // HostsInMaintenance maps every host covered by active maintenance to it.

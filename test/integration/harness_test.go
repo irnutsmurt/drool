@@ -175,6 +175,8 @@ func setup(m *testing.M) (int, error) {
 		// (nas-01, pi-sd, gpu-01, edge-usb, old-vm).
 		"DROOL_TEST_MONITOR_FILE=" + filepath.Join(root, "test", "integration", "testdata", "monitor.json"),
 		"DROOL_TEST_ALERT_TIMING=fast",
+		// Scheduler ticks every second; runs > 20 s late count as missed.
+		"DROOL_TEST_SCHED_TIMING=fast",
 	}}
 	netflowsFile = filepath.Join(work, "netflows.json")
 	fwControlFile = filepath.Join(work, "fw-control")

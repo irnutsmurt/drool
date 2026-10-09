@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Table } from "@/components/ui/Table";
 import { errorMessage, formatDateTime } from "@/lib/format";
 import { summarizeCounts } from "./summary";
+import { JobsTabs } from "./JobsTabs";
 
 export function JobsPage() {
   const { can } = useAuth();
@@ -22,6 +23,7 @@ export function JobsPage() {
     return (
       <>
         <PageHeader title="Jobs" />
+        <JobsTabs />
         <EmptyState title="No jobs yet" body="Run a command or script on one or more hosts." action={newButton} />
       </>
     );
@@ -29,6 +31,7 @@ export function JobsPage() {
   return (
     <>
       <PageHeader title="Jobs" actions={newButton} />
+      <JobsTabs />
       {jobs.error && <Alert>{errorMessage(jobs.error)}</Alert>}
       <Card>
         <Table<Job>
@@ -36,7 +39,16 @@ export function JobsPage() {
           rowKey={(j) => j.id}
           empty={jobs.isPending ? "Loading…" : "No jobs."}
           columns={[
-            { header: "Job", cell: (j) => <Link className="font-medium text-accent" to={`/jobs/${j.id}`}>{j.name}</Link> },
+            {
+              header: "Job",
+              cell: (j) => (
+                <>
+                  <Link className="font-medium text-accent" to={`/jobs/${j.id}`}>{j.name}</Link>
+                  {j.origin?.schedule_name && <div className="text-xs text-muted">{j.origin.manual ? "Run now" : "Scheduled"}: {j.origin.schedule_name}</div>}
+                  {!j.origin?.schedule_name && j.origin?.workflow_name && <div className="text-xs text-muted">Workflow: {j.origin.workflow_name}</div>}
+                </>
+              ),
+            },
             { header: "Status", cell: (j) => <JobStatusBadge job={j} /> },
             { header: "Hosts", cell: (j) => <span className="text-muted">{summarizeCounts(j)}</span> },
             { header: "By", cell: (j) => j.created_by },

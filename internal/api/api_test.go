@@ -34,6 +34,7 @@ import (
 	"drool/internal/mgmt"
 	"drool/internal/monitor/monsvc"
 	"drool/internal/netmon/netsvc"
+	"drool/internal/sched"
 	"drool/internal/secrets"
 	"drool/internal/sshx"
 	"drool/internal/store"
@@ -64,6 +65,7 @@ type harness struct {
 	geoDir string
 	mon    *monsvc.Service
 	alerts *alerts.Service
+	sched  *sched.Service
 	box    *secrets.Box
 }
 
@@ -131,10 +133,11 @@ func newHarness(t *testing.T) *harness {
 	alertSvc := alerts.New(alerts.Deps{Store: st, Box: box, Audit: auditW, Log: logs.App, Sender: testSender,
 		Config: alerts.Config{DisableWorkers: true, BackoffBase: time.Second, BackoffMax: 4 * time.Second, Grace: 2 * time.Minute, RatePerMinute: 6000}})
 	alertSvc.Attach(mon)
+	schedSvc := sched.New(sched.Deps{Store: st, Engine: eng, Alerts: alertSvc, Audit: auditW, Log: logs.App})
 	srv, err := New(Deps{
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng, Simulator: router, Files: router, Artifacts: arts,
-		Agents: agents, Router: router, Firewall: fw, Network: network, Monitor: mon, Alerts: alertSvc,
+		Agents: agents, Router: router, Firewall: fw, Network: network, Monitor: mon, Alerts: alertSvc, Sched: schedSvc,
 		UI: fstest.MapFS{
 			"index.html":    {Data: []byte("<!doctype html><title>ui</title>")},
 			"assets/app.js": {Data: []byte("console.log(1)")},
@@ -148,7 +151,7 @@ func newHarness(t *testing.T) *harness {
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return &harness{t: t, srv: srv, ts: ts, auth: authSvc, st: st, eng: eng, agents: agents, pki: pki, router: router,
-		fw: fw, fwSSH: fwSSH, fwFake: fwFake, net: network, geoDir: geoDir, mon: mon, alerts: alertSvc, box: box}
+		fw: fw, fwSSH: fwSSH, fwFake: fwFake, net: network, geoDir: geoDir, mon: mon, alerts: alertSvc, box: box, sched: schedSvc}
 }
 
 func (h *harness) mkUser(name, role string) {

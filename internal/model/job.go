@@ -39,6 +39,11 @@ type Operation struct {
 	FileDeploy    *FileDeployOp
 	FirewallApply *FirewallApplyOp
 	Firewall      *FirewallOp
+	// Controller-side workflow steps (M13).
+	Wait           *WaitOp
+	VerifyHost     *VerifyHostOp
+	VerifyServices *VerifyServicesOp
+	VerifyHealth   *VerifyHealthOp
 }
 
 // CommandOp runs a single shell command line.
@@ -117,6 +122,26 @@ func (o Operation) MarshalJSON() ([]byte, error) {
 			Type string `json:"type"`
 			*FirewallOp
 		}{o.Type, o.Firewall}
+	case OpWait:
+		body = struct {
+			Type string `json:"type"`
+			*WaitOp
+		}{o.Type, o.Wait}
+	case OpVerifyHost:
+		body = struct {
+			Type string `json:"type"`
+			*VerifyHostOp
+		}{o.Type, o.VerifyHost}
+	case OpVerifyServices:
+		body = struct {
+			Type string `json:"type"`
+			*VerifyServicesOp
+		}{o.Type, o.VerifyServices}
+	case OpVerifyHealth:
+		body = struct {
+			Type string `json:"type"`
+			*VerifyHealthOp
+		}{o.Type, o.VerifyHealth}
 	default:
 		return nil, fmt.Errorf("unknown operation type %q", o.Type)
 	}
@@ -171,10 +196,22 @@ func (o *Operation) UnmarshalJSON(data []byte) error {
 	case OpFirewall:
 		o.Firewall = &FirewallOp{}
 		return strict(o.Firewall)
+	case OpWait:
+		o.Wait = &WaitOp{}
+		return strict(o.Wait)
+	case OpVerifyHost:
+		o.VerifyHost = &VerifyHostOp{}
+		return strict(o.VerifyHost)
+	case OpVerifyServices:
+		o.VerifyServices = &VerifyServicesOp{}
+		return strict(o.VerifyServices)
+	case OpVerifyHealth:
+		o.VerifyHealth = &VerifyHealthOp{}
+		return strict(o.VerifyHealth)
 	case "":
 		return errors.New("operation type is required")
 	default:
-		return fmt.Errorf("unknown operation type %q (supported: command, script, package, system_update, service, reboot, file_deploy, firewall_apply)", head.Type)
+		return fmt.Errorf("unknown operation type %q (supported: command, script, package, system_update, service, reboot, file_deploy, firewall_apply, wait, verify_host, verify_services, verify_health)", head.Type)
 	}
 }
 
@@ -226,6 +263,14 @@ func (o *Operation) Normalize() error {
 		return o.FirewallApply.normalize()
 	case OpFirewall:
 		return o.Firewall.normalize()
+	case OpWait:
+		return o.Wait.normalize()
+	case OpVerifyHost:
+		return o.VerifyHost.normalize()
+	case OpVerifyServices:
+		return o.VerifyServices.normalize()
+	case OpVerifyHealth:
+		return o.VerifyHealth.normalize()
 	}
 	return fmt.Errorf("unknown operation type %q", o.Type)
 }
@@ -283,6 +328,14 @@ func (o Operation) Meta() Meta {
 		return Meta{Lock: LockExclusive, Become: true, TimeoutS: o.FirewallApply.TimeoutS}
 	case OpFirewall:
 		return Meta{Lock: LockNone, Become: true, TimeoutS: 300}
+	case OpWait:
+		return Meta{Lock: LockShared, Idempotent: true, TimeoutS: o.Wait.Seconds + 30}
+	case OpVerifyHost:
+		return Meta{Lock: LockShared, Idempotent: true, TimeoutS: o.VerifyHost.TimeoutS + 60}
+	case OpVerifyServices:
+		return Meta{Lock: LockShared, Idempotent: true, TimeoutS: o.VerifyServices.TimeoutS + 180}
+	case OpVerifyHealth:
+		return Meta{Lock: LockShared, Idempotent: true, TimeoutS: o.VerifyHealth.TimeoutS + 180}
 	}
 	return Meta{Lock: LockExclusive}
 }
@@ -343,8 +396,29 @@ func (o Operation) Summary() string {
 		return "Apply firewall policy"
 	case OpFirewall:
 		return "firewall " + o.Firewall.Kind
+	case OpWait:
+		return fmt.Sprintf("Wait %s", secondsText(o.Wait.Seconds))
+	case OpVerifyHost:
+		return "Verify the host is reachable"
+	case OpVerifyServices:
+		return "Verify services: " + strings.Join(o.VerifyServices.Services, ", ")
+	case OpVerifyHealth:
+		if o.VerifyHealth.Policy == HealthNoWarning {
+			return "Verify health: no Warning or Critical issues"
+		}
+		return "Verify health: no Critical issues"
 	}
 	return o.Type
+}
+
+func secondsText(s int) string {
+	switch {
+	case s%3600 == 0:
+		return fmt.Sprintf("%d h", s/3600)
+	case s%60 == 0:
+		return fmt.Sprintf("%d min", s/60)
+	}
+	return fmt.Sprintf("%d s", s)
 }
 
 // TargetSpec selects hosts: union of hosts, groups and tag matches, minus
@@ -361,10 +435,17 @@ func (t TargetSpec) Empty() bool {
 	return len(t.Hosts) == 0 && len(t.Groups) == 0 && len(t.Tags) == 0
 }
 
-// Strategy controls rollout.
+// Strategy controls rollout. Hosts run in waves: optional canaries first
+// (the job pauses if one fails), then batches of BatchSize hosts (0: all
+// remaining at once); a wave starts only when the previous one finished.
+// Concurrency limits hosts running at once inside a wave. Reaching
+// FailureThreshold failures stops starting hosts and pauses the job.
 type Strategy struct {
-	Concurrency      int  `json:"concurrency"`
-	FailureThreshold *int `json:"failure_threshold"`
+	Concurrency      int      `json:"concurrency"`
+	FailureThreshold *int     `json:"failure_threshold"`
+	CanaryCount      int      `json:"canary_count,omitempty"`
+	CanaryHosts      []string `json:"canary_hosts,omitempty"`
+	BatchSize        int      `json:"batch_size,omitempty"`
 }
 
 // JobSpec is the canonical job definition.
@@ -410,6 +491,36 @@ func (j *JobSpec) Normalize() error {
 	if t := j.Strategy.FailureThreshold; t != nil && *t < 1 {
 		return errors.New("failure_threshold must be at least 1")
 	}
+	return j.Strategy.normalizeRollout()
+}
+
+// NormalizeSteps validates steps without targets (workflows).
+func NormalizeSteps(steps []Operation) error {
+	if len(steps) == 0 {
+		return errors.New("add at least one step")
+	}
+	if len(steps) > MaxSteps {
+		return fmt.Errorf("at most %d steps", MaxSteps)
+	}
+	for i := range steps {
+		if steps[i].Type == OpFirewall {
+			return fmt.Errorf("step %d: %q is an internal operation", i+1, OpFirewall)
+		}
+		if err := steps[i].Normalize(); err != nil {
+			return fmt.Errorf("step %d: %w", i+1, err)
+		}
+	}
+	return nil
+}
+
+// NormalizeStrategy validates a strategy on its own (workflow defaults,
+// schedules).
+func NormalizeStrategy(s *Strategy) error {
+	j := JobSpec{Steps: []Operation{{Type: OpWait, Wait: &WaitOp{Seconds: 1}}}, Targets: TargetSpec{Hosts: []string{"x"}}, Strategy: *s}
+	if err := j.Normalize(); err != nil {
+		return err
+	}
+	*s = j.Strategy
 	return nil
 }
 

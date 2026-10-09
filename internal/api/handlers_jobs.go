@@ -31,6 +31,20 @@ type jobJSON struct {
 	FinishedAt  *string         `json:"finished_at"`
 	Counts      map[string]int  `json:"counts"`
 	HostCount   int             `json:"host_count"`
+	// Origin: the schedule or workflow that produced the job (M13).
+	Origin *jobOriginJSON `json:"origin,omitempty"`
+}
+
+type jobOriginJSON struct {
+	ScheduleID       string `json:"schedule_id,omitempty"`
+	ScheduleName     string `json:"schedule_name,omitempty"`
+	OccurrenceID     string `json:"occurrence_id,omitempty"`
+	ScheduledFor     *int64 `json:"scheduled_for,omitempty"`
+	Manual           bool   `json:"manual,omitempty"`
+	Owner            string `json:"owner,omitempty"`
+	WorkflowID       string `json:"workflow_id,omitempty"`
+	WorkflowName     string `json:"workflow_name,omitempty"`
+	WorkflowRevision int    `json:"workflow_revision,omitempty"`
 }
 
 func (s *Server) toJobJSON(r *http.Request, j db.Job) jobJSON {
@@ -43,10 +57,29 @@ func (s *Server) toJobJSON(r *http.Request, j db.Job) jobJSON {
 	if u, err := s.d.Store.R.GetUser(r.Context(), j.CreatedBy); err == nil {
 		creator = u.Username
 	}
-	return jobJSON{ID: j.ID, Name: j.Name, Status: j.Status, PauseReason: j.PauseReason,
+	out := jobJSON{ID: j.ID, Name: j.Name, Status: j.Status, PauseReason: j.PauseReason,
 		Spec: json.RawMessage(j.SpecJson), RerunOf: strPtr(j.RerunOf.String), CreatedBy: creator,
 		CreatedAt: msTime(j.CreatedAt), StartedAt: nullMsTime(j.StartedAt), FinishedAt: nullMsTime(j.FinishedAt),
 		Counts: counts, HostCount: total}
+	if j.ScheduleID.Valid || j.WorkflowID.Valid {
+		o := &jobOriginJSON{ScheduleID: j.ScheduleID.String, OccurrenceID: j.OccurrenceID.String, WorkflowID: j.WorkflowID.String,
+			WorkflowRevision: int(j.WorkflowRevision.Int64)}
+		ctx := r.Context()
+		if o.ScheduleID != "" {
+			s.d.Store.Reader.QueryRowContext(ctx, `SELECT s.name, COALESCE(u.username, '') FROM schedules s LEFT JOIN users u ON u.id = s.owner_id WHERE s.id = ?`,
+				o.ScheduleID).Scan(&o.ScheduleName, &o.Owner)
+			var at sql.NullInt64
+			var manual int
+			if s.d.Store.Reader.QueryRowContext(ctx, `SELECT scheduled_for, manual FROM schedule_occurrences WHERE id = ?`, o.OccurrenceID).Scan(&at, &manual) == nil && at.Valid {
+				o.ScheduledFor, o.Manual = &at.Int64, manual == 1
+			}
+		}
+		if o.WorkflowID != "" {
+			s.d.Store.Reader.QueryRowContext(ctx, `SELECT name FROM workflows WHERE id = ?`, o.WorkflowID).Scan(&o.WorkflowName)
+		}
+		out.Origin = o
+	}
+	return out
 }
 
 type jobHostJSON struct {
@@ -65,12 +98,15 @@ type jobHostJSON struct {
 	// says why (e.g. "SSH fallback: the agent is not connected").
 	Transport     string `json:"transport"`
 	TransportNote string `json:"transport_note"`
+	// Wave is the host's rollout wave (0 is the canary wave of a canary
+	// rollout); -1: not part of the run (skipped up front).
+	Wave int64 `json:"wave"`
 }
 
 func toJobHostJSON(h db.JobHost) jobHostJSON {
 	out := jobHostJSON{HostID: h.HostID, HostName: h.HostName, State: h.State, CurrentStep: h.CurrentStep,
 		Attempt: h.Attempt, ErrorClass: h.ErrorClass, ErrorMessage: h.ErrorMessage, ErrorHint: h.ErrorHint,
-		StartedAt: nullMsTime(h.StartedAt), FinishedAt: nullMsTime(h.FinishedAt), Transport: h.Transport, TransportNote: h.TransportNote}
+		StartedAt: nullMsTime(h.StartedAt), FinishedAt: nullMsTime(h.FinishedAt), Transport: h.Transport, TransportNote: h.TransportNote, Wave: h.Wave}
 	if h.ExitCode.Valid {
 		out.ExitCode = &h.ExitCode.Int64
 	}
@@ -92,13 +128,21 @@ func (s *Server) jobError(err error) *Problem {
 }
 
 type previewRequest struct {
-	Targets model.TargetSpec  `json:"targets"`
-	Steps   []model.Operation `json:"steps"` // optional: annotate hosts that would be skipped
+	Targets  model.TargetSpec  `json:"targets"`
+	Steps    []model.Operation `json:"steps"`    // optional: annotate hosts that would be skipped
+	Strategy *model.Strategy   `json:"strategy"` // optional: show the rollout's waves
+}
+
+type previewWave struct {
+	Index  int      `json:"index"`
+	Canary bool     `json:"canary"`
+	Hosts  []string `json:"hosts"`
 }
 
 type previewResponse struct {
 	Hosts    []engine.TargetHost `json:"hosts"`
 	Warnings []string            `json:"warnings"`
+	Waves    []previewWave       `json:"waves"`
 }
 
 func (s *Server) handlePreviewJob(w http.ResponseWriter, r *http.Request) {
@@ -130,7 +174,32 @@ func (s *Server) handlePreviewJob(w http.ResponseWriter, r *http.Request) {
 	if warnings == nil {
 		warnings = []string{}
 	}
-	writeJSON(w, http.StatusOK, previewResponse{Hosts: hosts, Warnings: warnings})
+	waves := []previewWave{}
+	if req.Strategy != nil {
+		st := *req.Strategy
+		if err := model.NormalizeStrategy(&st); err != nil {
+			writeProblem(w, r, errValidation(err.Error()))
+			return
+		}
+		var ids, names []string
+		for _, h := range hosts {
+			if !h.Skip {
+				ids, names = append(ids, h.ID), append(names, h.Name)
+			}
+		}
+		plan := model.PlanWaves(ids, st)
+		for i, wv := range plan.Waves {
+			pw := previewWave{Index: i, Canary: plan.Canary && i == 0}
+			for _, x := range wv {
+				pw.Hosts = append(pw.Hosts, names[x])
+			}
+			waves = append(waves, pw)
+		}
+		if plan.Note != "" {
+			warnings = append(warnings, plan.Note)
+		}
+	}
+	writeJSON(w, http.StatusOK, previewResponse{Hosts: hosts, Warnings: warnings, Waves: waves})
 }
 
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
@@ -156,6 +225,12 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) submitJob(w http.ResponseWriter, r *http.Request, spec model.JobSpec, rerunOf string) {
+	s.submitJobWith(w, r, spec, engine.SubmitOptions{RerunOf: rerunOf})
+}
+
+// submitJobWith submits a job with an origin (a workflow run).
+func (s *Server) submitJobWith(w http.ResponseWriter, r *http.Request, spec model.JobSpec, opt engine.SubmitOptions) {
+	rerunOf := opt.RerunOf
 	ctx := r.Context()
 	// Reboots, system updates and network restarts are refused at once
 	// (not queued behind the transaction's host lock) while a firewall
@@ -200,7 +275,8 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request, spec model.Jo
 	var sub *engine.Submission
 	err := s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
 		var err error
-		sub, err = s.d.Engine.SubmitTx(ctx, q, spec, principalFrom(ctx).UserID, key, rerunOf)
+		opt.UserID, opt.IdemKey = principalFrom(ctx).UserID, key
+		sub, err = s.d.Engine.Submit(ctx, q, spec, opt)
 		if err != nil {
 			return audit.Event{}, err
 		}
@@ -215,6 +291,9 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request, spec model.Jo
 			}
 		}
 		details := map[string]any{"name": sub.Job.Name, "steps": steps, "hosts": len(sub.Hosts), "rerun_of": rerunOf}
+		if opt.Origin.WorkflowID != "" {
+			details["workflow_id"], details["workflow_revision"] = opt.Origin.WorkflowID, opt.Origin.WorkflowRevision
+		}
 		if fileSteps != nil {
 			details["files"] = fileSteps
 		}

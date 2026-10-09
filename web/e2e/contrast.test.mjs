@@ -85,6 +85,26 @@ const alertPages = async () => {
   return a.map((x) => `/alerts/${x.id}`);
 };
 
+// M13: schedules, workflows, recurring windows and rollouts (the
+// automation tests ran first and left some of each).
+const automationPages = async () => {
+  const sch = (await api(page, "GET", "/schedules?kind=job")).body?.items ?? [];
+  const win = (await api(page, "GET", "/schedules?kind=maintenance")).body?.items ?? [];
+  const wfs = (await api(page, "GET", "/workflows")).body?.items ?? [];
+  const jobs = (await api(page, "GET", "/jobs?limit=100")).body?.items ?? [];
+  // Finished jobs only: an active job's page streams updates, so it never goes network-idle.
+  const done = jobs.filter((j) => !["pending", "running", "paused"].includes(j.status));
+  const picked = [done.find((j) => j.name === "Canary check"), done.find((j) => j.origin?.schedule_id), done.find((j) => j.name === "Check a service")];
+  return [
+    "/jobs/schedules", "/jobs/workflows", "/jobs/workflows/new", "/jobs/workflows/new?template=update_verify_services",
+    "/jobs/schedules/new", "/jobs/schedules/new?kind=maintenance",
+    ...sch.slice(0, 1).flatMap((s) => [`/jobs/schedules/${s.id}`, `/jobs/schedules/${s.id}/edit`]),
+    ...win.slice(0, 1).map((s) => `/jobs/schedules/${s.id}`),
+    ...wfs.slice(0, 1).map((w) => `/jobs/workflows/${w.id}`),
+    ...picked.filter(Boolean).map((j) => `/jobs/${j.id}`),
+  ];
+};
+
 const pages = async () => {
   const hosts = (await api(page, "GET", "/hosts")).body.items;
   const host = hosts.find((h) => h.name === "web-1") ?? hosts[0];
@@ -102,6 +122,7 @@ const pages = async () => {
     "/alerts", "/alerts?view=acknowledged", "/alerts?view=resolved", "/alerts?view=maintenance",
     ...(await alertPages()),
     "/settings/notifications", "/settings/notifications?advanced=1",
+    ...(await automationPages()),
   ];
 };
 

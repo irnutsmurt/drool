@@ -83,3 +83,13 @@ SELECT CAST(COALESCE(MAX(seq), 0) AS INTEGER) FROM job_output WHERE job_id = ? A
 
 -- name: DeleteFinishedJobsBefore :execrows
 DELETE FROM jobs WHERE finished_at IS NOT NULL AND finished_at < ?;
+
+-- name: SetJobOrigin :exec
+UPDATE jobs SET schedule_id = ?, occurrence_id = ?, workflow_id = ?, workflow_revision = ? WHERE id = ?;
+
+-- name: InsertJobHostInWave :exec
+INSERT INTO job_hosts (job_id, host_id, host_name, position, state, wave) VALUES (?, ?, ?, ?, 'queued', ?);
+
+-- name: SkipJobHost :exec
+UPDATE job_hosts SET state = 'skipped', error_class = ?, error_message = ?, finished_at = ?, wave = -1
+WHERE job_id = ? AND host_id = ?;

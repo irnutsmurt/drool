@@ -45,11 +45,13 @@ import (
 	"drool/internal/monitor/monsvc"
 	"drool/internal/netmon/netsvc"
 	"drool/internal/poller"
+	"drool/internal/sched"
 	"drool/internal/secrets"
 	"drool/internal/sshx"
 	"drool/internal/store"
 	"drool/internal/store/db"
 	"drool/internal/tlsutil"
+	"drool/internal/verify"
 	"drool/internal/version"
 	"drool/web"
 )
@@ -459,6 +461,34 @@ func cmdServe(path string, explicit bool) error {
 	alertSvc.Attach(mon)
 	go mon.Run(ctx)
 	go alertSvc.Run(ctx)
+	// Scheduling and workflows (M13): workflow verification steps run on
+	// the controller inside a host's job; the scheduler creates ordinary
+	// jobs (and ordinary maintenance) when occurrences are due.
+	eng.SetLocal(verify.New(verify.Deps{Store: st, Monitor: mon, Log: logs.Job,
+		AgentConnected: func(ctx context.Context, h db.Host) bool { return router.Decide(ctx, h).UseAgent },
+		Probe: func(ctx context.Context, hostID string) verify.Reachability {
+			out, err := inv.Probe(ctx, hostID)
+			if err != nil {
+				return verify.Reachability{Detail: err.Error()}
+			}
+			return verify.Reachability{OK: out.Status == inventory.StatusReady || out.Status == inventory.StatusUnsupported, Detail: out.Detail}
+		},
+		PollSSH: poll.Monitor}))
+	eng.OnPause(func(jobID, kind, reason string) {
+		if kind == engine.PauseBreaker {
+			return // shown on the job page; not a rollout decision
+		}
+		_ = alertSvc.RecordEvent(context.Background(), alerts.Event{Kind: "job.paused", Severity: "warning", ObjectType: "job", ObjectID: jobID,
+			Title: "Rollout paused: " + reason})
+	})
+	schedTuning := sched.Tuning{}
+	if os.Getenv("DROOL_TEST_SCHED_TIMING") == "fast" {
+		log.Warn("TEST MODE: scheduler checks every second and treats runs more than 20 s late as missed; never use this in production")
+		schedTuning.Tick = time.Second
+		schedTuning.MisfireGrace = 20 * time.Second
+	}
+	scheduler := sched.New(sched.Deps{Store: st, Engine: eng, Alerts: alertSvc, Audit: auditW, Log: logs.App.With("component", "scheduler"), Tuning: schedTuning})
+	go scheduler.Run(ctx)
 	go artifactGC(ctx, arts, log)
 
 	srv, err := api.New(api.Deps{
@@ -467,6 +497,7 @@ func cmdServe(path string, explicit bool) error {
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
 		Poller: poll, StaleAfter: pollCfg.StaleAfter(), Simulator: router, Files: router, Artifacts: arts,
 		Agents: agents, Router: router, WebPin: webPin(tlsRes), Firewall: fw, Network: network, Monitor: mon, Alerts: alertSvc,
+		Sched: scheduler,
 	})
 	if err != nil {
 		return err

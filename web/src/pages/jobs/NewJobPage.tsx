@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type Schemas } from "@/api/client";
 import { jk, useGroups, useHosts } from "@/api/queries";
+import { useAuth } from "@/auth/AuthContext";
+import { RolloutAdvice, RolloutFields, WavesList, defaultRollout, recommendedRollout, strategyFrom, type RolloutState } from "@/components/automation/Rollout";
 import { HostStatusBadge } from "@/components/hosts/HostStatusBadge";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -40,8 +42,9 @@ export function NewJobPage() {
   const [hostIds, setHostIds] = useState<string[]>(() => params.get("hosts")?.split(",").filter(Boolean) ?? []);
   const [groupIds, setGroupIds] = useState<string[]>([]);
   const [tags, setTags] = useState("");
-  const [concurrency, setConcurrency] = useState("10");
-  const [threshold, setThreshold] = useState("");
+  const [rollout, setRollout] = useState<RolloutState>(defaultRollout);
+  const strategy = useMemo(() => strategyFrom(rollout), [rollout]);
+  const { can } = useAuth();
   const [filter, setFilter] = useState("");
   const [onlyOn, setOnlyOn] = useState<("debian" | "redhat")[]>([]);
   const [perOS, setPerOS] = useState(false);
@@ -98,11 +101,12 @@ export function NewJobPage() {
   }[kind];
 
   const preview = useQuery({
-    queryKey: ["jobs", "preview", targets, conditional && stepReady ? step : null],
+    queryKey: ["jobs", "preview", targets, conditional && stepReady ? step : null, strategy],
     queryFn: () => unwrap(api.POST("/jobs/preview", {
-      body: { targets, steps: conditional && stepReady ? [step] : undefined },
+      body: { targets, steps: conditional && stepReady ? [step] : undefined, strategy },
     })),
     enabled: hasTargets,
+    placeholderData: (prev) => prev,
   });
 
   // Idempotency key per form instance: a double submit can't create two jobs.
@@ -111,8 +115,7 @@ export function NewJobPage() {
     mutationFn: () => unwrap(api.POST("/jobs", {
       params: { header: { "Idempotency-Key": idemKey } },
       body: {
-        name: name || undefined, steps: [step], targets,
-        strategy: { concurrency: Number(concurrency) || 10, failure_threshold: threshold ? Number(threshold) : null },
+        name: name || undefined, steps: [step], targets, strategy,
       },
     })),
     onSuccess: (j) => {
@@ -251,19 +254,35 @@ export function NewJobPage() {
           </Card>
 
           <Card title="Rollout">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Hosts at a time">
-                <Input type="number" min={1} max={100} value={concurrency} onChange={(e) => setConcurrency(e.target.value)} />
-              </Field>
-              <Field label="Stop after failures" hint="Leave empty to run on every host regardless.">
-                <Input type="number" min={1} value={threshold} onChange={(e) => setThreshold(e.target.value)} />
-              </Field>
+            <div className="space-y-4">
+              <RolloutAdvice hosts={count} steps={[step]} strategy={strategy} apply={() => setRollout(recommendedRollout)} />
+              <RolloutFields v={rollout} set={setRollout} hosts={(preview.data?.hosts ?? []).filter((h) => !h.skip).map((h) => ({ id: h.id, name: h.name }))} />
+              {(preview.data?.waves.length ?? 0) > 1 && (
+                <div>
+                  <div className="mb-1 text-sm font-medium">Waves</div>
+                  <WavesList waves={preview.data!.waves} />
+                </div>
+              )}
             </div>
           </Card>
           {submit.error && <Alert>{errorMessage(submit.error)}</Alert>}
-          <Button type="submit" variant={kind === "reboot" ? "danger" : "primary"} disabled={!count || !stepReady || submit.isPending}>
-            {!count ? "Select targets" : `${kind === "reboot" ? "Reboot" : "Run on"} ${count} host${count === 1 ? "" : "s"}`}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="submit" variant={kind === "reboot" ? "danger" : "primary"} disabled={!count || !stepReady || submit.isPending}>
+              {!count ? "Select targets" : `${kind === "reboot" ? "Reboot" : "Run on"} ${count} host${count === 1 ? "" : "s"}`}
+            </Button>
+            {can("schedules.manage") && (
+              <Button type="button" disabled={!stepReady || !hasTargets}
+                onClick={() => navigate("/jobs/schedules/new", { state: { name, steps: [step], targets, strategy } })}>
+                Schedule this job
+              </Button>
+            )}
+            {can("workflows.manage") && (
+              <Button type="button" variant="ghost" disabled={!stepReady}
+                onClick={() => navigate("/jobs/workflows/new", { state: { name, steps: [step], strategy } })}>
+                Save as workflow
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="space-y-4">

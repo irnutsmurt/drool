@@ -1,7 +1,7 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.9**
-Status: Draft · 2026-10-08 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
+**Design Document v0.3.10**
+Status: Draft · 2026-10-09 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
 > DROOL is a web-first platform for managing, automating, monitoring, and eventually segmenting Linux systems through SSH or an agent.
@@ -13,6 +13,22 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.9 → v0.3.10 (M13: scheduling, fleet automation and workflows)
+
+"Update these machines every Sunday at 3:00. Try one first, then five at a time. Stop if two fail. Reboot only when necessary. Make sure Jellyfin and SSH are healthy afterwards" — without YAML, cron or playbooks, and without making the advanced controls a prerequisite:
+
+| # | As built | Section |
+|---|---|---|
+| 1 | **Schedules decide when; the job engine decides how.** Every occurrence creates an ordinary job (or ordinary maintenance); nothing executes outside the engine | §26 |
+| 2 | **Patterns, not cron**, each with an explicit time zone and deterministic daylight-saving rules: a skipped local time runs at the first valid time after the gap; a repeated one runs once | §26.1 |
+| 3 | **Durable occurrences**, unique per schedule and time, created in the same transaction as their job: a restart never creates a second job; interrupted runs are never re-run | §26.2 |
+| 4 | **No backlog replay:** missed recurring runs are skipped (or one is run), one-time runs start late (or expire); overlap skips (or queues one) | §26.3 |
+| 5 | **Selectors resolved at every run**, snapshotted in each job | §26.4 |
+| 6 | **The owner's authority, re-checked before every run;** a lost permission blocks the run and disables the schedule visibly | §26.5 |
+| 7 | **Rollouts in the engine:** canary wave first (a failure pauses before the rest), deterministic batches, a failure threshold that pauses with an explanation | §12.4 |
+| 8 | **Workflows:** ordered typed steps with immutable revisions that schedules pin; controller-side checks (wait, host reachable, services running, no Critical health issues) on fresh data; templates | §12.6 |
+| 9 | **Recurring maintenance windows** as schedules of ordinary maintenance; scheduled runs skip hosts in unrelated maintenance | §12.13, §26.6 |
 
 ### v0.3.8 → v0.3.9 (M12.1: monitoring health overrides)
 
@@ -751,21 +767,25 @@ Semantic operations: install, remove, upgrade, upgrade system, security updates 
 
 ### 12.4 Bulk execution
 
-Targets: hosts, groups, or dynamic queries. Strategy: batch size, concurrency, failure threshold, canary hosts, reboot handling, verification steps, maintenance windows.
+Targets: hosts, groups, or dynamic queries. Strategy: canary hosts, batch size, concurrency, failure threshold; reboot handling and verification are steps (§12.6); maintenance windows and schedules decide when (§26).
 
 ```yaml
 job:
   name: production-updates
-  targets: { group: production }
-  strategy: { canary: 1, batch_size: 5, failure_threshold: 2 }
-  actions:
-    - update_packages
-    - reboot: { if_required: true }
-    - wait_for_host
-    - verify_services
+  targets: { groups: [production] }
+  strategy: { canary_count: 1, batch_size: 5, concurrency: 5, failure_threshold: 2 }
+  steps:
+    - system_update: { reboot: if_required }   # the verified reboot: waits for the host to return
+    - verify_host: {}
+    - verify_services: { services: [nginx, ssh] }
+    - verify_health: { policy: no_critical }
 ```
 
-Canary: if the canary fails, the rest of the job stops.
+A rollout is a fixed sequence of **waves**, decided when the job is created in the targets' deterministic order (by name): the canaries (explicit hosts, or the first *N*), then batches of `batch_size`. Only one wave runs at a time; the next starts when the current one has finished. `concurrency` limits hosts in parallel inside a wave.
+
+- **Canary:** if a canary fails, the job **pauses** before any other host starts. The operator inspects it, then resumes or cancels.
+- **Failure threshold:** reaching it stops starting hosts, lets running hosts finish, and pauses the job with an explanation ("Paused after 2 failures. 13 hosts have not started"). Resuming continues with a renewed allowance; failed hosts stay failed.
+- A preview shows the exact waves before anything runs. For several hosts and changing steps, the UI recommends one canary, batches of five and a threshold of two.
 
 ### 12.5 Commands and scripts
 
@@ -784,7 +804,22 @@ OS-specific sections (`run: { debian: ..., redhat: ... }`) are supported. Script
 
 ### 12.6 Workflows
 
-Reusable, ordered steps (check disk → update → reboot if required → wait → verify network/services → health check → next batch).
+A workflow is a named, **ordered list of typed steps** with a default rollout. It is not a programming language: no graph, no branches, no conditions beyond what a step already supports (`when: os_family`), no loops, no approvals. Each host runs the steps in order; a failed step stops that host. A workflow produces an ordinary job specification, so everything in §12 applies unchanged.
+
+Steps are the engine's typed operations plus checks the controller runs itself (nothing executes on the host for them, so they need no shell and no extra privilege):
+
+| Step | Passes when |
+|---|---|
+| `wait` | the given time has passed |
+| `verify_host` | the host answers on its management path (its agent is connected, or an SSH connection test passes), retried until a timeout |
+| `verify_services` | every named systemd unit is active, from monitoring data collected **after the check began** |
+| `verify_health` | the host has no active health issue of a policy's severity: `no_critical` or `no_warning` (a policy name, not an expression) |
+
+Reboots reuse the verified reboot (a new boot id with the trusted key). Nothing reboots because a schedule exists: a reboot happens only where a step asks for it.
+
+**Revisions.** Every change to a workflow is an immutable revision. A schedule pins the revision that was reviewed when it was saved; a newer revision is shown ("A newer workflow revision is available") and adopted only by an explicit edit. Jobs keep the exact specification they ran.
+
+**Templates** are recommended starting points (*Scheduled system update*; *Safe fleet update*: one canary, batches of five, pause after two failures; *Update and verify services*). A saved template is an ordinary workflow.
 
 ### 12.7 Canonical schema, not arbitrary YAML
 
@@ -822,7 +857,9 @@ No lock, shared lock or exclusive lock per operation. Conflicting jobs queue.
 
 ### 12.13 Maintenance mode
 
-Per host or group: suppresses alert *notifications* (alerts still open, close and show "suppressed by maintenance"), records who started it and why, and expires automatically or runs until ended. It never disables safety mechanisms: monitoring, health evaluation, firewall rollback, agent recovery, host-key checks and capability enforcement are unaffected. An alert still active when maintenance ends is notified once, after a short grace period; one that began and ended inside maintenance is kept in history and never notified. Pausing scheduled automation and auto-remediation joins this when scheduling arrives (§26).
+Per host or group: suppresses alert *notifications* (alerts still open, close and show "suppressed by maintenance"), records who started it and why, and expires automatically or runs until ended. It never disables safety mechanisms: monitoring, health evaluation, firewall rollback, agent recovery, host-key checks and capability enforcement are unaffected. An alert still active when maintenance ends is notified once, after a short grace period; one that began and ended inside maintenance is kept in history and never notified.
+
+Maintenance also holds back **scheduled** automation: a scheduled run skips hosts in maintenance ("skipped: maintenance active"), unless the schedule is associated with that very window (§26). Manual jobs are still possible. Recurring windows are schedules of kind maintenance (§26.6).
 
 ---
 
@@ -1244,7 +1281,43 @@ Plugins                          →  gRPC/protobuf (local process boundary)
 
 ## 26. Scheduling
 
-Immediate, one-time, recurring, or within maintenance windows.
+**The schedule answers when, and under what rollout strategy. The job engine answers how it executes.** A schedule never executes anything itself: each due occurrence creates an ordinary job through the engine (locks, typed operations, retries, capabilities, management path, output, cancellation, per-host results, audit), or ordinary maintenance (§12.13). Simple by default, powerful by choice: a schedule is *when*, *targets* and *what*; everything else has a safe default under *Advanced*.
+
+### 26.1 When
+
+Run now, once at a future time, or recurring: every *N* hours, every day, on selected weekdays, every week, every month (a day 1–31; days a month doesn't have mean its last day). There are no cron expressions. Every schedule names an explicit IANA time zone; the controller's own zone is never assumed.
+
+**Daylight saving time** (wall-clock patterns): a local time that doesn't exist that day runs at the first valid local time after the gap (02:30 on a 02:00→03:00 day runs at 03:00); a local time that happens twice runs once, at its first occurrence. There is exactly one occurrence per local date. Every-*N*-hours counts elapsed time, so its wall-clock times shift across a change.
+
+### 26.2 Occurrences
+
+Each due time is a durable **occurrence**: nominal time, when it was dispatched, the job (or maintenance) it created, and its status — dispatched, queued, skipped, missed, expired, blocked or failed — with the reason. An occurrence is unique per (schedule, nominal time), and it is created in the same transaction as its job: a restart at any point can never produce a second job, and an occurrence never exists without the job it claims. A job interrupted by a restart stays interrupted (§12.8); it is never re-run automatically.
+
+### 26.3 Missed runs and overlap
+
+DROOL never replays a backlog. Recurring schedules skip occurrences missed while the controller was down (recorded once, with the count) and continue; optionally they run the most recent missed occurrence once when DROOL returns. One-time schedules run when DROOL returns, optionally not if more than a given time late (recorded as expired). If the previous run is still active, the new occurrence is skipped ("previous run still active") by default; optionally one occurrence is queued and starts when the previous run finishes — never more than one.
+
+### 26.4 Targets
+
+Schedules store selectors (hosts, groups, tags) and resolve them at every occurrence; each job snapshots the hosts it started with and is never retargeted. A host added to a group later takes part in later runs. The UI shows the currently resolved targets and explains this.
+
+### 26.5 Ownership
+
+A schedule runs with its **owner's** authority, re-checked before every occurrence: the owner exists and is enabled and still holds every permission running it needs (jobs.execute and each step's own permissions; maintenance.manage for windows). Otherwise nothing executes: the occurrence is **blocked**, the schedule is disabled and marked as needing attention, with the reason, and an event is recorded. Whoever edits a schedule becomes its owner (a schedule never runs one person's edits with another's rights); administrators can reassign ownership. Audit records "system execution via schedule X, owned by Y". Schedules never bypass the agent's capability ceiling, the SSH privilege model, RBAC or validation, and never change an agent's ceiling: a host lacking a capability fails or is skipped with the reason, as in any job.
+
+### 26.6 Maintenance windows
+
+Recurring maintenance windows are schedules of kind *maintenance*: hosts and groups, recurrence, time zone, duration and reason. Each occurrence starts ordinary maintenance (§12.13) that ends at the window's end; group membership is live. A window cannot overlap itself. After a controller outage, a window still in progress is started for its remaining time; one that has entirely elapsed is recorded as missed and never started; no notification is ever sent late.
+
+A job schedule may be associated with a recurring window. It then runs only while that window is active and may run on the hosts that window holds in maintenance. It never bypasses any other maintenance: a host covered by an unrelated window is skipped.
+
+### 26.7 Editing, cancelling, disabling
+
+Edits apply to future occurrences only; created occurrences, running jobs and history keep exactly what they had, with the schedule revision that produced them. Schedules can be enabled, disabled (history kept), run now (with the caller's permissions, as the caller) and archived. Disabling a schedule doesn't cancel a running job, and cancelling a job doesn't disable its schedule.
+
+### 26.8 Events and notifications
+
+Events: an owner lost permission (schedule disabled), occurrences missed, a canary or threshold pause, recurring maintenance started and ended — never per host or per tick. Job results are not routed through alert notifications (§11.4); alerts remain about the health of hosts.
 
 ---
 
@@ -1371,10 +1444,10 @@ M8 delivered the firewall core of this stage for plain-nftables hosts: policies,
 - Controller backup/restore with reconciliation
 
 ### 1.0
-Beta plus hardening, scheduling, batch/canary updates, file deployment with diffs, MFA, hash-chained audit with remote sink. **Firewalling ships before 1.0.** Without it we're competing directly with Semaphore/Rundeck without our main differentiator.
+Beta plus hardening, MFA, hash-chained audit with remote sink. Scheduling, batch/canary rollouts and workflows were delivered in M13 (§12.4, §12.6, §26); file deployment with diffs in M6. **Firewalling ships before 1.0.** Without it we're competing directly with Semaphore/Rundeck without our main differentiator.
 
 ### Later
-Desired-state baselines, workflows UI, dynamic groups, maintenance windows, network visualization, Docker discovery/segmentation/exposure audit, Dockhand, learning mode, Explain Host, dependency awareness, plugin ecosystem (Arr, Jellyfin, Proxmox, Caddy, Tailscale, WireGuard, Syncthing, ZFS), WireGuard identity backend.
+Desired-state baselines, dynamic groups, network visualization, Docker discovery/segmentation/exposure audit, Dockhand, learning mode, Explain Host, dependency awareness, plugin ecosystem (Arr, Jellyfin, Proxmox, Caddy, Tailscale, WireGuard, Syncthing, ZFS), WireGuard identity backend.
 
 ---
 
@@ -1432,6 +1505,7 @@ Not "Ansible with a web UI." Instead:
 15. The core manages Linux infrastructure. Plugins understand applications.
 16. Distributed updates are never assumed to be atomic fleet-wide. Convergence is tracked and visible.
 17. Local audit is not evidence after full controller compromise. Integrity comes from chaining and off-box sinks.
+18. **Schedules decide when; the job engine decides how.** Every scheduled run is an ordinary job (or ordinary maintenance), created in the same transaction as its durable, unique occurrence, under its owner's re-checked authority.
 
 ---
 

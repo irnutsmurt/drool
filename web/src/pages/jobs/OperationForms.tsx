@@ -48,7 +48,7 @@ export const serviceActions: { value: ServiceAction; label: string; state?: "run
 
 export const packageNames = (s: string) => s.split(/[\s,]+/).filter(Boolean);
 
-export function PackageForm({ v, set }: { v: PackageState; set: (v: PackageState) => void }) {
+export function PackageForm({ v, set, autoFocus = true }: { v: PackageState; set: (v: PackageState) => void; autoFocus?: boolean }) {
   return (
     <div className="grid gap-4 sm:grid-cols-[12rem_1fr]">
       <Field label="Action">
@@ -59,7 +59,7 @@ export function PackageForm({ v, set }: { v: PackageState; set: (v: PackageState
         </Select>
       </Field>
       <Field label="Packages" hint="Separate names with spaces. Already-installed (or already-removed) packages are left alone.">
-        <Input className="font-mono" value={v.names} required autoFocus placeholder="nginx curl"
+        <Input className="font-mono" value={v.names} required autoFocus={autoFocus} placeholder="nginx curl"
           onChange={(e) => set({ ...v, names: e.target.value, allowRemovals: false })} />
       </Field>
     </div>
@@ -72,14 +72,15 @@ const modeHelp: Record<SystemUpdateState["mode"], string> = {
   security: "Only security updates (dnf upgrade --security). RHEL family and Fedora only; Debian/Ubuntu hosts fail with \"not supported\".",
 };
 
-export function SystemUpdateForm({ v, set }: { v: SystemUpdateState; set: (v: SystemUpdateState) => void }) {
+/** group names the mode radios (several forms can share a page). */
+export function SystemUpdateForm({ v, set, group = "mode" }: { v: SystemUpdateState; set: (v: SystemUpdateState) => void; group?: string }) {
   return (
     <div className="space-y-4">
       <fieldset className="space-y-2">
         <legend className="mb-1 text-sm font-medium">Mode</legend>
         {([["upgrade", "Upgrade"], ["full_upgrade", "Full upgrade"], ["security", "Security updates only"]] as const).map(([m, label]) => (
           <label key={m} className="flex items-start gap-2 text-sm">
-            <input type="radio" name="mode" className="mt-1" checked={v.mode === m} onChange={() => set({ ...v, mode: m, allowRemovals: false })} />
+            <input type="radio" name={group} className="mt-1" checked={v.mode === m} onChange={() => set({ ...v, mode: m, allowRemovals: false })} />
             <span>{label}<span className="block text-xs text-muted">{modeHelp[m]}</span></span>
           </label>
         ))}
@@ -103,11 +104,11 @@ export function SystemUpdateForm({ v, set }: { v: SystemUpdateState; set: (v: Sy
   );
 }
 
-export function ServiceForm({ v, set, suggestions }: { v: ServiceState; set: (v: ServiceState) => void; suggestions?: string[] }) {
+export function ServiceForm({ v, set, suggestions, autoFocus = true }: { v: ServiceState; set: (v: ServiceState) => void; suggestions?: string[]; autoFocus?: boolean }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <Field label="Service" hint="systemd unit name; .service is added if omitted.">
-        <Input className="font-mono" value={v.name} required autoFocus placeholder="nginx" list="drool-services"
+        <Input className="font-mono" value={v.name} required autoFocus={autoFocus} placeholder="nginx" list={suggestions?.length ? "drool-services" : undefined}
           onChange={(e) => set({ ...v, name: e.target.value })} />
         {suggestions && suggestions.length > 0 && (
           <datalist id="drool-services">{suggestions.map((s) => <option key={s} value={s} />)}</datalist>
@@ -202,7 +203,7 @@ export function SimulatePanel({ targets, step, allow, setAllow, hasTargets }: {
   );
 }
 
-function SimHostRow({ h }: { h: SimHost }) {
+export function SimHostRow({ h }: { h: SimHost }) {
   const p = h.plan;
   const counts = p && [
     p.upgrade.length && `${p.upgrade.length} to upgrade`,

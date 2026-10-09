@@ -14,6 +14,7 @@ import (
 	"drool/internal/model"
 	"drool/internal/monitor/monsvc"
 	"drool/internal/netmon/netsvc"
+	"drool/internal/sched"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -61,6 +62,7 @@ type Deps struct {
 	Network   *netsvc.Service   // network monitoring (M10); nil disables its routes
 	Monitor   *monsvc.Service   // system monitoring (M11); nil disables its routes
 	Alerts    *alerts.Service   // alerts, maintenance, notifications (M12); nil disables their routes
+	Sched     *sched.Service    // schedules and workflows (M13); nil disables their routes
 	Artifacts *artifacts.Store  // deployment artifacts
 	// StaleAfter is how old a status check may be before it is shown as stale.
 	StaleAfter time.Duration
@@ -187,6 +189,27 @@ func (s *Server) routes() []route {
 		{method: "POST", path: APIPrefix + "/jobs/{id}/cancel", auth: authed, perm: auth.PermJobsExecute, h: s.handleCancelJob},
 		{method: "POST", path: APIPrefix + "/jobs/{id}/resume", auth: authed, perm: auth.PermJobsExecute, h: s.handleResumeJob},
 		{method: "POST", path: APIPrefix + "/jobs/{id}/rerun", auth: authed, perm: auth.PermJobsExecute, h: s.handleRerunJob},
+		// Workflows and schedules (M13).
+		{method: "GET", path: APIPrefix + "/workflows", auth: authed, perm: auth.PermWorkflowsRead, h: s.handleListWorkflows},
+		{method: "POST", path: APIPrefix + "/workflows", auth: authed, perm: auth.PermWorkflowsManage, h: s.handleCreateWorkflow},
+		{method: "GET", path: APIPrefix + "/workflows/templates", auth: authed, perm: auth.PermWorkflowsRead, h: s.handleWorkflowTemplates},
+		{method: "GET", path: APIPrefix + "/workflows/{id}", auth: authed, perm: auth.PermWorkflowsRead, h: s.handleGetWorkflow},
+		{method: "PUT", path: APIPrefix + "/workflows/{id}", auth: authed, perm: auth.PermWorkflowsManage, h: s.handleUpdateWorkflow},
+		{method: "DELETE", path: APIPrefix + "/workflows/{id}", auth: authed, perm: auth.PermWorkflowsManage, h: s.handleArchiveWorkflow},
+		{method: "GET", path: APIPrefix + "/workflows/{id}/revisions/{rev}", auth: authed, perm: auth.PermWorkflowsRead, h: s.handleWorkflowRevision},
+		{method: "POST", path: APIPrefix + "/workflows/{id}/run", auth: authed, perm: auth.PermJobsExecute, h: s.handleRunWorkflow},
+		{method: "GET", path: APIPrefix + "/schedules", auth: authed, perm: auth.PermSchedulesRead, h: s.handleListSchedules},
+		{method: "POST", path: APIPrefix + "/schedules", auth: authed, perm: auth.PermSchedulesManage, h: s.handleCreateSchedule},
+		{method: "POST", path: APIPrefix + "/schedules/preview", auth: authed, perm: auth.PermSchedulesRead, h: s.handlePreviewSchedule},
+		{method: "POST", path: APIPrefix + "/schedules/next-runs", auth: authed, perm: auth.PermSchedulesRead, h: s.handleNextRuns},
+		{method: "GET", path: APIPrefix + "/schedules/{id}", auth: authed, perm: auth.PermSchedulesRead, h: s.handleGetSchedule},
+		{method: "PUT", path: APIPrefix + "/schedules/{id}", auth: authed, perm: auth.PermSchedulesManage, h: s.handleUpdateSchedule},
+		{method: "DELETE", path: APIPrefix + "/schedules/{id}", auth: authed, perm: auth.PermSchedulesManage, h: s.handleArchiveSchedule},
+		{method: "POST", path: APIPrefix + "/schedules/{id}/enable", auth: authed, perm: auth.PermSchedulesManage, h: s.handleEnableSchedule},
+		{method: "POST", path: APIPrefix + "/schedules/{id}/disable", auth: authed, perm: auth.PermSchedulesManage, h: s.handleDisableSchedule},
+		{method: "POST", path: APIPrefix + "/schedules/{id}/run-now", auth: authed, perm: auth.PermSchedulesManage, h: s.handleRunScheduleNow},
+		{method: "POST", path: APIPrefix + "/schedules/{id}/owner", auth: authed, perm: auth.PermSchedulesAdmin, h: s.handleReassignSchedule},
+		{method: "GET", path: APIPrefix + "/schedules/{id}/occurrences", auth: authed, perm: auth.PermSchedulesRead, h: s.handleScheduleOccurrences},
 
 		// Agents (M7).
 		{method: "GET", path: APIPrefix + "/agents", auth: authed, perm: auth.PermAgentsRead, h: s.handleListAgents},

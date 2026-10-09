@@ -79,6 +79,10 @@ func TestGCKeepsReferenced(t *testing.T) {
 	inJob, _ := s.Put(ctx, strings.NewReader("queued job\n"), "b", "")
 	gone, _ := s.Put(ctx, strings.NewReader("forgotten\n"), "c", "")
 	fresh, _ := s.Put(ctx, strings.NewReader("just uploaded\n"), "d", "")
+	// A workflow revision or a schedule (that hasn't run yet) keeps its
+	// file for next week's run.
+	inWorkflow, _ := s.Put(ctx, strings.NewReader("workflow step\n"), "e", "")
+	inSchedule, _ := s.Put(ctx, strings.NewReader("scheduled job\n"), "f", "")
 	for _, stmt := range []string{
 		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at, password_changed_at) VALUES ('u','u','x','admin',0,0,0)`,
 		`INSERT INTO hosts (id, name, connect_address, ssh_user, created_at, updated_at) VALUES ('h','h','x','x',0,0)`,
@@ -86,20 +90,26 @@ func TestGCKeepsReferenced(t *testing.T) {
 		 VALUES ('d1','h','/etc/x','deploy','installed',0,'` + kept.SHA256 + `','` + kept.SHA256 + `',0)`,
 		`INSERT INTO jobs (id, name, spec_json, spec_version, status, created_by, created_at)
 		 VALUES ('j1','j','{"steps":[{"type":"file_deploy","artifact":"` + inJob.SHA256 + `"}]}',1,'pending','u',0)`,
+		`INSERT INTO workflows (id, name, latest_revision, created_at, updated_at) VALUES ('wf','w',1,0,0)`,
+		`INSERT INTO workflow_revisions (workflow_id, revision, name, steps_json, strategy_json, created_at)
+		 VALUES ('wf',1,'w','[{"type":"file_deploy","artifact":"` + inWorkflow.SHA256 + `"}]','{}',0)`,
+		`INSERT INTO schedules (id, kind, name, config_json, created_at, updated_at)
+		 VALUES ('s','job','s','{"steps":[{"type":"file_deploy","artifact":"` + inSchedule.SHA256 + `"}]}',0,0)`,
 	} {
 		if _, err := st.Writer.Exec(stmt); err != nil {
 			t.Fatal(err)
 		}
 	}
 	old := time.Now().Add(-48 * time.Hour).UnixMilli()
-	for _, a := range []string{kept.SHA256, inJob.SHA256, gone.SHA256} {
+	for _, a := range []string{kept.SHA256, inJob.SHA256, gone.SHA256, inWorkflow.SHA256, inSchedule.SHA256} {
 		st.Writer.Exec(`UPDATE artifacts SET last_used_at = ? WHERE sha256 = ?`, old, a)
 	}
 	n, err := s.GC(ctx, 24*time.Hour)
 	if err != nil || n != 1 {
 		t.Fatalf("gc removed %d: %v", n, err)
 	}
-	for sha, want := range map[string]bool{kept.SHA256: true, inJob.SHA256: true, gone.SHA256: false, fresh.SHA256: true} {
+	for sha, want := range map[string]bool{kept.SHA256: true, inJob.SHA256: true, gone.SHA256: false, fresh.SHA256: true,
+		inWorkflow.SHA256: true, inSchedule.SHA256: true} {
 		_, err := os.Stat(filepath.Join(dir, RelPath(sha)))
 		if (err == nil) != want {
 			t.Errorf("%s present=%v, want %v", sha[:8], err == nil, want)

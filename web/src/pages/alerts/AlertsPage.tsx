@@ -13,6 +13,8 @@ import { fmtSince, fmtTime } from "@/components/monitoring/format";
 import { useAlerts, useAlertSummary, useEndMaintenance, useMaintenance, type Alert, type AlertCategory, type AlertFilter } from "@/components/alerts/queries";
 import { AlertSeverity, AlertStateBadge, categoryLabel, fmtDuration, MaintenanceNote, NotificationBadge, untilText } from "@/components/alerts/ui";
 import { MaintenanceDialog } from "@/components/alerts/MaintenanceDialog";
+import { useSchedules, minutesText } from "@/components/automation/queries";
+import { ScheduleStateBadge } from "@/components/automation/ui";
 
 const tabs = [
   { key: "active", label: "Active" },
@@ -186,6 +188,7 @@ function MaintenanceTab() {
   const end = useEndMaintenance();
   const rows = m.data?.maintenance ?? [];
   return (
+    <>
     <Card title={state === "active" ? "Maintenance in progress" : "Ended maintenance"}
       actions={
         <div className="flex gap-2">
@@ -193,7 +196,7 @@ function MaintenanceTab() {
           {can("maintenance.manage") && <Button size="sm" variant="primary" onClick={() => setOpen(true)}>Start maintenance</Button>}
         </div>
       }>
-      <p className="mb-3 text-sm text-muted">Maintenance pauses notifications only. Alerts still open and close, marked “suppressed by maintenance”. Recurring windows come with scheduling, later.</p>
+      <p className="mb-3 text-sm text-muted">Maintenance pauses notifications only. Alerts still open and close, marked “suppressed by maintenance”. Scheduled jobs skip hosts under maintenance unless they belong to that window.</p>
       {m.error && <Notice>{errorMessage(m.error)}</Notice>}
       {end.error && <Notice>{errorMessage(end.error)}</Notice>}
       {rows.length === 0 ? (
@@ -204,6 +207,7 @@ function MaintenanceTab() {
             <li key={x.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
               <div className="text-sm">
                 <div className="font-medium">{x.reason || "No reason given"}</div>
+                {x.schedule_id && <div className="text-xs"><Link className="text-accent" to={`/jobs/schedules/${x.schedule_id}`}>Started by a recurring window</Link></div>}
                 <div className="text-muted">
                   {x.targets.map((t) => (t.kind === "group" ? `group ${t.name}` : t.name)).join(", ")} · {x.host_count} host{x.host_count === 1 ? "" : "s"}
                 </div>
@@ -221,6 +225,46 @@ function MaintenanceTab() {
         </ul>
       )}
       {open && <MaintenanceDialog onClose={() => setOpen(false)} />}
+    </Card>
+    {can("schedules.read") && <RecurringWindows />}
+    </>
+  );
+}
+
+/** Recurring maintenance windows (schedules of kind maintenance): each
+ * occurrence starts ordinary maintenance for its hosts and groups. */
+function RecurringWindows() {
+  const { can } = useAuth();
+  const list = useSchedules("maintenance");
+  const rows = list.data?.items ?? [];
+  return (
+    <Card title="Recurring windows" className="mt-4"
+      actions={can("schedules.manage") && can("maintenance.manage") && (
+        <Link to="/jobs/schedules/new?kind=maintenance" className="inline-flex h-7 items-center rounded-ui bg-accent px-2.5 text-xs font-medium text-accent-fg hover:opacity-90">New recurring window</Link>
+      )}>
+      <p className="mb-3 text-sm text-muted">
+        Maintenance that starts by itself, for example every Sunday 02:00–04:00. Each window is ordinary maintenance;
+        group membership is checked live while it lasts. A scheduled job can be tied to a window to run inside it.
+      </p>
+      {list.error && <Notice>{errorMessage(list.error)}</Notice>}
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted">{list.isPending ? "Loading…" : "No recurring windows."}</p>
+      ) : (
+        <ul className="divide-y divide-line">
+          {rows.map((w) => (
+            <li key={w.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
+              <div className="text-sm">
+                <Link className="font-medium text-accent" to={`/jobs/schedules/${w.id}`}>{w.name}</Link>{" "}
+                <ScheduleStateBadge s={w} />
+                {w.active_maintenance_id && <span className="ml-1 text-xs text-ok">active now</span>}
+                <div className="text-muted">{w.when} · for {minutesText(w.config.duration_minutes ?? 0)} · {w.targets_text}</div>
+                {w.enabled && w.next_run_local && <div className="text-xs text-muted">Next: {w.next_run_local}{w.next_run_note ? ` (${w.next_run_note})` : ""}</div>}
+                {w.attention && <div className="text-xs text-danger">{w.attention}</div>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </Card>
   );
 }

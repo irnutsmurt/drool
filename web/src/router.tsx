@@ -34,6 +34,11 @@ const AlertsPage = lazy(() => import("@/pages/alerts/AlertsPage").then((x) => ({
 const AlertDetailPage = lazy(() => import("@/pages/alerts/AlertDetailPage").then((x) => ({ default: x.AlertDetailPage })));
 const NotificationsPage = lazy(() => import("@/pages/settings/NotificationsPage").then((x) => ({ default: x.NotificationsPage })));
 const MonitoringSettingsPage = lazy(() => import("@/pages/settings/MonitoringSettingsPage").then((x) => ({ default: x.MonitoringSettingsPage })));
+const SchedulesPage = lazy(() => import("@/pages/automation/SchedulesPage").then((x) => ({ default: x.SchedulesPage })));
+const ScheduleEditorPage = lazy(() => import("@/pages/automation/ScheduleEditorPage").then((x) => ({ default: x.ScheduleEditorPage })));
+const ScheduleDetailPage = lazy(() => import("@/pages/automation/ScheduleDetailPage").then((x) => ({ default: x.ScheduleDetailPage })));
+const WorkflowsPage = lazy(() => import("@/pages/automation/WorkflowsPage").then((x) => ({ default: x.WorkflowsPage })));
+const WorkflowEditorPage = lazy(() => import("@/pages/automation/WorkflowEditorPage").then((x) => ({ default: x.WorkflowEditorPage })));
 const later = (el: ReactNode) => <Suspense fallback={null}>{el}</Suspense>;
 
 export const router = createBrowserRouter([
@@ -62,6 +67,13 @@ export const router = createBrowserRouter([
       { path: "jobs", element: <RequirePermission permission="jobs.read"><JobsPage /></RequirePermission> },
       { path: "jobs/new", element: <RequirePermission permission="jobs.execute"><NewJobPage /></RequirePermission> },
       { path: "jobs/:id", element: <RequirePermission permission="jobs.read"><JobDetailPage /></RequirePermission> },
+      { path: "jobs/schedules", element: <RequirePermission permission="schedules.read">{later(<SchedulesPage />)}</RequirePermission> },
+      { path: "jobs/schedules/new", element: <RequirePermission permission="schedules.manage">{later(<ScheduleEditorPage />)}</RequirePermission> },
+      { path: "jobs/schedules/:id", element: <RequirePermission permission="schedules.read">{later(<ScheduleDetailPage />)}</RequirePermission> },
+      { path: "jobs/schedules/:id/edit", element: <RequirePermission permission="schedules.manage">{later(<ScheduleEditorPage />)}</RequirePermission> },
+      { path: "jobs/workflows", element: <RequirePermission permission="workflows.read">{later(<WorkflowsPage />)}</RequirePermission> },
+      { path: "jobs/workflows/new", element: <RequirePermission permission="workflows.manage">{later(<WorkflowEditorPage />)}</RequirePermission> },
+      { path: "jobs/workflows/:id", element: <RequirePermission permission="workflows.read">{later(<WorkflowEditorPage />)}</RequirePermission> },
       { path: "agents", element: <RequirePermission permission="agents.read">{later(<AgentsPage />)}</RequirePermission> },
       { path: "firewall", element: <RequirePermission permission="firewall.read">{later(<FirewallPage />)}</RequirePermission> },
       { path: "network", element: <RequirePermission permission="network.read">{later(<NetworkPage />)}</RequirePermission> },

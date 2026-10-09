@@ -1,6 +1,6 @@
 # DROOL Technical Alpha: Internal Architecture
 
-**v0.11 · 2026-10-08 (v0.1.0-alpha + M6 + M7 + M8 + M9 + M10 + M11 + M12 + M12.1)** · Implements the *Technical Alpha* slice of `DESIGN.md` (§33), M6 file management and single-file deployment (DESIGN §13), M7, the DROOL agent and its lifecycle (DESIGN §4, §6, §8, §9, §28; §23 here), M8, firewall policy and safe enforcement on plain-nftables hosts (DESIGN §15–19; §24 here), M9, the Firewall Designer and an application-wide Light/Dark/System theme (§25 here), M10, network connectivity monitoring and enrichment (DESIGN §19.1, §19.4; §26 here), M11, system monitoring, service inventory and hardware health (DESIGN §11.3; §27 here), M12, alerts, notifications and maintenance (DESIGN §11.4, §12.13, §22.8; §28 here), and M12.1, monitoring health overrides (DESIGN §11.3; §29 here).
+**v0.12 · 2026-10-09 (v0.1.0-alpha + M6 + M7 + M8 + M9 + M10 + M11 + M12 + M12.1 + M13)** · Implements the *Technical Alpha* slice of `DESIGN.md` (§33), M6 file management and single-file deployment (DESIGN §13), M7, the DROOL agent and its lifecycle (DESIGN §4, §6, §8, §9, §28; §23 here), M8, firewall policy and safe enforcement on plain-nftables hosts (DESIGN §15–19; §24 here), M9, the Firewall Designer and an application-wide Light/Dark/System theme (§25 here), M10, network connectivity monitoring and enrichment (DESIGN §19.1, §19.4; §26 here), M11, system monitoring, service inventory and hardware health (DESIGN §11.3; §27 here), M12, alerts, notifications and maintenance (DESIGN §11.4, §12.13, §22.8; §28 here), M12.1, monitoring health overrides (DESIGN §11.3; §29 here), and M13, scheduling, fleet automation and workflows (DESIGN §12.4, §12.6, §12.13, §26; §30 here).
 
 Sections 1–21 describe the implementation as built. Where an implementation decision superseded the original plan, the prose was updated and the decision and its reason are in §22.
 
@@ -30,10 +30,11 @@ This document is where we argue about concrete things: schema, operation semanti
 - **M10:** network connectivity monitoring: the M8 observation store extended into one flow model (local address, last ports, process, scope, collection source), continuous agent collection from conntrack events when connection tracking is active (socket sampling otherwise, said so), SSH snapshots with process names, correlation of every flow with the firewall policy by the M8 compiler (covered, management, unclassified, denied, applied vs desired), local GeoIP/ASN enrichment of public addresses (MaxMind-format databases, cached, optional), a host Network connections card, a fleet Network activity page with server-side filters and paging, new-destination views, the Designer's Configured / Observed / Configured + Observed topology, and "Create policy from observed connection" as a designer draft (§26)
 - **M11:** system monitoring on every host: CPU (per core), load, memory, swap, pressure, uptime, filesystems (capacity, inodes, read-only), disk IO, interfaces (state, throughput, errors), temperatures with the hardware's own thresholds, GPUs (NVIDIA, AMD, Intel); continuous from agents within an enforced resource budget that degrades fidelity under pressure, polled over SSH by the same collectors; history on the controller in three tiers (1 h/24 h/7 d/30 d views) with bounded retention; service inventory with transitions; storage device health (SMART, NVMe, eMMC, USB bridges, SD cards honestly limited, kernel evidence, an optional flash write/read probe); a health evaluation with durations and hysteresis (issues, no notifications); helper tools installed only with approval through package jobs; bulk SSH → agent conversion as a staged rollout (§27)
 - **M12:** alerts as occurrences of M11's Warning/Critical issues (opened, escalated and resolved in the issue's own transaction), acknowledgement with notes, immediate maintenance for hosts and groups that suppresses notifications only, email/Discord/Slack/webhook destinations with tests and health, a default route plus optional filter routes, a durable notification outbox with leased workers, bounded retries and per-destination limits, reminders (off by default), the controller event timeline, Alerts/maintenance/notification UI and fleet/host/dashboard integration (§28)
+- **M13:** schedules (run once, every *N* hours, daily, selected weekdays, weekly, monthly; explicit IANA zones with deterministic DST rules) that create ordinary jobs or ordinary maintenance through durable, unique occurrences; missed-run, late-run and overlap policies; selectors resolved per occurrence; owner re-authorization before every run; rollouts in the engine (canary wave, deterministic batches, a failure threshold that pauses); workflows of typed steps with immutable revisions pinned by schedules, templates, and controller-side checks (wait, host reachable, services running, health); recurring maintenance windows and maintenance-aware scheduled runs; Jobs → Runs / Schedules / Workflows (§30)
 - **M12.1:** sparse, inherited health overrides for M11's evaluator at global, group, host and subject scope with explicit group priorities and visible conflicts, stable subject identities, server-side provenance for every effective value, an impact preview, optional high-GPU-utilization health (off by default), truthful issue resolution reasons that M12 reports as "cleared", never "recovered" (§29)
 
 ### Out of scope (but the design must not block them)
-Docker/container firewalling, WireGuard identity networking, batch/canary rollouts, scheduling, templated files and directory sync, desired state, MFA, plugins, multi-hop jumps. (YAML editing of the firewall policy was added in M9, §25.) For network monitoring (M10): automatic or geographic blocking, threat scores, threat-intelligence feeds and IP reputation, packet capture and payload inspection, IDS signatures, SIEM features, alerting beyond new-destination visibility, eBPF collection. For system monitoring (M11): dashboard designers and query languages, external time-series databases, SMART self-tests, GPU driver installation, log collection, Windows hosts (a deferred future agent; DESIGN §2.6). For alerting (M12): on-call rotations, escalation trees and paging, incident grouping and correlation, anomaly or baseline thresholds, rule expressions, ticketing, SLA/MTTR reporting, automatic remediation, log alerting, notification plugins or executable hooks, recurring maintenance windows (M13 scheduling). For health overrides (M12.1): rule expressions or a monitoring language, anomaly or ML baselines, per-group subject selectors, GPU driver/Xid error collection, scheduled overrides.
+Docker/container firewalling, WireGuard identity networking, templated files and directory sync, desired state and auto-remediation (M14), MFA, plugins, multi-hop jumps. (YAML editing of the firewall policy was added in M9, §25.) For network monitoring (M10): automatic or geographic blocking, threat scores, threat-intelligence feeds and IP reputation, packet capture and payload inspection, IDS signatures, SIEM features, alerting beyond new-destination visibility, eBPF collection. For system monitoring (M11): dashboard designers and query languages, external time-series databases, SMART self-tests, GPU driver installation, log collection, Windows hosts (a deferred future agent; DESIGN §2.6). For alerting (M12): on-call rotations, escalation trees and paging, incident grouping and correlation, anomaly or baseline thresholds, rule expressions, ticketing, SLA/MTTR reporting, automatic remediation, log alerting, notification plugins or executable hooks (recurring maintenance windows arrived with M13). For health overrides (M12.1): rule expressions or a monitoring language, anomaly or ML baselines, per-group subject selectors, GPU driver/Xid error collection, scheduled overrides. For scheduling (M13): DAGs, branching or a workflow language, approval pipelines, job-result notification routing (PagerDuty and the like), dynamic groups, scheduled firewall changes (firewall policy is applied from the Firewall page), cron syntax.
 
 ### Supported managed hosts
 Debian 12+, Ubuntu 22.04+, RHEL/Rocky/Alma 9+, current Fedora (dnf5). The integration matrix (§18) runs Debian 12 and 13, Ubuntu 24.04 and 26.04, Rocky 9 and 10, and Fedora 44.
@@ -109,6 +110,8 @@ internal/
                               health configuration (M12.1): policy.go (checks, Recommended, resolution), subjects.go (identities), healthcfg.go (overrides, views, preview)
   alerts/                     alert lifecycle on M11's issue transitions, maintenance, routing, the notification outbox and workers, events (M12)
   notify/                     notification providers: SMTP, webhook, Discord, Slack; message formatting; result classification and redaction (M12)
+  sched/                      scheduling (M13): recurrence and time zones, workflows and revisions, schedules, occurrences, the scheduler loop, previews
+  verify/                     controller-side workflow steps (M13): wait, verify host / services / health
   api/                        HTTP handlers, problem+json errors, SSE, OpenAPI
   backup/
 web/                          React + TypeScript (Vite)
@@ -191,6 +194,12 @@ Defined as Go types in `internal/model`. JSON Schema is generated from them and 
   "timeout_s": 600 }
 // rollback_of / remove / expect_current are set only by the controller's rollback endpoint
 
+// M13: steps the controller runs itself, inside the host's job (§30.9)
+{ "type": "wait", "seconds": 60 }                                   // 1–3600
+{ "type": "verify_host", "timeout_s": 300 }
+{ "type": "verify_services", "services": ["ssh", "jellyfin"], "timeout_s": 120 }   // .service added; ≤50
+{ "type": "verify_health", "policy": "no_critical" | "no_warning", "timeout_s": 120 }
+
 ```
 
 Discovery is not a job step: it is an inventory operation run by the poller and by `POST /hosts/{id}/refresh` (§22, M3).
@@ -204,6 +213,7 @@ Each operation type declares static metadata used by the engine:
 | system_update | exclusive | yes | yes | 3600 s |
 | service | exclusive | yes (except restarted/reloaded) | yes | 120 s |
 | reboot | exclusive | no | yes | 900 s |
+| wait / verify_host / verify_services / verify_health (M13, controller-side) | shared | yes | no | seconds + 30 s / timeout + 60 s / timeout + 180 s (backstops; the step's own timeout decides) |
 | file_deploy | exclusive | yes (except with a service restart) | if `elevated` (service actions always) | 600 s |
 | discover (inventory, not a job step) | shared, never waits | yes | no | 120 s |
 
@@ -217,14 +227,17 @@ Each operation type declares static metadata used by the engine:
   "exclude_hosts": []
 }
 "strategy": {
-  "concurrency": 10,
-  "failure_threshold": 3,      // stop starting new hosts after N failures (null = never)
-  "batch_size": null,          // reserved (1.0)
-  "canary": null               // reserved (1.0)
+  "concurrency": 10,           // hosts in parallel (inside a wave)
+  "failure_threshold": 3,      // pause after N failures (null = never), §11.5
+  "canary_count": 1,           // M13: the first N hosts by name run first (0–10), or
+  "canary_hosts": [],          //      explicit canaries (≤10; not both)
+  "batch_size": 5              // M13: hosts per wave after the canaries (0 = all at once)
 }
 ```
 
-Target semantics: union of `hosts ∪ groups ∪ tag matches`, minus `exclude_hosts`. Each tag entry matches hosts having that tag (OR across entries). AND queries come with dynamic groups later. **Targets are resolved once at job start, and the resolved host list is stored with the job.** A job never retargets mid-run.
+Target semantics: union of `hosts ∪ groups ∪ tag matches`, minus `exclude_hosts`. Each tag entry matches hosts having that tag (OR across entries). AND queries come with dynamic groups later. **Targets are resolved once at job start, and the resolved host list is stored with the job.** A job never retargets mid-run. A schedule stores the selectors and resolves them at every occurrence (§30).
+
+**Waves (M13).** `model.PlanWaves` splits the resolved hosts (sorted by name) into waves when the job is created and `job_hosts.wave` stores them: wave 0 holds the canaries when there is a canary wave (only if hosts remain after it; an explicit canary no longer among the targets falls back to the first hosts by name, with a note), then batches of `batch_size`. `wave = -1` marks a host skipped before the run started (a scheduled run's host in unrelated maintenance).
 
 ### 5.3 Job
 
@@ -237,7 +250,7 @@ Target semantics: union of `hosts ∪ groups ∪ tag matches`, minus `exclude_ho
 }
 ```
 
-`steps` run sequentially per host, and a failed step stops that host. The UI builds 1–2 steps in the alpha. The model allows more.
+`steps` run sequentially per host, and a failed step stops that host. At most 10 steps; the New job page builds one, workflows (§30.8) up to 10. M13 adds `origin` to a job: the schedule and occurrence, or the workflow and revision, it came from.
 
 ---
 
@@ -647,7 +660,9 @@ Engine (per job):
      for each step: Driver.Execute with retry policy
      release lock
      update job_hosts, stream events
-  circuit breaker / failure_threshold may pause the job: no new hosts start,
+  hosts run wave by wave (M13): a wave starts when the previous one is
+  terminal; a failed canary (wave 0) pauses before the rest starts
+  circuit breaker / failure_threshold pause the job: no new hosts start,
   running hosts finish
   → job completed (summary derived from job_hosts, never stored as one boolean)
 ```
@@ -684,8 +699,10 @@ As implemented: 3 attempts in total, 5 s initial delay, exponential, capped at 2
 | TimeoutError | only if op is idempotent |
 | ExecutionError, ValidationError, ServiceError, ConfigurationError | never |
 
-### 11.5 Circuit breaker
+### 11.5 Circuit breaker, canary and failure threshold
 Per job: **5 consecutive** host failures with the same class among {Authentication, HostKey, Authorization} → the job becomes `paused` with a reason ("5 consecutive authentication failures; likely a shared credential problem"). `POST /jobs/{id}/resume` or `/cancel`.
+
+M13 adds two more pauses with the same mechanics (no new host starts, running hosts finish, the reason is shown, resume or cancel): a failed **canary** ("Canary web-1 failed: …. 13 hosts have not started; resume to continue the rollout, or cancel") and the **failure threshold** ("Paused after 2 failures (the failure threshold is 2). 13 hosts have not started; resume to continue, or cancel"). Before M13 the threshold skipped the remaining hosts; it now pauses, for manual jobs too. Resuming renews the allowance (the threshold counts failures after the resume); failed hosts stay failed. Canary and threshold pauses record a `job.paused` event (§30.11).
 
 ### 11.6 Controller restart
 On startup, every job in `running`/`pending` and every host in a non-terminal state is marked `interrupted` (outcome unknown). Nothing is resubmitted automatically. The UI offers "Re-run on interrupted hosts".
@@ -729,6 +746,9 @@ On startup, every job in `running`/`pending` and every host in a non-terminal st
 | files.write (upload, edit, mkdir, rename, delete, chmod, chown) | ✓ | ✓ | | |
 | files.deploy (artifacts, deployment preview; running one also needs jobs.execute) | ✓ | ✓ | | |
 | files.elevate (any file action with administrator privileges) | ✓ | ✓ | | |
+| schedules.read, workflows.read (M13) | ✓ | ✓ | ✓ | ✓ |
+| schedules.manage, workflows.manage (M13; running a schedule also needs what its steps need) | ✓ | ✓ | | |
+| schedules.admin (M13: change anyone's schedule, reassign owners) | ✓ | | | |
 
 File access is withheld from auditor and viewer because file contents are frequently secrets. Rollback needs `jobs.execute` plus `files.deploy` (and `files.elevate` for elevated deployments), checked on the generated job like any other.
 
@@ -934,6 +954,7 @@ Environment overrides: `DROOL_SERVER_WEB_PORT`, and so on (path → upper snake 
 | Integration (`make test-integration`) | The real `drool` binary driven over its REST API against unprivileged containers (sshd only): Debian 12/13, Ubuntu 24.04/26.04, Rocky 9/10, Fedora 44. Connection test, discovery, commands and scripts, passwordless/password/wrong-password sudo, package operations and their errors, dpkg lock, interrupted dpkg, system updates, jump host (key approval, operations, cancellation, changed jump key) |
 | Fault injection | Host down before the operation, connection lost during it, cancellation of root processes, output beyond the cap, controller crash mid-job, authentication failure, changed host key |
 | Files (M6) | Unit: path/mode/diff helpers, artifact store (integrity, GC), filedeploy sequence with a fake FS, SFTP and elevated scripts against the in-process SSH server (atomic writes, zero bytes, 24 MiB, cancel and broken uploads, conflicts, symlinks, unsafe directories, validation). Integration on Debian and Rocky containers: browse, upload/download incl. zero-byte and 256 MiB with a controller memory check, cancelled upload and killed host mid-upload (destination unchanged), mkdir/rename/move/delete/chmod, symlink refusal, permission denied, NOPASSWD/password/wrong-password sudo, unsafe directory, text-edit conflict, jump host, changed host key, audit without content; deployment by tag and group with mixed success, no-op, preview states, validation pass/fail, rollback (content and metadata, refused after a later change, removal of a created file), service failure after install. VM: deployment + sshd reload and unit restart on real systemd |
+| Scheduling (M13) | Injected clock against the real engine and real maintenance (DST, durability with crash hooks, missed/late/overlap, ownership, windows); real-process `TestSchedulerRestart` (SIGKILL mid-burst, an outage across due times); opt-in `TestSchedulerScale` (§30.14) |
 | systemd and reboots (`-vm`) | Cloud-image VMs under qemu with software emulation (TCG) inside an unprivileged container (no `--privileged`, no `/dev/kvm`): real service operations and their errors, reboots (direct, through a jump host, onto a changed host key), reboot-required after a kernel install, needrestart, cancelling a live transaction, unattended-upgrades contention |
 
 Privileged containers are not used for testing (they interfered with the developer's desktop session; §22, M3).
@@ -973,6 +994,7 @@ Privileged containers are not used for testing (they interfered with the develop
 | **M11 System monitoring** | Shared collectors (agent continuous, SSH polled), agent resource budget and degradation, memory-only buffering, tiered history, services, sensors and GPUs, storage health and the flash probe, health evaluation, helper installation, bulk conversion, host and fleet views (§27) |
 | **M12 Alerts** | Alert occurrences on issue transitions, acknowledgement, maintenance, destinations (SMTP, webhook, Discord, Slack) with tests, default and filter routes, durable outbox with retries, event timeline, Alerts/maintenance/notification UI (§28) |
 | **M12.1 Health overrides** | Sparse global/group/host/subject overrides of M11's health checks, group priorities and conflicts, stable subject identities, provenance API and UI, impact preview, GPU utilization health, truthful configuration resolutions carried into M12 (§29) |
+| **M13 Scheduling** | Recurrence with explicit zones and DST rules, durable unique occurrences created with their jobs, missed/late/overlap policies, owner re-authorization, engine waves (canary, batches, threshold pause), workflows with pinned revisions and templates, controller-side checks, recurring maintenance windows and maintenance-aware runs, Jobs → Runs / Schedules / Workflows (§30) |
 
 ---
 
@@ -1268,6 +1290,23 @@ Meaningful choices made during implementation, newest last.
 | M12.1 | M11's custom profile (`settings.monitoring.profile = custom`) becomes global overrides of the fields that differed from Recommended, and a host's `disabled_checks` become host overrides (`enabled: false`), once at start; the settings API refuses a custom profile and a non-empty `disabled_checks` with a pointer to overrides | One configuration model; older clients sending an empty list still work |
 | M12.1 | High GPU utilization (`gpu_utilization`) is evaluated from `gpu.util:<index>` points mapped to the GPU's identity through the current state, off in Recommended (95% for 30 minutes when enabled, clears below 85% for 5 minutes); NVIDIA GPUs report no temperature limit, so their temperature (`temperature`, subject `gpu:<id>`) is judged only against an explicit override | Busy is not unhealthy; no invented limits |
 | M12.1 | Fixed bug: in M11, disabling a check for a host left an already active issue open forever (the check simply stopped being evaluated). Every disabled check now resolves its issues as `disabled` | Found while designing configuration-change semantics |
+| M13 | A schedule never executes anything: each occurrence is an ordinary job submitted through `engine.Submit` (with an `Origin` and a per-host skip map) or ordinary M12 maintenance (`alerts.StartMaintenance` with `Until`) | "The schedule answers when; the job engine answers how" — locks, capabilities, management path, retries, output, cancellation and audit stay in one place |
+| M13 | Occurrences: `schedule_occurrences` with a partial unique index on (`schedule_id`, `scheduled_for`) for non-manual rows; the occurrence (`INSERT … ON CONFLICT DO NOTHING`), its job (`engine.Submit` on the same transaction) and the schedule's next run (`UPDATE … WHERE next_run_at IS <the value read>`) commit together; the job is launched after commit | A crash before commit leaves nothing; after commit the engine's restart marks the job interrupted and the occurrence already exists, so there is never a second job, and nothing is re-run |
+| M13 | One bounded loop: every 15 s (`Tuning.Tick`) an indexed query (`schedules_due`, partial on enabled and not archived) returns at most 100 due schedules, up to 50 batches per tick; each is handled in its own short transaction; no goroutine per schedule, no in-memory queue (queued runs are rows) | Measured with 6 000 schedules: a tick with nothing due takes ~0.2 ms; a burst of 3 000 due in the same minute dispatches at ~380/s while another writer's p99 stays ~3.5 ms |
+| M13 | Recurrence kinds `once`, `hourly` (every N elapsed hours from a first run), `daily`, `weekly` (weekdays), `monthly` (day 1–31, clamped to the month's last day), with an explicit IANA zone (`""` and `Local` refused; `time/tzdata` embedded). Wall-clock kinds: a time in a spring-forward gap runs at the first instant after the gap (found by bisection, so 30- and 45-minute shifts work); a repeated time runs at its first (earlier) instant; one occurrence per local date | Deterministic and testable with a mocked clock (Los Angeles, Berlin, Lord Howe's 30-minute shift; a property test over three years in 13 zones, including midnight transitions in Havana and Santiago, finds exactly one run per local date) |
+| M13 | Missed runs: an occurrence handled more than 5 min (`MisfireGrace`) after its time is missed. Recurring: all missed times become **one** `missed` row (`missed_count`, `missed_until`), then the schedule continues; `run_once` dispatches the most recent missed time once with a "started late" note. One-time: dispatched late with a note, or `expired` past `late_limit_minutes`. One aggregated `schedule.missed` event per tick. `Between` is capped at 100 000 times | A week of downtime is one history line and at most one run, never a replay |
+| M13 | Overlap: an occurrence is skipped while the schedule's previous job is pending/running/paused; `queue_one` stores one `queued` row instead (further ones are skipped) and the tick dispatches it once the blocking job is terminal | Never an unlimited backlog |
+| M13 | Ownership: before every occurrence the owner must exist, be enabled and hold `RequiredPermissions` (jobs.execute plus files.deploy/elevate or firewall.write/override by step; maintenance.manage for windows) — otherwise the occurrence is `blocked`, the schedule is disabled with an `attention` text, a `schedule.disabled` event is recorded and `schedule.blocked` audited. Jobs run as the owner (`created_by`); the audit actor is `system` named "schedule X" with a `summary` "system execution via schedule X, owned by Y". Editing by anyone else transfers ownership to the editor; enabling requires the owner to qualify; reassigning needs `schedules.admin` and a qualifying owner. Run now runs as the caller with the caller's permissions | Permissions are checked when work happens, not only when it was configured |
+| M13 | Maintenance and scheduled runs: hosts covered by any maintenance other than the schedule's associated window are snapshotted into the job as `wave = -1`, state `skipped`, "skipped: maintenance active (reason)"; if every host is covered the occurrence is `skipped`. An associated schedule runs only while its window is active. A host covered by the associated window *and* another maintenance is skipped. Run now ignores maintenance (a deliberate act) | A window never lets a job past someone else's maintenance |
+| M13 | Recurring windows: kind `maintenance`; hosts and groups only; 1 minute to 7 days and no longer than the shortest spacing between occurrences (no self-overlap). The maintenance row records `schedule_id`/`occurrence_id`, reason `Recurring window "name": reason`, actor "recurring window \"name\"". After an outage a window still in progress starts with its original end; one entirely elapsed is recorded missed and never started, so no suppression or recovery notification is ever sent late | M12's maintenance does the work; scheduling only decides when |
+| M13 | Engine waves: `job_hosts.wave` fixed at submission by `model.PlanWaves`; `runJob` starts a wave only after the previous one's goroutines are done (`wg.Wait` barrier); after wave 0 of a canary rollout any failure pauses (`PauseCanary`); the failure threshold pauses (`PauseThreshold`) instead of skipping, and resume renews the allowance (`thresholdBase`); cancel marks every remaining host cancelled. `OnPause` lets `main` record a `job.paused` event (not for the circuit breaker, which the job page already explains) | Rollout safety belongs to the executor, so manual jobs, workflow runs and scheduled runs behave identically |
+| M13 | Workflows: `workflows` + immutable `workflow_revisions` (steps and default strategy as JSON); a no-op edit stores nothing; names unique among non-archived; archiving keeps pinned schedules running; a schedule pins `{id, revision}` and shows `workflow_update_available`; adopting a newer revision is a schedule edit (audited with the previous revision). A schedule's rollout is its own (initialized from the workflow's default) | Reviewed behaviour can't change underneath a schedule |
+| M13 | Controller-side steps (`model.IsLocal`): the engine runs them through a `LocalExecutor` (`internal/verify`) inside the host's job and lock, after the host's earlier steps, with state `verifying` (or `running` for wait); they never touch the host's shell. `verify_host` = agent connected, SSH fallback probe, or SSH probe; `verify_services`/`verify_health` read M11 data **collected after the step began**: an agent is asked to report (best effort; its regular reports count) and the step waits for a newer stamp (compared for change only — agent state carries the agent's clock); an SSH host is polled directly (the job holds the host, so the poller would skip it). Stale data never passes a check. Failures are `VerificationError`; monitoring off is a `ConfigurationError` | Checks must not report a host healthy from data taken before a reboot |
+| M13 | Workflows and schedules refuse `firewall_apply` steps (firewall policy is applied from the Firewall page) | Firewall changes keep their review and simulation path; unattended runs don't apply them |
+| M13 | Artifact garbage collection also keeps files referenced by any workflow revision or schedule configuration | Found while building M13: a file-deploy step saved in a schedule would have lost its file after 24 h, before its first run |
+| M13 | Events (`events` table, M12): `schedule.disabled` (owner lost permission), `schedule.missed` (aggregated per tick), `job.paused` (canary, threshold), and M12's `maintenance.started`/`ended` for windows. Never per host or per tick; job results are not routed through alert notifications | The dashboard shows what needs a person; alert routing stays about host health |
+| M13 | Retention: occurrences 400 days and at most 1000 per schedule (queued rows kept), pruned every 6 h in batches of 500; jobs follow the engine's retention and an occurrence whose job was pruned says so | An hourly schedule can't grow history without bound |
+| M13 | Test mode: `DROOL_TEST_SCHED_TIMING=fast` ticks every second and counts runs more than 20 s late as missed | Real-process restart tests without five-minute outages; logged as TEST MODE |
 
 ---
 
@@ -1821,3 +1860,92 @@ Settings → Monitoring keeps Recommended as the visible default ("Using the Rec
 - M11 and M12 suites (`TestMonitoring*`, `TestAlert*`) re-run unchanged except M11's settings test, which now uses overrides.
 - Browser (`web/e2e/health.test.mjs`): Recommended by default; a global change with the impact preview, its source and reset, audited; a host's Health settings tab reached with arrow keys, a GPU customized by keyboard (Tab, Enter, Escape returning focus) with its UUID identity, "off by default" and the subject source; a sensor's hardware limit shown as such; a group's overrides only when chosen, with "2 hosts affected" and "turns a check off" before saving, and the host showing the group as source; an alert closed by configuration reading "cleared", never "recovered". The contrast test adds the health tabs, the fleet's check table and the editor in Light and Dark.
 - Real machines: `TestVMMonitoring -vm debian-12` (TCG) gained two subtests: over SSH the real root filesystem binds as `fsuuid:` + the UUID `findmnt` reports; a subject override with a 1% warning opens an issue after two real polls, and removing it closes the issue as `reconfigured`; after the agent is installed the same filesystem has the same identity. The whole VM test passed (10 subtests; agent cost unchanged at 3.5% of an emulated CPU, 13 MB peak) — the collector additions (nvidia-smi fields, `unique_id`, sensor device) changed nothing on hardware without GPUs. Results: Go unit tests all pass (race-clean for monitor, alerts, notify and the health/alert/monitoring API tests), container integration suite 241 subtests pass (incl. `TestAlertsControllerCrash`), browser 36/36.
+
+## 30. Scheduling, fleet automation and workflows (M13)
+
+Schedules decide *when* and *with which rollout*; the job engine decides *how*. Every run is an ordinary job (or ordinary M12 maintenance) and appears in job history; nothing new executes on hosts (DESIGN §12.4, §12.6, §12.13, §26).
+
+### 30.1 Model (migration 0014)
+
+- `jobs` gains `schedule_id`, `occurrence_id`, `workflow_id`, `workflow_revision` (the job's `origin`); `job_hosts` gains `wave` (§5.2).
+- `workflows` (name unique among non-archived, `latest_revision`, `archived_at`) and `workflow_revisions` (PK workflow + revision; steps and default strategy as JSON; author).
+- `schedules`: kind `job` | `maintenance`, `enabled`, `archived_at`, `owner_id` (FK, `ON DELETE SET NULL`), `revision`, `config_json` (recurrence, zone, workflow ref or inline steps, targets, strategy, missed/late/overlap policies, associated window, window duration and reason), `workflow_id`/`workflow_revision`, `window_id`, `next_run_at`, `attention`. Index `schedules_due(next_run_at) WHERE enabled = 1 AND archived_at IS NULL`.
+- `schedule_revisions`: every configuration, so an occurrence names the configuration that produced it.
+- `schedule_occurrences`: `scheduled_for`, `manual`, `status` (`queued`, `dispatched`, `skipped`, `missed`, `expired`, `blocked`, `failed`), `reason`, `missed_count`/`missed_until`, `dispatched_at`, `job_id`/`maintenance_id` (FK `SET NULL`), `triggered_by`, `skipped_hosts`. Unique (schedule, scheduled_for) for non-manual rows.
+- `maintenance` gains `schedule_id`, `occurrence_id`.
+
+### 30.2 Recurrence and time zones (`sched/recur.go`)
+
+`Recurrence{kind, at, every_hours, time, weekdays, day_of_month}` with `Normalize`, `Next(after, loc)`, `Between(from, to, loc, limit)`, `Describe(loc)` ("Every Sunday at 03:00 (Europe/Berlin)", "Monthly on day 31, or the month's last day, at 03:00 (UTC)"), `MinSpacing` (for windows) and `Shifted(t, loc)` ("at 03:00 instead of 02:30: the clocks skip 02:30 that day"). `Wall(y, m, d, hh, mm, loc)` returns the earliest instant showing that wall time, or — in a gap — the first instant after the gap (bisection over the transition). The API and UI never send cron; times are `HH:MM` and `YYYY-MM-DDTHH:MM` in the schedule's zone.
+
+### 30.3 The scheduler (`sched/scheduler.go`)
+
+`Run` ticks (15 s; 1 s in test mode). `Tick` (serialized by a mutex) reads due schedules through `schedules_due` in batches of 100 (≤ 50 per tick) and `process`es each: it computes the due time and every time missed since (`Between`), applies the missed-run policy, then `dispatchJob` or `runWindow`. A dispatch is one transaction: authorize the owner, check overlap, resolve targets and maintenance covers, insert the occurrence, `engine.Submit` (job rows, `job_hosts` with waves, skipped hosts with `wave = -1`), audit, advance `next_run_at` with an optimistic `WHERE next_run_at IS ?` — then launch. After the batches, `queued` dispatches waiting `queue_one` runs whose blocking job ended, `reportMissed` writes one event, and every 6 h `prune` trims history. Test hooks (`BeforeCommit`, `NoLaunch`) simulate crashes before and after commit.
+
+### 30.4 Durability and restart
+
+- Crash before commit: nothing was written; the next tick (or the restart) handles the occurrence normally (within the misfire grace) or as missed.
+- Crash after commit: the occurrence and job exist; the engine's restart marks the job (and its hosts) interrupted; the occurrence's outcome reads "Interrupted: the controller restarted during the run (not re-run automatically)". No path re-runs it.
+- A restart at any moment cannot create a second job for an occurrence: the unique index and the shared transaction guarantee it, and the real-process test kills the controller in the middle of a 200-schedule burst to show it.
+
+### 30.5 Targets, preview and next runs (`sched/preview.go`)
+
+Selectors are resolved at every occurrence (`engine.ResolveTargets`); hosts are skipped for maintenance and steps' OS conditions as in any job; the job snapshots its hosts. `POST /schedules/preview` returns what saving would do now: next five runs (with DST notes), today's targets with their wave or why they'd be skipped, the waves, concurrency and threshold, step summaries, reboot behaviour, verification steps, the associated window's relationship to the next run, policies in words, notes (selectors resolved per run; package metadata changes by next week) and warnings. Nothing is saved.
+
+### 30.6 Ownership and authorization
+
+`RequiredPermissions(kind, steps)` is checked for the creator, an editor, the caller of Run now, a new owner, an enable, and — before every occurrence — the owner (`MissingPermission` against the owner's current role; deleted or disabled owners block). A blocked occurrence disables the schedule with an `attention` text and an event; enabling again is the owner's (or an admin's) explicit act. Route permissions: reads need `schedules.read`/`workflows.read`; changes need `schedules.manage`/`workflows.manage`; changing someone else's schedule or its owner needs `schedules.admin` (`mine()` in the handlers); anyone with `schedules.manage` may *disable* a schedule (stopping is always allowed). Running a workflow needs `jobs.execute` and its steps' permissions.
+
+### 30.7 Rollouts in the engine
+
+See §5.2 (waves) and §11.5 (pauses). The job page shows each wave's progress, the pause explanation, and for scheduled runs that cancelling doesn't disable the schedule; the schedule page says disabling doesn't cancel the run in progress.
+
+### 30.8 Workflows and templates (`sched/workflows.go`)
+
+Create, update (new revision only when steps, strategy, name or description changed), archive, get with revision summaries, get one revision. Templates (`GET /workflows/templates`): *Scheduled system update* (update rebooting only if required, verify host), *Safe fleet update* (the same with one canary, batches of five, pause after two failures), *Update and verify services* (plus services to name and `no_critical` health). `POST /workflows/{id}/run` runs a revision now as an ordinary job (origin workflow + revision, idempotency key honoured).
+
+### 30.9 Controller-side steps (`internal/verify`)
+
+`engine.SetLocal(verify.New(…))` in `main`: `AgentConnected` from the management router's decision, `Probe` from the inventory's connection test (ready or unsupported count as reachable), `PollSSH` the poller's monitoring poll. Each step loops with a 10 s interval until its own timeout and writes progress lines to the step's output ("waiting: jellyfin.service is activating/start"). Results carry data for the UI (`services` with each unit's state, `reachable` with a detail, `issues`).
+
+### 30.10 API (`api/openapi.yaml`, tag `automation`)
+
+`/workflows` (list, create), `/workflows/templates`, `/workflows/{id}` (get, update, archive), `/workflows/{id}/revisions/{rev}`, `/workflows/{id}/run`; `/schedules` (list with `kind`, `archived`, `owner=me`; create), `/schedules/preview`, `/schedules/next-runs`, `/schedules/{id}` (get, update, archive), `/schedules/{id}/enable`, `/disable`, `/run-now` (409 while busy), `/owner`, `/schedules/{id}/occurrences` (paged by scheduled time). Jobs gain `origin`, job hosts `wave`; `/jobs/preview` accepts a `strategy` and returns `waves`; maintenance gains `schedule_id`; operations gain `wait`, `verify_host`, `verify_services`, `verify_health`. Lists are bounded (workflows 500, schedules 1000, occurrences 200 per page). The browser uses only this API (types generated with openapi-typescript).
+
+### 30.11 Audit and events
+
+Audited: `workflow.create`/`update`/`archive`; `schedule.create`/`update` (with the previous revision, an ownership transfer and a workflow revision change)/`enable`/`disable` (naming a job that keeps running)/`archive`/`run_now`/`reassign`/`blocked`; every scheduled `job.create` and `maintenance.start` with `via: schedule`, owner, occurrence and time. Events as in §22.
+
+### 30.12 UI
+
+No new sidebar entries. **Jobs** has tabs *Runs*, *Schedules*, *Workflows* (links with `aria-current`). *Schedules*: name and attention text, state (enabled, disabled, needs attention, archived), next run (local, with DST note), when, targets, what runs (with "newer revision"), last result, owner. The editor's basic part is *When* (pattern pills, time, zone; next runs computed by the server), *Targets* and *What to run* (steps, or a saved workflow pinned to a revision with "Use revision N"); *Advanced* (collapsed, summarized in one line each) holds rollout, missed runs, overlap and the maintenance window. A sticky preview shows the server's resolution. The detail page shows attention, the newer-revision banner, the run in progress, settings in words, history with outcomes and links, Run now, enable/disable, edit, archive and Change owner. *Workflows*: a list with step summaries, revision and pinning schedules; a template chooser; an editor of ordered steps (add, move, remove; the typed forms of New job plus the checks) with a default rollout, the revision list and a revision viewer, Run now (targets, rollout, waves) and Schedule. New job gains the rollout fields, the recommendation, the waves, *Schedule this job* and *Save as workflow*. The job page shows the origin, every step, rollout progress per wave, pause explanations and the cancel/disable note. Alerts → Maintenance lists recurring windows. Dashboard events link to their job, schedule or maintenance.
+
+### 30.13 Testing
+
+- `internal/sched` (real engine with a fake executor, real M12 maintenance, injected clock): ordinary jobs and audit; targets resolved per run (a host added to a group later joins; a running job isn't retargeted); DST (spring forward and fall back, never duplicated); durability (a restart before the occurrence; a crash while the occurrence is being created — rolled back, then created once; a crash right after the job was created — never a second job, never re-run silently; two schedulers at once); missed runs (five days down: skipped and recorded once; run one missed occurrence; a quick restart still runs; one-time late and expired); overlap (skip; queue one and only one); edit/enable/run-now semantics; pinned workflow revisions; owner authorization (disabled, demoted then reassigned, deleted; file and firewall steps need their own permissions); maintenance windows (ordinary maintenance ending on time, restart inside a window, a window missed entirely with no maintenance and no events, unrelated maintenance skipping scheduled hosts but not manual runs, a workflow associated with its window); canary from a schedule; preview and next runs; `recur_test.go` (DST incl. Lord Howe, hourly across DST, monthly on the 31st, once per local date over three years in 13 zones, validation, descriptions). Opt-in `TestSchedulerScale` (`DROOL_SCALE_TEST=1`).
+- `internal/model`: wave planning (canary count and explicit, fallback, batches), workflow step validation.
+- `internal/engine`: threshold pauses then resumes or cancels; canary and batches (barriers, pause before the rest).
+- `internal/verify`: wait and cancellation, host reachability (SSH, agent, fallback, deleted host), services (running/failed/missing/unknown, a service starting in time, old data never passing, monitoring off), health (policies, other hosts, an issue clearing during the check).
+- `internal/api/sched_test.go`: ownership and audit end to end, run now while busy and disable-not-cancel, validation (zones, cron, firewall refusal), workflows (revisions, pinning, explicit update, templates, runs with origin, archive), a workflow with checks running over SSH, preview waves and maintenance skips, next runs; route permissions for every role in `TestAuthzMatrix`.
+- `internal/artifacts`: GC keeps files referenced by workflows and schedules.
+- Integration `TestSchedulerRestart` (real controller process): SIGKILL during a 200-schedule burst, and a 75-second outage across one-time, skip, run-once and two recurring windows.
+- Browser (`web/e2e/automation.test.mjs`): the Jobs tabs from the keyboard and no new sidebar entry; a workflow from a template (a step moved with the keyboard, a new revision, revision 1 unchanged) and scheduling it with today's package dry run; New job → recommended rollout → *Schedule this job* with the preview's exact waves, Run now (origin and rollout progress on the job page), history and disable; a schedule kept on its workflow revision until *Use revision 2*; a recurring window from Alerts → Maintenance; a failing canary pausing with three hosts not started, then cancelled; a failed service check explained. The contrast test adds the schedule, workflow and window pages, the editors and jobs with rollouts in Light and Dark.
+- `engine`: two timing-based tests (`TestExclusiveLockSerializesJobs` from M2 and the threshold test) waited fixed times and flaked under `-race` with parallel load; they now wait for the states they need.
+- Results: Go unit tests all pass race-clean (42 packages; the scheduler's 30+ scenarios, verification, API, engine); `TestSchedulerScale` as in §30.14; container integration suite 244 tests and subtests pass, none fail (incl. `TestSchedulerRestart`: SIGKILL with 5 of 200 occurrences committed — 5 jobs interrupted and never re-run, 195 run after the restart, no duplicate; the outage case for every policy and both windows); browser 43/43; web unit tests 25/25. The VM tests weren't re-run: M13 changes no host-side execution (its checks run on the controller).
+
+### 30.14 Scale (`TestSchedulerScale`, `DROOL_SCALE_TEST=1`)
+
+Measured on the workstation with 6 000 schedules (3 000 due in the same minute, 2 000 not due, 1 000 disabled) and another writer inserting a row every 2 ms throughout:
+
+| What | Result |
+|---|---|
+| Creating a schedule through the service | 0.8 ms |
+| A tick with nothing due | ~0.2 ms; plan `SEARCH schedules USING INDEX schedules_due (next_run_at<?)`, no temporary sort |
+| The burst: 3 000 occurrences, each with its job | dispatched in 7.8 s (~385/s) in one tick; the instant fake executor finished every job with the burst |
+| The other writer during the burst | p50 0.56 ms, p99 3.5 ms, max 6–9 ms |
+| Goroutines and heap (instant hosts) | 6 before, peak 25, back to 4; heap ≤ 15 MiB |
+| The next day with slow hosts (200 ms each, 20 at a time) | dispatched in 3.9 s; the engine finished all 3 000 jobs after 31 s; peak 2 663 goroutines (one per queued job, inside the engine), heap 32 MiB |
+| A second tick at the same time, and a restart | no new job |
+
+The scheduler holds no per-schedule state; a burst becomes ordinary queued jobs, which the engine runs at its global concurrency (20 hosts). A burst of thousands of jobs therefore costs one parked goroutine per queued job until it runs (measured above: 3 000 queued jobs, 32 MiB heap), bounded by the number of due occurrences.
+
