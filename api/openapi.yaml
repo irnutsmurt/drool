@@ -6412,7 +6412,7 @@ components:
         unmanaged: { type: integer, description: Hosts no baseline applies to }
         resources: { $ref: '#/components/schemas/DesiredCounts' }
         baselines: { type: integer }
-        auto_baselines: { type: integer }
+        auto_baselines: { type: integer, description: Baselines restoring automatically now (switched on and not paused; paused ones are in auto_paused) }
         auto_paused:
           type: array
           items: { type: object, required: [id, name, attention], properties: { id: { type: string }, name: { type: string }, attention: { type: string }, at: { type: integer } } }

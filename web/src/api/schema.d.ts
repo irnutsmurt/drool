@@ -6690,6 +6690,7 @@ export interface components {
             unmanaged: number;
             resources: components["schemas"]["DesiredCounts"];
             baselines: number;
+            /** @description Baselines restoring automatically now (switched on and not paused; paused ones are in auto_paused) */
             auto_baselines: number;
             auto_paused: {
                 id: string;

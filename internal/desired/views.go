@@ -47,8 +47,8 @@ type Summary struct {
 	// Resources by status (one per host and resource).
 	Resources Counts `json:"resources"`
 	Baselines int    `json:"baselines"`
-	// AutoBaselines: baselines that restore automatically; AutoPaused:
-	// those paused and needing attention.
+	// AutoBaselines: baselines restoring automatically now (switched on
+	// and not paused); AutoPaused: those paused and needing attention.
 	AutoBaselines int              `json:"auto_baselines"`
 	AutoPaused    []PausedBaseline `json:"auto_paused"`
 	// Corrections in progress.
@@ -113,7 +113,7 @@ func (s *Service) Summary(ctx context.Context) (*Summary, error) {
 			out.Unmanaged = 0
 		}
 	}
-	if err := s.d.Store.Reader.QueryRowContext(ctx, `SELECT count(*), COALESCE(sum(auto_enabled), 0) FROM ds_baselines WHERE archived_at IS NULL`).
+	if err := s.d.Store.Reader.QueryRowContext(ctx, `SELECT count(*), COALESCE(sum(auto_enabled = 1 AND attention = ''), 0) FROM ds_baselines WHERE archived_at IS NULL`).
 		Scan(&out.Baselines, &out.AutoBaselines); err != nil {
 		return nil, err
 	}

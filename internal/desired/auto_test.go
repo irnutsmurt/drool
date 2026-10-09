@@ -222,6 +222,10 @@ func TestAutoRestoreOwnerLosesPermission(t *testing.T) {
 	if ev := e.events("desired.auto_paused"); len(ev) != 1 {
 		t.Fatal(ev)
 	}
+	// The summary doesn't count it as restoring automatically any more.
+	if sum, _ := e.s.Summary(e.ctx); sum.AutoBaselines != 0 || len(sum.AutoPaused) != 1 {
+		t.Fatalf("summary: %d automatic, %d paused", sum.AutoBaselines, len(sum.AutoPaused))
+	}
 	var n int
 	e.st.Reader.QueryRow(`SELECT count(*) FROM audit_events WHERE action = 'desired.auto_paused'`).Scan(&n)
 	if n != 1 {
