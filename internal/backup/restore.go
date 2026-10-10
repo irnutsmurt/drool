@@ -104,6 +104,9 @@ func Restore(ctx context.Context, cfg *config.Loaded, r io.Reader, opts RestoreO
 		return nil, err
 	}
 	defer release()
+	if err := CheckJournal(cfg.DataDir); err != nil {
+		return nil, err
+	}
 
 	st, err := extract(r, cfg.DataDir)
 	if st != nil {
@@ -260,6 +263,14 @@ func extract(r io.Reader, dataDir string) (*staged, error) {
 	for {
 		h, err := tr.Next()
 		if errors.Is(err, io.EOF) {
+			// The end-of-archive blocks; the gzip stream must end right
+			// after them with an intact trailer (CRC and size), or the file
+			// was cut or damaged there.
+			if n, err := io.Copy(io.Discard, gz); err != nil {
+				return st, invalid("archive is truncated or corrupt at its end (%v)", err)
+			} else if n > 0 {
+				return st, invalid("archive has %d unexpected bytes after its end", n)
+			}
 			break
 		}
 		if err != nil {
@@ -444,42 +455,52 @@ func orUnknown(s string) string {
 }
 
 // swap moves the current files aside and the restored ones into place,
-// undoing everything on failure.
+// undoing everything on failure. Every move is written to the restore
+// journal before it is made, so a crash part-way (power loss, a killed
+// process) leaves a record from which drool restore --recover puts the
+// previous installation back; DROOL refuses to start until then.
 func swap(cfg *config.Loaded, st *staged, keyData []byte, res *RestoreResult) (err error) {
 	ts := time.Now().UTC().Format("20060102-150405")
 	prev := filepath.Join(cfg.DataDir, "pre-restore-"+ts)
 	if err := os.Mkdir(prev, 0o700); err != nil {
 		return fmt.Errorf("create %s: %w", prev, err)
 	}
-	type move struct{ from, to string }
-	var done []move
+	j := &journal{Version: 1, Started: time.Now().UTC(), BackupCreated: st.manifest.CreatedAt, PrevDir: prev}
+	if err := j.save(cfg.DataDir); err != nil {
+		os.Remove(prev)
+		return fmt.Errorf("write the restore journal: %w", err)
+	}
+	crashed := false
 	mv := func(from, to string) error {
+		j.Moves = append(j.Moves, journalMove{From: from, To: to})
+		if err := j.save(cfg.DataDir); err != nil {
+			j.Moves = j.Moves[:len(j.Moves)-1]
+			return fmt.Errorf("write the restore journal: %w", err)
+		}
 		if err := os.Rename(from, to); err != nil {
 			return err
 		}
-		done = append(done, move{from, to})
+		if testCrashAfterMove > 0 && len(j.Moves) == testCrashAfterMove {
+			crashed = true
+			return errSimulatedCrash
+		}
 		return nil
 	}
-	var keyBackup string
-	keyInstalled := false
 	defer func() {
+		if crashed {
+			return // tests: as if the process died here
+		}
 		if err == nil {
+			err = j.finish(cfg.DataDir)
 			return
 		}
-		for i := len(done) - 1; i >= 0; i-- {
-			if rerr := os.Rename(done[i].to, done[i].from); rerr != nil {
-				err = fmt.Errorf("%w; ALSO FAILED to put %s back from %s: %v", err, done[i].from, done[i].to, rerr)
-			}
+		if rerr := j.rollBack(); rerr != nil {
+			err = fmt.Errorf("%w; ALSO FAILED to put the previous files back: %v (the journal %s says what was moved; run drool restore --recover)",
+				err, rerr, filepath.Join(cfg.DataDir, JournalName))
+			return
 		}
-		if keyInstalled && keyBackup != "" {
-			if data, rerr := os.ReadFile(keyBackup); rerr == nil {
-				if werr := writeFileAtomic(cfg.MasterKeyPath(), data); werr != nil {
-					err = fmt.Errorf("%w; ALSO FAILED to put the master key back from %s: %v", err, keyBackup, werr)
-				}
-			}
-		} else if keyInstalled {
-			os.Remove(cfg.MasterKeyPath())
-		}
+		os.Remove(filepath.Join(cfg.DataDir, JournalName))
+		SyncDir(cfg.DataDir)
 		err = fmt.Errorf("restore failed and was rolled back; the previous installation is unchanged: %w", err)
 	}()
 
@@ -519,19 +540,26 @@ func swap(cfg *config.Loaded, st *staged, keyData []byte, res *RestoreResult) (e
 	if keyData != nil {
 		kp := cfg.MasterKeyPath()
 		if old, rerr := os.ReadFile(kp); rerr == nil {
-			keyBackup = filepath.Join(prev, "master.key")
-			if err := os.WriteFile(keyBackup, old, 0o600); err != nil {
+			j.KeyBackup = filepath.Join(prev, "master.key")
+			if err := writeFileAtomic(j.KeyBackup, old); err != nil {
 				return err
 			}
+		}
+		j.KeyPath, j.KeyInstalled = kp, true
+		if err := j.save(cfg.DataDir); err != nil {
+			return fmt.Errorf("write the restore journal: %w", err)
 		}
 		if err := writeFileAtomic(kp, keyData); err != nil {
 			return fmt.Errorf("install master key: %w", err)
 		}
-		keyInstalled = true
 	}
 	if err := mv(filepath.Join(st.dir, nameDB), live); err != nil {
 		return err
 	}
+	if err := SyncDir(cfg.DataDir); err != nil {
+		return err
+	}
+	SyncDir(prev)
 	if st.has[nameConfig] {
 		dst := filepath.Join(cfg.DataDir, "drool.yaml.from-backup")
 		data, rerr := os.ReadFile(filepath.Join(st.dir, filepath.FromSlash(nameConfig)))
@@ -539,9 +567,9 @@ func swap(cfg *config.Loaded, st *staged, keyData []byte, res *RestoreResult) (e
 			res.ConfigRestoredTo = dst
 		}
 	}
-	keptOld := keyBackup != ""
-	for _, m := range done {
-		keptOld = keptOld || strings.HasPrefix(m.to, prev+string(filepath.Separator))
+	keptOld := j.KeyBackup != ""
+	for _, m := range j.Moves {
+		keptOld = keptOld || strings.HasPrefix(m.To, prev+string(filepath.Separator))
 	}
 	if keptOld {
 		res.PreviousDataDir = prev
@@ -579,5 +607,8 @@ func writeFileAtomic(path string, data []byte) error {
 		os.Remove(tmp)
 		return err
 	}
-	return os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	return SyncDir(filepath.Dir(path))
 }

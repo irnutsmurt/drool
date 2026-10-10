@@ -420,3 +420,32 @@ func TestTransitionAnswers(t *testing.T) {
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
 
 func actor() audit.Actor { return audit.Actor{Type: audit.ActorUser, ID: "usr_1", Name: "admin"} }
+
+// TestCrashAfterTransition: the controller died after a Shepherd moved but
+// before it recorded that. The Shepherd answers to the new epoch already;
+// comparing it again sends the same transition (idempotent) and records it.
+func TestCrashAfterTransition(t *testing.T) {
+	e := newEnv(t, 2)
+	e.agentHost(t, "moved", 2, 2)
+	e.ag.mu.Lock()
+	v := e.ag.views["moved"]
+	v.Epoch = newEpoch
+	v.Domains[0].Epoch = newEpoch
+	e.ag.views["moved"] = v
+	e.ag.mu.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := e.svc.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	e.svc.OnSession("moved")
+	waitFor(t, 10*time.Second, "reconciled", func() bool { s, _ := e.state(t, "moved"); return s == StateReconciled })
+	if _, why := e.state(t, "moved"); !strings.Contains(why, "already moved") {
+		t.Errorf("reason: %q", why)
+	}
+	var epoch string
+	e.st.Reader.QueryRow(`SELECT epoch FROM state_versions WHERE host_id = 'moved'`).Scan(&epoch)
+	if epoch != newEpoch {
+		t.Errorf("controller's record not moved: %s", epoch)
+	}
+}

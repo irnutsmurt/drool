@@ -85,6 +85,9 @@ UPDATE agent_identities SET agent_version = ?, protocol = ?, protocol_min = ?, p
   epoch_reported = ?, endpoints_json = ?, boot_id = ?, last_seen_at = ?, last_address = ?, connected = 1
 WHERE id = ?;
 
+-- name: SetIdentityFeatures :exec
+UPDATE agent_identities SET features_json = ? WHERE id = ?;
+
 -- name: TouchIdentity :exec
 UPDATE agent_identities SET last_seen_at = ?, boot_id = ? WHERE id = ?;
 

@@ -18,6 +18,9 @@ import (
 )
 
 func cmdBackup(path string, explicit bool, args []string) error {
+	if len(args) > 0 && args[0] == "verify" {
+		return cmdBackupVerify(args[1:])
+	}
 	fs := flag.NewFlagSet("backup", flag.ContinueOnError)
 	out := fs.String("o", "", "output file (default <data_dir>/backups/drool-backup-<time>.tar.gz; \"-\" writes to stdout)")
 	withKey := fs.Bool("include-master-key", false, "include the master key (makes the backup a complete disaster-recovery backup; keep it as safe as the controller itself)")
@@ -32,45 +35,24 @@ func cmdBackup(path string, explicit bool, args []string) error {
 	toStdout := *out == "-"
 	msg := os.Stderr
 
-	dest := *out
-	if dest == "" {
-		dir := filepath.Join(cfg.DataDir, "backups")
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return err
-		}
-		dest = filepath.Join(dir, "drool-backup-"+time.Now().UTC().Format("20060102-150405")+".tar.gz")
-	}
-	var w io.Writer = os.Stdout
-	var f *os.File
-	if !toStdout {
-		if f, err = os.CreateTemp(filepath.Dir(dest), ".drool-backup-*"); err != nil {
-			return fmt.Errorf("create backup file: %w", err)
-		}
-		defer os.Remove(f.Name()) // no-op after the rename
-		if err := f.Chmod(0o600); err != nil {
-			f.Close()
-			return err
-		}
-		w = f
-	}
-	res, err := backup.Create(ctx, cfg, w, backup.Options{IncludeMasterKey: *withKey})
-	if err != nil {
-		if f != nil {
-			f.Close()
-		}
+	if err := checkRestoreJournal(cfg); err != nil {
 		return err
 	}
-	if f != nil {
-		if err := f.Sync(); err != nil {
-			f.Close()
-			return err
-		}
-		if err := f.Close(); err != nil {
-			return err
-		}
-		if err := os.Rename(f.Name(), dest); err != nil {
-			return err
-		}
+	dest := *out
+	if dest == "" {
+		dest = filepath.Join(cfg.DataDir, "backups", "drool-backup-"+time.Now().UTC().Format("20060102-150405")+".tar.gz")
+	}
+	opts := backup.Options{IncludeMasterKey: *withKey}
+	var res *backup.Result
+	if toStdout {
+		res, err = backup.Create(ctx, cfg, os.Stdout, opts)
+	} else {
+		// Written to a temporary file, synced and renamed: never a partial
+		// file under the backup's name.
+		res, err = backup.CreateFile(ctx, cfg, dest, opts)
+	}
+	if err != nil {
+		return err
 	}
 	m := res.Manifest
 
@@ -136,8 +118,10 @@ func cmdRestore(path string, explicit bool, args []string) error {
 	keyFile := fs.String("master-key", "", "master key file for a backup made without --include-master-key")
 	discard := fs.Bool("discard-credentials", false, "if no matching master key is available, restore everything except stored credentials (they are deleted and must be added again)")
 	yes := fs.Bool("yes", false, "don't ask for confirmation")
+	recoverFlag := fs.Bool("recover", false, "deal with a restore that was interrupted (crash, power loss): put the previous installation back, or finish the restore if it had completed")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: drool restore [options] FILE   ("-" reads from standard input)
+       drool restore --recover          (after a restore was interrupted)
 
 Replaces this controller's database, TLS material and (if included) master
 key with the backup. Stop the controller first. The current files are moved
@@ -150,6 +134,23 @@ Options:
 	}
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *recoverFlag {
+		cfg, err := loadConfig(path, explicit)
+		if err != nil {
+			return err
+		}
+		res, err := backup.Recover(cfg)
+		if err != nil {
+			return err
+		}
+		if res.Completed {
+			fmt.Println("The interrupted restore had already put every file in place; it is finished now.")
+		} else {
+			fmt.Printf("Put the previous installation back (%d file move(s) undone); the restore didn't happen.\n", res.RolledBack)
+		}
+		fmt.Println("Start DROOL again (systemctl start drool, or docker compose start drool).")
+		return nil
 	}
 	if fs.NArg() != 1 {
 		fs.Usage()
@@ -272,4 +273,88 @@ func orDash(s string) string {
 func isTerminal(f *os.File) bool {
 	fi, err := f.Stat()
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+// errIncomplete: drool backup verify's exit status 2 (restorable, but its
+// credentials need a key it doesn't include).
+var errIncomplete = errors.New("restorable, but not complete on its own")
+
+func cmdBackupVerify(args []string) error {
+	fs := flag.NewFlagSet("backup verify", flag.ContinueOnError)
+	keyFile := fs.String("master-key", "", "master key file to check the credentials with, for a backup made without --include-master-key")
+	fs.Usage = func() {
+		fmt.Fprint(os.Stderr, `Usage: drool backup verify [--master-key FILE] FILE   ("-" reads from standard input)
+
+Checks a backup without restoring it, and without touching any installation:
+the archive and its checksums, the database's integrity, that it upgrades to
+this DROOL's schema (on a temporary copy), which master key opens its stored
+credentials, and its audit history.
+
+Exit status: 0 restorable and complete; 2 restorable, but its credentials
+need a master key it doesn't include; 1 not restorable.
+
+Options:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		fs.Usage()
+		return errors.New("backup verify needs exactly one backup file")
+	}
+	var r io.Reader = os.Stdin
+	if src := fs.Arg(0); src != "-" {
+		f, err := os.Open(src)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		r = f
+	}
+	rep, err := backup.Verify(context.Background(), r, backup.VerifyOptions{MasterKeyFile: *keyFile})
+	if err != nil {
+		return err
+	}
+	if m := rep.Manifest; m != nil {
+		fmt.Printf("Backup made %s on %s by DROOL %s (schema %d).\n", m.CreatedAt.Format(time.RFC3339), orDash(m.Hostname), m.DroolVersion, m.SchemaVersion)
+		fmt.Printf("  Archive: intact (%d files, checksums match); %s\n", rep.Files, summarizeCounts(m.Counts))
+		if len(rep.Migrations) > 0 {
+			fmt.Printf("  Database: integrity check passed; restoring it here applies %d migration(s) up to schema %d\n", len(rep.Migrations), store.LatestVersion())
+		} else if rep.Restorable() {
+			fmt.Println("  Database: integrity check passed; same schema as this DROOL")
+		}
+		switch rep.KeySource {
+		case "backup":
+			fmt.Printf("  Credentials: %d sealed value(s) open with the master key in the backup\n", rep.Sealed)
+		case "file":
+			fmt.Printf("  Credentials: %d sealed value(s) open with %s\n", rep.Sealed, *keyFile)
+		case "none needed":
+			fmt.Println("  Credentials: none stored")
+		}
+		if a := rep.Audit; a != nil && a.OK {
+			sealed := "not sealed by a checkpoint yet"
+			if a.SealedThrough > 0 {
+				sealed = fmt.Sprintf("sealed through #%d", a.SealedThrough)
+			}
+			fmt.Printf("  Audit history: %d records verified (%s)\n", a.Records+a.LegacyRecords, sealed)
+		}
+	}
+	for _, w := range rep.Warnings {
+		fmt.Printf("  Note: %s.\n", w)
+	}
+	switch {
+	case !rep.Restorable():
+		fmt.Println("NOT RESTORABLE:")
+		for _, p := range rep.Problems {
+			fmt.Printf("  - %s\n", p)
+		}
+		return errors.New("the backup can't be restored")
+	case !rep.Complete():
+		fmt.Println("Restorable, but not complete on its own (see the note above).")
+		return errIncomplete
+	}
+	fmt.Println("Restorable and complete.")
+	return nil
 }

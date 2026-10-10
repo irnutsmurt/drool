@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"drool/internal/audit"
 	"drool/internal/secrets"
@@ -121,6 +123,10 @@ type updateSecretRequest struct {
 	Value       *string `json:"value"`
 	Passphrase  string  `json:"passphrase"`
 	Generate    bool    `json:"generate"`
+	// ReplaceInUse acknowledges that hosts using the credential switch to
+	// the new value at once (M16): if it doesn't work on them, DROOL loses
+	// that way in.
+	ReplaceInUse bool `json:"replace_in_use"`
 }
 
 func (s *Server) handleUpdateSecret(w http.ResponseWriter, r *http.Request) {
@@ -131,6 +137,31 @@ func (s *Server) handleUpdateSecret(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	id := r.PathValue("id")
+	// Replacing a value hosts use isn't introduce → verify → migrate →
+	// retire: they all switch at once. Said plainly, acknowledged, and
+	// confirmed by a recent sign-in (M16).
+	if req.Value != nil || req.Generate {
+		if users, _ := s.d.Store.R.ListHostsUsingSecret(ctx, id); len(users) > 0 {
+			if !req.ReplaceInUse {
+				names := make([]string, 0, len(users))
+				for i, u := range users {
+					if i == 5 {
+						names = append(names, fmt.Sprintf("and %d more", len(users)-5))
+						break
+					}
+					names = append(names, u.Name)
+				}
+				writeProblem(w, r, errConflict("credential_in_use", fmt.Sprintf("%d host(s) use this credential (%s): replacing its value switches them all at once, "+
+					"and if the new value doesn't work on them DROOL can't reach them any more. Safer: add the new key or password as a separate "+
+					"credential, test it on one host, switch the hosts over, then delete this one. To replace it anyway, confirm that you understand this.",
+					len(users), strings.Join(names, ", "))))
+				return
+			}
+			if !s.requireReauth(w, r) {
+				return
+			}
+		}
+	}
 	var row db.Secret
 	err := s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
 		var err error

@@ -48,6 +48,15 @@ type Config struct {
 	Agent     Agent     `yaml:"agent"`
 	Network   Network   `yaml:"network"`
 	SSHCA     SSHCA     `yaml:"ssh_ca"`
+	Backup    Backup    `yaml:"backup"`
+}
+
+// Backup configures backups DROOL makes by itself (M16).
+type Backup struct {
+	// BeforeUpgrade: before a newer DROOL migrates the database, write a
+	// backup to <data_dir>/backups (the newest three are kept). An upgrade
+	// that can't make one doesn't start.
+	BeforeUpgrade bool `yaml:"before_upgrade"`
 }
 
 // SSHCA configures the certificates DROOL's SSH user certificate authority
@@ -194,8 +203,9 @@ func Defaults() Config {
 			SessionAbsoluteTimeout: 7 * 24 * time.Hour,
 			ReauthWindow:           5 * time.Minute,
 		},
-		Setup: Setup{CodeTTL: time.Hour},
-		SSHCA: SSHCA{CertTTL: 10 * time.Minute, ClockSkew: 5 * time.Minute},
+		Setup:  Setup{CodeTTL: time.Hour},
+		SSHCA:  SSHCA{CertTTL: 10 * time.Minute, ClockSkew: 5 * time.Minute},
+		Backup: Backup{BeforeUpgrade: true},
 		Engine: Engine{
 			GlobalConcurrency:      20,
 			PerJumpHostConcurrency: 10,

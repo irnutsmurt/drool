@@ -32,6 +32,7 @@ import (
 	"drool/internal/artifacts"
 	"drool/internal/audit"
 	"drool/internal/auth"
+	"drool/internal/backup"
 	"drool/internal/config"
 	"drool/internal/desired"
 	"drool/internal/driver"
@@ -64,13 +65,17 @@ const usage = `Usage: drool [--config FILE] <command> [options]
 
 Commands:
   serve                 Run the controller
+  healthcheck           Exit 0 when this controller answers /health (container health checks)
   migrate               Apply database migrations and exit
   backup [-o FILE] [--include-master-key]
                         Back up the controller (safe while it runs)
+  backup verify FILE    Check that a backup can be restored, without restoring it
   restore FILE          Restore a backup (stop the controller first)
+  restore --recover     Put the previous installation back after an interrupted restore
   setup code            Issue a new one-time setup code for first-admin setup
   user create           Create a local user (prompts for password); recovery path
   user mfa-reset        Turn off a user's two-factor authentication (lost authenticator); recovery path
+  secrets rotate-key    Replace the master key: re-seal every stored secret with a new key version
   agent-ca status       Agent PKI: root (online/offline), intermediate, trust manifest
   agent-ca export-root  Write the Agent Root CA key and certificate for offline storage
   agent-ca remove-root  Remove the root private key from the controller (and future backups)
@@ -87,6 +92,9 @@ Configuration is read from built-in defaults, then the config file
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
+		if errors.Is(err, errIncomplete) {
+			os.Exit(2) // drool backup verify: restorable, but not complete
+		}
 		fmt.Fprintln(os.Stderr, "drool:", err)
 		os.Exit(1)
 	}
@@ -112,6 +120,8 @@ func run(args []string) error {
 		return nil
 	case "serve":
 		return cmdServe(*cfgPath, explicit)
+	case "healthcheck":
+		return cmdHealthcheck(*cfgPath, explicit)
 	case "migrate":
 		return cmdMigrate(*cfgPath, explicit)
 	case "backup":
@@ -127,6 +137,8 @@ func run(args []string) error {
 		return cmdRelease(rest[1:])
 	case "agent-ca":
 		return cmdAgentCA(*cfgPath, explicit, rest[1:])
+	case "secrets":
+		return cmdSecrets(*cfgPath, explicit, rest[1:])
 	case "user":
 		switch {
 		case len(rest) >= 2 && rest[1] == "create":
@@ -153,16 +165,43 @@ func loadConfig(path string, explicit bool) (*config.Loaded, error) {
 }
 
 func openStore(ctx context.Context, cfg *config.Loaded) (*store.Store, []string, error) {
+	if err := checkRestoreJournal(cfg); err != nil {
+		return nil, nil, err
+	}
 	st, err := store.Open(filepath.Join(cfg.DataDir, store.FileName))
 	if err != nil {
 		return nil, nil, err
 	}
+	// Before a newer DROOL changes the schema, a backup of the old one
+	// (M16): migrations only go forward.
+	if cur, pending, err := st.Pending(ctx); err == nil && cur > 0 && pending > 0 && cfg.Backup.BeforeUpgrade {
+		path, _, err := backup.PreUpgrade(ctx, cfg, cur)
+		if err != nil {
+			st.Close()
+			return nil, nil, fmt.Errorf("this DROOL upgrades the database from schema %d to %d and backs it up first, but the backup failed: %w. "+
+				"Nothing was changed. Fix that (free disk space?) and start again, or set backup.before_upgrade: false "+
+				"(DROOL_BACKUP_BEFORE_UPGRADE=false) to upgrade without a backup", cur, store.LatestVersion(), err)
+		}
+		fmt.Fprintf(os.Stderr, "Backed up the database before upgrading it from schema %d to %d: %s\n", cur, store.LatestVersion(), path)
+	}
 	applied, err := st.Migrate(ctx)
 	if err != nil {
 		st.Close()
+		var newer *store.NewerSchemaError
+		if errors.As(err, &newer) {
+			if list := backup.PreUpgradeBackups(cfg.DataDir); len(list) > 0 {
+				return nil, nil, fmt.Errorf("%w. Backups made before upgrades: %s", err, strings.Join(list, ", "))
+			}
+		}
 		return nil, nil, err
 	}
 	return st, applied, nil
+}
+
+// checkRestoreJournal refuses a data directory where a restore was
+// interrupted (M16): see drool restore --recover.
+func checkRestoreJournal(cfg *config.Loaded) error {
+	return backup.CheckJournal(cfg.DataDir)
 }
 
 func cmdMigrate(path string, explicit bool) error {

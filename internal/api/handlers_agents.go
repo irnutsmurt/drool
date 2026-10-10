@@ -406,6 +406,41 @@ type identityJSON struct {
 	UpdateVersion   string          `json:"update_version"`
 	UpdateDetail    string          `json:"update_detail"`
 	UpdateAt        *string         `json:"update_at"`
+	// Compatibility with this controller (M16).
+	Compatibility agentsvc.Compatibility `json:"compatibility"`
+}
+
+// newestRelease is the newest stored agent release for an identity's
+// platform that is newer than what it runs ("" when none). A version that
+// already failed or rolled back there isn't offered again.
+func newestRelease(rels []db.AgentRelease, id db.AgentIdentity) string {
+	failed := id.UpdateState == "rolled_back" || id.UpdateState == "failed"
+	best := ""
+	for _, rel := range rels {
+		if failed && rel.Version == id.UpdateVersion {
+			continue
+		}
+		if rel.Os == id.Os && rel.Arch == id.Arch && release.CompareVersions(rel.Version, id.AgentVersion) > 0 &&
+			(best == "" || release.CompareVersions(rel.Version, best) > 0) {
+			best = rel.Version
+		}
+	}
+	return best
+}
+
+// compatibility judges an identity with what its host's configuration
+// needs from it (M16, ARCHITECTURE-ALPHA §33.8).
+func (s *Server) compatibility(ctx context.Context, id db.AgentIdentity, rels []db.AgentRelease) agentsvc.Compatibility {
+	needed := map[string]string{}
+	if s.d.Firewall != nil && s.d.Firewall.HostConfig(ctx, id.HostID).Mode != "off" {
+		needed["firewall-1"] = "its firewall is managed"
+	}
+	if s.d.Recovery != nil {
+		if rec, _ := s.d.Recovery.HostStatus(ctx, id.HostID); rec != nil && rec.State != "reconciled" && rec.State != "recovered" {
+			needed["epoch-1"] = "this controller was restored and the host isn't reconciled yet"
+		}
+	}
+	return agentsvc.Judge(id, agentsvc.IdentityFeatures(id), needed, newestRelease(rels, id), s.d.Config.Agent.RecoveryGrace, time.Now())
 }
 
 func (s *Server) toIdentityJSON(id db.AgentIdentity) identityJSON {
@@ -489,26 +524,17 @@ func (s *Server) handleHostAgent(w http.ResponseWriter, r *http.Request) {
 	ids, _ := s.d.Store.R.ListIdentitiesForHost(ctx, h.ID)
 	if len(ids) > 0 {
 		j := s.toIdentityJSON(ids[0])
+		rels, _ := s.d.Store.R.ListReleases(ctx)
+		j.Compatibility = s.compatibility(ctx, ids[0], rels)
 		out.Identity = &j
 		if s.d.Agents != nil {
 			for _, se := range s.d.Agents.HostSessions(h.ID) {
 				out.Sessions = append(out.Sessions, sessionJSON{Address: se.Address, ConnectedAt: se.ConnectedAt.UTC().Format(time.RFC3339),
 					LastSeen: se.LastSeen.UTC().Format(time.RFC3339), Protocol: se.Protocol, Version: se.AgentVersion, Quarantined: se.Quarantined})
 			}
-			if rels, err := s.d.Store.R.ListReleases(ctx); err == nil {
-				// A version that already failed or rolled back here isn't
-				// offered again from the host page (a rollout still can).
-				failed := ids[0].UpdateState == "rolled_back" || ids[0].UpdateState == "failed"
-				for _, rel := range rels {
-					if failed && rel.Version == ids[0].UpdateVersion {
-						continue
-					}
-					if rel.Os == ids[0].Os && rel.Arch == ids[0].Arch && release.CompareVersions(rel.Version, ids[0].AgentVersion) > 0 &&
-						(out.UpdateAvailable == "" || release.CompareVersions(rel.Version, out.UpdateAvailable) > 0) {
-						out.UpdateAvailable = rel.Version
-					}
-				}
-			}
+			// A version that already failed or rolled back here isn't
+			// offered again from the host page (a rollout still can).
+			out.UpdateAvailable = newestRelease(rels, ids[0])
 		}
 	}
 	svs, _ := s.d.Store.R.ListStateVersions(ctx, h.ID)
@@ -525,9 +551,12 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, errInternal)
 		return
 	}
+	rels, _ := s.d.Store.R.ListReleases(r.Context())
 	out := make([]identityJSON, 0, len(rows))
 	for _, id := range rows {
-		out = append(out, s.toIdentityJSON(id))
+		j := s.toIdentityJSON(id)
+		j.Compatibility = s.compatibility(r.Context(), id, rels)
+		out = append(out, j)
 	}
 	writeJSON(w, http.StatusOK, listResponse[identityJSON]{Items: out})
 }
@@ -645,6 +674,10 @@ func (s *Server) handleInstallAgent(w http.ResponseWriter, r *http.Request) {
 
 type revokeRequest struct {
 	Reason string `json:"reason"`
+	// LeaveUnmanaged acknowledges that the host has no other way in for
+	// DROOL (no SSH): after the revocation only someone with access to the
+	// host can enroll its Shepherd again (M16).
+	LeaveUnmanaged bool `json:"leave_unmanaged"`
 }
 
 func (s *Server) handleRevokeAgent(w http.ResponseWriter, r *http.Request) {
@@ -662,6 +695,13 @@ func (s *Server) handleRevokeAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	id := r.PathValue("id")
+	if cur, err := s.d.Store.R.GetAgentIdentity(ctx, id); err == nil && !req.LeaveUnmanaged {
+		if h, err := s.d.Store.R.GetHost(ctx, cur.HostID); err == nil && h.SshConfigured == 0 {
+			writeProblem(w, r, errConflict("last_management_path", "the Shepherd is DROOL's only way to manage "+h.Name+" (no SSH): after the revocation "+
+				"DROOL can't reach it until someone with access to the host enrolls its Shepherd again. Confirm that this is what you want."))
+			return
+		}
+	}
 	var ident db.AgentIdentity
 	err := s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
 		var err error

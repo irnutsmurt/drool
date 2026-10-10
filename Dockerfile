@@ -37,5 +37,6 @@ VOLUME /data
 # Web UI/API and the agent endpoint (mutual TLS, agents connect outbound to it).
 EXPOSE 8080 9443
 USER nonroot
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 CMD ["/usr/local/bin/drool", "healthcheck"]
 ENTRYPOINT ["/usr/local/bin/drool"]
 CMD ["serve"]

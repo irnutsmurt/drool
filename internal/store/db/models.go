@@ -95,6 +95,7 @@ type AgentIdentity struct {
 	UpdateVersion   string
 	UpdateDetail    string
 	UpdateAt        sql.NullInt64
+	FeaturesJson    string
 }
 
 type AgentRelease struct {

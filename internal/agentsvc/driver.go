@@ -170,6 +170,13 @@ func rejectionError(r agentrpc.Rejection) error {
 		return &model.OpError{Class: model.ClassConfiguration, Message: r.Message, Hint: "Reconciliation is required before DROOL changes this state again."}
 	case agentrpc.RejectExpired:
 		return &model.OpError{Class: model.ClassValidation, Message: r.Message, Hint: "Check that the controller's and the host's clocks are correct."}
+	case agentrpc.RejectInvalid:
+		// A Shepherd older than this controller doesn't know a newer
+		// operation: not an ordinary failure, and nothing ran (M16).
+		if strings.Contains(r.Message, "unknown operation type") || strings.Contains(r.Message, "unknown purpose") {
+			return &model.OpError{Class: model.ClassConfiguration, Message: "this host's Shepherd doesn't support this operation (" + r.Message + ")",
+				Hint: "It is older than this controller: update it (Shepherds → Updates). Nothing ran on the host."}
+		}
 	}
 	return &model.OpError{Class: model.ClassValidation, Message: "the agent refused the operation: " + r.Message}
 }

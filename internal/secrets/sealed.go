@@ -57,6 +57,15 @@ type sealedValue struct {
 func eachSealed(ctx context.Context, q db.DBTX, fn func(*sealedLocation, sealedValue) error) error {
 	for i := range sealedLocations {
 		loc := &sealedLocations[i]
+		// A database from an older schema (a backup before its upgrade)
+		// has no values where later versions added sealed columns.
+		var exists int
+		if err := q.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, loc.Table).Scan(&exists); err != nil {
+			return err
+		}
+		if exists == 0 {
+			continue
+		}
 		rows, err := q.QueryContext(ctx, loc.Select)
 		if err != nil {
 			return err

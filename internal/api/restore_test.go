@@ -84,7 +84,7 @@ func TestRestoreReconciliation(t *testing.T) {
 	// ... and one Shepherd is revoked (the restored database won't know).
 	revokedStore, _ := agent.OpenStore(pRevoked.State)
 	revokedIdent, _ := revokedStore.Identity()
-	if r := e.c.do("POST", "/api/v1/agents/"+revokedIdent.IdentityID+"/revoke", map[string]any{"reason": "decommissioned"}); r.status != 204 {
+	if r := e.c.do("POST", "/api/v1/agents/"+revokedIdent.IdentityID+"/revoke", map[string]any{"reason": "decommissioned", "leave_unmanaged": true}); r.status != 204 {
 		t.Fatalf("revoke: %d %s", r.status, r.body)
 	}
 	eventually(t, 10*time.Second, "the Shepherd remembers its revocation", func() bool { return revokedStore.Revocation() != nil })
@@ -199,7 +199,7 @@ func TestRestoreReconciliation(t *testing.T) {
 	if jh, _ := e2.runJob(t, hostRevoked, map[string]any{"type": "command", "command": "echo must-not-run"}); jh.State != "failed" {
 		t.Fatalf("job on a Shepherd revoked after the backup: %+v", jh)
 	}
-	if r := c2.do("POST", "/api/v1/agents/"+revokedIdent.IdentityID+"/revoke", map[string]any{"reason": "revoked again after the restore"}); r.status != 204 {
+	if r := c2.do("POST", "/api/v1/agents/"+revokedIdent.IdentityID+"/revoke", map[string]any{"reason": "revoked again after the restore", "leave_unmanaged": true}); r.status != 204 {
 		t.Fatalf("revoke again: %d %s", r.status, r.body)
 	}
 

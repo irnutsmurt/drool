@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/sha256"
+	"drool/internal/agent"
 	"encoding/base32"
 	"encoding/binary"
 	"encoding/hex"
@@ -533,4 +534,73 @@ func receiverHash(rec map[string]any) string {
 	}
 	sum := sha256.Sum256([]byte(b.String()))
 	return hex.EncodeToString(sum[:])
+}
+
+// TestLastPathAndKeyGuards (M16): replacing a credential hosts use, and
+// revoking a host's only management path, are refused until acknowledged;
+// they, a changed host key and the agent CA need a recent sign-in.
+func TestLastPathAndKeyGuards(t *testing.T) {
+	e := newAgentEnv(t)
+	h, c := e.h, e.c
+	ctx := context.Background()
+
+	// A credential a host uses.
+	var cred struct {
+		ID string `json:"id"`
+	}
+	c.do("POST", "/api/v1/secrets", map[string]any{"name": "deploy-pw", "kind": "password", "value": "first password"}).json(t, &cred)
+	hostID := readyHost(t, h, c, "web")
+	if _, err := h.st.Writer.Exec(`UPDATE hosts SET ssh_credential_id = ? WHERE id = ?`, cred.ID, hostID); err != nil {
+		t.Fatal(err)
+	}
+	r := c.do("PATCH", "/api/v1/secrets/"+cred.ID, map[string]any{"value": "second password"})
+	if r.status != 409 || r.problemCode(t) != "credential_in_use" || !strings.Contains(string(r.body), "web") {
+		t.Fatalf("replacing an in-use credential: %d %s", r.status, r.body)
+	}
+	h.clock.Store(int64(6 * time.Minute))
+	if r := c.do("PATCH", "/api/v1/secrets/"+cred.ID, map[string]any{"value": "second password", "replace_in_use": true}); r.status != 403 || r.problemCode(t) != "reauth_required" {
+		t.Fatalf("acknowledged, without a recent sign-in: %d %s", r.status, r.body)
+	}
+	c.reauth(t, map[string]string{"password": pw})
+	if r := c.do("PATCH", "/api/v1/secrets/"+cred.ID, map[string]any{"value": "second password", "replace_in_use": true}); r.status != 200 {
+		t.Fatalf("acknowledged and confirmed: %d %s", r.status, r.body)
+	}
+	// Renaming needs neither.
+	h.clock.Store(int64(12 * time.Minute))
+	if r := c.do("PATCH", "/api/v1/secrets/"+cred.ID, map[string]any{"name": "deploy-password"}); r.status != 200 {
+		t.Fatalf("rename: %d %s", r.status, r.body)
+	}
+
+	// A host whose Shepherd is its only way in.
+	tok := e.token(t, map[string]any{"preset": "full", "description": "only-path"})
+	p := agentPaths(t, fullCaps(""))
+	id, err := agent.Enroll(ctx, p, tok.Token, "v1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.reauth(t, map[string]string{"password": pw})
+	r = c.do("POST", "/api/v1/agents/"+id.IdentityID+"/revoke", map[string]any{"reason": "decommissioned"})
+	if r.status != 409 || r.problemCode(t) != "last_management_path" {
+		t.Fatalf("revoking the only path: %d %s", r.status, r.body)
+	}
+	if r := c.do("POST", "/api/v1/agents/"+id.IdentityID+"/revoke", map[string]any{"reason": "decommissioned", "leave_unmanaged": true}); r.status != 204 {
+		t.Fatalf("acknowledged: %d %s", r.status, r.body)
+	}
+
+	// Trust decisions need a recent sign-in.
+	h.clock.Store(int64(20 * time.Minute))
+	for _, call := range []struct {
+		method, path string
+		body         map[string]any
+	}{
+		{"POST", "/api/v1/agents/pki/rotate", nil},
+		{"POST", "/api/v1/agents/release-keys", nil},
+		{"POST", "/api/v1/hosts/" + hostID + "/hostkeys/approve", map[string]any{"fingerprint": "SHA256:x"}}, // a pinned key exists
+		{"POST", "/api/v1/agents/" + id.IdentityID + "/resolve-conflict", nil},
+	} {
+		r := c.do(call.method, call.path, call.body)
+		if r.status != 403 || r.problemCode(t) != "reauth_required" {
+			t.Errorf("%s %s without a recent sign-in: %d %s", call.method, call.path, r.status, r.body)
+		}
+	}
 }

@@ -470,8 +470,10 @@ func TestAgentPKIBackup(t *testing.T) {
 	if _, _, err := agentsvc.OpenPKI(ctx, st3, box3, "t"); !errors.Is(err, agentsvc.ErrPKIUnusable) {
 		t.Fatalf("PKI after discarding: %v", err)
 	}
+	// After a restore the new manifest is numbered far ahead (1 + 1000), so
+	// it supersedes any manifest issued after the backup (M16).
 	v, err := agentsvc.RecoverIntermediate(ctx, st3, box3, rootKey)
-	if err != nil || v != 2 {
+	if err != nil || v != 1001 {
 		t.Fatalf("recover intermediate: %d %v", v, err)
 	}
 	p3, _, err := agentsvc.OpenPKI(ctx, st3, box3, "t")

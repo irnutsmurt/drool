@@ -564,6 +564,7 @@ export interface paths {
         delete: operations["deleteSecret"];
         options?: never;
         head?: never;
+        /** @description Rename or describe a credential, or replace its value. Replacing the value of a credential hosts use switches them all at once: refused (409 `credential_in_use`, naming the hosts) unless `replace_in_use` acknowledges it, and then it needs recent re-authentication. Safer: add the new value as a separate credential, test it, switch the hosts, delete the old one. */
         patch: operations["updateSecret"];
         trace?: never;
     };
@@ -1840,7 +1841,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Revoke an agent identity immediately. Its sessions close; the host isn't managed again until re-enrollment or an explicit switch to SSH. */
+        /** @description Revoke an agent identity immediately. Its sessions close; the host isn't managed again until re-enrollment or an explicit switch to SSH. When the Shepherd is the host's only management path (no SSH), refused (409 `last_management_path`) unless `leave_unmanaged` acknowledges it. Requires recent re-authentication. */
         post: operations["revokeAgent"];
         delete?: never;
         options?: never;
@@ -1857,7 +1858,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Release an identity-conflict quarantine. Refused while two machines are connected with the identity. */
+        /** @description Release an identity-conflict quarantine. Refused while two machines are connected with the identity. Requires recent re-authentication. */
         post: operations["resolveAgentConflict"];
         delete?: never;
         options?: never;
@@ -4052,6 +4053,7 @@ export interface components {
             update_detail: string;
             /** Format: date-time */
             update_at: string | null;
+            compatibility: components["schemas"]["AgentCompatibility"];
         };
         AgentSession: {
             address: string;
@@ -4479,6 +4481,8 @@ export interface components {
             /** Format: password */
             passphrase?: string;
             generate?: boolean;
+            /** @description Acknowledges that every host using the credential switches to the new value at once. */
+            replace_in_use?: boolean;
         };
         ControllerKey: {
             credential_id: string;
@@ -4637,6 +4641,13 @@ export interface components {
         };
         SSHCANameRequest: {
             name?: string;
+        };
+        /** @description How the Shepherd and this controller work together (M16). incompatible: the protocol; update_required: it lacks a capability this host's configuration needs (operations needing it aren't sent); reduced: it lacks optional capabilities; update_recommended: a newer release is stored; trust_failure: revoked, in conflict, or a certificate expired beyond renewal. */
+        AgentCompatibility: {
+            /** @enum {string} */
+            status: "compatible" | "reduced" | "update_recommended" | "update_required" | "incompatible" | "trust_failure";
+            summary: string;
+            missing: string[];
         };
         RestoreStatus: {
             restore: components["schemas"]["RestoreInfo"] | null;
@@ -11067,6 +11078,7 @@ export interface operations {
             content: {
                 "application/json": {
                     reason: string;
+                    leave_unmanaged?: boolean;
                 };
             };
         };

@@ -361,6 +361,12 @@ func (s *Server) handleApproveHostKey(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, errValidation("provide exactly one of key_id or fingerprint"))
 		return
 	}
+	// Replacing a pinned key (the host's key changed) is a trust decision
+	// an attacker in the middle would want: confirmed by a recent sign-in
+	// (M16). The first key of a new host isn't.
+	if _, err := s.d.Store.R.GetPinnedHostKey(ctx, id); err == nil && !s.requireReauth(w, r) {
+		return
+	}
 	var key db.SshHostKey
 	err := s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
 		keyID := req.KeyID

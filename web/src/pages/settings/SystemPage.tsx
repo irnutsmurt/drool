@@ -47,6 +47,11 @@ export function SystemPage() {
             somewhere safe and separate, or the credentials can't be restored. Restoring needs DROOL stopped:
             <code className="mx-1 font-mono text-xs">drool restore FILE</code> (see the README).
           </p>
+          <p className="text-muted">
+            <code className="mr-1 font-mono text-xs">drool backup verify FILE</code> checks that a backup can be restored without restoring it.
+            Before a newer DROOL upgrades the database, it backs it up by itself to <code className="font-mono text-xs">backups/drool-pre-upgrade-…</code>
+            in the data directory (the newest three are kept).
+          </p>
         </div>
       </Card>
       {d?.config && (

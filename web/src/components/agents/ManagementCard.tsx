@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, unwrap, type Schemas } from "@/api/client";
+import { ApiError, api, unwrap, type Schemas } from "@/api/client";
 import { qk, type Host } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
@@ -108,9 +108,11 @@ export function ManagementCard({ host, children }: { host: Host; children?: Reac
       {children}
 
       {live && id && (!id.compatible || !id.epoch_matches || (a?.sessions ?? []).length > 1 || (a?.state_versions ?? []).some((sv) => sv.status !== "ok")
-        || id.update_state === "failed" || id.update_state === "rolled_back") && (
+        || id.update_state === "failed" || id.update_state === "rolled_back" || id.compatibility.status === "update_required" || id.compatibility.status === "reduced") && (
         <div className="mt-3 space-y-2">
           {!id.compatible && <Alert>Shepherd version {id.agent_version} isn&apos;t compatible with this controller{id.compat_reason ? `: ${id.compat_reason}` : ""}.</Alert>}
+          {id.compatible && id.compatibility.status === "update_required" && <Alert>Update this Shepherd: {id.compatibility.summary}. DROOL doesn&apos;t send it operations it can&apos;t do.</Alert>}
+          {id.compatibility.status === "reduced" && <Alert tone="warn">This Shepherd {id.compatibility.summary}.</Alert>}
           {!id.epoch_matches && <Alert tone="warn">The Shepherd still answers to another controller epoch ({id.epoch_reported.slice(0, 12)}), from before this controller was restored: it refuses this controller&apos;s commands until it is reconciled (see the notice above, or Settings → System → Restore).</Alert>}
           {(a?.sessions ?? []).length > 1 && <Alert>{a!.sessions.length} sessions are connected with this identity.</Alert>}
           {(a?.state_versions ?? []).some((sv) => sv.status !== "ok") && <Alert tone="warn">Managed state on the host is ahead of, or foreign to, this controller: reconcile it under Shepherd details.</Alert>}
@@ -126,7 +128,7 @@ export function ManagementCard({ host, children }: { host: Host; children?: Reac
           <div className="mt-3 space-y-3">
           <dl className="grid grid-cols-[minmax(7rem,9rem)_1fr] gap-y-1.5 text-sm">
             <dt className="text-muted">Shepherd version</dt>
-            <dd>{id.agent_version || "—"} {!id.compatible && <Badge tone="danger">incompatible</Badge>}
+            <dd>{id.agent_version || "—"} <span title={id.compatibility.summary}><CompatibilityBadge c={id.compatibility} /></span>
               {a?.update_available && <span className="ml-2"><Badge tone="accent">update available: {a.update_available}</Badge></span>}
               {id.update_state && <span className="ml-2"><Badge tone={id.update_state === "healthy" ? "ok" : id.update_state === "rolled_back" || id.update_state === "failed" ? "danger" : "warn"}>{updateLabels[id.update_state] ?? id.update_state}</Badge></span>}
             </dd>
@@ -285,22 +287,46 @@ export function ManualInstallDialog({ host, onClose, groupId }: { host?: Host; o
   );
 }
 
+const compatLabels: Record<Schemas["AgentCompatibility"]["status"], [string, "ok" | "warn" | "danger" | "neutral" | "accent"]> = {
+  compatible: ["compatible", "ok"],
+  update_recommended: ["update available", "accent"],
+  reduced: ["reduced capabilities", "warn"],
+  update_required: ["update required", "danger"],
+  incompatible: ["incompatible", "danger"],
+  trust_failure: ["identity / trust problem", "danger"],
+};
+
+/** A Shepherd's compatibility with this controller (M16). */
+export function CompatibilityBadge({ c }: { c: Schemas["AgentCompatibility"] }) {
+  const [label, tone] = compatLabels[c.status];
+  return <Badge tone={tone}>{label}</Badge>;
+}
+
 function RevokeDialog({ identityId, hostName, onClose }: { identityId: string; hostName: string; onClose: () => void }) {
   const [reason, setReason] = useState("");
+  const [understood, setUnderstood] = useState(false);
   const revoke = useMutation({
-    mutationFn: () => unwrap(api.POST("/agents/{id}/revoke", { params: { path: { id: identityId } }, body: { reason } })),
+    mutationFn: () => unwrap(api.POST("/agents/{id}/revoke", { params: { path: { id: identityId } }, body: { reason, leave_unmanaged: understood } })),
     onSuccess: onClose,
   });
+  // The Shepherd is the host's only management path (no SSH): the server
+  // asks for that to be acknowledged (M16).
+  const lastPath = revoke.error instanceof ApiError && revoke.error.problem?.code === "last_management_path";
   return (
     <Dialog title={`Revoke the Shepherd identity of ${hostName}?`} onClose={onClose}>
       <div className="space-y-3 text-sm">
         <p>The agent is disconnected now and can never connect with this identity again; its certificates stop working. DROOL won't manage
           the host until the agent is re-enrolled or you choose SSH management. Use this for a lost, stolen or compromised host.</p>
         <Field label="Reason (recorded in the audit log)"><Input value={reason} onChange={(e) => setReason(e.target.value)} autoFocus /></Field>
-        {revoke.error && <Alert>{errorMessage(revoke.error)}</Alert>}
+        {lastPath ? (
+          <Alert tone="warn">
+            <p className="mb-2">{errorMessage(revoke.error)}</p>
+            <Checkbox checked={understood} onChange={setUnderstood} label={`I understand: DROOL can't manage ${hostName} until its Shepherd is enrolled again on the host`} />
+          </Alert>
+        ) : revoke.error && <Alert>{errorMessage(revoke.error)}</Alert>}
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="danger" disabled={!reason.trim() || revoke.isPending} onClick={() => revoke.mutate()}>Revoke</Button>
+          <Button variant="danger" disabled={!reason.trim() || revoke.isPending || (lastPath && !understood)} onClick={() => revoke.mutate()}>Revoke</Button>
         </div>
       </div>
     </Dialog>

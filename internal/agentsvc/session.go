@@ -226,6 +226,8 @@ func (s *Service) Session(stream pb.Agent_SessionServer) error {
 		BootID: hello.Info.BootId, LastSeenAt: sql.NullInt64{Int64: now.UnixMilli(), Valid: true}, LastAddress: se.addr, ID: ident.ID}); err != nil {
 		return status.Error(codes.Internal, "could not record the session")
 	}
+	features, _ := json.Marshal(nonNil(hello.Features))
+	s.st.W.SetIdentityFeatures(ctx, db.SetIdentityFeaturesParams{FeaturesJson: string(features), ID: ident.ID})
 	if !compatible {
 		s.log.Warn("agent protocol incompatible", "identity", ident.ID, "agent_range", agentRange, "reason", reason)
 		stream.Send(&pb.ControllerMessage{Msg: &pb.ControllerMessage_HelloAck{HelloAck: &pb.HelloAck{Compatible: false, Reason: reason,
@@ -727,4 +729,11 @@ func (s *Service) onConfigAck(ctx context.Context, se *Session, a *pb.ConfigAck)
 			HostID: se.ident.HostID, Domain: "agent-config"})
 	}
 	s.hostChanged(se.ident.HostID)
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }

@@ -162,7 +162,9 @@ func TestAgentCertificateLifecycle(t *testing.T) {
 	// A revoked identity can't recover either.
 	e.h.agents.SetLifetimes(30*24*time.Hour, 180*24*time.Hour)
 	ha := e.hostAgent(t, id.HostID)
-	e.c.do("POST", "/api/v1/agents/"+ha.Identity.ID+"/revoke", map[string]any{"reason": "lost laptop"})
+	if r := e.c.do("POST", "/api/v1/agents/"+ha.Identity.ID+"/revoke", map[string]any{"reason": "lost laptop", "leave_unmanaged": true}); r.status != 204 {
+		t.Fatalf("revoke: %d %s", r.status, r.body)
+	}
 	ag = startAgent(t, p, "v1.0.0")
 	time.Sleep(2 * time.Second)
 	if e.connected(id.HostID) {

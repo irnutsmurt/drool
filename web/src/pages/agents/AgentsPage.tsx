@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { useHosts } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
-import { ManualInstallDialog } from "@/components/agents/ManagementCard";
+import { CompatibilityBadge, ManualInstallDialog } from "@/components/agents/ManagementCard";
 import { isRootEquivalent } from "@/components/agents/CapsList";
 import { ak, useAgents, useEndpointMigrations, useEnrollmentTokens, usePKI, useReleaseKeys, useReleases, useRollout, useRollouts, useUpdatePolicy } from "@/components/agents/queries";
 import { Alert } from "@/components/ui/Alert";
@@ -72,6 +72,7 @@ function AgentsTab() {
         columns={[
           { header: "Host", cell: (a) => <Link className="font-medium text-accent" to={`/hosts/${a.host_id}`}>{name(a.host_id)}</Link> },
           { header: "State", cell: (a) => a.status === "quarantined" ? <Badge tone="danger">identity conflict</Badge> : !a.compatible ? <Badge tone="danger">incompatible</Badge> : a.connected ? <Badge tone="ok">connected</Badge> : <Badge tone="warn">offline {formatAgo(a.last_seen_at)}</Badge> },
+          { header: "Compatibility", cell: (a) => <span title={a.compatibility.summary}><CompatibilityBadge c={a.compatibility} /></span> },
           { header: "Version", cell: (a) => <span>{a.agent_version} <span className="text-xs text-muted">proto {a.protocol || `${a.protocol_min}–${a.protocol_max}`}</span></span> },
           { header: "Update", cell: (a) => a.update_state ? <Badge tone={updateTone(a.update_state)}>{a.update_state.replace("_", " ")} {a.update_version}</Badge> : <span className="text-muted">current</span> },
           { header: "Certificate", cell: (a) => <span className="text-xs text-muted">until {formatDateTime(a.cert_not_after)}</span> },

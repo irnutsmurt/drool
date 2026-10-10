@@ -208,7 +208,22 @@ For automated deployments, provide your own setup code with `DROOL_SETUP_SECRET_
 stamped in (compose then uses that `drool:local` image).
 
 All data lives in the `drool-data` volume (`/data` in the container). The container runs as an
-unprivileged user and needs no special permissions.
+unprivileged user and needs no special permissions. Precisely:
+
+- **Ports:** 8080 (web UI and API) and 9443 (the Shepherd endpoint, only if you use Shepherds;
+  `DROOL_AGENT_ENABLED=false` turns it off). Both are above 1024: no capability is needed to bind them.
+- **Storage:** one writable volume at `/data`, owned by the image's `nonroot` user. Nothing else is
+  written except `/tmp` (only by `drool backup verify`), so the root file system can be read-only.
+- **Privileges:** none. `compose.yaml` runs it with `read_only: true`, a `tmpfs` for `/tmp`,
+  `cap_drop: [ALL]` and `no-new-privileges`, and that's what the integration tests run it with.
+  It doesn't use the host network, the Docker socket, host devices or host mounts.
+- **Firewalls:** DROOL manages the firewalls of the hosts it manages, through SSH or their
+  Shepherd. It never touches the firewall of the machine it runs on, and the container gets no
+  access to it.
+- **Health:** the image's health check runs `drool healthcheck` (the container has no shell or curl).
+
+Rootless Docker or Podman work the same way as far as DROOL is concerned (nothing it does needs
+root); they aren't part of the automated tests.
 
 ## Native installation (systemd)
 
@@ -509,8 +524,17 @@ automatic rollback.
 ### Agent compatibility and versions
 
 The agent protocol has its own version, separate from DROOL's (currently protocol 1, accepted range
-1–1). The Shepherds page shows each agent's version, protocol and compatibility. An incompatible agent
-isn't used, and hosts with an SSH fallback keep working over SSH.
+1–1). Within it, a Shepherd announces optional capabilities (firewall management, network activity,
+system monitoring, Desired State checks, moving to a restored controller's epoch), and DROOL never
+sends one an operation it can't do: it uses SSH where that is allowed, or refuses and says to update
+the Shepherd. The Shepherds page and a host's Shepherd card show its compatibility: **compatible**,
+**update available**, **reduced capabilities** (works, without some optional capability), **update
+required** (it lacks something this host's configuration needs, such as firewall management),
+**incompatible** (protocol), or an **identity / trust problem** (revoked, in conflict, or a certificate
+that expired too long ago to be renewed). An incompatible agent isn't used, and hosts with an SSH
+fallback keep working over SSH. A Shepherd whose certificate expired while the controller was down
+renews it by itself when it reconnects, within `agent.recovery_grace` (180 days); after that it has to
+be enrolled again.
 
 ### On the host
 
@@ -1396,10 +1420,20 @@ sudo -u drool drool backup             # → /var/lib/drool/backups/drool-backup
 
 A backup contains the database (hosts, pinned host keys, groups, users, credentials in encrypted
 form, job history and output, audit log, firewall policies, services, settings and transaction
-history), the self-signed TLS certificate, and the config file if you use one. Hosts keep their
-committed firewall policy whatever happens to the controller. After restoring an older backup, a
-host whose firewall revision is newer than the controller's is flagged; adopt its state on the host
-page before applying again.
+history), the self-signed TLS certificate, and the config file if you use one. A backup is
+written to a temporary file and renamed into place only when complete, so a full disk or a crash
+never leaves a partial file under its name.
+
+**Check a backup without restoring it:**
+
+```sh
+drool backup verify drool-backup.tar.gz                       # add --master-key FILE for one made without its key
+```
+
+It checks the archive and its checksums, the database's integrity, that it upgrades to this DROOL's
+schema (on a temporary copy), which master key opens its credentials, and its audit history, and
+changes nothing. Exit status: `0` restorable and complete, `2` restorable but its credentials need
+a master key it doesn't include, `1` not restorable.
 
 **The master key.** Stored credentials (SSH keys, passwords) are encrypted with
 `master.key`, which is **not** included unless you ask for it:
@@ -1409,6 +1443,21 @@ page before applying again.
   copy somewhere safe and separate). The command tells you this, and the key's id, every time.
 - `drool backup --include-master-key`: self-contained, but anyone holding the file can decrypt your
   credentials. Store it encrypted.
+
+**Rotating the master key** (for example after a copy of it may have leaked), with DROOL stopped:
+
+```sh
+sudo systemctl stop drool && sudo -u drool drool secrets rotate-key && sudo systemctl start drool
+# Docker: docker compose stop drool && docker compose run --rm drool secrets rotate-key && docker compose start drool
+```
+
+It adds a new key version, re-seals every stored secret (credentials, CA keys, notification and
+audit-sink secrets, two-factor secrets) with it in one transaction, checks that the new version
+alone opens all of them, and only then removes the old version from `master.key`. A crash at any
+point leaves a key file that still opens everything. The key file as it was is saved next to it
+(`master.key.previous-<time>`): backups made before the rotation need it (`drool restore
+--master-key`), so keep it with them, offline, and delete it from the controller. Make a new
+backup afterwards.
 
 Restore (DROOL must be stopped):
 
@@ -1431,7 +1480,23 @@ sudo systemctl start drool
 Restore checks the whole archive (checksums, database integrity, version) and that a master key
 opens every credential **before** changing anything; if anything is wrong it stops and your
 installation is untouched. The previous files are kept in `pre-restore-<time>/` in the data
-directory. Everyone signs in again afterwards.
+directory. Everyone signs in again afterwards. If the restore itself is interrupted (power loss, a
+killed process), DROOL refuses to start on the half-restored data directory; run
+`drool restore --recover` to put the previous installation back.
+
+**What happens after a restore.** The world moved on after the backup was taken, so the restored
+controller doesn't assume it didn't. It gets a new *controller epoch*: every host still answers
+to the backup's and refuses this controller's commands until DROOL has compared it with the
+restored data. A host that is unchanged (or that DROOL has newer configuration for) is moved to
+the new epoch by itself, a few hosts at a time; a host changed after the backup (a firewall
+applied, a Shepherd's configuration changed), a Shepherd revoked or re-enrolled since, a machine
+whose identity changed, or a Shepherd too old to move waits for you under **Settings → System →
+Restore**, where you accept its state (nothing on the host changes; DROOL never rolls it back to
+the backup) or deal with it otherwise. Nothing that was in progress when the backup was taken is
+repeated: unfinished runs are marked interrupted with an unknown outcome, open firewall
+transactions are closed as unknown, unsent notifications are dropped, and job schedules, automatic
+Desired State restore and Shepherd update rollouts are held until you resume them. Shepherds
+enrolled after the backup are refused and listed on the Shepherds page; enroll them again.
 
 If the backup has no master key and this machine doesn't have the right one, restore explains your
 options: `--master-key /path/to/master.key`, or `--discard-credentials` to restore everything
@@ -1443,8 +1508,21 @@ with a missing or wrong key rather than silently making your credentials unreada
 
 Take a backup, then replace the binary (native: stop, install, start) or rebuild the image
 (`git pull && docker compose up -d --build`). Database migrations
-run automatically on start and only move forward. A newer database is never opened by an older
-DROOL.
+run automatically on start and only move forward, each in its own transaction (an interrupted one
+changes nothing). Before migrating, DROOL backs the database up by itself to
+`<data_dir>/backups/drool-pre-upgrade-<time>-schema<N>.tar.gz` (the newest three are kept; without
+the master key, which stays in the data directory) and doesn't start if it can't; set
+`backup.before_upgrade: false` to skip that.
+
+**DROOL doesn't update itself.** There is no download-and-install of the controller from the web UI
+or anywhere else: you replace the binary or image as above. Shepherds do update themselves, but only
+to releases signed with a release key you hold and register (Shepherds → Updates), staged, health
+checked and rolled back automatically if the new version doesn't come up.
+
+**Going back to an older version** isn't done in place: an older DROOL refuses a database a newer
+one upgraded, and says which version upgraded it. Run that version again, or stop DROOL, restore
+the pre-upgrade backup with the older version (`drool restore …/drool-pre-upgrade-….tar.gz`) and
+start it; anything done since the upgrade is not in that backup.
 
 **Upgrading to a build with the agent:** the agent endpoint uses port 9443 by default. If your
 `server.web_port` is 9443, set `agent.port` to something else (DROOL refuses to start with both on

@@ -620,6 +620,7 @@ paths:
     patch:
       operationId: updateSecret
       tags: [credentials]
+      description: 'Rename or describe a credential, or replace its value. Replacing the value of a credential hosts use switches them all at once: refused (409 `credential_in_use`, naming the hosts) unless `replace_in_use` acknowledges it, and then it needs recent re-authentication. Safer: add the new value as a separate credential, test it, switch the hosts, delete the old one.'
       requestBody:
         required: true
         content:
@@ -1970,11 +1971,11 @@ paths:
     post:
       operationId: revokeAgent
       tags: [agents]
-      description: Revoke an agent identity immediately. Its sessions close; the host isn't managed again until re-enrollment or an explicit switch to SSH.
+      description: 'Revoke an agent identity immediately. Its sessions close; the host isn''t managed again until re-enrollment or an explicit switch to SSH. When the Shepherd is the host''s only management path (no SSH), refused (409 `last_management_path`) unless `leave_unmanaged` acknowledges it. Requires recent re-authentication.'
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       requestBody:
         required: true
-        content: { application/json: { schema: { type: object, required: [reason], properties: { reason: { type: string } } } } }
+        content: { application/json: { schema: { type: object, required: [reason], properties: { reason: { type: string }, leave_unmanaged: { type: boolean } } } } }
       responses:
         '204': { description: Revoked. }
         '404': { $ref: '#/components/responses/Problem' }
@@ -1983,7 +1984,7 @@ paths:
     post:
       operationId: resolveAgentConflict
       tags: [agents]
-      description: Release an identity-conflict quarantine. Refused while two machines are connected with the identity.
+      description: Release an identity-conflict quarantine. Refused while two machines are connected with the identity. Requires recent re-authentication.
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses:
         '204': { description: Released. }
@@ -3643,7 +3644,7 @@ components:
       type: object
       required: [id, host_id, status, key_fingerprint, enrolled_at, cert_not_after, cert_renew_after, recovered_at, revoked_at, agent_version,
                  protocol, protocol_min, protocol_max, compatible, hostname, os, arch, ceiling, effective, root_equivalent, manifest_version,
-                 epoch_reported, epoch_matches, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at]
+                 epoch_reported, epoch_matches, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at, compatibility]
       properties:
         id: { type: string }
         host_id: { type: string }
@@ -3684,6 +3685,7 @@ components:
         update_version: { type: string }
         update_detail: { type: string }
         update_at: { type: [string, 'null'], format: date-time }
+        compatibility: { $ref: '#/components/schemas/AgentCompatibility' }
     AgentSession:
       type: object
       required: [address, connected_at, last_seen, protocol, agent_version, quarantined]
@@ -4159,6 +4161,7 @@ components:
         value: { type: string, format: password }
         passphrase: { type: string, format: password }
         generate: { type: boolean }
+        replace_in_use: { type: boolean, description: 'Acknowledges that every host using the credential switches to the new value at once.' }
 
     ControllerKey:
       type: object
@@ -4361,6 +4364,14 @@ components:
       properties:
         name: { type: string, maxLength: 64 }
 
+    AgentCompatibility:
+      type: object
+      description: 'How the Shepherd and this controller work together (M16). incompatible: the protocol; update_required: it lacks a capability this host''s configuration needs (operations needing it aren''t sent); reduced: it lacks optional capabilities; update_recommended: a newer release is stored; trust_failure: revoked, in conflict, or a certificate expired beyond renewal.'
+      required: [status, summary, missing]
+      properties:
+        status: { type: string, enum: [compatible, reduced, update_recommended, update_required, incompatible, trust_failure] }
+        summary: { type: string }
+        missing: { type: array, items: { type: string } }
     RestoreStatus:
       type: object
       required: [restore, counts, hosts, schedules, baselines, agent_rollouts_paused, unknown_outcome]

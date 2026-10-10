@@ -115,7 +115,7 @@ func (q *Queries) GetActiveIntermediate(ctx context.Context) (AgentCa, error) {
 }
 
 const getAgentIdentity = `-- name: GetAgentIdentity :one
-SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at FROM agent_identities WHERE id = ?
+SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at, features_json FROM agent_identities WHERE id = ?
 `
 
 func (q *Queries) GetAgentIdentity(ctx context.Context, id string) (AgentIdentity, error) {
@@ -161,6 +161,7 @@ func (q *Queries) GetAgentIdentity(ctx context.Context, id string) (AgentIdentit
 		&i.UpdateVersion,
 		&i.UpdateDetail,
 		&i.UpdateAt,
+		&i.FeaturesJson,
 	)
 	return i, err
 }
@@ -289,7 +290,7 @@ func (q *Queries) GetHostByName(ctx context.Context, name string) (Host, error) 
 }
 
 const getLiveIdentityForHost = `-- name: GetLiveIdentityForHost :one
-SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at FROM agent_identities WHERE host_id = ? AND status != 'revoked'
+SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at, features_json FROM agent_identities WHERE host_id = ? AND status != 'revoked'
 `
 
 func (q *Queries) GetLiveIdentityForHost(ctx context.Context, hostID string) (AgentIdentity, error) {
@@ -335,6 +336,7 @@ func (q *Queries) GetLiveIdentityForHost(ctx context.Context, hostID string) (Ag
 		&i.UpdateVersion,
 		&i.UpdateDetail,
 		&i.UpdateAt,
+		&i.FeaturesJson,
 	)
 	return i, err
 }
@@ -982,7 +984,7 @@ func (q *Queries) ListEnrollmentTokens(ctx context.Context) ([]ListEnrollmentTok
 }
 
 const listIdentitiesForHost = `-- name: ListIdentitiesForHost :many
-SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at FROM agent_identities WHERE host_id = ? ORDER BY enrolled_at DESC
+SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at, features_json FROM agent_identities WHERE host_id = ? ORDER BY enrolled_at DESC
 `
 
 func (q *Queries) ListIdentitiesForHost(ctx context.Context, hostID string) ([]AgentIdentity, error) {
@@ -1034,6 +1036,7 @@ func (q *Queries) ListIdentitiesForHost(ctx context.Context, hostID string) ([]A
 			&i.UpdateVersion,
 			&i.UpdateDetail,
 			&i.UpdateAt,
+			&i.FeaturesJson,
 		); err != nil {
 			return nil, err
 		}
@@ -1049,7 +1052,7 @@ func (q *Queries) ListIdentitiesForHost(ctx context.Context, hostID string) ([]A
 }
 
 const listLiveIdentities = `-- name: ListLiveIdentities :many
-SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at FROM agent_identities WHERE status != 'revoked' ORDER BY host_id
+SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at, features_json FROM agent_identities WHERE status != 'revoked' ORDER BY host_id
 `
 
 func (q *Queries) ListLiveIdentities(ctx context.Context) ([]AgentIdentity, error) {
@@ -1101,6 +1104,7 @@ func (q *Queries) ListLiveIdentities(ctx context.Context) ([]AgentIdentity, erro
 			&i.UpdateVersion,
 			&i.UpdateDetail,
 			&i.UpdateAt,
+			&i.FeaturesJson,
 		); err != nil {
 			return nil, err
 		}
@@ -1674,6 +1678,20 @@ type SetIdentityEndpointsParams struct {
 
 func (q *Queries) SetIdentityEndpoints(ctx context.Context, arg SetIdentityEndpointsParams) error {
 	_, err := q.db.ExecContext(ctx, setIdentityEndpoints, arg.EndpointsJson, arg.ID)
+	return err
+}
+
+const setIdentityFeatures = `-- name: SetIdentityFeatures :exec
+UPDATE agent_identities SET features_json = ? WHERE id = ?
+`
+
+type SetIdentityFeaturesParams struct {
+	FeaturesJson string
+	ID           string
+}
+
+func (q *Queries) SetIdentityFeatures(ctx context.Context, arg SetIdentityFeaturesParams) error {
+	_, err := q.db.ExecContext(ctx, setIdentityFeatures, arg.FeaturesJson, arg.ID)
 	return err
 }
 

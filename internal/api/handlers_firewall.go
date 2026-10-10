@@ -585,6 +585,11 @@ func (s *Server) handleFirewallApply(w http.ResponseWriter, r *http.Request) {
 			writeProblem(w, r, errValidation("give a reason for the override (it is recorded in the audit log)"))
 			return
 		}
+		// An override can cut DROOL off from the host: a stolen session
+		// alone isn't enough (M16).
+		if !s.requireReauth(w, r) {
+			return
+		}
 		s.d.Audit.Record(ctx, audit.Event{Action: "firewall.override", TargetType: "hosts", TargetID: fmt.Sprint(in.HostIDs),
 			Details: map[string]any{"override_mgmt": in.OverrideMgmt, "override_timeout": in.OverrideTimeout, "allow_drift": in.AllowDrift, "reason": in.Reason}})
 	}

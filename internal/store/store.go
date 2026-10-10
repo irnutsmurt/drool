@@ -23,10 +23,14 @@ import (
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
 
 	"drool/internal/store/db"
+	"drool/internal/version"
 )
 
 //go:embed migrations/*.sql
 var migrationFS embed.FS
+
+// migrationSource is where migrations are read from (tests replace it).
+var migrationSource fs.FS = migrationFS
 
 // FileName is the database file inside the data directory.
 const FileName = "drool.db"
@@ -139,7 +143,7 @@ type migration struct {
 }
 
 func loadMigrations() ([]migration, error) {
-	entries, err := fs.ReadDir(migrationFS, "migrations")
+	entries, err := fs.ReadDir(migrationSource, "migrations")
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +163,7 @@ func loadMigrations() ([]migration, error) {
 			return nil, fmt.Errorf("duplicate migration version %d: %s and %s", v, prev, name)
 		}
 		seen[v] = name
-		body, err := fs.ReadFile(migrationFS, "migrations/"+name)
+		body, err := fs.ReadFile(migrationSource, "migrations/"+name)
 		if err != nil {
 			return nil, err
 		}
@@ -181,6 +185,26 @@ func LatestVersion() int {
 // ErrNewerSchema means the database was migrated by a newer binary.
 var ErrNewerSchema = errors.New("database schema is newer than this binary supports")
 
+// NewerSchemaError is ErrNewerSchema with what DROOL knows about it.
+type NewerSchemaError struct {
+	Database, Binary int
+	// UpgradedBy is the DROOL version that applied the newest migration
+	// ("" for databases from before M16, which didn't record it).
+	UpgradedBy string
+}
+
+func (e *NewerSchemaError) Error() string {
+	by := ""
+	if e.UpgradedBy != "" {
+		by = " by DROOL " + e.UpgradedBy
+	}
+	return fmt.Sprintf("this database was upgraded to schema %d%s; this DROOL (%s) supports schema %d at most. "+
+		"DROOL doesn't downgrade a database in place: run that version (or newer) again, or restore a backup made before "+
+		"the upgrade with this version", e.Database, by, version.Version, e.Binary)
+}
+
+func (e *NewerSchemaError) Unwrap() error { return ErrNewerSchema }
+
 // SchemaVersion returns the currently applied schema version (0 if none).
 func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
 	var exists int
@@ -199,6 +223,13 @@ func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
 // Migrate applies all pending migrations, each in its own transaction. It
 // returns the list of applied migration names.
 func (s *Store) Migrate(ctx context.Context) ([]string, error) {
+	return s.MigrateTo(ctx, 0)
+}
+
+// MigrateTo applies pending migrations up to version target (0: all).
+// Each runs in its own transaction with its schema_migrations row, so an
+// interrupted or failing migration leaves the previous version intact.
+func (s *Store) MigrateTo(ctx context.Context, target int) ([]string, error) {
 	ms, err := loadMigrations()
 	if err != nil {
 		return nil, err
@@ -210,16 +241,23 @@ func (s *Store) Migrate(ctx context.Context) ([]string, error) {
 	)`); err != nil {
 		return nil, err
 	}
+	// The runner's own bookkeeping (M16): which DROOL applied a migration,
+	// so a refused downgrade can say which version to run.
+	if err := s.ensureMigrationColumns(ctx); err != nil {
+		return nil, err
+	}
 	current, err := s.SchemaVersion(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if latest := ms[len(ms)-1].version; current > latest {
-		return nil, fmt.Errorf("%w (database: %d, binary: %d)", ErrNewerSchema, current, latest)
+		e := &NewerSchemaError{Database: current, Binary: latest}
+		s.Reader.QueryRowContext(ctx, `SELECT drool_version FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&e.UpgradedBy)
+		return nil, e
 	}
 	var applied []string
 	for _, m := range ms {
-		if m.version <= current {
+		if m.version <= current || (target > 0 && m.version > target) {
 			continue
 		}
 		tx, err := s.Writer.BeginTx(ctx, nil)
@@ -231,8 +269,8 @@ func (s *Store) Migrate(ctx context.Context) ([]string, error) {
 			return applied, fmt.Errorf("migration %s: %w", m.name, err)
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)`,
-			m.version, m.name, time.Now().UnixMilli()); err != nil {
+			`INSERT INTO schema_migrations(version, name, applied_at, drool_version) VALUES (?, ?, ?, ?)`,
+			m.version, m.name, time.Now().UnixMilli(), version.Version); err != nil {
 			tx.Rollback()
 			return applied, err
 		}
@@ -242,6 +280,45 @@ func (s *Store) Migrate(ctx context.Context) ([]string, error) {
 		applied = append(applied, m.name)
 	}
 	return applied, nil
+}
+
+func (s *Store) ensureMigrationColumns(ctx context.Context) error {
+	rows, err := s.Writer.QueryContext(ctx, `SELECT name FROM pragma_table_info('schema_migrations')`)
+	if err != nil {
+		return err
+	}
+	has := false
+	for rows.Next() {
+		var n string
+		if rows.Scan(&n) == nil && n == "drool_version" {
+			has = true
+		}
+	}
+	rows.Close()
+	if has {
+		return nil
+	}
+	_, err = s.Writer.ExecContext(ctx, `ALTER TABLE schema_migrations ADD COLUMN drool_version TEXT NOT NULL DEFAULT ''`)
+	return err
+}
+
+// Pending reports the database's schema version and how many migrations
+// this binary would apply (without applying them).
+func (s *Store) Pending(ctx context.Context) (current, pending int, err error) {
+	current, err = s.SchemaVersion(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	ms, err := loadMigrations()
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, m := range ms {
+		if m.version > current {
+			pending++
+		}
+	}
+	return current, pending, nil
 }
 
 // Now returns the current time in the database's representation (Unix ms).

@@ -15,6 +15,22 @@ services:
     #   DROOL_AGENT_ADVERTISE: drool.example.net:9443
     volumes:
       - drool-data:/data
+    # DROOL needs no privileges, capabilities or host access: it listens on
+    # unprivileged ports, writes only to /data (and /tmp for backup verify),
+    # and manages hosts' firewalls over SSH or the Shepherd, never this
+    # machine's.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/drool", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
     # Optional: provide your own setup code for automated deployments
     # instead of reading the generated one from the logs.
     # environment:

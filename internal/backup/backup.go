@@ -29,6 +29,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -96,9 +97,15 @@ type Manifest struct {
 	AgentRootFingerprint string `json:"agent_root_fingerprint,omitempty"`
 	AgentRootKeyIncluded bool   `json:"agent_root_key_included"`
 	AgentKeysSealed      int64  `json:"agent_keys_sealed"`
-	// Reserved for Beta restore reconciliation (DESIGN §10); null in the alpha.
+	// StateEpoch is the controller epoch the backup was taken in (M16; null
+	// in older backups). drool restore gives the restored controller a new
+	// one. StateRevision is reserved.
 	StateEpoch    *string `json:"state_epoch"`
 	StateRevision *int64  `json:"state_revision"`
+	// KeyVerified: the master key file opened every sealed value when the
+	// backup was made (M16; false in older backups and when there was no
+	// key to check).
+	KeyVerified bool `json:"key_verified"`
 }
 
 // Complete reports whether the backup alone can restore working credentials.
@@ -188,6 +195,13 @@ func Create(ctx context.Context, cfg *config.Loaded, w io.Writer, opts Options) 
 		sdb.Close()
 		return nil, err
 	}
+	var epoch string
+	if sdb.QueryRowContext(ctx, `SELECT value_json FROM settings WHERE key = 'controller_epoch'`).Scan(&epoch) == nil {
+		var e string
+		if json.Unmarshal([]byte(epoch), &e) == nil && e != "" {
+			m.StateEpoch = &e
+		}
+	}
 	m.Credentials = m.Counts["secrets"]
 	var notifySecrets int64
 	if sdb.QueryRowContext(ctx, `SELECT count(*) FROM notify_destinations WHERE secret_ciphertext IS NOT NULL`).Scan(&notifySecrets) == nil {
@@ -223,6 +237,8 @@ func Create(ctx context.Context, cfg *config.Loaded, w io.Writer, opts Options) 
 		m.MasterKeyID = box.KeyID()
 		if _, err := secrets.VerifyBox(ctx, sdb, box); err != nil {
 			res.KeyWarning = "the master key file does not match the stored credentials: " + err.Error()
+		} else {
+			m.KeyVerified = true
 		}
 	case errors.Is(keyErr, os.ErrNotExist):
 		if opts.IncludeMasterKey {
@@ -428,4 +444,110 @@ func hashFile(name, path string) (FileEntry, error) {
 func fileExists(p string) bool {
 	fi, err := os.Stat(p)
 	return err == nil && fi.Mode().IsRegular()
+}
+
+// CreateFile writes a backup to dest durably: into a temporary file next
+// to it, synced, renamed into place, and the directory synced, so that a
+// crash or a full disk never leaves a partial file under dest's name.
+func CreateFile(ctx context.Context, cfg *config.Loaded, dest string, opts Options) (*Result, error) {
+	dir := filepath.Dir(dest)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	removeStaleTemp(dir)
+	f, err := os.CreateTemp(dir, tempPrefix+"*")
+	if err != nil {
+		return nil, fmt.Errorf("create backup file: %w", err)
+	}
+	tmp := f.Name()
+	ok := false
+	defer func() {
+		if !ok {
+			f.Close()
+			os.Remove(tmp)
+		}
+	}()
+	if err := f.Chmod(0o600); err != nil {
+		return nil, err
+	}
+	res, err := Create(ctx, cfg, f, opts)
+	if err != nil {
+		return nil, err
+	}
+	if err := f.Sync(); err != nil {
+		return nil, fmt.Errorf("write backup: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return nil, fmt.Errorf("write backup: %w", err)
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		return nil, err
+	}
+	ok = true
+	return res, SyncDir(dir)
+}
+
+// tempPrefix names backups being written; one older than a day was left
+// by an interrupted backup.
+const tempPrefix = ".drool-backup-"
+
+func removeStaleTemp(dir string) {
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), tempPrefix) {
+			continue
+		}
+		if fi, err := e.Info(); err == nil && time.Since(fi.ModTime()) > 24*time.Hour {
+			os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
+}
+
+// SyncDir makes renames and removals in dir durable.
+func SyncDir(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	if err := d.Sync(); err != nil && !errors.Is(err, os.ErrInvalid) {
+		return err
+	}
+	return nil
+}
+
+// PreUpgradeName starts the name of automatic backups made before a
+// schema upgrade.
+const PreUpgradeName = "drool-pre-upgrade-"
+
+// keepPreUpgrade automatic pre-upgrade backups are kept.
+const keepPreUpgrade = 3
+
+// PreUpgrade backs the controller up before a newer DROOL migrates its
+// database from schema from (M16): <data_dir>/backups/drool-pre-upgrade-
+// <time>-schema<from>.tar.gz, without the master key (it stays in the data
+// directory; restoring on this machine uses it). The newest three are
+// kept.
+func PreUpgrade(ctx context.Context, cfg *config.Loaded, from int) (string, *Result, error) {
+	dir := filepath.Join(cfg.DataDir, "backups")
+	dest := filepath.Join(dir, fmt.Sprintf("%s%s-schema%d.tar.gz", PreUpgradeName, time.Now().UTC().Format("20060102-150405"), from))
+	res, err := CreateFile(ctx, cfg, dest, Options{})
+	if err != nil {
+		return "", nil, err
+	}
+	if old, _ := filepath.Glob(filepath.Join(dir, PreUpgradeName+"*.tar.gz")); len(old) > keepPreUpgrade {
+		sort.Strings(old) // the time in the name sorts them
+		for _, p := range old[:len(old)-keepPreUpgrade] {
+			os.Remove(p)
+		}
+		SyncDir(dir)
+	}
+	return dest, res, nil
+}
+
+// PreUpgradeBackups lists the automatic pre-upgrade backups, newest first.
+func PreUpgradeBackups(dataDir string) []string {
+	list, _ := filepath.Glob(filepath.Join(dataDir, "backups", PreUpgradeName+"*.tar.gz"))
+	sort.Sort(sort.Reverse(sort.StringSlice(list)))
+	return list
 }

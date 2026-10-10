@@ -128,13 +128,13 @@ func (s *Service) openConn(ctx context.Context, h db.Host) (conn, string, error)
 	if d.Blocked {
 		return nil, "", &model.OpError{Class: model.ClassAuthorization, Message: d.Reason}
 	}
-	note := ""
+	note, tooOld := "", false
 	if d.UseAgent && s.d.Agents != nil {
 		if fs, ok := s.d.Agents.HostFirewallSession(h.ID); ok {
 			if hasFeature(fs.Features, FeatureFirewall) {
 				return &agentConn{s: s, hostID: h.ID}, "", nil
 			}
-			note = "the agent on this host is too old for firewall management (update it)"
+			note, tooOld = "the agent on this host is too old for firewall management (update it)", true
 		}
 	}
 	if d.SSHAllowed && h.SshConfigured != 0 {
@@ -146,6 +146,11 @@ func (s *Service) openConn(ctx context.Context, h db.Host) (conn, string, error)
 			note = "SSH fallback: " + d.Reason
 		}
 		return c, note, nil
+	}
+	if tooOld {
+		// Never sent to a Shepherd that doesn't understand it (M16).
+		return nil, "", &driver.NotStartedError{Err: &model.OpError{Class: model.ClassConfiguration, Message: note,
+			Hint: "Update the Shepherd (Shepherds → Updates). Nothing was sent to the host."}}
 	}
 	if note == "" {
 		note = d.Reason
