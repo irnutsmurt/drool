@@ -46,20 +46,33 @@ func TestRestoreReconciliation(t *testing.T) {
 	hostSame, pSame := enroll("same")
 	hostAhead, pAhead := enroll("ahead")
 	hostRevoked, pRevoked := enroll("revoked")
+	hostBehind, pBehind := enroll("behind")
 	startAgent(t, pSame, "v1.0.0")
 	startAgent(t, pAhead, "v1.0.0")
 	agRevoked := startAgent(t, pRevoked, "v1.0.0")
+	agBehind := startAgent(t, pBehind, "v1.0.0")
 	eventually(t, 10*time.Second, "agents connected", func() bool {
-		return e.connected(hostSame) && e.connected(hostAhead) && e.connected(hostRevoked)
+		return e.connected(hostSame) && e.connected(hostAhead) && e.connected(hostRevoked) && e.connected(hostBehind)
 	})
 	narrowed := fullCaps("")
 	narrowed.Reboot = false
-	for _, h := range []string{hostSame, hostAhead} {
+	for _, h := range []string{hostSame, hostAhead, hostBehind} {
 		if r := e.c.do("PUT", "/api/v1/hosts/"+h+"/agent/caps", map[string]any{"caps": narrowed}); r.status != 204 {
 			t.Fatalf("caps: %d %s", r.status, r.body)
 		}
 	}
-	eventually(t, 10*time.Second, "configuration applied", func() bool { return applied(pSame, 1)() && applied(pAhead, 1)() })
+	eventually(t, 10*time.Second, "configuration applied", func() bool {
+		return applied(pSame, 1)() && applied(pAhead, 1)() && applied(pBehind, 1)()
+	})
+	// One Shepherd is offline when its configuration changes: the backup
+	// has revision 2, which it never got (the controller is ahead).
+	agBehind.stop()
+	eventually(t, 10*time.Second, "the offline Shepherd disconnected", func() bool { return !e.connected(hostBehind) })
+	behindCaps := narrowed
+	behindCaps.Packages.Enabled = false
+	if r := e.c.do("PUT", "/api/v1/hosts/"+hostBehind+"/agent/caps", map[string]any{"caps": behindCaps}); r.status != 204 {
+		t.Fatalf("caps: %d %s", r.status, r.body)
+	}
 	oldEpoch := e.h.agents.Epoch()
 
 	// The backup.
@@ -128,6 +141,7 @@ func TestRestoreReconciliation(t *testing.T) {
 	c2 := h2.login("admin")
 	e2 := &agentEnv{h: h2, c: c2, addr: e.addr}
 	startAgent(t, pRevoked, "v1.0.0") // back without its revocation back-off
+	startAgent(t, pBehind, "v1.0.0")
 	recState := func(host string) recovery.HostRecord {
 		var rec recovery.HostRecord
 		c2.do("GET", "/api/v1/hosts/"+host+"/reconciliation", nil).json(t, &rec)
@@ -145,6 +159,16 @@ func TestRestoreReconciliation(t *testing.T) {
 	}
 	if jh, _ := e2.runJob(t, hostSame, map[string]any{"type": "command", "command": "echo restored"}); jh.State != "succeeded" || jh.Transport != "agent" {
 		t.Fatalf("job on the reconciled host: %+v", jh)
+	}
+	// The controller is ahead: the host is moved as it is, then gets the
+	// configuration it missed, in the new epoch.
+	eventually(t, 30*time.Second, "controller-ahead host reconciled", func() bool { return recState(hostBehind).State == recovery.StateReconciled })
+	eventually(t, 10*time.Second, "the missed configuration applied", applied(pBehind, 2))
+	if st, _ := agent.OpenStore(pBehind.State); st != nil {
+		d, _ := st.Domains()
+		if d["agent-config"].Epoch != sum.Epoch {
+			t.Fatalf("the missed configuration came in epoch %s, want %s", d["agent-config"].Epoch, sum.Epoch)
+		}
 	}
 
 	// A host with changes made after the backup waits for a decision; DROOL
@@ -220,7 +244,7 @@ func TestRestoreReconciliation(t *testing.T) {
 	// hand.
 	var status recovery.Status
 	c2.do("GET", "/api/v1/system/restore", nil).json(t, &status)
-	if status.Restore == nil || status.Restore.Status != "reconciling" || status.Counts[recovery.StateReconciled] != 2 || status.Counts[recovery.StateBlocked] != 1 {
+	if status.Restore == nil || status.Restore.Status != "reconciling" || status.Counts[recovery.StateReconciled] != 3 || status.Counts[recovery.StateBlocked] != 1 {
 		t.Fatalf("restore status: %+v %+v", status.Restore, status.Counts)
 	}
 	if r := c2.do("POST", "/api/v1/system/restore/finish", nil); r.status != 200 {

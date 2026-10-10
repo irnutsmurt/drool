@@ -329,8 +329,11 @@ func TestHostDecisions(t *testing.T) {
 	})
 	var attempts, checked, next int64
 	e.st.Reader.QueryRow(`SELECT attempts, checked_at, next_attempt_at FROM host_reconciliation WHERE host_id = 'down'`).Scan(&attempts, &checked, &next)
-	if want := int64(float64(backoff(attempts-1).Milliseconds()) * 0.01); next-checked != want || want <= int64(float64((30*time.Second).Milliseconds())*0.01) {
+	if want := int64(float64(backoff(attempts-1).Milliseconds()) * 0.01); next-checked != want {
 		t.Errorf("retry after %d attempts: in %d ms, want %d", attempts, next-checked, want)
+	}
+	if first := int64(float64((30 * time.Second).Milliseconds()) * 0.01); next-checked <= first {
+		t.Errorf("no backoff: after %d attempts the next try is still %d ms away", attempts, next-checked)
 	}
 	if e.fw.rebased["fw"] != prevEpoch+"/5/abc" {
 		t.Errorf("firewall rebase: %q", e.fw.rebased["fw"])
