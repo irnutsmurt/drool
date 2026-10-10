@@ -415,7 +415,7 @@ function EndpointsTab() {
   const propose = useMutation({ mutationFn: () => unwrap(api.POST("/agents/endpoints", { body: { endpoint: ep.trim() } })), onSuccess: () => { setEp(""); void qc.invalidateQueries({ queryKey: ak.endpoints }); } });
   const commit = useMutation({ mutationFn: (id: string) => unwrap(api.POST("/agents/endpoints/{id}/commit", { params: { path: { id } } })), onSuccess: () => void qc.invalidateQueries({ queryKey: ak.endpoints }) });
   return (
-    <Card title="Controller address for agents">
+    <Card title="Controller address for Shepherds">
       <p className="mb-3 text-sm text-muted">Moving the controller or its name: propose the new address first. Every agent stores it as a candidate and tests
         it (a full mutual-TLS connection); commit makes it primary only on agents that confirmed it, and they keep the old address as a fallback.
         A wrong address can't strand an agent.</p>
@@ -433,7 +433,7 @@ function EndpointsTab() {
         columns={[
           { header: "Address", cell: (x) => <span className="font-mono">{x.endpoint}</span> },
           { header: "Status", cell: (x) => <Badge tone={x.status === "committed" ? "ok" : "accent"}>{x.status}</Badge> },
-          { header: "Agents", cell: (x) => <span className="text-sm">{x.confirmed} reached it, {x.failed} could not{x.status === "committed" && `, ${x.committed} switched`} (of {x.agents})</span> },
+          { header: "Shepherds", cell: (x) => <span className="text-sm">{x.confirmed} reached it, {x.failed} could not{x.status === "committed" && `, ${x.committed} switched`} (of {x.agents})</span> },
           { header: "", cell: (x) => can("agents.manage") && x.status === "testing" && <Button size="sm" disabled={x.confirmed === 0} onClick={() => commit.mutate(x.id)}>Commit</Button> },
         ]}
       />

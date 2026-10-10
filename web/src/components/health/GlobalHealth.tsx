@@ -17,10 +17,13 @@ import { ScopeLegend } from "@/components/ui/Provenance";
  * one click away and per check. */
 export function HealthChecksCard() {
   const g = useHealthGlobal();
+  const { can } = useAuth();
   const [open, setOpen] = useState(false);
   const v = g.data;
+  // A read-only role can look at every check, not customize it.
+  const show = can("monitoring.settings") ? "Customize" : "Show checks";
   return (
-    <Card title="Health checks" actions={<Button size="sm" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Hide checks" : "Customize"}</Button>}>
+    <Card title="Health checks" actions={<Button size="sm" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Hide checks" : show}</Button>}>
       {g.error && <Alert>{errorMessage(g.error)}</Alert>}
       <p className="text-sm">
         <b>{v?.summary?.using_recommended ? "Using the Recommended profile" : "Recommended profile with global changes"}</b>
@@ -99,7 +102,7 @@ export function HealthOverridesCard() {
           <div>
             <h3 className="mb-1 text-sm font-medium">Pack priorities</h3>
             <p className="mb-2 text-xs text-muted">
-              Only matters when a host is in several groups that set the same value differently: the higher priority wins. Equal
+              Only matters when a host is in several packs that set the same value differently: the higher priority wins. Equal
               priorities with different values are shown as a conflict and use the global value until settled.
             </p>
             <ul className="divide-y divide-line text-sm">

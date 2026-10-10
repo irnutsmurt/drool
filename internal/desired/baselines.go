@@ -254,7 +254,7 @@ func assignmentText(as []Assignment) []string {
 		case "global":
 			out[i] = "everywhere"
 		case "group":
-			out[i] = "group " + a.Name
+			out[i] = "pack " + a.Name
 		default:
 			out[i] = "host " + a.Name
 		}

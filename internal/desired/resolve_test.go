@@ -53,7 +53,7 @@ func TestResolvePrecedence(t *testing.T) {
 		if e.Resource.State != StateStopped || e.Resource.Enabled != nil || e.Source.Level != LevelGroup {
 			t.Fatalf("got %+v", e)
 		}
-		if e.Source.Label != "Inherited from group: Maintenance Lab (baseline Maintenance)" {
+		if e.Source.Label != "Inherited from pack: Maintenance Lab (baseline Maintenance)" {
 			t.Fatalf("label %q", e.Source.Label)
 		}
 		if len(e.Source.Shadowed) != 1 || e.Source.Shadowed[0].Level != LevelGlobal {
@@ -77,7 +77,7 @@ func TestResolvePrecedence(t *testing.T) {
 		if !e.Conflict || e.Resource != nil {
 			t.Fatalf("want a conflict, got %+v", e)
 		}
-		if e.Source.Label != "Conflict between groups Maintenance Lab and Web Servers (same priority 0)" {
+		if e.Source.Label != "Conflict between packs Maintenance Lab and Web Servers (same priority 0)" {
 			t.Fatalf("label %q", e.Source.Label)
 		}
 		if len(e.Source.Competing) != 2 {
@@ -121,7 +121,7 @@ func TestResolvePrecedence(t *testing.T) {
 		s.ByGroup["ga"], s.ByGroup["gb"] = []string{"a"}, []string{"b"}
 		s.Members["h1"] = []string{"gb", "ga"}
 		e := s.Resolve("h1").Resources["package:htop"]
-		if e.Conflict || e.Source.Label != "Inherited from groups: Alpha, Beta (they agree)" || len(e.Source.Baselines) != 2 {
+		if e.Conflict || e.Source.Label != "Inherited from packs: Alpha, Beta (they agree)" || len(e.Source.Baselines) != 2 {
 			t.Fatalf("got %+v", e)
 		}
 	})

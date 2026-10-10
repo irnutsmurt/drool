@@ -396,7 +396,7 @@ type HostView struct {
 // BaselineUse is a baseline that applies to a host, and how.
 type BaselineUse struct {
 	BaselineRef
-	Via string `json:"via"` // "everywhere", "group Media Servers", "this host"
+	Via string `json:"via"` // "everywhere", "pack Media Servers", "this host"
 }
 
 // Host returns a host's view.
@@ -490,7 +490,7 @@ func baselinesFor(snap *Snapshot, hostID string) []BaselineUse {
 	}
 	for _, gid := range snap.Members[hostID] {
 		for _, id := range snap.ByGroup[gid] {
-			add(id, "group "+snap.Groups[gid].Name)
+			add(id, "pack "+snap.Groups[gid].Name)
 		}
 	}
 	for _, id := range snap.Global {

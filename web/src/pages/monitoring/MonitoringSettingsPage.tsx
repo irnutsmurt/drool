@@ -131,7 +131,7 @@ function Approvals() {
         {(a.data?.approvals ?? []).map((x) => (
           <li key={x.id} className="flex items-center gap-2">
             <span className="font-mono text-xs">{x.package}</span>
-            <span>{x.scope === "global" ? "on every host" : `in group ${x.group_name || x.group_id}`}</span>
+            <span>{x.scope === "global" ? "on every host" : `in pack ${x.group_name || x.group_id}`}</span>
             {edit && <Button size="sm" variant="ghost" onClick={() => del.mutate(x.id)}>Remove</Button>}
           </li>
         ))}

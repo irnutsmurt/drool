@@ -185,9 +185,15 @@ test("a read-only role: no destinations it can't view, a clear 403 on direct lin
     await waitText(page, "Health");
     const buttons = await page.$$eval("main button", (bs) => bs.map((b) => b.textContent.trim()));
     for (const b of ["Run command", "Edit", "Reboot", "Install updates", "Remove host"]) assert.ok(!buttons.includes(b), `no ${b}: ${buttons}`);
+    // Credentials the role can't list are named as such, not by internal ID.
+    const host = await text(page);
+    assert.match(host, /a stored credential — your role can't see its name/);
+    assert.ok(!/\bsec_[0-9a-z]{20,}/.test(host), "no internal credential IDs");
     await go(page, "/monitoring/settings");
     await waitText(page, "Read-only: you can see these settings");
     assert.equal(await page.$$eval('main input[type="number"]', (xs) => xs.every((x) => x.disabled)), true);
+    const settingsButtons = await page.$$eval("main button", (bs) => bs.map((b) => b.textContent.trim()));
+    assert.ok(settingsButtons.includes("Show checks") && !settingsButtons.includes("Customize"), `the checks toggle offers no customizing: ${settingsButtons}`);
     await go(page, "/firewall?tab=designer&view=rules");
     await waitText(page, "only administrators can change the firewall policy");
     assert.deepEqual(page.errors, []);
@@ -332,7 +338,7 @@ test("loading is never shown as empty or healthy", async () => {
     let hold = true;
     const held = [];
     page.on("request", (r) => {
-      if (hold && /\/api\/v1\/(hosts|alerts\/summary|desired\/summary|firewall\/hosts|jobs)(\?|$)/.test(r.url())) held.push(r);
+      if (hold && /\/api\/v1\/(hosts|hosts\/[^/?]+\/facts|alerts\/summary|desired\/summary|firewall\/hosts|jobs)(\?|$)/.test(r.url())) held.push(r);
       else r.continue();
     });
     await page.goto(base + "/", { waitUntil: "domcontentloaded" });
@@ -346,12 +352,14 @@ test("loading is never shown as empty or healthy", async () => {
     await waitText(page, "Needs attention");
     t = await text(page);
     assert.match(t, /\d+ hosts?/);
-    // A host's attention list waits for its sources too.
+    // A host's attention list waits for its sources too, and its
+    // inventory summary isn't "0 filesystems" before the inventory is in.
     hold = true;
     await page.goto(base + `/hosts/${ids["web-1"]}`, { waitUntil: "domcontentloaded" });
     await sleep(1500);
     t = await text(page);
-    assert.doesNotMatch(t, /Nothing needs attention on this host/);
+    assert.doesNotMatch(t, /Nothing needs attention on this host|0 filesystems|0 addresses/);
+    assert.match(t, /Filesystems, addresses and interfaces — loading…/);
     hold = false;
     held.splice(0).forEach((r) => r.continue());
     await waitFor(page, async () => /Needs attention|Nothing needs attention on this host/.test(await text(page)), "host attention after loading");

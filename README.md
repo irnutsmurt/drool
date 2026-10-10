@@ -774,7 +774,7 @@ The most specific setting wins: a device's own setting, then the host's, then it
 your fleet-wide change, then Recommended. You change only what you need — everything else keeps
 coming from the level above — and **Reset to inherited** undoes a change without copying any
 values back. Every setting shows where it comes from: *Recommended default*, *Hardware-reported
-limit*, *Global custom setting*, *Inherited from group: NAS*, *Custom for this host*, *Custom for
+limit*, *Global custom setting*, *Inherited from pack: NAS*, *Custom for this host*, *Custom for
 /srv/media*.
 
 - **What you can change** depends on the check: on/off, warning and critical levels, how long a
@@ -799,7 +799,7 @@ limit*, *Global custom setting*, *Inherited from group: NAS*, *Custom for this h
   never moved to a different device.
 - **Hosts in several groups:** if two groups set the same thing differently, the group with the
   higher **priority** (Monitoring → Health checks and settings → Health overrides) wins. With equal priorities DROOL
-  doesn't pick one: it shows a *group conflict* and uses your fleet-wide value until you set a
+  doesn't pick one: it shows a *pack conflict* and uses your fleet-wide value until you set a
   priority or a host setting.
 - **Changes apply at once.** A problem that still qualifies stays the same alert. One that no
   longer qualifies — its check turned off, or its threshold now above the current value — closes
@@ -1167,7 +1167,7 @@ jellyfin.service  wants running, enabled at boot  is failed, enabled at boot   D
 
 The **Overview** shows hosts that need attention; a host's **Desired State** page shows every
 managed resource, where each desired value comes from ("Required by Global baseline Server
-Defaults", "Inherited from group: media-servers", "Custom for this host"), and its history.
+Defaults", "Inherited from pack: media-servers", "Custom for this host"), and its history.
 
 ### Where desired values come from
 

@@ -357,7 +357,7 @@ func (s *Service) CheckDocument(ctx context.Context, in DocInput) (*CheckResult,
 	}
 	out.Valid = true
 	for _, g := range res.KeptGroups {
-		out.Notices = append(out.Notices, fmt.Sprintf("group %s is not in the document; it is kept (groups are shared with the rest of DROOL: delete it under Groups)", g))
+		out.Notices = append(out.Notices, fmt.Sprintf("pack %s (group:%s) is not in the document; it is kept (packs are shared with the rest of DROOL: delete it on the Packs page)", g, g))
 	}
 	draft, err := s.draftWorld(ctx, res)
 	if err != nil {
@@ -675,7 +675,7 @@ func (s *Service) SaveDocumentTx(ctx context.Context, q *db.Queries, in DocInput
 		sum.Groups = append(sum.Groups, "~"+g.Name)
 	}
 	for _, name := range res.KeptGroups {
-		sum.Notices = append(sum.Notices, "group "+name+" was kept (delete groups under Groups)")
+		sum.Notices = append(sum.Notices, "pack "+name+" was kept (delete packs on the Packs page)")
 	}
 
 	// Networks.

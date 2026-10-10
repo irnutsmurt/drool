@@ -96,7 +96,9 @@ export function HostDetailPage() {
   if (!h) return <><PageHeader crumbs={crumbs} title="Host" /><Loading /></>;
 
   const nameOf = (hid?: string | null) => (hosts.data?.items ?? []).find((x) => x.id === hid)?.name;
-  const credName = (cid?: string | null) => (creds.data?.items ?? []).find((c) => c.id === cid)?.name ?? cid;
+  // A role without credentials.use can't list credentials: say so rather than show an internal ID.
+  const credName = (cid?: string | null) => !cid ? cid : (creds.data?.items ?? []).find((c) => c.id === cid)?.name
+    ?? (!can("credentials.use") ? "a stored credential — your role can't see its name" : creds.data ? cid : "…");
   const packs = (groups.data?.items ?? []).filter((g) => h.group_ids.includes(g.id));
   const sshHost = h.management.ssh_configured;
   const needsKey = sshHost && (h.status === "pending_hostkey" || h.status === "hostkey_mismatch");

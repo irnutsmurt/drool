@@ -300,7 +300,7 @@ func TestConflictBlocksRestoreUntilResolved(t *testing.T) {
 		t.Fatal(k)
 	}
 	p, _ := e.s.PreviewRestore(e.ctx, Selection{}, RestoreOptions{})
-	if len(p.Items) != 0 || len(p.Excluded) != 1 || !strings.Contains(p.Excluded[0].Reason, "Conflict between groups Maintenance Lab and Web Servers") {
+	if len(p.Items) != 0 || len(p.Excluded) != 1 || !strings.Contains(p.Excluded[0].Reason, "Conflict between packs Maintenance Lab and Web Servers") {
 		t.Fatalf("plan %+v", p)
 	}
 	// The impact of a priority change is previewed, then saved.

@@ -31,7 +31,9 @@ export function PageHeader({ title, description, actions, crumbs }: {
         </nav>
       )}
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-        <div className="min-w-0">
+        {/* The text wraps beside the actions while there's room, so a long
+            description doesn't push them down; on a phone they wrap below. */}
+        <div className="min-w-0 flex-1 basis-[24rem]">
           <h1 className="break-words text-xl font-semibold">{title}</h1>
           {description && <div className="mt-1 text-sm text-muted">{description}</div>}
         </div>

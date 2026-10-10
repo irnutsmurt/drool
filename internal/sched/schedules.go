@@ -698,7 +698,7 @@ func (s *Service) targetsText(ctx context.Context, q queryer, t model.TargetSpec
 		parts = append(parts, name("hosts", h))
 	}
 	for _, g := range t.Groups {
-		parts = append(parts, "group "+name("groups", g))
+		parts = append(parts, "pack "+name("groups", g))
 	}
 	for _, tg := range t.Tags {
 		parts = append(parts, "tag "+tg)

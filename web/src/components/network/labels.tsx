@@ -69,7 +69,7 @@ export function RemoteLabel({ flow }: { flow: NetFlow }) {
     <span className="inline-flex flex-col">
       {flow.peer_host && <span className="font-medium">{flow.peer_host.name}</span>}
       <Endpoint ip={flow.remote_ip} port={flow.remote_port} />
-      {flow.peer_host && flow.peer_host.groups.length > 0 && <span className="text-[11px] text-muted">group: {flow.peer_host.groups.join(", ")}</span>}
+      {flow.peer_host && flow.peer_host.groups.length > 0 && <span className="text-[11px] text-muted">pack: {flow.peer_host.groups.join(", ")}</span>}
       {!flow.peer_host && flow.peer_network && <span className="text-[11px] text-muted">network: {flow.peer_network}</span>}
     </span>
   );

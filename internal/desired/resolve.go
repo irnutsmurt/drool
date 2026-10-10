@@ -46,8 +46,9 @@ type Declaration struct {
 type Source struct {
 	Level string `json:"level"`
 	// Label: "Required by Global baseline Server Defaults", "Inherited
-	// from group: Media Servers", "Custom for this host", "Conflict
-	// between groups Web Servers and Maintenance Lab".
+	// from pack: Media Servers", "Custom for this host", "Conflict
+	// between packs Web Servers and Maintenance Lab". (A pack is the UI's
+	// name for a host group.)
 	Label     string        `json:"label"`
 	Baselines []BaselineRef `json:"baselines,omitempty"`
 	Groups    []GroupRef    `json:"groups,omitempty"`
@@ -164,7 +165,7 @@ func (d decl) label() string {
 	case LevelAssigned:
 		return "Baseline " + d.baseline.Name + ", assigned to this host"
 	case LevelGroup:
-		return "Inherited from group: " + d.group.Name + " (baseline " + d.baseline.Name + ")"
+		return "Inherited from pack: " + d.group.Name + " (baseline " + d.baseline.Name + ")"
 	}
 	return "Required by Global baseline " + d.baseline.Name
 }
@@ -376,7 +377,7 @@ func agreeLabel(level string, ds []decl) string {
 	case LevelAssigned:
 		return "Baselines " + names(func(d decl) string { return d.baseline.Name }) + ", assigned to this host (they agree)"
 	case LevelGroup:
-		return "Inherited from groups: " + names(func(d decl) string { return d.group.Name }) + " (they agree)"
+		return "Inherited from packs: " + names(func(d decl) string { return d.group.Name }) + " (they agree)"
 	}
 	return "Required by Global baselines " + names(func(d decl) string { return d.baseline.Name }) + " (they agree)"
 }
@@ -396,9 +397,9 @@ func conflictLabel(level string, src Source) string {
 				bs = append(bs, b.Name)
 			}
 			sort.Strings(bs)
-			return fmt.Sprintf("Conflict between baselines %s of group %s", joinAnd(bs), names[0])
+			return fmt.Sprintf("Conflict between baselines %s of pack %s", joinAnd(bs), names[0])
 		}
-		return fmt.Sprintf("Conflict between groups %s (same priority %d)", joinAnd(names), src.Groups[0].Priority)
+		return fmt.Sprintf("Conflict between packs %s (same priority %d)", joinAnd(names), src.Groups[0].Priority)
 	case LevelAssigned:
 		bs := make([]string, 0, len(src.Baselines))
 		for _, b := range src.Baselines {

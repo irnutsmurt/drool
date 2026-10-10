@@ -167,7 +167,7 @@ func targetsText(ts []MaintenanceTarget) string {
 	for _, t := range ts {
 		n := t.Name
 		if t.Kind == "group" {
-			n = "group " + n
+			n = "pack " + n
 		}
 		names = append(names, n)
 	}

@@ -325,14 +325,14 @@ func TestHealthOverridesGroupsAndPriority(t *testing.T) {
 	if w.Conflict == nil || len(w.Conflict.Groups) != 2 || num(w.Value) != 95 || !strings.Contains(w.Source.Label, "Conflict") {
 		t.Fatalf("conflict: %+v", w)
 	}
-	if v.Summary.Conflicts != 1 || !strings.Contains(v.Summary.Text, "group conflict") {
+	if v.Summary.Conflicts != 1 || !strings.Contains(v.Summary.Text, "pack conflict") {
 		t.Fatalf("summary: %+v", v.Summary)
 	}
 	e.points(h1, 6, cpuLoad(90))
 	if e.issuesOf(h1, "active")["cpu|"].ID != "" {
 		t.Fatal("conflict: the evaluator must use the next scope (95%), not either group")
 	}
-	if w := field(t, e.hostView(h2, ""), "cpu", "warning"); num(w.Value) != 80 || w.Source.Label != "Inherited from group: NAS" {
+	if w := field(t, e.hostView(h2, ""), "cpu", "warning"); num(w.Value) != 80 || w.Source.Label != "Inherited from pack: NAS" {
 		t.Fatalf("nas-a has one group: %+v", w)
 	}
 
@@ -373,7 +373,7 @@ func TestHealthOverridesGroupsAndPriority(t *testing.T) {
 		t.Fatalf("members: %d %s", r.status, r.body)
 	}
 	e.points(h3, 1, cpuLoad(99))
-	if r := e.issuesOf(h3, "resolved")["cpu|"]; r.Resolution != "disabled" || !strings.Contains(r.ResolutionNote, "Inherited from group: Lab") {
+	if r := e.issuesOf(h3, "resolved")["cpu|"]; r.Resolution != "disabled" || !strings.Contains(r.ResolutionNote, "Inherited from pack: Lab") {
 		t.Fatalf("joining Lab turned CPU off: %+v", r)
 	}
 
@@ -605,11 +605,11 @@ func TestHealthOverridesAPI(t *testing.T) {
 		e.mustPut(map[string]any{"scope": "group", "group_id": g, "check": "filesystem", "fields": map[string]any{"warning": 88}})
 		e.mustPut(map[string]any{"scope": "host", "host_id": h, "check": "filesystem", "fields": map[string]any{"warning": 90, "critical": 97}})
 		v = e.hostView(h, "")
-		if !strings.Contains(v.Summary.Text, "1 inherited group override") || !strings.Contains(v.Summary.Text, "2 host overrides") {
+		if !strings.Contains(v.Summary.Text, "1 inherited pack override") || !strings.Contains(v.Summary.Text, "2 host overrides") {
 			t.Fatalf("%+v", v.Summary)
 		}
 		w := field(t, v, "filesystem", "warning")
-		if num(w.Value) != 90 || num(w.Own) != 90 || num(w.Inherited.Value) != 88 || w.Inherited.Source.Label != "Inherited from group: Apps" {
+		if num(w.Value) != 90 || num(w.Own) != 90 || num(w.Inherited.Value) != 88 || w.Inherited.Source.Label != "Inherited from pack: Apps" {
 			t.Fatalf("%+v", w)
 		}
 		// Reset one field: PUT the remaining sparse set.

@@ -70,7 +70,7 @@ export function HostDesiredPage() {
           ) : (
             <ul className="space-y-1 text-sm">
               {h.baselines.map((b) => (
-                <li key={b.id + b.via}><Link className={plainLink} to={`/desired/baselines/${b.id}`}>{b.name}</Link> <span className="text-muted">rev. {b.revision}, via {b.via.replace(/^group /, "pack ")}</span></li>
+                <li key={b.id + b.via}><Link className={plainLink} to={`/desired/baselines/${b.id}`}>{b.name}</Link> <span className="text-muted">rev. {b.revision}, via {b.via}</span></li>
               ))}
             </ul>
           )}

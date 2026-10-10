@@ -167,7 +167,7 @@ test("group: overrides only when chosen, with an impact preview; hosts show the 
     await page.keyboard.press("Escape");
     await waitText(page, "Monitoring overrides (1)");
     await go(`/hosts/${page.ids["nas-01"]}/monitoring?tab=health`);
-    await waitText(page, "1 inherited group override");
+    await waitText(page, "1 inherited pack override");
     const row = await page.$$eval("tbody tr", (rs) => rs.map((r) => r.innerText).find((t) => t.startsWith("High CPU utilization")));
     assert.match(row, /Off/);
     assert.match(row, /Pack: e2e-render/);

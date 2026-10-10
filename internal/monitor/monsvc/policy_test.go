@@ -61,7 +61,7 @@ func TestPolicyPrecedence(t *testing.T) {
 			t.Fatalf("untouched fields inherit: %+v", e[FieldEnabled])
 		}
 		root := p.effective("h1", CheckFilesystem, subjectCtx{keys: []string{"mount:/"}, label: "/"}, nil, levelAll)
-		if val(t, root[FieldWarning]) != 90 || root[FieldWarning].Source.Label != "Inherited from group: NAS" {
+		if val(t, root[FieldWarning]) != 90 || root[FieldWarning].Source.Label != "Inherited from pack: NAS" {
 			t.Fatalf("/ keeps the group's value: %+v", root[FieldWarning])
 		}
 		other := p.effective("h2", CheckFilesystem, sc, nil, levelAll)

@@ -416,7 +416,7 @@ func (c policyCounts) summary() *HealthSummary {
 	h := &HealthSummary{GlobalFields: c.Global, GroupFields: c.Group, HostFields: c.Host, SubjectFields: c.Subject, Conflicts: c.Conflicts}
 	var parts []string
 	if c.Group > 0 {
-		parts = append(parts, plural(c.Group, "inherited group override", "inherited group overrides"))
+		parts = append(parts, plural(c.Group, "inherited pack override", "inherited pack overrides"))
 	}
 	if c.Host > 0 {
 		parts = append(parts, plural(c.Host, "host override", "host overrides"))
@@ -425,7 +425,7 @@ func (c policyCounts) summary() *HealthSummary {
 		parts = append(parts, plural(c.Subject, "override for individual devices or services", "overrides for individual devices or services"))
 	}
 	if c.Conflicts > 0 {
-		parts = append(parts, plural(c.Conflicts, "group conflict", "group conflicts"))
+		parts = append(parts, plural(c.Conflicts, "pack conflict", "pack conflicts"))
 	}
 	switch {
 	case len(parts) == 0 && c.Global == 0:

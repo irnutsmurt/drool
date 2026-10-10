@@ -5,6 +5,7 @@ import { useHostFacts, type DiscoveredFacts, type Host } from "@/api/queries";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Field";
+import { LoadError, Loading } from "@/components/ui/States";
 import { Table } from "@/components/ui/Table";
 import { cx } from "@/components/ui/cx";
 import { formatAgo, formatBytes, formatDateTime, formatPct, formatUptime } from "@/lib/format";
@@ -70,6 +71,10 @@ export function SystemCard({ host }: { host: Host }) {
   const q = useHostFacts(host.id);
   const full = q.data?.facts as DiscoveredFacts | null | undefined;
   const addresses = q.data?.addresses ?? [];
+  const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
+  // Counts only once the inventory is here: loading isn't "0 filesystems".
+  const summary = q.data ? `${n(full?.filesystems.length ?? 0, "filesystem", "filesystems")}, ${n(addresses.length, "address", "addresses")}`
+    : q.error ? "couldn't load" : "loading…";
   return (
     <Card title="System">
       {!f ? (
@@ -89,42 +94,46 @@ export function SystemCard({ host }: { host: Host }) {
           </dl>
           <details className="border-t border-line pt-3">
             <summary className="cursor-pointer text-sm font-medium">Filesystems, addresses and interfaces
-              <span className="font-normal text-muted"> — {full?.filesystems.length ?? 0} filesystems, {addresses.length} addresses</span></summary>
-            <div className="mt-3 space-y-4">
-              <p className="text-xs text-muted">Containers: {f.container_runtimes.length ? f.container_runtimes.join(", ") : "none found"}.
-                Addresses are informational: DROOL identifies hosts by their SSH key or Shepherd identity, not by IP address.</p>
-              {full && full.filesystems.length > 0 && (
-                <Table caption="Filesystems" rows={full.filesystems} rowKey={(fs) => fs.mount}
+              <span className="font-normal text-muted"> — {summary}</span></summary>
+            {!q.data ? (
+              <div className="mt-3">{q.error ? <LoadError what="the inventory" error={q.error} /> : <Loading what="the inventory" />}</div>
+            ) : (
+              <div className="mt-3 space-y-4">
+                <p className="text-xs text-muted">Containers: {f.container_runtimes.length ? f.container_runtimes.join(", ") : "none found"}.
+                  Addresses are informational: DROOL identifies hosts by their SSH key or Shepherd identity, not by IP address.</p>
+                {full && full.filesystems.length > 0 && (
+                  <Table caption="Filesystems" rows={full.filesystems} rowKey={(fs) => fs.mount}
+                    columns={[
+                      { header: "Mount", cell: (fs) => <span className="font-mono text-xs">{fs.mount}</span> },
+                      { header: "Type", cell: (fs) => fs.type ?? "" },
+                      { header: "Size", cell: (fs) => formatBytes(fs.size_bytes) },
+                      { header: "Used", cell: (fs) => <span className={cx(fs.used_pct >= 90 && "text-danger")}>{formatPct(fs.used_pct)}</span> },
+                    ]} />
+                )}
+                <Table caption="Addresses" rows={addresses} rowKey={(a) => a.address} empty="No addresses known."
                   columns={[
-                    { header: "Mount", cell: (fs) => <span className="font-mono text-xs">{fs.mount}</span> },
-                    { header: "Type", cell: (fs) => fs.type ?? "" },
-                    { header: "Size", cell: (fs) => formatBytes(fs.size_bytes) },
-                    { header: "Used", cell: (fs) => <span className={cx(fs.used_pct >= 90 && "text-danger")}>{formatPct(fs.used_pct)}</span> },
+                    { header: "Address", cell: (a) => <span className="font-mono text-xs">{a.address}</span> },
+                    { header: "Interface", cell: (a) => a.interface || "—" },
+                    { header: "Source", cell: (a) => <Badge tone={a.source === "configured" ? "accent" : "neutral"}>{a.source}</Badge> },
+                    { header: "Last seen", cell: (a) => <span className="text-muted">{formatAgo(a.last_seen_at)}</span> },
                   ]} />
-              )}
-              <Table caption="Addresses" rows={addresses} rowKey={(a) => a.address} empty="No addresses known."
-                columns={[
-                  { header: "Address", cell: (a) => <span className="font-mono text-xs">{a.address}</span> },
-                  { header: "Interface", cell: (a) => a.interface || "—" },
-                  { header: "Source", cell: (a) => <Badge tone={a.source === "configured" ? "accent" : "neutral"}>{a.source}</Badge> },
-                  { header: "Last seen", cell: (a) => <span className="text-muted">{formatAgo(a.last_seen_at)}</span> },
-                ]} />
-              {full && full.interfaces.length > 0 && (
-                <Table caption="Interfaces" rows={full.interfaces} rowKey={(i) => i.name}
-                  columns={[
-                    { header: "Interface", cell: (i) => <span className="font-mono text-xs">{i.name}</span> },
-                    { header: "State", cell: (i) => i.state ?? "" },
-                    { header: "MAC", cell: (i) => <span className="font-mono text-xs">{i.mac ?? ""}</span> },
-                    { header: "Addresses", cell: (i) => <span className="font-mono text-xs [overflow-wrap:anywhere]">{i.addresses.map((a) => `${a.address}/${a.prefix}`).join(", ")}</span> },
-                  ]} />
-              )}
-              {full && full.warnings.length > 0 && (
-                <div className="text-xs text-muted">
-                  <div className="font-medium">Discovery notes</div>
-                  <ul className="mt-1 list-disc pl-5">{full.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
-                </div>
-              )}
-            </div>
+                {full && full.interfaces.length > 0 && (
+                  <Table caption="Interfaces" rows={full.interfaces} rowKey={(i) => i.name}
+                    columns={[
+                      { header: "Interface", cell: (i) => <span className="font-mono text-xs">{i.name}</span> },
+                      { header: "State", cell: (i) => i.state ?? "" },
+                      { header: "MAC", cell: (i) => <span className="font-mono text-xs">{i.mac ?? ""}</span> },
+                      { header: "Addresses", cell: (i) => <span className="font-mono text-xs [overflow-wrap:anywhere]">{i.addresses.map((a) => `${a.address}/${a.prefix}`).join(", ")}</span> },
+                    ]} />
+                )}
+                {full && full.warnings.length > 0 && (
+                  <div className="text-xs text-muted">
+                    <div className="font-medium">Discovery notes</div>
+                    <ul className="mt-1 list-disc pl-5">{full.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+                  </div>
+                )}
+              </div>
+            )}
           </details>
         </div>
       )}

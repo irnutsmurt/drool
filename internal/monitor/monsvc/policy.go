@@ -578,9 +578,9 @@ func (p *policy) resolve(host, check string, sc subjectCtx, hw *hwLimits, field 
 				for i, w := range win {
 					names[i] = w.Name
 				}
-				lbl := "Inherited from group: " + names[0]
+				lbl := "Inherited from pack: " + names[0]
 				if len(win) > 1 {
-					lbl = "Inherited from groups: " + strings.Join(names, ", ")
+					lbl = "Inherited from packs: " + strings.Join(names, ", ")
 				}
 				return Resolved{Value: fp(*win[0].Value), Source: Provenance{Kind: "group", Label: lbl, Groups: win}}
 			}

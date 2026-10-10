@@ -250,7 +250,7 @@ func scaleConflicts(t *testing.T) {
 	if err != nil || len(p.Items) != 0 {
 		t.Fatalf("restore planned something: %v %d", err, len(p.Items))
 	}
-	if !strings.Contains(p.Excluded[0].Reason, "Conflict between groups") {
+	if !strings.Contains(p.Excluded[0].Reason, "Conflict between packs") {
 		t.Fatal(p.Excluded[0].Reason)
 	}
 	t.Logf("pathological: 200 hosts × 20 resources × 10 equal-priority groups: resolving every host %s; check and evaluate %s; 4000 conflicts, nothing restorable (%d excluded with the reason)",

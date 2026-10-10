@@ -109,6 +109,9 @@ test("desired state: sidebar entry and tabs from the keyboard", async () => {
 });
 
 test("create a baseline: simple case, impact before saving", async () => {
+  // The impact preview compares with gpu-01's services, which the fixture
+  // loads shortly after the hosts exist (this file may run first).
+  await waitFor(page, async () => (await api(page, "GET", "/monitoring/summary")).body?.counts?.storage > 0, "monitoring fixture", 90000);
   await go("/desired/baselines/new");
   await waitText(page, "Impact before saving");
   await fill(page, "Name", `AI box ${run}`);
@@ -189,7 +192,7 @@ test("equal group priorities that disagree are a conflict until a priority settl
   await openResource("pihole-FTL.service");
   await waitRe(/Conflict — not resolved/);
   const t = await text(page);
-  assert.match(t, new RegExp(`Conflict between groups .*quiet-${run}.*storage-${run}.* \\(same priority 0\\)`));
+  assert.match(t, new RegExp(`Conflict between packs .*quiet-${run}.*storage-${run}.* \\(same priority 0\\)`));
   assert.match(t, /DROOL doesn't pick one/);
   const restore = await page.$$eval("button", (bs) => bs.filter((b) => b.textContent === "Restore managed state").map((b) => b.disabled));
   assert.deepEqual(restore, [true]);
@@ -213,7 +216,7 @@ test("equal group priorities that disagree are a conflict until a priority settl
   await waitFor(page, async () => (await resource("pi-sd", "service:pihole-FTL.service")).status !== "conflict", "conflict resolved", 30000);
   const r = await resource("pi-sd", "service:pihole-FTL.service");
   assert.equal(r.status, "compliant");
-  assert.match(r.source.label, new RegExp(`Inherited from group: storage-${run}`));
+  assert.match(r.source.label, new RegExp(`Inherited from pack: storage-${run}`));
   assert.deepEqual(page.errors, []);
 });
 

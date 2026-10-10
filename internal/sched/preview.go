@@ -149,7 +149,7 @@ func (s *Service) PreviewSchedule(ctx context.Context, in ScheduleInput) (*Previ
 			}
 		}
 	}
-	p.Notes = append(p.Notes, "Targets are resolved again at every run: hosts added to a group later take part, and each run's job keeps the hosts it started with.")
+	p.Notes = append(p.Notes, "Targets are resolved again at every run: hosts added to a pack later take part, and each run's job keeps the hosts it started with.")
 	if in.Kind == ScheduleMaintenance {
 		for _, h := range hosts {
 			p.Targets = append(p.Targets, PreviewHost{ID: h.ID, Name: h.Name, Status: h.Status})

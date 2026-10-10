@@ -256,7 +256,7 @@ function RecurringWindows() {
       )}>
       <p className="mb-3 text-sm text-muted">
         Maintenance that starts by itself, for example every Sunday 02:00–04:00. Each window is ordinary maintenance;
-        group membership is checked live while it lasts. A scheduled job can be tied to a window to run inside it.
+        pack membership is checked live while it lasts. A scheduled job can be tied to a window to run inside it.
       </p>
       {list.error && <Notice>{errorMessage(list.error)}</Notice>}
       {rows.length === 0 ? (

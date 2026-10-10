@@ -543,7 +543,7 @@ func (s *Service) EffectiveTimeout(ctx context.Context, hostID string) (int, str
 				if g, err := s.d.Store.R.GetGroup(ctx, gid); err == nil {
 					name = g.Name
 				}
-				best, from = t, "group "+name
+				best, from = t, "pack "+name
 			}
 		}
 	}

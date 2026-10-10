@@ -24,7 +24,7 @@ function Budget({ id, o }: { id: string; o: MonHostOverview }) {
   const [form, setForm] = useState<MonLimits>(() => o.settings.limits ?? {});
   const num = (v: string) => (v === "" ? undefined : Number(v));
   return (
-    <Card title="Agent resource budget">
+    <Card title="Shepherd resource budget">
       <p className="mb-3 text-sm text-muted">
         The managed workload wins: the agent runs with a low CPU weight, a hard CPU quota and a memory ceiling, and lowers its own
         monitoring fidelity before it competes with the host's applications. Package installs, scripts and firewall changes run
@@ -80,10 +80,10 @@ function Diagnostics({ id }: { id: string }) {
   });
   const d = useDiagnostics(id, on);
   return (
-    <Card title="Agent diagnostics">
+    <Card title="Shepherd diagnostics">
       <p className="mb-2 text-sm text-muted">The agent keeps recent routine diagnostics in a small memory ring instead of writing them to the host's disk.</p>
       {ask.error && <Alert>{errorMessage(ask.error)}</Alert>}
-      <Button size="sm" onClick={() => ask.mutate()} disabled={ask.isPending}>Fetch from the agent</Button>
+      <Button size="sm" onClick={() => ask.mutate()} disabled={ask.isPending}>Fetch from the Shepherd</Button>
       {on && (
         <pre className="mt-2 max-h-72 overflow-auto rounded-ui bg-surface-2 p-2 font-mono text-xs">
           {(d.data?.entries ?? []).map((e) => `${e.time} ${e.level} ${e.message}`).join("\n") || "Waiting for the agent…"}

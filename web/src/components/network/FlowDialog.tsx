@@ -34,7 +34,7 @@ export function FlowDialog({ id, onClose }: { id: number; onClose: () => void })
             <dt className="text-muted">Direction</dt><dd><DirectionLabel dir={f.direction} /> · <ScopeBadge flow={f} /></dd>
             <dt className="text-muted">Source</dt><dd><strong>{src!.name}</strong> <span className="font-mono text-xs">{src!.ep}</span></dd>
             <dt className="text-muted">Destination</dt><dd><strong>{dst!.name}</strong> <span className="font-mono text-xs">{dst!.ep}</span></dd>
-            {f.peer_host && <><dt className="text-muted">Remote host</dt><dd>{f.peer_host.name}{f.peer_host.groups.length > 0 && <> · group: {f.peer_host.groups.join(", ")}</>}</dd></>}
+            {f.peer_host && <><dt className="text-muted">Remote host</dt><dd>{f.peer_host.name}{f.peer_host.groups.length > 0 && <> · pack: {f.peer_host.groups.join(", ")}</>}</dd></>}
             {f.peer_network && <><dt className="text-muted">Network object</dt><dd>{f.peer_network}</dd></>}
             {f.scope === "internal" && f.scope_range && <><dt className="text-muted">Internal range</dt><dd>{f.scope_range}</dd></>}
             {f.scope === "public" && (
