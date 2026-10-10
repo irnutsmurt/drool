@@ -111,14 +111,22 @@ export async function shot(page, name) {
 }
 
 /** REST call with the page's session (CSRF header from the cookie flow). */
-export async function api(page, method, path, body) {
-  return page.evaluate(async (m, p, b) => {
+// High-impact actions need a recent re-authentication (M16; 3 s in the
+// test controller): like the UI, confirm with the password and repeat.
+export async function api(page, method, path, body, pw = password) {
+  return page.evaluate(async (m, p, b, pw) => {
     const me = await fetch("/api/v1/auth/me");
     const csrf = (await me.json()).csrf_token;
-    const r = await fetch("/api/v1" + p, { method: m, headers: { "Content-Type": "application/json", "X-DROOL-CSRF": csrf }, body: b ? JSON.stringify(b) : undefined });
+    const headers = { "Content-Type": "application/json", "X-DROOL-CSRF": csrf };
+    const send = () => fetch("/api/v1" + p, { method: m, headers, body: b ? JSON.stringify(b) : undefined });
+    let r = await send();
+    if (r.status === 403 && (await r.clone().json().catch(() => null))?.code === "reauth_required") {
+      await fetch("/api/v1/auth/reauth", { method: "POST", headers, body: JSON.stringify({ password: pw }) });
+      r = await send();
+    }
     const t = await r.text();
     return { status: r.status, body: t ? JSON.parse(t) : null };
-  }, method, path, body);
+  }, method, path, body, pw);
 }
 
 /** Runs in the page: returns texts below the required contrast. */

@@ -99,7 +99,9 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
   automatic restore, off by default. See [Desired state](#desired-state).
 - **Appearance:** Light, Dark or System (follows your OS), from the header or *Settings → Account*.
 - **Accounts and audit:** local users with roles (admin, operator, auditor, viewer), API tokens,
-  credentials encrypted at rest, an append-only audit log of every change.
+  credentials encrypted at rest, an audit log of every change whose records are chained by hashes (so
+  changing stored history is detectable) with an optional remote copy, two-factor authentication
+  (authenticator apps) and re-authentication before high-impact actions.
 - **Backup and restore** from the command line.
 
 ### Not in this release
@@ -112,7 +114,7 @@ These are planned (see `DESIGN.md`) but **do not exist yet**:
 - templated files, directory sync (file management, single-file deployment and managed files in
   desired state exist on `main`; see [Files](#files) and [Desired state](#desired-state))
 - plugins
-- MFA, single sign-on, high availability, Windows
+- single sign-on, high availability, Windows
 - workflow branching, conditions or approval steps; notifications about job results
 - network security features beyond visibility: blocking by address or country, threat scores or
   reputation, packet capture, intrusion detection, alerting on network activity
@@ -1507,7 +1509,8 @@ plain HTTP to the network by accident.
   the controller's system trust store (there is no per-destination certificate setting); no SMS,
   push apps or plugins beyond the four built-in destinations (a webhook can feed ntfy, Gotify or
   Home Assistant); deleting a host deletes its alert history.
-- **Local accounts only;** no MFA or single sign-on yet.
+- **Local accounts only;** no single sign-on. Two-factor authentication is TOTP (authenticator apps);
+  no WebAuthn/passkeys yet.
 - **Backup and restore are command-line only** (Settings → System shows the commands).
 - The **web UI is functional, not polished**; a visual design pass comes later.
 - Migrations made before `v0.1.0-alpha` were edited during development; databases from

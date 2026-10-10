@@ -221,7 +221,7 @@ func Create(ctx context.Context, cfg *config.Loaded, w io.Writer, opts Options) 
 			return nil, fmt.Errorf("master key %s: %w", cfg.MasterKeyPath(), err)
 		}
 		m.MasterKeyID = box.KeyID()
-		if _, err := secrets.VerifyBox(ctx, newQueries(sdb), box); err != nil {
+		if _, err := secrets.VerifyBox(ctx, sdb, box); err != nil {
 			res.KeyWarning = "the master key file does not match the stored credentials: " + err.Error()
 		}
 	case errors.Is(keyErr, os.ErrNotExist):

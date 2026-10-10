@@ -67,6 +67,7 @@ Commands:
   restore FILE          Restore a backup (stop the controller first)
   setup code            Issue a new one-time setup code for first-admin setup
   user create           Create a local user (prompts for password); recovery path
+  user mfa-reset        Turn off a user's two-factor authentication (lost authenticator); recovery path
   agent-ca status       Agent PKI: root (online/offline), intermediate, trust manifest
   agent-ca export-root  Write the Agent Root CA key and certificate for offline storage
   agent-ca remove-root  Remove the root private key from the controller (and future backups)
@@ -124,10 +125,13 @@ func run(args []string) error {
 	case "agent-ca":
 		return cmdAgentCA(*cfgPath, explicit, rest[1:])
 	case "user":
-		if len(rest) < 2 || rest[1] != "create" {
-			return errors.New("usage: drool user create --username NAME [--role admin]")
+		switch {
+		case len(rest) >= 2 && rest[1] == "create":
+			return cmdUserCreate(*cfgPath, explicit, rest[2:])
+		case len(rest) >= 2 && rest[1] == "mfa-reset":
+			return cmdUserMFAReset(*cfgPath, explicit, rest[2:])
 		}
-		return cmdUserCreate(*cfgPath, explicit, rest[2:])
+		return errors.New("usage: drool user create --username NAME [--role admin] | drool user mfa-reset --username NAME")
 	default:
 		global.Usage()
 		return fmt.Errorf("unknown command %q", rest[0])
@@ -228,6 +232,60 @@ func cmdUserCreate(path string, explicit bool, args []string) error {
 	return nil
 }
 
+// cmdUserMFAReset turns off a user's two-factor authentication from the
+// command line: the way back for the last administrator who lost both the
+// authenticator and the recovery codes. Shell access to the controller is
+// the authorization; it is audited.
+func cmdUserMFAReset(path string, explicit bool, args []string) error {
+	fs := flag.NewFlagSet("user mfa-reset", flag.ContinueOnError)
+	username := fs.String("username", "", "username (required)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *username == "" {
+		return errors.New("--username is required")
+	}
+	cfg, err := loadConfig(path, explicit)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	st, _, err := openStore(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	u, err := st.R.GetUserByUsername(ctx, *username)
+	if err != nil {
+		return fmt.Errorf("no user %q", *username)
+	}
+	svc := newAuthService(cfg, st)
+	actor := audit.Actor{Type: audit.ActorSystem, Name: "cli:" + currentOSUser()}
+	w := audit.NewWriter(st, logging.Discard().Audit)
+	var had bool
+	err = st.InTx(ctx, func(q *db.Queries) error {
+		var err error
+		if had, err = svc.DisableMFATx(ctx, q, u.ID); err != nil || !had {
+			return err
+		}
+		if err := q.DeleteUserSessions(ctx, u.ID); err != nil {
+			return err
+		}
+		_, err = w.RecordTx(ctx, q, audit.Event{Action: "user.mfa_reset", Actor: &actor, TargetType: "user", TargetID: u.ID,
+			Details: map[string]any{"username": u.Username, "via": "cli"}})
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	if !had {
+		fmt.Printf("%s doesn't use two-factor authentication; nothing changed\n", u.Username)
+		return nil
+	}
+	fmt.Printf("Two-factor authentication is off for %s; their sessions were ended. They sign in with their password and can set it up again.\n", u.Username)
+	return nil
+}
+
 func readPassword(fromStdin bool) (string, error) {
 	if fromStdin || !term.IsTerminal(int(os.Stdin.Fd())) {
 		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
@@ -262,8 +320,14 @@ func currentOSUser() string {
 }
 
 func newAuthService(cfg *config.Loaded, st *store.Store) *auth.Service {
+	window := cfg.Auth.ReauthWindow
+	if os.Getenv("DROOL_TEST_AUTH_TIMING") == "fast" {
+		// Browser tests can't wait five minutes for a confirmation to lapse.
+		window = 3 * time.Second
+	}
 	return auth.NewService(st, auth.Options{
 		IdleTimeout: cfg.Auth.SessionIdleTimeout, AbsoluteTimeout: cfg.Auth.SessionAbsoluteTimeout,
+		ReauthWindow: window,
 	})
 }
 
@@ -306,6 +370,9 @@ func cmdServe(path string, explicit bool) error {
 	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
 	authSvc := newAuthService(cfg, st)
+	if os.Getenv("DROOL_TEST_AUTH_TIMING") == "fast" {
+		log.Warn("TEST MODE: high-impact actions need re-authentication after 3 s; never use this in production")
+	}
 	setup, err := prepareSetup(ctx, cfg, authSvc, logs)
 	if err != nil {
 		return fmt.Errorf("first-admin setup: %w", err)
@@ -323,6 +390,15 @@ func cmdServe(path string, explicit bool) error {
 		logs.Security.Warn("master key file is readable by group or others; restrict it to the drool user (chmod 600)",
 			"file", cfg.MasterKeyPath())
 	}
+	authSvc.SetSealer(box)
+	// Tamper-evident audit history (M16): checkpoints and verification,
+	// and the optional remote copy.
+	integrity := audit.NewIntegrity(audit.IntegrityDeps{Store: st, Writer: auditW, Keys: box, DataDir: cfg.DataDir, Log: logs.Security})
+	if err := integrity.RecoverInterrupted(ctx); err != nil {
+		return err
+	}
+	auditSink := audit.NewSink(audit.SinkDeps{Store: st, Box: box, Log: logs.Security, Controller: installationName()})
+	auditW.OnAppend(func(int64) { auditSink.Kick() })
 	secretSvc := secrets.NewService(st, box)
 	if _, created, err := secretSvc.EnsureControllerKey(ctx, func(q *db.Queries, row db.Secret) error {
 		_, err := auditW.RecordTx(ctx, q, audit.Event{Action: "credential.create", Actor: &audit.System,
@@ -371,6 +447,11 @@ func cmdServe(path string, explicit bool) error {
 			return err
 		}
 	}
+	controllerEpoch, err := agentsvc.ControllerEpoch(ctx, st)
+	if err != nil {
+		return err
+	}
+	auditSink.SetEpoch(func() string { return controllerEpoch })
 	router := &mgmt.Router{St: st, Inv: inv, SSH: executor, Agents: agents}
 	fw, err := fwsvc.New(ctx, fwsvc.Deps{Store: st, Inv: inv, Agents: agents, Audit: auditW, Log: logs.App.With("component", "firewall"),
 		Decide: router.FirewallDecision})
@@ -460,6 +541,23 @@ func cmdServe(path string, explicit bool) error {
 	}
 	alertSvc := alerts.New(alerts.Deps{Store: st, Box: box, Audit: auditW, Log: logs.App.With("component", "alerts"), Config: alertCfg})
 	alertSvc.Attach(mon)
+	integrity.OnFailure(func(v audit.Verification) {
+		_ = alertSvc.RecordEvent(context.Background(), alerts.Event{Kind: "audit.integrity", Severity: "critical", ObjectType: "audit",
+			ObjectID: v.ID, Title: "Audit history verification failed: " + v.Problem})
+	})
+	// The last checkpoint is written when this stops, before the store
+	// closes (deferred earlier, so it runs later).
+	integrityCtx, stopIntegrity := context.WithCancel(ctx)
+	integrityDone := make(chan struct{})
+	go func() {
+		defer close(integrityDone)
+		integrity.Run(integrityCtx)
+	}()
+	defer func() {
+		stopIntegrity()
+		<-integrityDone
+	}()
+	go auditSink.Run(ctx)
 	go mon.Run(ctx)
 	go alertSvc.Run(ctx)
 	// Scheduling and workflows (M13): workflow verification steps run on
@@ -534,7 +632,7 @@ func cmdServe(path string, explicit bool) error {
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
 		Poller: poll, StaleAfter: pollCfg.StaleAfter(), Simulator: router, Files: router, Artifacts: arts,
 		Agents: agents, Router: router, WebPin: webPin(tlsRes), Firewall: fw, Network: network, Monitor: mon, Alerts: alertSvc,
-		Sched: scheduler, Desired: desiredSvc,
+		Sched: scheduler, Desired: desiredSvc, Integrity: integrity, AuditSink: auditSink,
 	})
 	if err != nil {
 		return err
@@ -647,9 +745,8 @@ func webPin(r *tlsutil.Result) func() string {
 // to start when it doesn't fit the database: silently creating a new key
 // next to existing credentials would make them all undecryptable.
 func loadMasterKey(ctx context.Context, cfg *config.Loaded, st *store.Store) (*secrets.Box, bool, bool, error) {
-	var n int
-	if err := st.Reader.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM secrets) + (SELECT count(*) FROM agent_ca WHERE key_ciphertext IS NOT NULL)
-		+ (SELECT count(*) FROM notify_destinations WHERE secret_ciphertext IS NOT NULL)`).Scan(&n); err != nil {
+	n, err := secrets.CountSealed(ctx, st.Reader)
+	if err != nil {
 		return nil, false, false, err
 	}
 	recovery := fmt.Sprintf(`Restore the master key file from your backup. If it is permanently lost, keep
@@ -658,14 +755,14 @@ everything except the stored credentials with:
     drool restore --discard-credentials /tmp/drool-recovery.tar.gz
 (data directory %s)`, cfg.DataDir)
 	if _, err := os.Stat(cfg.MasterKeyPath()); errors.Is(err, os.ErrNotExist) && n > 0 {
-		return nil, false, false, fmt.Errorf("the master key file %s is missing, but the database holds %d encrypted credential(s).\n%s",
+		return nil, false, false, fmt.Errorf("the master key file %s is missing, but the database holds %d value(s) encrypted with it (credentials, CA keys, secrets).\n%s",
 			cfg.MasterKeyPath(), n, recovery)
 	}
 	box, created, insecure, err := secrets.LoadOrCreateBox(cfg.MasterKeyPath())
 	if err != nil {
 		return nil, false, false, err
 	}
-	if _, err := secrets.VerifyBox(ctx, st.R, box); err != nil {
+	if _, err := secrets.VerifyBox(ctx, st.Reader, box); err != nil {
 		return nil, false, false, fmt.Errorf("master key %s (key id %s) does not match the database: %v.\n%s",
 			cfg.MasterKeyPath(), box.KeyID(), err, recovery)
 	}

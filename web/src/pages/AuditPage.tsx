@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
 import { errorMessage, formatDateTime } from "@/lib/format";
+import { AuditIntegrityCard, AuditSinkCard } from "@/components/audit/AuditIntegrity";
 
 type Event = Schemas["AuditEvent"];
 
@@ -27,7 +28,11 @@ export function AuditPage() {
 
   return (
     <>
-      <PageHeader title="Audit log" description="Append-only record of security-relevant actions." />
+      <PageHeader title="Audit log" description="Who did what, when: every security-relevant action. Records are chained by hashes, so changes to stored history are detectable." />
+      <div className="mb-4 grid gap-4 lg:grid-cols-2">
+        <AuditIntegrityCard />
+        <AuditSinkCard />
+      </div>
       <div className="mb-4 max-w-xs">
         <Input placeholder="Filter by action prefix, e.g. auth." value={action} onChange={(e) => setAction(e.target.value)} />
       </div>
@@ -38,6 +43,7 @@ export function AuditPage() {
           rowKey={(e) => e.id}
           empty={q.isPending ? "Loading…" : "No audit events."}
           columns={[
+            { header: "#", cell: (e) => <span className="font-mono text-xs text-muted" title={e.hash ? `chain hash ${e.hash}` : "from before the hash chain"}>{e.seq ?? "—"}</span> },
             { header: "Time", cell: (e) => <span className="whitespace-nowrap">{formatDateTime(e.ts)}</span> },
             { header: "Actor", cell: (e) => e.actor.name || e.actor.type },
             { header: "Action", cell: (e) => <code className="font-mono text-xs">{e.action}</code> },

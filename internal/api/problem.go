@@ -23,6 +23,14 @@ type Problem struct {
 	Fields     map[string]string `json:"fields,omitempty"`
 	// Problems lists document validation problems (firewall designer).
 	Problems any `json:"problems,omitempty"`
+	// Reauth is set on reauth_required: the action needs the user to
+	// confirm who they are again (POST /auth/reauth), then repeat it.
+	Reauth *reauthInfo `json:"reauth,omitempty"`
+}
+
+type reauthInfo struct {
+	MFA     bool `json:"mfa"`      // ask for the authenticator code too
+	WindowS int  `json:"window_s"` // how long a confirmation lasts
 }
 
 func (p *Problem) Error() string { return p.Code + ": " + p.Detail }

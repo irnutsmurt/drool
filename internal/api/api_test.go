@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -71,7 +72,17 @@ type harness struct {
 	// desired is desired state (M14); its loop doesn't run in tests:
 	// call Step and SettleNow.
 	desired *desired.Service
+	// clock shifts the auth service's time (re-authentication windows,
+	// TOTP codes); integrity and sink are the audit chain services (M16).
+	clock     *atomic.Int64
+	integrity *audit.Integrity
+	sink      *audit.Sink
+	auditW    *audit.Writer
+	dataDir   string
 }
+
+// now is the harness's clock (shifted by clock).
+func (h *harness) now() time.Time { return time.Now().Add(time.Duration(h.clock.Load())) }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
@@ -88,9 +99,15 @@ func newHarness(t *testing.T) *harness {
 		t.Fatal(err)
 	}
 	logs := logging.Discard()
-	authSvc := auth.NewService(st, auth.Options{IdleTimeout: time.Hour, AbsoluteTimeout: 24 * time.Hour})
+	clock := &atomic.Int64{}
+	authSvc := auth.NewService(st, auth.Options{IdleTimeout: time.Hour, AbsoluteTimeout: 24 * time.Hour,
+		Now: func() time.Time { return time.Now().Add(time.Duration(clock.Load())) }})
 	auditW := audit.NewWriter(st, logs.Audit)
 	box := secrets.NewBoxForTest()
+	authSvc.SetSealer(box)
+	dataDir := t.TempDir()
+	integrity := audit.NewIntegrity(audit.IntegrityDeps{Store: st, Writer: auditW, Keys: box, DataDir: dataDir})
+	auditSink := audit.NewSink(audit.SinkDeps{Store: st, Box: box, Controller: "test", Transport: http.DefaultTransport})
 	secretSvc := secrets.NewService(st, box)
 	if _, _, err := secretSvc.EnsureControllerKey(context.Background(), func(*db.Queries, db.Secret) error { return nil }); err != nil {
 		t.Fatal(err)
@@ -153,6 +170,7 @@ func newHarness(t *testing.T) *harness {
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng, Simulator: router, Files: router, Artifacts: arts,
 		Agents: agents, Router: router, Firewall: fw, Network: network, Monitor: mon, Alerts: alertSvc, Sched: schedSvc, Desired: desiredSvc,
+		Integrity: integrity, AuditSink: auditSink,
 		UI: fstest.MapFS{
 			"index.html":    {Data: []byte("<!doctype html><title>ui</title>")},
 			"assets/app.js": {Data: []byte("console.log(1)")},
@@ -167,7 +185,7 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(ts.Close)
 	return &harness{t: t, srv: srv, ts: ts, auth: authSvc, st: st, eng: eng, agents: agents, pki: pki, router: router,
 		fw: fw, fwSSH: fwSSH, fwFake: fwFake, net: network, geoDir: geoDir, mon: mon, alerts: alertSvc, box: box, sched: schedSvc,
-		desired: desiredSvc}
+		desired: desiredSvc, clock: clock, integrity: integrity, sink: auditSink, auditW: auditW, dataDir: dataDir}
 }
 
 func (h *harness) mkUser(name, role string) {
@@ -435,7 +453,13 @@ func TestAPITokenFlow(t *testing.T) {
 	if r := tc.do("POST", "/api/v1/tokens", map[string]any{"name": "evil"}); r.status != 403 {
 		t.Fatalf("token minted token: %d", r.status)
 	}
-	if r := tc.do("POST", "/api/v1/users", map[string]string{"username": "viatoken", "password": pw, "role": "viewer"}); r.status != 201 {
+	// Ordinary API work goes through a token; user management is a
+	// high-impact action that needs a person who just confirmed who they
+	// are (M16), so a leaked token can't create accounts for itself.
+	if r := tc.do("GET", "/api/v1/users", nil); r.status != 200 {
+		t.Fatalf("token user list: %d %s", r.status, r.body)
+	}
+	if r := tc.do("POST", "/api/v1/users", map[string]string{"username": "viatoken", "password": pw, "role": "viewer"}); r.status != 403 {
 		t.Fatalf("token user create: %d %s", r.status, r.body)
 	}
 

@@ -4,6 +4,7 @@ package secrets
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hkdf"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -124,6 +125,24 @@ func NewBoxForTest() *Box {
 		panic(err)
 	}
 	return &Box{keys: map[int][]byte{1: key}, current: 1}
+}
+
+// CurrentVersion is the key version new values are sealed with.
+func (b *Box) CurrentVersion() int { return b.current }
+
+// DeriveKey derives a 32-byte key for purpose from master key version v
+// (0: the current version) with HKDF-SHA256. Derived keys are never stored:
+// whoever holds the master key file can derive them again, nobody else can.
+func (b *Box) DeriveKey(purpose string, v int) ([]byte, int, error) {
+	if v == 0 {
+		v = b.current
+	}
+	k, ok := b.keys[v]
+	if !ok {
+		return nil, 0, fmt.Errorf("master key version %d not available", v)
+	}
+	out, err := hkdf.Key(sha256.New, k, nil, purpose, 32)
+	return out, v, err
 }
 
 func aad(id, kind string) []byte { return []byte("drool-secret\x00" + id + "\x00" + kind) }

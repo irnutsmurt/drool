@@ -107,6 +107,9 @@ type TLS struct {
 type Auth struct {
 	SessionIdleTimeout     time.Duration `yaml:"session_idle_timeout"`
 	SessionAbsoluteTimeout time.Duration `yaml:"session_absolute_timeout"`
+	// ReauthWindow: how long confirming your password (and code) again
+	// lasts for high-impact actions (M16).
+	ReauthWindow time.Duration `yaml:"reauth_window"`
 }
 
 // Setup controls first-admin bootstrap (ARCHITECTURE-ALPHA §12.5).
@@ -175,6 +178,7 @@ func Defaults() Config {
 		Auth: Auth{
 			SessionIdleTimeout:     12 * time.Hour,
 			SessionAbsoluteTimeout: 7 * 24 * time.Hour,
+			ReauthWindow:           5 * time.Minute,
 		},
 		Setup: Setup{CodeTTL: time.Hour},
 		Engine: Engine{
@@ -497,6 +501,9 @@ func (c Config) Validate() error {
 	}
 	if c.Auth.SessionIdleTimeout <= 0 || c.Auth.SessionAbsoluteTimeout < c.Auth.SessionIdleTimeout {
 		errs = append(errs, errors.New("auth: session timeouts must be positive and absolute >= idle"))
+	}
+	if c.Auth.ReauthWindow < time.Minute || c.Auth.ReauthWindow > time.Hour {
+		errs = append(errs, fmt.Errorf("auth.reauth_window must be between 1m and 1h (got %s)", c.Auth.ReauthWindow))
 	}
 	return errors.Join(errs...)
 }

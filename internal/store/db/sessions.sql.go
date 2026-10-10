@@ -7,11 +7,12 @@ package db
 
 import (
 	"context"
+	"database/sql"
 )
 
 const createSession = `-- name: CreateSession :exec
-INSERT INTO sessions (token_hash, user_id, csrf_token, created_at, last_seen_at, expires_at, source_ip, user_agent)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO sessions (token_hash, user_id, csrf_token, created_at, last_seen_at, expires_at, source_ip, user_agent, reauth_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateSessionParams struct {
@@ -23,6 +24,7 @@ type CreateSessionParams struct {
 	ExpiresAt  int64
 	SourceIp   string
 	UserAgent  string
+	ReauthAt   sql.NullInt64
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) error {
@@ -35,6 +37,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) er
 		arg.ExpiresAt,
 		arg.SourceIp,
 		arg.UserAgent,
+		arg.ReauthAt,
 	)
 	return err
 }
@@ -89,7 +92,7 @@ func (q *Queries) DeleteUserSessionsExcept(ctx context.Context, arg DeleteUserSe
 }
 
 const getSessionWithUser = `-- name: GetSessionWithUser :one
-SELECT sessions.token_hash, sessions.user_id, sessions.csrf_token, sessions.created_at, sessions.last_seen_at, sessions.expires_at, sessions.source_ip, sessions.user_agent, users.id, users.username, users.password_hash, users.role, users.disabled, users.created_at, users.updated_at, users.password_changed_at, users.last_login_at
+SELECT sessions.token_hash, sessions.user_id, sessions.csrf_token, sessions.created_at, sessions.last_seen_at, sessions.expires_at, sessions.source_ip, sessions.user_agent, sessions.reauth_at, users.id, users.username, users.password_hash, users.role, users.disabled, users.created_at, users.updated_at, users.password_changed_at, users.last_login_at
 FROM sessions JOIN users ON users.id = sessions.user_id
 WHERE sessions.token_hash = ?
 `
@@ -111,6 +114,7 @@ func (q *Queries) GetSessionWithUser(ctx context.Context, tokenHash []byte) (Get
 		&i.Session.ExpiresAt,
 		&i.Session.SourceIp,
 		&i.Session.UserAgent,
+		&i.Session.ReauthAt,
 		&i.User.ID,
 		&i.User.Username,
 		&i.User.PasswordHash,
@@ -122,6 +126,20 @@ func (q *Queries) GetSessionWithUser(ctx context.Context, tokenHash []byte) (Get
 		&i.User.LastLoginAt,
 	)
 	return i, err
+}
+
+const setSessionReauth = `-- name: SetSessionReauth :exec
+UPDATE sessions SET reauth_at = ? WHERE token_hash = ?
+`
+
+type SetSessionReauthParams struct {
+	ReauthAt  sql.NullInt64
+	TokenHash []byte
+}
+
+func (q *Queries) SetSessionReauth(ctx context.Context, arg SetSessionReauthParams) error {
+	_, err := q.db.ExecContext(ctx, setSessionReauth, arg.ReauthAt, arg.TokenHash)
+	return err
 }
 
 const touchSession = `-- name: TouchSession :exec

@@ -1,8 +1,8 @@
 package api
 
 import (
-	"errors"
 	"net/http"
+	"time"
 
 	"drool/internal/audit"
 	"drool/internal/auth"
@@ -19,6 +19,11 @@ type meResponse struct {
 	Permissions []string `json:"permissions"`
 	AuthKind    string   `json:"auth_kind"`
 	CSRFToken   string   `json:"csrf_token,omitempty"`
+	MFAEnabled  bool     `json:"mfa_enabled"`
+	// ReauthUntil: until when high-impact actions go through without asking
+	// for the password again (sessions only).
+	ReauthUntil   *string `json:"reauth_until,omitempty"`
+	ReauthWindowS int     `json:"reauth_window_s"`
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -30,41 +35,18 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	res, err := s.d.Auth.Login(ctx, req.Username, req.Password, clientIPFrom(ctx), r.UserAgent())
 	if err != nil {
-		var lf *auth.LoginFailure
-		if !errors.As(err, &lf) {
-			s.log.Error("login", "err", err)
-			writeProblem(w, r, errInternal)
-			return
-		}
-		actor := audit.Actor{Type: audit.ActorAnonymous, ID: lf.UserID, Name: req.Username}
-		if err := s.d.Audit.Record(ctx, audit.Event{
-			Action: "auth.login", Result: audit.Failure, Actor: &actor,
-			TargetType: "user", TargetID: lf.UserID,
-			Details: map[string]any{"reason": lf.Reason},
-		}); err != nil {
-			s.log.Error("audit login failure", "err", err)
-		}
-		s.secLog.Warn("login failed", "username", req.Username, "reason", lf.Reason,
-			"source_ip", clientIPFrom(ctx), "request_id", requestIDFrom(ctx))
-		if errors.Is(err, auth.ErrRateLimited) {
-			writeProblem(w, r, problem(http.StatusTooManyRequests, "rate_limited", err.Error()))
-			return
-		}
-		writeProblem(w, r, problem(http.StatusUnauthorized, "invalid_credentials", auth.ErrInvalidCredentials.Error()))
+		s.loginFailed(w, r, req.Username, err)
 		return
 	}
-
-	p := res.Principal
-	ctx = withPrincipal(ctx, p)
-	if err := s.d.Audit.Record(ctx, audit.Event{Action: "auth.login", TargetType: "user", TargetID: p.UserID}); err != nil {
-		// Do not grant a session we could not audit.
-		_ = s.d.Auth.Logout(ctx, p)
-		s.log.Error("audit login", "err", err)
-		writeProblem(w, r, errInternal)
+	if res.MFARequired {
+		// The password was right; the session waits for the second factor.
+		actor := audit.Actor{Type: audit.ActorAnonymous, ID: res.UserID, Name: req.Username}
+		_ = s.d.Audit.Record(ctx, audit.Event{Action: "auth.login.password", Actor: &actor, TargetType: "user", TargetID: res.UserID,
+			Details: map[string]any{"next": "second_factor"}})
+		writeJSON(w, http.StatusOK, mfaChallengeResponse{MFARequired: true, Challenge: res.Challenge, Methods: []string{"totp", "recovery_code"}})
 		return
 	}
-	s.setSessionCookie(w, res.Cookie, res.ExpiresAt)
-	writeJSON(w, http.StatusOK, s.meFor(r, p))
+	s.loggedIn(w, r, res)
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +74,18 @@ func (s *Server) meFor(r *http.Request, p *auth.Principal) meResponse {
 	for _, perm := range auth.PermissionsFor(p.Role) {
 		perms = append(perms, string(perm))
 	}
-	return meResponse{User: uj, Permissions: perms, AuthKind: string(p.Kind), CSRFToken: p.CSRFToken}
+	me := meResponse{User: uj, Permissions: perms, AuthKind: string(p.Kind), CSRFToken: p.CSRFToken,
+		ReauthWindowS: int(s.d.Auth.ReauthWindow() / time.Second)}
+	if st, err := s.d.Auth.MFAStatus(r.Context(), nil, p.UserID); err == nil {
+		me.MFAEnabled = st.Enabled
+		uj.MFAEnabled = st.Enabled
+		me.User = uj
+	}
+	if p.Kind == auth.KindSession && s.d.Auth.RecentlyAuthenticated(p) {
+		t := msTime(p.ReauthAt + s.d.Auth.ReauthWindow().Milliseconds())
+		me.ReauthUntil = &t
+	}
+	return me
 }
 
 type changePasswordRequest struct {

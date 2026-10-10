@@ -20,6 +20,7 @@ type userJSON struct {
 	CreatedAt   string  `json:"created_at,omitempty"`
 	UpdatedAt   string  `json:"updated_at,omitempty"`
 	LastLoginAt *string `json:"last_login_at"`
+	MFAEnabled  bool    `json:"mfa_enabled"`
 }
 
 func toUserJSON(u db.User) userJSON {
@@ -83,9 +84,17 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, errInternal)
 		return
 	}
+	mfa := map[string]bool{}
+	if ids, err := s.d.Store.R.ListMFAEnabledUsers(r.Context()); err == nil {
+		for _, id := range ids {
+			mfa[id] = true
+		}
+	}
 	out := listResponse[userJSON]{Items: make([]userJSON, 0, len(us))}
 	for _, u := range us {
-		out.Items = append(out.Items, toUserJSON(u))
+		uj := toUserJSON(u)
+		uj.MFAEnabled = mfa[u.ID]
+		out.Items = append(out.Items, uj)
 	}
 	writeJSON(w, http.StatusOK, out)
 }

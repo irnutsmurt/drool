@@ -1,6 +1,9 @@
 -- name: CreateSession :exec
-INSERT INTO sessions (token_hash, user_id, csrf_token, created_at, last_seen_at, expires_at, source_ip, user_agent)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO sessions (token_hash, user_id, csrf_token, created_at, last_seen_at, expires_at, source_ip, user_agent, reauth_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: SetSessionReauth :exec
+UPDATE sessions SET reauth_at = ? WHERE token_hash = ?;
 
 -- name: GetSessionWithUser :one
 SELECT sqlc.embed(sessions), sqlc.embed(users)

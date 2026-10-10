@@ -145,14 +145,15 @@ func Restore(ctx context.Context, cfg *config.Loaded, r io.Reader, opts RestoreO
 		return nil, fmt.Errorf("upgrade restored database: %w", err)
 	}
 
-	// Credentials: find a master key that opens them. Count what is really
-	// in the database rather than trusting the manifest.
-	var nCred int64
-	if err := sdb.Reader.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM secrets) +
-		(SELECT count(*) FROM notify_destinations WHERE secret_ciphertext IS NOT NULL)`).Scan(&nCred); err != nil {
+	// Credentials and every other value sealed with the master key (CA keys,
+	// notification and audit sink secrets): find a master key that opens
+	// them. Count what is really in the database rather than trusting the
+	// manifest.
+	nSealed, err := secrets.CountSealed(ctx, sdb.Reader)
+	if err != nil {
 		return nil, invalid("database has no credentials table: %v", err)
 	}
-	m.Credentials = nCred
+	m.Credentials = int64(nSealed)
 	var keyData []byte
 	keyData, res.KeySource, err = chooseKey(ctx, cfg, st, sdb, opts)
 	if err != nil && !(opts.DiscardCredentials && errors.As(err, new(*KeyError))) {
@@ -390,7 +391,7 @@ func chooseKey(ctx context.Context, cfg *config.Loaded, st *staged, sdb *store.S
 			tried = append(tried, c.label+" (unreadable)")
 			continue
 		}
-		if _, err := secrets.VerifyBox(ctx, sdb.R, box); err != nil {
+		if _, err := secrets.VerifyBox(ctx, sdb.Reader, box); err != nil {
 			if c.source == "backup" {
 				return nil, "", invalid("the master key in the backup does not open its credentials (%v)", err)
 			}

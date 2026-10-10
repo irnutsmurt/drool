@@ -45,6 +45,7 @@ type Principal struct {
 	// Session-only fields.
 	SessionHash []byte
 	CSRFToken   string
+	ReauthAt    int64 // Unix ms of the last password (+ second factor) confirmation; signing in counts
 
 	// Token-only fields.
 	TokenID string
@@ -59,14 +60,21 @@ func (p *Principal) Can(perm Permission) bool {
 type Options struct {
 	IdleTimeout     time.Duration
 	AbsoluteTimeout time.Duration
-	Now             func() time.Time // for tests; defaults to time.Now
+	// ReauthWindow is how long a re-authentication lasts for high-impact
+	// actions (default 5 minutes).
+	ReauthWindow time.Duration
+	Now          func() time.Time // for tests; defaults to time.Now
 }
 
 // Service is the authentication service.
 type Service struct {
-	st      *store.Store
-	opts    Options
-	limiter *failureLimiter
+	st         *store.Store
+	opts       Options
+	limiter    *failureLimiter
+	challenges challenges
+
+	mu     sync.Mutex
+	sealer Sealer
 }
 
 func NewService(st *store.Store, opts Options) *Service {
@@ -78,11 +86,18 @@ func NewService(st *store.Store, opts Options) *Service {
 
 func (s *Service) now() int64 { return s.opts.Now().UnixMilli() }
 
-// LoginResult is returned by a successful login.
+// LoginResult is returned by a successful login. When the user has
+// two-factor authentication, the password step returns MFARequired with a
+// Challenge instead of a session; CompleteLogin finishes it.
 type LoginResult struct {
 	Cookie    string // raw session token for the cookie; never stored
 	Principal *Principal
 	ExpiresAt time.Time
+
+	MFARequired  bool
+	Challenge    string
+	UserID       string // set with MFARequired (for audit)
+	SecondFactor string // "totp" or "recovery_code" when one was used
 }
 
 // LoginFailure carries details for audit logging of a failed attempt.
@@ -123,6 +138,18 @@ func (s *Service) Login(ctx context.Context, username, password, ip, userAgent s
 		// Report as invalid credentials to the client; audit records the reason.
 		return nil, &LoginFailure{Err: ErrInvalidCredentials, UserID: u.ID, Reason: "disabled"}
 	}
+	if st, err := s.MFAStatus(ctx, nil, u.ID); err != nil {
+		return nil, err
+	} else if st.Enabled {
+		// The failure count is not reset until the second factor checks
+		// out: otherwise the password could be used to keep guessing codes.
+		raw, hash, err := newSecret()
+		if err != nil {
+			return nil, err
+		}
+		s.challenges.put(hash, &loginChallenge{userID: u.ID, expires: s.opts.Now().Add(challengeTTL), ip: ip, userAgent: userAgent})
+		return &LoginResult{MFARequired: true, Challenge: raw, UserID: u.ID}, nil
+	}
 	s.limiter.reset(userKey(username))
 
 	var res *LoginResult
@@ -155,6 +182,8 @@ func (s *Service) createSession(ctx context.Context, q *db.Queries, u db.User, i
 		ExpiresAt:  expires.UnixMilli(),
 		SourceIp:   ip,
 		UserAgent:  truncate(userAgent, 512),
+		// Signing in is as good a confirmation as re-authenticating.
+		ReauthAt: sql.NullInt64{Int64: now.UnixMilli(), Valid: true},
 	}); err != nil {
 		return nil, err
 	}
@@ -166,7 +195,7 @@ func (s *Service) createSession(ctx context.Context, q *db.Queries, u db.User, i
 		ExpiresAt: expires,
 		Principal: &Principal{
 			Kind: KindSession, UserID: u.ID, Username: u.Username, Role: u.Role,
-			SessionHash: hash, CSRFToken: csrf,
+			SessionHash: hash, CSRFToken: csrf, ReauthAt: now.UnixMilli(),
 		},
 	}, nil
 }
@@ -198,7 +227,7 @@ func (s *Service) AuthenticateSession(ctx context.Context, cookie string) (*Prin
 	}
 	return &Principal{
 		Kind: KindSession, UserID: row.User.ID, Username: row.User.Username, Role: row.User.Role,
-		SessionHash: hash, CSRFToken: row.Session.CsrfToken,
+		SessionHash: hash, CSRFToken: row.Session.CsrfToken, ReauthAt: row.Session.ReauthAt.Int64,
 	}, nil
 }
 

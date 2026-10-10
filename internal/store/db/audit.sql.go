@@ -7,15 +7,60 @@ package db
 
 import (
 	"context"
+	"database/sql"
 )
 
-const insertAuditEvent = `-- name: InsertAuditEvent :exec
-INSERT INTO audit_events (id, ts, actor_type, actor_id, actor_name, action, target_type, target_id,
-                          result, source_ip, request_id, details_json)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+const auditChainHead = `-- name: AuditChainHead :one
+SELECT seq, hash FROM audit_events WHERE seq IS NOT NULL ORDER BY seq DESC LIMIT 1
 `
 
-type InsertAuditEventParams struct {
+type AuditChainHeadRow struct {
+	Seq  sql.NullInt64
+	Hash []byte
+}
+
+// The newest link of the audit hash chain (ARCHITECTURE-ALPHA 33.4).
+func (q *Queries) AuditChainHead(ctx context.Context) (AuditChainHeadRow, error) {
+	row := q.db.QueryRowContext(ctx, auditChainHead)
+	var i AuditChainHeadRow
+	err := row.Scan(&i.Seq, &i.Hash)
+	return i, err
+}
+
+const getAuditEventBySeq = `-- name: GetAuditEventBySeq :one
+SELECT id, ts, actor_type, actor_id, actor_name, "action", target_type, target_id, result, source_ip, request_id, details_json, prev_hash, seq, hash FROM audit_events WHERE seq = ?
+`
+
+func (q *Queries) GetAuditEventBySeq(ctx context.Context, seq sql.NullInt64) (AuditEvent, error) {
+	row := q.db.QueryRowContext(ctx, getAuditEventBySeq, seq)
+	var i AuditEvent
+	err := row.Scan(
+		&i.ID,
+		&i.Ts,
+		&i.ActorType,
+		&i.ActorID,
+		&i.ActorName,
+		&i.Action,
+		&i.TargetType,
+		&i.TargetID,
+		&i.Result,
+		&i.SourceIp,
+		&i.RequestID,
+		&i.DetailsJson,
+		&i.PrevHash,
+		&i.Seq,
+		&i.Hash,
+	)
+	return i, err
+}
+
+const insertChainedAuditEvent = `-- name: InsertChainedAuditEvent :exec
+INSERT INTO audit_events (id, ts, actor_type, actor_id, actor_name, action, target_type, target_id,
+                          result, source_ip, request_id, details_json, seq, prev_hash, hash)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+type InsertChainedAuditEventParams struct {
 	ID          string
 	Ts          int64
 	ActorType   string
@@ -28,10 +73,15 @@ type InsertAuditEventParams struct {
 	SourceIp    string
 	RequestID   string
 	DetailsJson string
+	Seq         sql.NullInt64
+	PrevHash    []byte
+	Hash        []byte
 }
 
-func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) error {
-	_, err := q.db.ExecContext(ctx, insertAuditEvent,
+// Every audit record is written through audit.Writer, which links it into
+// the chain; there is deliberately no query that inserts an unchained record.
+func (q *Queries) InsertChainedAuditEvent(ctx context.Context, arg InsertChainedAuditEventParams) error {
+	_, err := q.db.ExecContext(ctx, insertChainedAuditEvent,
 		arg.ID,
 		arg.Ts,
 		arg.ActorType,
@@ -44,12 +94,15 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 		arg.SourceIp,
 		arg.RequestID,
 		arg.DetailsJson,
+		arg.Seq,
+		arg.PrevHash,
+		arg.Hash,
 	)
 	return err
 }
 
 const listAuditEvents = `-- name: ListAuditEvents :many
-SELECT id, ts, actor_type, actor_id, actor_name, "action", target_type, target_id, result, source_ip, request_id, details_json, prev_hash FROM audit_events
+SELECT id, ts, actor_type, actor_id, actor_name, "action", target_type, target_id, result, source_ip, request_id, details_json, prev_hash, seq, hash FROM audit_events
 WHERE (CAST(?1 AS TEXT) = '' OR id < CAST(?1 AS TEXT))
   AND (CAST(?2 AS TEXT) = '' OR actor_id = CAST(?2 AS TEXT))
   AND (CAST(?3 AS TEXT) = '' OR action LIKE CAST(?3 AS TEXT) || '%')
@@ -99,6 +152,52 @@ func (q *Queries) ListAuditEvents(ctx context.Context, arg ListAuditEventsParams
 			&i.RequestID,
 			&i.DetailsJson,
 			&i.PrevHash,
+			&i.Seq,
+			&i.Hash,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUnchainedAuditEvents = `-- name: ListUnchainedAuditEvents :many
+SELECT id, ts, actor_type, actor_id, actor_name, "action", target_type, target_id, result, source_ip, request_id, details_json, prev_hash, seq, hash FROM audit_events WHERE seq IS NULL ORDER BY id
+`
+
+// Records written before the chain existed (the first link's digest covers them).
+func (q *Queries) ListUnchainedAuditEvents(ctx context.Context) ([]AuditEvent, error) {
+	rows, err := q.db.QueryContext(ctx, listUnchainedAuditEvents)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuditEvent{}
+	for rows.Next() {
+		var i AuditEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.Ts,
+			&i.ActorType,
+			&i.ActorID,
+			&i.ActorName,
+			&i.Action,
+			&i.TargetType,
+			&i.TargetID,
+			&i.Result,
+			&i.SourceIp,
+			&i.RequestID,
+			&i.DetailsJson,
+			&i.PrevHash,
+			&i.Seq,
+			&i.Hash,
 		); err != nil {
 			return nil, err
 		}

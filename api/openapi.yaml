@@ -65,12 +65,128 @@ paths:
             schema: { $ref: '#/components/schemas/LoginRequest' }
       responses:
         '200':
+          description: >-
+            Logged in (sets the session cookie), or, for a user with two-factor authentication, the password was
+            accepted and the sign-in continues at /auth/login/mfa with the returned challenge (no cookie yet).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/Me' }
+                  - { $ref: '#/components/schemas/MfaChallenge' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
+  /auth/login/mfa:
+    post:
+      operationId: loginMfa
+      tags: [auth]
+      security: []
+      description: Second step of signing in with two-factor authentication. Give either a code from the authenticator or a recovery code (single use). The challenge expires after 5 minutes or 5 wrong codes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginMfaRequest' }
+      responses:
+        '200':
           description: Logged in; sets the session cookie.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Me' }
         '401': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
         '429': { $ref: '#/components/responses/Problem' }
+  /auth/reauth:
+    post:
+      operationId: reauthenticate
+      tags: [auth]
+      description: >-
+        Confirm who you are again (password, plus a two-factor code when enrolled) so high-impact actions are allowed for
+        the re-authentication window. Those actions answer 403 `reauth_required` otherwise. Sessions only; failures count
+        toward the sign-in rate limit.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReauthRequest' }
+      responses:
+        '200':
+          description: Confirmed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReauthResponse' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
+  /auth/mfa:
+    get:
+      operationId: getMfa
+      tags: [auth]
+      description: The current user's two-factor authentication.
+      responses:
+        '200':
+          description: Two-factor state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MfaStatus' }
+    delete:
+      operationId: disableMfa
+      tags: [auth]
+      description: Turn two-factor authentication off. Needs recent re-authentication; ends the user's other sessions.
+      responses:
+        '204': { description: Turned off. }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /auth/mfa/enroll:
+    post:
+      operationId: enrollMfa
+      tags: [auth]
+      description: >-
+        Start setting up an authenticator: returns its secret once (for a QR code or typing in). It counts only after
+        /auth/mfa/confirm. Needs recent re-authentication. Refused while two-factor is on.
+      responses:
+        '200':
+          description: The new authenticator's secret.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MfaEnrollment' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /auth/mfa/confirm:
+    post:
+      operationId: confirmMfa
+      tags: [auth]
+      description: Turn two-factor on with a code from the new authenticator. Returns recovery codes once; ends the user's other sessions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              additionalProperties: false
+              properties:
+                code: { type: string }
+      responses:
+        '200':
+          description: Two-factor is on.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecoveryCodes' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /auth/mfa/recovery-codes:
+    post:
+      operationId: regenerateRecoveryCodes
+      tags: [auth]
+      description: New recovery codes (shown once); the previous ones stop working. Needs recent re-authentication.
+      responses:
+        '200':
+          description: New codes.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecoveryCodes' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
   /auth/logout:
     post:
       operationId: logout
@@ -175,6 +291,19 @@ paths:
         '404': { $ref: '#/components/responses/Problem' }
         '409': { $ref: '#/components/responses/Problem' }
 
+  /users/{id}/mfa/reset:
+    post:
+      operationId: resetUserMfa
+      tags: [users]
+      description: 'Turn off another user''s two-factor authentication (lost authenticator and recovery codes). Ends their sessions. Requires `users.manage` and recent re-authentication.'
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Reset. }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
   /tokens:
     get:
       operationId: listTokens
@@ -241,6 +370,115 @@ paths:
                   items: { type: array, items: { $ref: '#/components/schemas/AuditEvent' } }
                   next_cursor: { type: string }
         '403': { $ref: '#/components/responses/Problem' }
+
+  /audit/integrity:
+    get:
+      operationId: getAuditIntegrity
+      tags: [audit]
+      description: 'The audit hash chain: its head, the latest verifications and any acknowledged break. Requires `audit.read`.'
+      responses:
+        '200':
+          description: Integrity state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditIntegrity' }
+        '403': { $ref: '#/components/responses/Problem' }
+  /audit/integrity/verify:
+    post:
+      operationId: verifyAudit
+      tags: [audit]
+      description: 'Recompute the whole chain in the background. Requires `audit.read`. 409 while a check runs.'
+      responses:
+        '202':
+          description: Started.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id: { type: string }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /audit/integrity/acknowledge:
+    post:
+      operationId: acknowledgeAuditBreak
+      tags: [audit]
+      description: >-
+        Record that an administrator investigated the problems the newest failed verification found. The chain is not
+        changed and later verifications still report the problems; only exactly these are then shown as known. Requires
+        `settings.write` and recent re-authentication.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              additionalProperties: false
+              properties:
+                note: { type: string, maxLength: 2000 }
+      responses:
+        '200':
+          description: Integrity state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditIntegrity' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /audit/sink:
+    get:
+      operationId: getAuditSink
+      tags: [audit]
+      description: 'The remote copy of the audit history: settings (never the header value) and delivery state. Requires `settings.read`.'
+      responses:
+        '200':
+          description: Sink state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditSink' }
+        '403': { $ref: '#/components/responses/Problem' }
+    put:
+      operationId: putAuditSink
+      tags: [audit]
+      description: 'Configure the remote copy. Requires `settings.write` and recent re-authentication.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuditSinkRequest' }
+      responses:
+        '200':
+          description: Sink state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditSink' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /audit/sink/test:
+    post:
+      operationId: testAuditSink
+      tags: [audit]
+      description: 'Send an empty export (test: true) with the given settings, or the stored ones without a body. Requires `settings.write`.'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuditSinkRequest' }
+      responses:
+        '200':
+          description: Result.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+                  error: { type: string }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
 
   /system/info:
     get:
@@ -3363,6 +3601,13 @@ components:
         request_id: { type: string }
         fields: { type: object, additionalProperties: { type: string } }
         problems: { type: array, items: { $ref: '#/components/schemas/FwDocProblem' }, description: Firewall document validation problems. }
+        reauth:
+          type: object
+          description: 'Set on `reauth_required`: confirm with POST /auth/reauth, then repeat the request.'
+          required: [mfa, window_s]
+          properties:
+            mfa: { type: boolean, description: Ask for an authenticator code too. }
+            window_s: { type: integer }
 
     SetupStatus:
       type: object
@@ -3395,15 +3640,163 @@ components:
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         last_login_at: { type: [string, 'null'], format: date-time }
+        mfa_enabled: { type: boolean }
 
     Me:
       type: object
-      required: [user, permissions, auth_kind]
+      required: [user, permissions, auth_kind, mfa_enabled, reauth_window_s]
       properties:
         user: { $ref: '#/components/schemas/User' }
         permissions: { type: array, items: { type: string } }
         auth_kind: { type: string, enum: [session, token] }
         csrf_token: { type: string, description: Present for session authentication. }
+        mfa_enabled: { type: boolean }
+        reauth_until: { type: string, format: date-time, description: 'Until when high-impact actions go through without confirming again (sessions only).' }
+        reauth_window_s: { type: integer }
+
+    MfaChallenge:
+      type: object
+      required: [mfa_required, challenge, methods]
+      properties:
+        mfa_required: { type: boolean, enum: [true] }
+        challenge: { type: string }
+        methods: { type: array, items: { type: string, enum: [totp, recovery_code] } }
+
+    LoginMfaRequest:
+      type: object
+      required: [challenge]
+      additionalProperties: false
+      properties:
+        challenge: { type: string }
+        code: { type: string, description: Six digits from the authenticator. }
+        recovery_code: { type: string }
+
+    ReauthRequest:
+      type: object
+      required: [password]
+      additionalProperties: false
+      properties:
+        password: { type: string, format: password }
+        code: { type: string }
+        recovery_code: { type: string }
+
+    ReauthResponse:
+      type: object
+      required: [reauth_until]
+      properties:
+        reauth_until: { type: string, format: date-time }
+
+    MfaStatus:
+      type: object
+      required: [enabled, pending, enabled_at, recovery_codes_remaining]
+      properties:
+        enabled: { type: boolean }
+        pending: { type: boolean, description: An authenticator was set up but not confirmed. }
+        enabled_at: { type: [string, 'null'], format: date-time }
+        recovery_codes_remaining: { type: integer }
+
+    MfaEnrollment:
+      type: object
+      required: [secret, otpauth_uri, issuer]
+      properties:
+        secret: { type: string, description: Base32, shown once. }
+        otpauth_uri: { type: string }
+        issuer: { type: string }
+
+    RecoveryCodes:
+      type: object
+      required: [recovery_codes]
+      properties:
+        recovery_codes: { type: array, items: { type: string }, description: Shown once. }
+
+    AuditVerification:
+      type: object
+      required: [id, cause, started_at, finished_at, result, records, legacy_records, head_seq, sealed_through, checkpoints, checkpoints_unverifiable, problems, problem_count]
+      properties:
+        id: { type: string }
+        cause: { type: string, enum: [startup, scheduled, manual, restore] }
+        requested_by: { type: string }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }
+        result: { type: string, enum: [running, ok, failed, error] }
+        records: { type: integer }
+        legacy_records: { type: integer }
+        head_seq: { type: integer }
+        sealed_through: { type: integer, description: Newest record covered by a checkpoint whose MAC checked out. }
+        checkpoints: { type: integer }
+        checkpoints_unverifiable: { type: integer, description: Checkpoints made with a master key version that isn't available any more. }
+        first_bad_seq: { type: integer }
+        problem: { type: string }
+        detail: { type: string }
+        problems:
+          type: array
+          items:
+            type: object
+            required: [seq, kind, message, detail]
+            properties:
+              seq: { type: integer }
+              kind: { type: string, enum: [missing, duplicate, link, changed, start, legacy, checkpoint, forged, unchained, truncated] }
+              message: { type: string }
+              detail: { type: string }
+        problem_count: { type: integer }
+        evidence_file: { type: string }
+
+    AuditIntegrity:
+      type: object
+      required: [state, head_seq, legacy_records, running, last, last_ok, last_failed, acknowledgement]
+      properties:
+        state: { type: string, enum: [ok, failed, acknowledged, unverified, running] }
+        head_seq: { type: integer }
+        legacy_records: { type: integer, description: Records from before the chain started (covered by its first record's digest). }
+        running: { oneOf: [{ $ref: '#/components/schemas/AuditVerification' }, { type: 'null' }] }
+        last: { oneOf: [{ $ref: '#/components/schemas/AuditVerification' }, { type: 'null' }] }
+        last_ok: { oneOf: [{ $ref: '#/components/schemas/AuditVerification' }, { type: 'null' }] }
+        last_failed: { oneOf: [{ $ref: '#/components/schemas/AuditVerification' }, { type: 'null' }] }
+        acknowledgement:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [verification_id, problem, by, at, note]
+              properties:
+                verification_id: { type: string }
+                problem: { type: string }
+                by: { type: string }
+                at: { type: string, format: date-time }
+                note: { type: string }
+
+    AuditSink:
+      type: object
+      required: [configured, enabled, header_set, custom_ca, cursor_seq, head_seq, backlog, failures, state]
+      properties:
+        configured: { type: boolean }
+        enabled: { type: boolean }
+        url: { type: string }
+        url_display: { type: string }
+        header_name: { type: string }
+        header_set: { type: boolean }
+        custom_ca: { type: boolean }
+        cursor_seq: { type: integer, description: Delivered through this record. }
+        head_seq: { type: integer }
+        backlog: { type: integer }
+        oldest_unsent: { type: string, format: date-time }
+        last_attempt_at: { type: string, format: date-time }
+        last_success_at: { type: string, format: date-time }
+        next_attempt_at: { type: string, format: date-time }
+        last_error: { type: string }
+        failures: { type: integer }
+        state: { type: string, enum: [off, ok, backlogged, failing] }
+
+    AuditSinkRequest:
+      type: object
+      required: [enabled, url]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean }
+        url: { type: string, description: https only; no credentials in the URL. }
+        ca_pem: { type: string, description: An extra CA certificate for the receiver (self-hosted receivers). }
+        header_name: { type: string }
+        header_value: { type: string, description: 'Stored encrypted; omit to keep, "" to remove.' }
+        start_from: { type: string, enum: [all, now], description: For a new receiver - the whole history (default) or only new records. }
 
     LoginRequest:
       type: object
@@ -3488,6 +3881,8 @@ components:
         source_ip: { type: string }
         request_id: { type: string }
         details: { type: object, additionalProperties: true }
+        seq: { type: [integer, 'null'], description: Place in the audit hash chain; null for records from before it existed. }
+        hash: { type: string, description: The record's chain hash (hex). }
 
     ConfigValue:
       type: object

@@ -331,55 +331,33 @@ func (e *KeyMismatchError) Error() string {
 	return fmt.Sprintf("%d of %d stored credentials cannot be decrypted with this master key (first: %s)", e.Failed, e.Total, e.First)
 }
 
-// VerifyBox decrypts every stored credential with box and returns how many
-// there are. It never returns plaintext.
-func VerifyBox(ctx context.Context, q *db.Queries, box *Box) (int, error) {
-	rows, err := q.ListSecrets(ctx)
-	if err != nil {
-		return 0, err
-	}
+// VerifyBox decrypts every value sealed with the master key (sealed.go)
+// with box and returns how many stored credentials there are. It never
+// returns plaintext.
+func VerifyBox(ctx context.Context, q db.DBTX, box *Box) (int, error) {
 	var bad *KeyMismatchError
-	for _, r := range rows {
-		if _, err := box.Open(r.ID, r.Kind, r.Ciphertext, r.Nonce, int(r.KeyVersion)); err != nil {
+	total, creds := 0, 0
+	err := eachSealed(ctx, q, func(loc *sealedLocation, v sealedValue) error {
+		total++
+		if loc.Table == "secrets" {
+			creds++
+		}
+		if _, err := box.Open(v.ID, v.Kind, v.Ciphertext, v.Nonce, v.Version); err != nil {
 			if bad == nil {
-				bad = &KeyMismatchError{Total: len(rows), First: r.Name}
+				bad = &KeyMismatchError{First: v.Label}
 			}
 			bad.Failed++
 		}
-	}
-	// The Agent CA keys are sealed with the same master key.
-	cas, err := q.ListAgentCA(ctx)
+		return nil
+	})
 	if err != nil {
 		return 0, err
-	}
-	for _, r := range cas {
-		if len(r.KeyCiphertext) == 0 {
-			continue // offline root, or discarded during recovery
-		}
-		if _, err := box.Open(r.ID, "agent-ca-"+r.Kind, r.KeyCiphertext, r.KeyNonce, int(r.KeyVersion.Int64)); err != nil {
-			if bad == nil {
-				bad = &KeyMismatchError{Total: len(rows) + len(cas), First: "Agent CA " + r.Kind + " key"}
-			}
-			bad.Failed++
-		}
-	}
-	// So are notification destinations' secrets (M12).
-	ns, err := q.ListNotifySecrets(ctx)
-	if err != nil {
-		return 0, err
-	}
-	for _, r := range ns {
-		if _, err := box.Open(r.ID, "notify-"+r.Kind, r.SecretCiphertext, r.SecretNonce, int(r.SecretKeyVersion.Int64)); err != nil {
-			if bad == nil {
-				bad = &KeyMismatchError{Total: len(rows) + len(cas) + len(ns), First: "notification destination " + r.ID}
-			}
-			bad.Failed++
-		}
 	}
 	if bad != nil {
-		return len(rows), bad
+		bad.Total = total
+		return creds, bad
 	}
-	return len(rows), nil
+	return creds, nil
 }
 
 // DiscardAllTx deletes every stored credential and detaches hosts from
@@ -421,6 +399,14 @@ func DiscardAllTx(ctx context.Context, tx *sql.Tx) ([]string, error) {
 		// until their secrets are entered again.
 		`UPDATE notify_destinations SET secret_ciphertext = NULL, secret_nonce = NULL, secret_key_version = NULL, enabled = 0,
 			last_error = 'secrets discarded during recovery; enter them again' WHERE secret_ciphertext IS NOT NULL`,
+		// Two-factor secrets can't be checked any more: those users sign in
+		// with their password and set up their authenticator again.
+		`DELETE FROM user_recovery_codes`,
+		`DELETE FROM user_mfa`,
+		// The remote audit sink keeps its place in the history; it waits
+		// for its header value to be entered again.
+		`UPDATE audit_sink SET secret_ciphertext = NULL, secret_nonce = NULL, secret_key_version = NULL, enabled = 0,
+			last_error = 'the header value was discarded during recovery; enter it again' WHERE secret_ciphertext IS NOT NULL`,
 	} {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return nil, err

@@ -179,6 +179,8 @@ func setup(m *testing.M) (int, error) {
 		"DROOL_TEST_SCHED_TIMING=fast",
 		// Desired state checks hosts every 20 s; automatic restore every 2 s.
 		"DROOL_TEST_DESIRED_TIMING=fast",
+		// Re-authentication lapses after 3 s (M16 browser tests).
+		"DROOL_TEST_AUTH_TIMING=fast",
 	}}
 	netflowsFile = filepath.Join(work, "netflows.json")
 	fwControlFile = filepath.Join(work, "fw-control")

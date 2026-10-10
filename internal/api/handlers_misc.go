@@ -1,6 +1,8 @@
 package api
 
 import (
+	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -126,6 +128,10 @@ type auditJSON struct {
 	SourceIP  string          `json:"source_ip"`
 	RequestID string          `json:"request_id"`
 	Details   json.RawMessage `json:"details"`
+	// Seq is the record's place in the hash chain (null for records from
+	// before it existed); Hash is its chain hash.
+	Seq  *int64 `json:"seq"`
+	Hash string `json:"hash,omitempty"`
 }
 
 type auditActorJSON struct {
@@ -184,7 +190,7 @@ func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {
 			Action: e.Action,
 			Target: auditTargetJSON{Type: e.TargetType, ID: e.TargetID},
 			Result: e.Result, SourceIP: e.SourceIp, RequestID: e.RequestID,
-			Details: json.RawMessage(e.DetailsJson),
+			Details: json.RawMessage(e.DetailsJson), Seq: nullInt64Ptr(e.Seq), Hash: hex.EncodeToString(e.Hash),
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -220,4 +226,12 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		info.Config = s.d.Config.Values()
 	}
 	writeJSON(w, http.StatusOK, info)
+}
+
+func nullInt64Ptr(v sql.NullInt64) *int64 {
+	if !v.Valid {
+		return nil
+	}
+	n := v.Int64
+	return &n
 }

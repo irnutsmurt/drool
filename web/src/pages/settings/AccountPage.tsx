@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { errorMessage } from "@/lib/format";
 import { ThemeSwitcher } from "@/components/ui/ThemeSwitcher";
+import { TwoFactorCard } from "@/components/auth/TwoFactorCard";
 
 export function AccountPage() {
   const { me } = useAuth();
@@ -48,6 +49,7 @@ export function AccountPage() {
         <ThemeSwitcher />
         <p className="mt-2 text-xs text-muted">Saved in this browser. System follows your operating system's light or dark setting and changes with it.</p>
       </Card>
+      {me?.auth_kind === "session" && <TwoFactorCard />}
       <Card title="Change password">
         <form onSubmit={submit} className="space-y-4">
           {(localError || mut.error) && <Alert>{localError ?? errorMessage(mut.error)}</Alert>}

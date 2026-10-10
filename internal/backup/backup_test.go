@@ -502,10 +502,10 @@ func TestNotificationSecrets(t *testing.T) {
 		VALUES ('ndst_1', 'Discord', 'discord', 1, '{}', ?, ?, ?, 0, 0)`, ct, nonce, ver); err != nil {
 		t.Fatal(err)
 	}
-	if n, err := secrets.VerifyBox(context.Background(), st.R, box); err != nil || n != 1 {
+	if n, err := secrets.VerifyBox(context.Background(), st.Reader, box); err != nil || n != 1 {
 		t.Fatalf("verify: %d %v", n, err)
 	}
-	if _, err := secrets.VerifyBox(context.Background(), st.R, secrets.NewBoxForTest()); err == nil {
+	if _, err := secrets.VerifyBox(context.Background(), st.Reader, secrets.NewBoxForTest()); err == nil {
 		t.Fatal("a wrong key must not verify")
 	}
 	st.Close()

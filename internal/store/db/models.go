@@ -233,6 +233,49 @@ type AuditEvent struct {
 	RequestID   string
 	DetailsJson string
 	PrevHash    []byte
+	Seq         sql.NullInt64
+	Hash        []byte
+}
+
+type AuditSink struct {
+	ID               string
+	Enabled          int64
+	Url              string
+	CaPem            string
+	HeaderName       string
+	SecretCiphertext []byte
+	SecretNonce      []byte
+	SecretKeyVersion sql.NullInt64
+	CursorSeq        int64
+	LastAttemptAt    sql.NullInt64
+	LastSuccessAt    sql.NullInt64
+	LastError        string
+	Failures         int64
+	NextAttemptAt    int64
+	CreatedAt        int64
+	UpdatedAt        int64
+	UpdatedBy        sql.NullString
+}
+
+type AuditVerification struct {
+	ID                      string
+	Cause                   string
+	RequestedBy             string
+	StartedAt               int64
+	FinishedAt              sql.NullInt64
+	Result                  string
+	Records                 int64
+	LegacyRecords           int64
+	HeadSeq                 int64
+	SealedThrough           int64
+	Checkpoints             int64
+	CheckpointsUnverifiable int64
+	FirstBadSeq             sql.NullInt64
+	Problem                 string
+	Detail                  string
+	ProblemsJson            string
+	ProblemCount            int64
+	EvidenceFile            string
 }
 
 type DsAssignment struct {
@@ -1031,6 +1074,7 @@ type Session struct {
 	ExpiresAt  int64
 	SourceIp   string
 	UserAgent  string
+	ReauthAt   sql.NullInt64
 }
 
 type Setting struct {
@@ -1085,6 +1129,24 @@ type User struct {
 	UpdatedAt         int64
 	PasswordChangedAt int64
 	LastLoginAt       sql.NullInt64
+}
+
+type UserMfa struct {
+	UserID           string
+	SecretCiphertext []byte
+	SecretNonce      []byte
+	SecretKeyVersion int64
+	EnabledAt        sql.NullInt64
+	LastStep         int64
+	CreatedAt        int64
+	UpdatedAt        int64
+}
+
+type UserRecoveryCode struct {
+	UserID    string
+	CodeHash  []byte
+	CreatedAt int64
+	UsedAt    sql.NullInt64
 }
 
 type Workflow struct {

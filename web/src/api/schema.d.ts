@@ -58,6 +58,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/login/mfa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Second step of signing in with two-factor authentication. Give either a code from the authenticator or a recovery code (single use). The challenge expires after 5 minutes or 5 wrong codes. */
+        post: operations["loginMfa"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/reauth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Confirm who you are again (password, plus a two-factor code when enrolled) so high-impact actions are allowed for the re-authentication window. Those actions answer 403 `reauth_required` otherwise. Sessions only; failures count toward the sign-in rate limit. */
+        post: operations["reauthenticate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/mfa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The current user's two-factor authentication. */
+        get: operations["getMfa"];
+        put?: never;
+        post?: never;
+        /** @description Turn two-factor authentication off. Needs recent re-authentication; ends the user's other sessions. */
+        delete: operations["disableMfa"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/mfa/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Start setting up an authenticator: returns its secret once (for a QR code or typing in). It counts only after /auth/mfa/confirm. Needs recent re-authentication. Refused while two-factor is on. */
+        post: operations["enrollMfa"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/mfa/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Turn two-factor on with a code from the new authenticator. Returns recovery codes once; ends the user's other sessions. */
+        post: operations["confirmMfa"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/mfa/recovery-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description New recovery codes (shown once); the previous ones stop working. Needs recent re-authentication. */
+        post: operations["regenerateRecoveryCodes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/logout": {
         parameters: {
             query?: never;
@@ -143,6 +246,23 @@ export interface paths {
         patch: operations["updateUser"];
         trace?: never;
     };
+    "/users/{id}/mfa/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Turn off another user's two-factor authentication (lost authenticator and recovery codes). Ends their sessions. Requires `users.manage` and recent re-authentication. */
+        post: operations["resetUserMfa"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tokens": {
         parameters: {
             query?: never;
@@ -190,6 +310,92 @@ export interface paths {
         get: operations["listAudit"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audit/integrity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The audit hash chain: its head, the latest verifications and any acknowledged break. Requires `audit.read`. */
+        get: operations["getAuditIntegrity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audit/integrity/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Recompute the whole chain in the background. Requires `audit.read`. 409 while a check runs. */
+        post: operations["verifyAudit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audit/integrity/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Record that an administrator investigated the problems the newest failed verification found. The chain is not changed and later verifications still report the problems; only exactly these are then shown as known. Requires `settings.write` and recent re-authentication. */
+        post: operations["acknowledgeAuditBreak"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audit/sink": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The remote copy of the audit history: settings (never the header value) and delivery state. Requires `settings.read`. */
+        get: operations["getAuditSink"];
+        /** @description Configure the remote copy. Requires `settings.write` and recent re-authentication. */
+        put: operations["putAuditSink"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audit/sink/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Send an empty export (test: true) with the given settings, or the stored ones without a body. Requires `settings.write`. */
+        post: operations["testAuditSink"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3754,6 +3960,12 @@ export interface components {
             };
             /** @description Firewall document validation problems. */
             problems?: components["schemas"]["FwDocProblem"][];
+            /** @description Set on `reauth_required`: confirm with POST /auth/reauth, then repeat the request. */
+            reauth?: {
+                /** @description Ask for an authenticator code too. */
+                mfa: boolean;
+                window_s: number;
+            };
         };
         SetupStatus: {
             setup_required: boolean;
@@ -3779,6 +3991,7 @@ export interface components {
             updated_at?: string;
             /** Format: date-time */
             last_login_at: string | null;
+            mfa_enabled?: boolean;
         };
         Me: {
             user: components["schemas"]["User"];
@@ -3787,6 +4000,144 @@ export interface components {
             auth_kind: "session" | "token";
             /** @description Present for session authentication. */
             csrf_token?: string;
+            mfa_enabled: boolean;
+            /**
+             * Format: date-time
+             * @description Until when high-impact actions go through without confirming again (sessions only).
+             */
+            reauth_until?: string;
+            reauth_window_s: number;
+        };
+        MfaChallenge: {
+            /** @enum {boolean} */
+            mfa_required: true;
+            challenge: string;
+            methods: ("totp" | "recovery_code")[];
+        };
+        LoginMfaRequest: {
+            challenge: string;
+            /** @description Six digits from the authenticator. */
+            code?: string;
+            recovery_code?: string;
+        };
+        ReauthRequest: {
+            /** Format: password */
+            password: string;
+            code?: string;
+            recovery_code?: string;
+        };
+        ReauthResponse: {
+            /** Format: date-time */
+            reauth_until: string;
+        };
+        MfaStatus: {
+            enabled: boolean;
+            /** @description An authenticator was set up but not confirmed. */
+            pending: boolean;
+            /** Format: date-time */
+            enabled_at: string | null;
+            recovery_codes_remaining: number;
+        };
+        MfaEnrollment: {
+            /** @description Base32 */
+            secret: string;
+            otpauth_uri: string;
+            issuer: string;
+        };
+        RecoveryCodes: {
+            /** @description Shown once. */
+            recovery_codes: string[];
+        };
+        AuditVerification: {
+            id: string;
+            /** @enum {string} */
+            cause: "startup" | "scheduled" | "manual" | "restore";
+            requested_by?: string;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            finished_at: string | null;
+            /** @enum {string} */
+            result: "running" | "ok" | "failed" | "error";
+            records: number;
+            legacy_records: number;
+            head_seq: number;
+            /** @description Newest record covered by a checkpoint whose MAC checked out. */
+            sealed_through: number;
+            checkpoints: number;
+            /** @description Checkpoints made with a master key version that isn't available any more. */
+            checkpoints_unverifiable: number;
+            first_bad_seq?: number;
+            problem?: string;
+            detail?: string;
+            problems: {
+                seq: number;
+                /** @enum {string} */
+                kind: "missing" | "duplicate" | "link" | "changed" | "start" | "legacy" | "checkpoint" | "forged" | "unchained" | "truncated";
+                message: string;
+                detail: string;
+            }[];
+            problem_count: number;
+            evidence_file?: string;
+        };
+        AuditIntegrity: {
+            /** @enum {string} */
+            state: "ok" | "failed" | "acknowledged" | "unverified" | "running";
+            head_seq: number;
+            /** @description Records from before the chain started (covered by its first record's digest). */
+            legacy_records: number;
+            running: components["schemas"]["AuditVerification"] | null;
+            last: components["schemas"]["AuditVerification"] | null;
+            last_ok: components["schemas"]["AuditVerification"] | null;
+            last_failed: components["schemas"]["AuditVerification"] | null;
+            acknowledgement: null | {
+                verification_id: string;
+                problem: string;
+                by: string;
+                /** Format: date-time */
+                at: string;
+                note: string;
+            };
+        };
+        AuditSink: {
+            configured: boolean;
+            enabled: boolean;
+            url?: string;
+            url_display?: string;
+            header_name?: string;
+            header_set: boolean;
+            custom_ca: boolean;
+            /** @description Delivered through this record. */
+            cursor_seq: number;
+            head_seq: number;
+            backlog: number;
+            /** Format: date-time */
+            oldest_unsent?: string;
+            /** Format: date-time */
+            last_attempt_at?: string;
+            /** Format: date-time */
+            last_success_at?: string;
+            /** Format: date-time */
+            next_attempt_at?: string;
+            last_error?: string;
+            failures: number;
+            /** @enum {string} */
+            state: "off" | "ok" | "backlogged" | "failing";
+        };
+        AuditSinkRequest: {
+            enabled: boolean;
+            /** @description https only; no credentials in the URL. */
+            url: string;
+            /** @description An extra CA certificate for the receiver (self-hosted receivers). */
+            ca_pem?: string;
+            header_name?: string;
+            /** @description Stored encrypted; omit to keep, "" to remove. */
+            header_value?: string;
+            /**
+             * @description For a new receiver - the whole history (default) or only new records.
+             * @enum {string}
+             */
+            start_from?: "all" | "now";
         };
         LoginRequest: {
             username: string;
@@ -3851,6 +4202,10 @@ export interface components {
             details: {
                 [key: string]: unknown;
             };
+            /** @description Place in the audit hash chain; null for records from before it existed. */
+            seq?: number | null;
+            /** @description The record's chain hash (hex). */
+            hash?: string;
         };
         ConfigValue: {
             key: string;
@@ -7143,6 +7498,32 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Logged in (sets the session cookie), or, for a user with two-factor authentication, the password was accepted and the sign-in continues at /auth/login/mfa with the returned challenge (no cookie yet). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"] | components["schemas"]["MfaChallenge"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+        };
+    };
+    loginMfa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginMfaRequest"];
+            };
+        };
+        responses: {
             /** @description Logged in; sets the session cookie. */
             200: {
                 headers: {
@@ -7153,7 +7534,146 @@ export interface operations {
                 };
             };
             401: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
             429: components["responses"]["Problem"];
+        };
+    };
+    reauthenticate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReauthRequest"];
+            };
+        };
+        responses: {
+            /** @description Confirmed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReauthResponse"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            429: components["responses"]["Problem"];
+        };
+    };
+    getMfa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Two-factor state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MfaStatus"];
+                };
+            };
+        };
+    };
+    disableMfa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Turned off. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    enrollMfa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new authenticator's secret. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MfaEnrollment"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    confirmMfa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Two-factor is on. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCodes"];
+                };
+            };
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    regenerateRecoveryCodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description New codes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCodes"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
         };
     };
     logout: {
@@ -7343,6 +7863,29 @@ export interface operations {
             422: components["responses"]["Problem"];
         };
     };
+    resetUserMfa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reset. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
     listTokens: {
         parameters: {
             query?: never;
@@ -7444,6 +7987,156 @@ export interface operations {
                 };
             };
             403: components["responses"]["Problem"];
+        };
+    };
+    getAuditIntegrity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Integrity state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditIntegrity"];
+                };
+            };
+            403: components["responses"]["Problem"];
+        };
+    };
+    verifyAudit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Started. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                    };
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    acknowledgeAuditBreak: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    note: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Integrity state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditIntegrity"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    getAuditSink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sink state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditSink"];
+                };
+            };
+            403: components["responses"]["Problem"];
+        };
+    };
+    putAuditSink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditSinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Sink state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditSink"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    testAuditSink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AuditSinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        error?: string;
+                    };
+                };
+            };
+            403: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
         };
     };
     getSystemInfo: {

@@ -4,11 +4,19 @@ import { api, ApiError, setCsrfToken, setUnauthenticatedHandler, unwrap, type Sc
 
 type Me = Schemas["Me"];
 
+/** The password was right; the second factor is next (M16). */
+export interface MfaChallenge {
+  challenge: string;
+}
+
 interface AuthState {
   me: Me | null;
   loading: boolean;
   can: (permission: string) => boolean;
-  login: (username: string, password: string) => Promise<void>;
+  /** Signs in, or returns the challenge when the account has two-factor
+   * authentication: finish with completeLogin. */
+  login: (username: string, password: string) => Promise<MfaChallenge | undefined>;
+  completeLogin: (challenge: string, second: { code?: string; recovery_code?: string }) => Promise<void>;
   /** First-admin setup: creates the admin and signs them in. */
   claim: (code: string, username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -58,12 +66,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, [qc]);
 
+  const signedIn = (data: Me) => {
+    setCsrfToken(data.csrf_token);
+    qc.setQueryData(meQueryKey, data);
+  };
   const loginMut = useMutation({
     mutationFn: (v: { username: string; password: string }) => unwrap(api.POST("/auth/login", { body: v })),
     onSuccess: (data) => {
-      setCsrfToken(data.csrf_token);
-      qc.setQueryData(meQueryKey, data);
+      if (!("mfa_required" in data)) signedIn(data);
     },
+  });
+  const mfaMut = useMutation({
+    mutationFn: (v: { challenge: string; code?: string; recovery_code?: string }) => unwrap(api.POST("/auth/login/mfa", { body: v })),
+    onSuccess: signedIn,
   });
 
   const claimMut = useMutation({
@@ -90,7 +105,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading: meQuery.isPending,
     can: (p) => !!me?.permissions.includes(p),
     login: async (username, password) => {
-      await loginMut.mutateAsync({ username, password });
+      const data = await loginMut.mutateAsync({ username, password });
+      return "mfa_required" in data ? { challenge: data.challenge } : undefined;
+    },
+    completeLogin: async (challenge, second) => {
+      await mfaMut.mutateAsync({ challenge, ...second });
     },
     claim: async (code, username, password) => {
       await claimMut.mutateAsync({ code, username, password });

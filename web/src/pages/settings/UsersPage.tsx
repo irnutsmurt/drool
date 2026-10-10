@@ -41,13 +41,17 @@ export function UsersPage() {
     mutationFn: (id: string) => unwrap(api.DELETE("/users/{id}", { params: { path: { id } } })),
     onSuccess: invalidate,
   });
+  const resetMfa = useMutation({
+    mutationFn: (id: string) => unwrap(api.POST("/users/{id}/mfa/reset", { params: { path: { id } } })),
+    onSuccess: invalidate,
+  });
 
   function submit(e: FormEvent) {
     e.preventDefault();
     create.mutate();
   }
 
-  const err = list.error ?? update.error ?? remove.error;
+  const err = list.error ?? update.error ?? remove.error ?? resetMfa.error;
   return (
     <div className="grid gap-4">
       <Card title="Add user">
@@ -86,6 +90,11 @@ export function UsersPage() {
               ),
             },
             { header: "Status", cell: (u) => (u.disabled ? <Badge tone="danger">disabled</Badge> : <Badge tone="ok">active</Badge>) },
+            {
+              header: "Two-factor",
+              cell: (u) => u.mfa_enabled ? <Badge tone="ok">on</Badge>
+                : <span className={u.role === "admin" ? "text-warn" : "text-muted"}>off{u.role === "admin" && " (recommended for administrators)"}</span>,
+            },
             { header: "Last login", cell: (u) => formatDateTime(u.last_login_at) },
             {
               header: "",
@@ -95,6 +104,14 @@ export function UsersPage() {
                     onClick={() => update.mutate({ id: u.id, body: { disabled: !u.disabled } })}>
                     {u.disabled ? "Enable" : "Disable"}
                   </Button>
+                  {u.mfa_enabled && u.id !== me?.user.id && (
+                    <Button size="sm" disabled={resetMfa.isPending}
+                      onClick={() => {
+                        if (confirm(`Turn off two-factor authentication for ${u.username}? Use this when they lost their authenticator and recovery codes. They are signed out and sign in with their password only, until they set it up again.`)) resetMfa.mutate(u.id);
+                      }}>
+                      Reset two-factor
+                    </Button>
+                  )}
                   <Button size="sm" variant="danger" disabled={remove.isPending}
                     onClick={() => { if (confirm(`Delete user ${u.username}?`)) remove.mutate(u.id); }}>
                     Delete

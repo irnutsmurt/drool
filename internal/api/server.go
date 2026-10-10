@@ -66,6 +66,8 @@ type Deps struct {
 	Sched     *sched.Service    // schedules and workflows (M13); nil disables their routes
 	Desired   *desired.Service  // desired state (M14); nil disables its routes
 	Artifacts *artifacts.Store  // deployment artifacts
+	Integrity *audit.Integrity  // audit chain checks (M16); nil disables their routes
+	AuditSink *audit.Sink       // remote audit copy (M16); nil disables its routes
 	// StaleAfter is how old a status check may be before it is shown as stale.
 	StaleAfter time.Duration
 }
@@ -103,7 +105,11 @@ type route struct {
 	auth        authMode
 	perm        auth.Permission // required permission ("" = none beyond auth mode)
 	sessionOnly bool            // reject bearer-token principals
-	h           http.HandlerFunc
+	// reauth: a high-impact action that a stolen session alone must not be
+	// enough for. Needs a browser session whose user confirmed who they are
+	// within the re-authentication window (implies sessionOnly).
+	reauth bool
+	h      http.HandlerFunc
 }
 
 // APIPrefix is the versioned API base path.
@@ -115,21 +121,35 @@ func (s *Server) routes() []route {
 		{method: "POST", path: APIPrefix + "/setup/claim", auth: public, h: s.handleSetupClaim},
 
 		{method: "POST", path: APIPrefix + "/auth/login", auth: public, h: s.handleLogin},
+		{method: "POST", path: APIPrefix + "/auth/login/mfa", auth: public, h: s.handleLoginMFA},
 		{method: "POST", path: APIPrefix + "/auth/logout", auth: authed, h: s.handleLogout},
 		{method: "GET", path: APIPrefix + "/auth/me", auth: authed, h: s.handleMe},
 		{method: "POST", path: APIPrefix + "/auth/password", auth: authed, sessionOnly: true, h: s.handleChangeOwnPassword},
+		{method: "POST", path: APIPrefix + "/auth/reauth", auth: authed, sessionOnly: true, h: s.handleReauth},
+		{method: "GET", path: APIPrefix + "/auth/mfa", auth: authed, sessionOnly: true, h: s.handleGetMFA},
+		{method: "POST", path: APIPrefix + "/auth/mfa/enroll", auth: authed, reauth: true, h: s.handleEnrollMFA},
+		{method: "POST", path: APIPrefix + "/auth/mfa/confirm", auth: authed, sessionOnly: true, h: s.handleConfirmMFA},
+		{method: "POST", path: APIPrefix + "/auth/mfa/recovery-codes", auth: authed, reauth: true, h: s.handleRegenerateRecoveryCodes},
+		{method: "DELETE", path: APIPrefix + "/auth/mfa", auth: authed, reauth: true, h: s.handleDisableMFA},
 
 		{method: "GET", path: APIPrefix + "/users", auth: authed, perm: auth.PermUsersManage, h: s.handleListUsers},
-		{method: "POST", path: APIPrefix + "/users", auth: authed, perm: auth.PermUsersManage, h: s.handleCreateUser},
+		{method: "POST", path: APIPrefix + "/users", auth: authed, perm: auth.PermUsersManage, reauth: true, h: s.handleCreateUser},
 		{method: "GET", path: APIPrefix + "/users/{id}", auth: authed, perm: auth.PermUsersManage, h: s.handleGetUser},
-		{method: "PATCH", path: APIPrefix + "/users/{id}", auth: authed, perm: auth.PermUsersManage, h: s.handleUpdateUser},
-		{method: "DELETE", path: APIPrefix + "/users/{id}", auth: authed, perm: auth.PermUsersManage, h: s.handleDeleteUser},
+		{method: "PATCH", path: APIPrefix + "/users/{id}", auth: authed, perm: auth.PermUsersManage, reauth: true, h: s.handleUpdateUser},
+		{method: "DELETE", path: APIPrefix + "/users/{id}", auth: authed, perm: auth.PermUsersManage, reauth: true, h: s.handleDeleteUser},
+		{method: "POST", path: APIPrefix + "/users/{id}/mfa/reset", auth: authed, perm: auth.PermUsersManage, reauth: true, h: s.handleResetUserMFA},
 
 		{method: "GET", path: APIPrefix + "/tokens", auth: authed, h: s.handleListTokens},
-		{method: "POST", path: APIPrefix + "/tokens", auth: authed, sessionOnly: true, h: s.handleCreateToken},
+		{method: "POST", path: APIPrefix + "/tokens", auth: authed, reauth: true, h: s.handleCreateToken},
 		{method: "DELETE", path: APIPrefix + "/tokens/{id}", auth: authed, h: s.handleDeleteToken},
 
 		{method: "GET", path: APIPrefix + "/audit", auth: authed, perm: auth.PermAuditRead, h: s.handleListAudit},
+		{method: "GET", path: APIPrefix + "/audit/integrity", auth: authed, perm: auth.PermAuditRead, h: s.handleAuditIntegrity},
+		{method: "POST", path: APIPrefix + "/audit/integrity/verify", auth: authed, perm: auth.PermAuditRead, h: s.handleVerifyAudit},
+		{method: "POST", path: APIPrefix + "/audit/integrity/acknowledge", auth: authed, perm: auth.PermSettingsWrite, reauth: true, h: s.handleAcknowledgeAuditBreak},
+		{method: "GET", path: APIPrefix + "/audit/sink", auth: authed, perm: auth.PermSettingsRead, h: s.handleGetAuditSink},
+		{method: "PUT", path: APIPrefix + "/audit/sink", auth: authed, perm: auth.PermSettingsWrite, reauth: true, h: s.handlePutAuditSink},
+		{method: "POST", path: APIPrefix + "/audit/sink/test", auth: authed, perm: auth.PermSettingsWrite, h: s.handleTestAuditSink},
 
 		{method: "GET", path: APIPrefix + "/system/info", auth: authed, h: s.handleSystemInfo},
 
@@ -447,7 +467,7 @@ func (s *Server) wrapRoute(rt route) http.Handler {
 			writeProblem(w, r, errCSRF)
 			return
 		}
-		if rt.sessionOnly && p.Kind != auth.KindSession {
+		if (rt.sessionOnly || rt.reauth) && p.Kind != auth.KindSession {
 			writeProblem(w, r, errForbidden("this endpoint requires an interactive session, not an API token"))
 			return
 		}
@@ -460,7 +480,11 @@ func (s *Server) wrapRoute(rt route) http.Handler {
 			writeProblem(w, r, errForbidden("missing permission "+string(rt.perm)))
 			return
 		}
-		rt.h(w, r.WithContext(withPrincipal(r.Context(), p)))
+		r = r.WithContext(withPrincipal(r.Context(), p))
+		if rt.reauth && !s.requireReauth(w, r) {
+			return
+		}
+		rt.h(w, r)
 	})
 }
 

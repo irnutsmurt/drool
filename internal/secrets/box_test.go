@@ -1,9 +1,12 @@
 package secrets
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"drool/internal/store"
 )
 
 func TestBoxRoundTripAndBinding(t *testing.T) {
@@ -53,5 +56,40 @@ func TestKeyFileCreatedPrivate(t *testing.T) {
 	os.Chmod(p, 0o644)
 	if _, _, insecure, _ := LoadOrCreateBox(p); !insecure {
 		t.Fatal("world-readable key file not flagged")
+	}
+}
+
+// TestSealedLocationsCoverSchema: every column holding master-key ciphertext
+// is listed in sealedLocations, so key checks, rotation and recovery can't
+// miss it.
+func TestSealedLocationsCoverSchema(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), store.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err := st.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	listed := map[string]bool{}
+	for _, l := range sealedLocations {
+		listed[l.Table] = true
+		if _, err := st.Reader.ExecContext(ctx, `EXPLAIN `+l.Select); err != nil {
+			t.Fatalf("%s: %v", l.Table, err)
+		}
+	}
+	rows, err := st.Reader.QueryContext(ctx, `SELECT m.name FROM sqlite_master m, pragma_table_info(m.name) c
+		WHERE m.type = 'table' AND c.name LIKE '%ciphertext%'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var table string
+		rows.Scan(&table)
+		if !listed[table] {
+			t.Errorf("table %s has a ciphertext column but is not in sealedLocations", table)
+		}
 	}
 }

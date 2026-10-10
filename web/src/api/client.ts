@@ -24,18 +24,50 @@ export function setUnauthenticatedHandler(fn: () => void) {
 
 const SAFE = new Set(["GET", "HEAD", "OPTIONS"]);
 
+/** What a reauth_required answer says about confirming. */
+export interface ReauthInfo {
+  mfa: boolean;
+  window_s: number;
+}
+
+let reauthHandler: ((info: ReauthInfo) => Promise<boolean>) | undefined;
+
+/** Set by the re-authentication prompt: asked when the server answers that
+ * an action needs the user to confirm who they are (M16). Resolves true when
+ * confirmed; the request is then sent again. */
+export function setReauthHandler(fn: ((info: ReauthInfo) => Promise<boolean>) | undefined) {
+  reauthHandler = fn;
+}
+
+// Copies of state-changing requests, to repeat one after re-authentication.
+const replayable = new Map<string, Request>();
+
 const middleware: Middleware = {
-  onRequest({ request }) {
+  onRequest({ request, id }) {
     if (csrfToken && !SAFE.has(request.method)) {
       request.headers.set("X-DROOL-CSRF", csrfToken);
     }
+    if (!SAFE.has(request.method)) replayable.set(id, request.clone());
     return request;
   },
-  onResponse({ request, response }) {
+  async onResponse({ request, response, id }) {
+    const copy = replayable.get(id);
+    replayable.delete(id);
     if (response.status === 401 && !request.url.endsWith("/auth/login")) {
       onUnauthenticated?.();
     }
+    if (response.status === 403 && copy && reauthHandler && !request.url.endsWith("/auth/reauth")) {
+      const p = (await response.clone().json().catch(() => undefined)) as (Problem & { reauth?: ReauthInfo }) | undefined;
+      if (p?.code === "reauth_required" && (await reauthHandler(p.reauth ?? { mfa: false, window_s: 300 }))) {
+        const headers = new Headers(copy.headers);
+        if (csrfToken) headers.set("X-DROOL-CSRF", csrfToken);
+        return fetch(new Request(copy, { headers }));
+      }
+    }
     return response;
+  },
+  onError({ id }) {
+    replayable.delete(id);
   },
 };
 
