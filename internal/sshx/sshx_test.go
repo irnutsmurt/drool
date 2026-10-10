@@ -2,6 +2,8 @@ package sshx
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"net"
 	"strconv"
@@ -406,5 +408,318 @@ func TestCancelKeepsHealthyConnection(t *testing.T) {
 	}
 	if r, err := c.Run(context.Background(), "true", RunOptions{}); err != nil || string(r.Stdout) != "ok" {
 		t.Fatalf("connection unusable after a cancelled command: %v", err)
+	}
+}
+
+// --- connections authenticated with certificates (JIT SSH) ---
+
+// testClock is the pool's clock in the certificate tests; the servers'
+// clocks follow it, so a certificate issued "now" is valid for them too.
+type testClock struct {
+	mu   sync.Mutex
+	off  time.Duration
+	srvs []*sshtest.Server
+}
+
+func newTestClock(srvs ...*sshtest.Server) *testClock { return &testClock{srvs: srvs} }
+
+func (c *testClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return time.Now().Add(c.off)
+}
+
+func (c *testClock) advance(d time.Duration) {
+	c.mu.Lock()
+	c.off += d
+	off := c.off
+	c.mu.Unlock()
+	for _, s := range c.srvs {
+		s.SetClockSkew(off)
+	}
+}
+
+// certIssuer issues user certificates from a test CA the way sshca does: a
+// fresh key for every handshake, valid from 5 minutes before now to ttl
+// after it.
+type certIssuer struct {
+	ca    ssh.Signer
+	ttl   time.Duration
+	clock func() time.Time
+	mu    sync.Mutex
+	certs []*ssh.Certificate
+}
+
+func (ci *certIssuer) issue(context.Context) (ssh.Signer, error) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	key, err := ssh.NewSignerFromKey(priv)
+	if err != nil {
+		return nil, err
+	}
+	ci.mu.Lock()
+	defer ci.mu.Unlock()
+	now := ci.clock()
+	cert := &ssh.Certificate{Key: key.PublicKey(), Serial: uint64(len(ci.certs) + 1), CertType: ssh.UserCert,
+		KeyId: "drool:test", ValidPrincipals: []string{"deploy"},
+		ValidAfter: uint64(now.Add(-5 * time.Minute).Unix()), ValidBefore: uint64(now.Add(ci.ttl).Unix())}
+	if err := cert.SignCert(rand.Reader, ci.ca); err != nil {
+		return nil, err
+	}
+	s, err := ssh.NewCertSigner(cert, key)
+	if err != nil {
+		return nil, err
+	}
+	ci.certs = append(ci.certs, cert)
+	return s, nil
+}
+
+func (ci *certIssuer) issued() []*ssh.Certificate {
+	ci.mu.Lock()
+	defer ci.mu.Unlock()
+	return append([]*ssh.Certificate(nil), ci.certs...)
+}
+
+func certTarget(t *testing.T, srv *sshtest.Server, id string, ci *certIssuer, pinned ssh.PublicKey) *Target {
+	tg := target(t, srv, id, nil, pinned)
+	tg.Certificate, tg.CertIdentity = ci.issue, "test-ca|deploy"
+	return tg
+}
+
+// pooledConn is the pool's current connection for id (nil: none).
+func pooledConn(p *Pool, id string) *pooled {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.conns[id]
+}
+
+func runOn(t *testing.T, p *Pool, tg *Target) {
+	t.Helper()
+	s, err := p.Get(context.Background(), tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Release()
+	if _, err := s.Run(context.Background(), "x", RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func closedSoon(pc *pooled) bool {
+	select {
+	case <-pc.dead:
+		return true
+	case <-time.After(5 * time.Second):
+		return false
+	}
+}
+
+func TestPoolCertificateConnectionEndsWithItsCertificate(t *testing.T) {
+	hostKey, ca := sshtest.NewEd25519Signer(t), sshtest.NewEd25519Signer(t)
+	srv := sshtest.Start(t, hostKey)
+	srv.SetExec(echoExec)
+	srv.TrustUserCA(ca.PublicKey())
+	clock := newTestClock(srv)
+	ci := &certIssuer{ca: ca, ttl: 10 * time.Minute, clock: clock.now}
+	p := NewPool(&Dialer{})
+	p.clock = clock.now
+	defer p.Close()
+	tg := certTarget(t, srv, "h", ci, hostKey.PublicKey())
+
+	// Reused while the certificate is valid, until the margin before its end.
+	runOn(t, p, tg)
+	first := pooledConn(p, "h")
+	certs := ci.issued()
+	if want := time.Unix(int64(certs[0].ValidBefore), 0).Add(-CertReuseMargin); !first.expires.Equal(want) {
+		t.Fatalf("recorded expiry %v, want the certificate's end minus the margin, %v", first.expires, want)
+	}
+	runOn(t, p, tg)
+	clock.advance(10*time.Minute - CertReuseMargin - time.Second)
+	runOn(t, p, tg)
+	if pooledConn(p, "h") != first || len(ci.issued()) != 1 {
+		t.Fatalf("not reused while valid: %d certificates issued", len(ci.issued()))
+	}
+
+	// Inside the margin it is never handed out again: the next lease dials,
+	// with a fresh key and a newly issued certificate, and the old
+	// connection is closed.
+	clock.advance(2 * time.Second)
+	runOn(t, p, tg)
+	second := pooledConn(p, "h")
+	certs = ci.issued()
+	if second == first || len(certs) != 2 {
+		t.Fatalf("reused after its certificate: %d certificates issued", len(certs))
+	}
+	if last := srv.LastCertificate(); last.Serial != 2 || string(last.Key.Marshal()) == string(certs[0].Key.Marshal()) {
+		t.Fatalf("the host saw certificate %d", last.Serial)
+	}
+	if !closedSoon(first) {
+		t.Fatal("the connection whose certificate expired is still open")
+	}
+
+	// Past the new certificate's end altogether, the same.
+	clock.advance(11 * time.Minute)
+	runOn(t, p, tg)
+	if pooledConn(p, "h") == second || len(ci.issued()) != 3 || !closedSoon(second) {
+		t.Fatalf("after the second certificate expired: %d certificates issued", len(ci.issued()))
+	}
+}
+
+// A lease that had to wait for a free slot while the certificate expired
+// gets a new connection, not the old one.
+func TestPoolCertificateCheckedAfterWaitingForASlot(t *testing.T) {
+	hostKey, ca := sshtest.NewEd25519Signer(t), sshtest.NewEd25519Signer(t)
+	srv := sshtest.Start(t, hostKey)
+	srv.SetExec(echoExec)
+	srv.TrustUserCA(ca.PublicKey())
+	clock := newTestClock(srv)
+	ci := &certIssuer{ca: ca, ttl: 10 * time.Minute, clock: clock.now}
+	p := NewPool(&Dialer{})
+	p.clock, p.MaxSessions = clock.now, 1
+	defer p.Close()
+	tg := certTarget(t, srv, "h", ci, hostKey.PublicKey())
+
+	held, err := p.Get(context.Background(), tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := pooledConn(p, "h")
+	got := make(chan *Session, 1)
+	go func() {
+		s, err := p.Get(context.Background(), tg)
+		if err != nil {
+			t.Error(err)
+		}
+		got <- s
+	}()
+	// The second lease waits for the only slot...
+	for end := time.Now().Add(5 * time.Second); ; {
+		p.mu.Lock()
+		refs := first.refs
+		p.mu.Unlock()
+		if refs == 2 {
+			break
+		}
+		if time.Now().After(end) {
+			t.Fatal("the second lease never queued for the slot")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	// ...while the certificate runs out.
+	clock.advance(10 * time.Minute)
+	held.Release()
+	s := <-got
+	if s == nil {
+		t.FailNow()
+	}
+	defer s.Release()
+	if s.Client.Client == first.client || len(ci.issued()) != 2 {
+		t.Fatalf("the lease got the expired connection (%d certificates issued)", len(ci.issued()))
+	}
+	if _, err := s.Run(context.Background(), "x", RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Key and password connections are pooled as before: no expiry, whatever
+// the time.
+func TestPoolStaticCredentialsUnaffected(t *testing.T) {
+	hostKey := sshtest.NewEd25519Signer(t)
+	srv := sshtest.Start(t, hostKey)
+	srv.SetExec(echoExec)
+	client := sshtest.NewEd25519Signer(t)
+	srv.Authorize(client.PublicKey())
+	srv.SetPassword("deploy", "correct horse")
+	clock := newTestClock(srv)
+	p := NewPool(&Dialer{})
+	p.clock = clock.now
+	defer p.Close()
+	byKey := target(t, srv, "key", client, hostKey.PublicKey())
+	byPassword := target(t, srv, "password", nil, hostKey.PublicKey())
+	byPassword.Password = "correct horse"
+
+	runOn(t, p, byKey)
+	runOn(t, p, byPassword)
+	k, pw := pooledConn(p, "key"), pooledConn(p, "password")
+	if !k.expires.IsZero() || !pw.expires.IsZero() {
+		t.Fatalf("static connections got an expiry: %v %v", k.expires, pw.expires)
+	}
+	for i := 0; i < 3; i++ {
+		clock.advance(2 * time.Hour)
+		runOn(t, p, byKey)
+		runOn(t, p, byPassword)
+	}
+	if pooledConn(p, "key") != k || pooledConn(p, "password") != pw {
+		t.Fatal("a static connection was replaced")
+	}
+	if n := srv.Connections(); n != 2 {
+		t.Fatalf("%d connections, want 2", n)
+	}
+}
+
+func TestPoolCertificateJumpPaths(t *testing.T) {
+	ca, client := sshtest.NewEd25519Signer(t), sshtest.NewEd25519Signer(t)
+	jumpKey, innerKey := sshtest.NewEd25519Signer(t), sshtest.NewEd25519Signer(t)
+	jumpSrv, inner := sshtest.Start(t, jumpKey), sshtest.Start(t, innerKey)
+	jumpSrv.AllowForwarding(true)
+	inner.SetExec(echoExec)
+	for _, s := range []*sshtest.Server{jumpSrv, inner} {
+		s.Authorize(client.PublicKey())
+		s.TrustUserCA(ca.PublicKey())
+	}
+	clock := newTestClock(jumpSrv, inner)
+	ci := &certIssuer{ca: ca, ttl: 10 * time.Minute, clock: clock.now}
+	p := NewPool(&Dialer{})
+	p.clock = clock.now
+	defer p.Close()
+
+	// A key-authenticated host behind a jump host in certificate mode: the
+	// tunnel runs over the certificate connection, so nothing on that path
+	// is handed out once the jump host's certificate is about to expire.
+	certJump := certTarget(t, jumpSrv, "jump", ci, jumpKey.PublicKey())
+	keyInner := target(t, inner, "inner", client, innerKey.PublicKey())
+	keyInner.Via = certJump
+	runOn(t, p, keyInner)
+	runOn(t, p, keyInner)
+	jump1, inner1 := pooledConn(p, "jump"), pooledConn(p, "inner")
+	if !inner1.expires.Equal(jump1.expires) || jump1.expires.IsZero() {
+		t.Fatalf("tunnelled connection expires %v, its certificate jump connection %v", inner1.expires, jump1.expires)
+	}
+	clock.advance(10*time.Minute - CertReuseMargin - time.Second)
+	runOn(t, p, keyInner)
+	if pooledConn(p, "jump") != jump1 || pooledConn(p, "inner") != inner1 || len(ci.issued()) != 1 {
+		t.Fatal("the path was not reused while the jump certificate was valid")
+	}
+	clock.advance(2 * time.Second)
+	runOn(t, p, keyInner)
+	if pooledConn(p, "jump") == jump1 || pooledConn(p, "inner") == inner1 || len(ci.issued()) != 2 {
+		t.Fatalf("the path outlived the jump host's certificate (%d certificates issued)", len(ci.issued()))
+	}
+	if !closedSoon(inner1) || !closedSoon(jump1) {
+		t.Fatal("the expired path is still open")
+	}
+	if last := jumpSrv.LastCertificate(); last.Serial != 2 {
+		t.Fatalf("the jump host saw certificate %d, want the new one", last.Serial)
+	}
+
+	// A certificate host behind a key-authenticated jump host: its own
+	// certificate decides, and the jump connection is kept as it is.
+	keyJump := target(t, jumpSrv, "jump2", client, jumpKey.PublicKey())
+	certInner := certTarget(t, inner, "inner2", ci, innerKey.PublicKey())
+	certInner.Via = keyJump
+	runOn(t, p, certInner)
+	jump2, inner2 := pooledConn(p, "jump2"), pooledConn(p, "inner2")
+	if !jump2.expires.IsZero() || inner2.expires.IsZero() {
+		t.Fatalf("expiries: jump %v, certificate host %v", jump2.expires, inner2.expires)
+	}
+	clock.advance(10*time.Minute - CertReuseMargin + time.Second)
+	runOn(t, p, certInner)
+	if pooledConn(p, "jump2") != jump2 || pooledConn(p, "inner2") == inner2 || len(ci.issued()) != 4 {
+		t.Fatalf("certificate host behind a key jump host: %d certificates issued", len(ci.issued()))
+	}
+	if last := inner.LastCertificate(); last.Serial != 4 {
+		t.Fatalf("the host behind the jump host saw certificate %d, want the new one", last.Serial)
 	}
 }

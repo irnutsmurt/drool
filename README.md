@@ -281,7 +281,11 @@ for ever. It has its own OpenSSH user certificate authority (CA): for each conne
 enforces the expiry. The CA's private key is stored encrypted with the master key; certificates
 and their keys are never stored or logged. Every certificate issued is in the audit log (host,
 principal, serial, validity, CA fingerprint; the host's sshd log shows the same `ID drool:…`).
-A pooled connection opened with a certificate is reused for at most an hour.
+Because sshd checks a certificate only when a connection signs in, DROOL hands out a pooled
+connection opened with a certificate only until 30 seconds before that certificate expires (with
+the default lifetime, for about 9½ minutes), and the same goes for connections through a jump host
+in certificate mode; then it connects again with a new key and certificate. An operation already
+running on the connection finishes on it, as an SSH session would.
 
 Moving a host over, without ever stranding it:
 

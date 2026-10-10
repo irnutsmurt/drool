@@ -13,9 +13,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -148,7 +150,33 @@ func HostKeyAlgorithms(keyType string) []string {
 	}
 }
 
-func clientConfig(ctx context.Context, t *Target, hostKeyCB ssh.HostKeyCallback, algos []string, timeout time.Duration) *ssh.ClientConfig {
+// certExpiry is when the certificate a connection authenticated with stops
+// being valid: the earliest ValidBefore of those issued during its
+// handshake. One whose end can't be read counts as expired already.
+type certExpiry struct {
+	mu sync.Mutex
+	at time.Time
+}
+
+func (e *certExpiry) note(s ssh.Signer) {
+	at := time.Unix(0, 0)
+	if c, ok := s.PublicKey().(*ssh.Certificate); ok && c.ValidBefore != ssh.CertTimeInfinity && c.ValidBefore <= math.MaxInt64 {
+		at = time.Unix(int64(c.ValidBefore), 0)
+	}
+	e.mu.Lock()
+	if e.at.IsZero() || at.Before(e.at) {
+		e.at = at
+	}
+	e.mu.Unlock()
+}
+
+func (e *certExpiry) get() time.Time {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.at
+}
+
+func clientConfig(ctx context.Context, t *Target, hostKeyCB ssh.HostKeyCallback, algos []string, timeout time.Duration, exp *certExpiry) *ssh.ClientConfig {
 	var auth []ssh.AuthMethod
 	if t.Certificate != nil {
 		// Issued when the server asks, never before: a certificate that is
@@ -158,6 +186,7 @@ func clientConfig(ctx context.Context, t *Target, hostKeyCB ssh.HostKeyCallback,
 			if err != nil {
 				return nil, &certIssueError{err}
 			}
+			exp.note(s)
 			return []ssh.Signer{s}, nil
 		}))
 	}
@@ -244,21 +273,28 @@ func (d *Dialer) connTo(ctx context.Context, t *Target, jump *ssh.Client) (net.C
 	}
 }
 
-// dialOne authenticates to t (no jump handling) over an optional jump client.
-func (d *Dialer) dialOne(ctx context.Context, t *Target, jump *ssh.Client) (*ssh.Client, error) {
+// dialOne authenticates to t (no jump handling) over an optional jump
+// client. For a certificate target it also returns when the certificate
+// that authenticated the connection expires (zero for other targets).
+func (d *Dialer) dialOne(ctx context.Context, t *Target, jump *ssh.Client) (*ssh.Client, time.Time, error) {
 	conn, err := d.connTo(ctx, t, jump)
 	if err != nil {
-		return nil, classify(t, err)
+		return nil, time.Time{}, classify(t, err)
 	}
 	var algos []string
 	if t.PinnedKey != nil {
 		algos = HostKeyAlgorithms(t.PinnedKey.Type())
 	}
-	c, err := d.handshake(conn, t, clientConfig(ctx, t, pinnedCallback(t), algos, d.handshakeTimeout()))
+	var exp certExpiry
+	c, err := d.handshake(conn, t, clientConfig(ctx, t, pinnedCallback(t), algos, d.handshakeTimeout(), &exp))
 	if err != nil {
-		return nil, classify(t, err)
+		return nil, time.Time{}, classify(t, err)
 	}
-	return c, nil
+	notAfter := exp.get()
+	if t.Certificate != nil && notAfter.IsZero() {
+		notAfter = time.Unix(0, 0) // authenticated without a certificate DROOL saw: never reused
+	}
+	return c, notAfter, nil
 }
 
 // Dial opens a new, unpooled connection to t, through its jump host if any.
@@ -267,13 +303,13 @@ func (d *Dialer) dialOne(ctx context.Context, t *Target, jump *ssh.Client) (*ssh
 func (d *Dialer) Dial(ctx context.Context, t *Target) (*Client, error) {
 	var jump *ssh.Client
 	if t.Via != nil {
-		j, err := d.dialOne(ctx, t.Via, nil)
+		j, _, err := d.dialOne(ctx, t.Via, nil)
 		if err != nil {
 			return nil, viaError(t.Via, err)
 		}
 		jump = j
 	}
-	c, err := d.dialOne(ctx, t, jump)
+	c, _, err := d.dialOne(ctx, t, jump)
 	if err != nil {
 		if jump != nil {
 			jump.Close()
@@ -300,7 +336,7 @@ var errScanDone = errors.New("sshx: scan complete")
 func (d *Dialer) Scan(ctx context.Context, t *Target) ([]ssh.PublicKey, error) {
 	var jump *ssh.Client
 	if t.Via != nil {
-		j, err := d.dialOne(ctx, t.Via, nil)
+		j, _, err := d.dialOne(ctx, t.Via, nil)
 		if err != nil {
 			return nil, viaError(t.Via, err)
 		}

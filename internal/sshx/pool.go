@@ -20,7 +20,8 @@ const (
 
 // Pool keeps one multiplexed connection per host. A jump host's connection
 // is shared by every host behind it. Connections are replaced automatically
-// when a target's connection settings change.
+// when a target's connection settings change, and before a certificate on
+// their path expires (CertReuseMargin).
 type Pool struct {
 	Dialer      *Dialer
 	MaxSessions int
@@ -33,12 +34,13 @@ type Pool struct {
 	closed  bool
 	stop    chan struct{}
 	once    sync.Once
+	clock   func() time.Time // certificate expiry checks (tests); nil: time.Now
 }
 
 type pooled struct {
 	key      string // connection settings fingerprint
 	client   *ssh.Client
-	expires  time.Time // zero: no age limit (certificate connections have one)
+	expires  time.Time // zero: reused until idle; otherwise never handed out from then on (certificates, §33.2)
 	sem      chan struct{}
 	refs     int
 	lastUsed time.Time
@@ -62,11 +64,26 @@ func (p *Pool) startReaper() {
 	p.once.Do(func() { go p.reap() })
 }
 
-// MaxCertConnAge bounds how long a connection authenticated with a
-// certificate is reused: OpenSSH checks a certificate when a connection is
-// authenticated, not afterwards, so DROOL dials (and issues) again instead
-// of keeping such a connection for ever.
-var MaxCertConnAge = time.Hour
+// CertReuseMargin: a connection authenticated with an SSH certificate is
+// handed out only until this long before the certificate expires, and so is
+// one tunnelled through such a connection. OpenSSH checks a certificate when
+// a connection authenticates, never afterwards, so a pooled connection
+// would otherwise outlive its certificate; DROOL dials again instead, with a
+// fresh key and certificate. An operation that already holds the connection
+// finishes on it, as a session would on sshd.
+const CertReuseMargin = 30 * time.Second
+
+func (p *Pool) now() time.Time {
+	if p.clock != nil {
+		return p.clock()
+	}
+	return time.Now()
+}
+
+// usable: pc may be handed out at now.
+func (pc *pooled) usable(now time.Time) bool {
+	return pc.expires.IsZero() || now.Before(pc.expires)
+}
 
 // targetKey fingerprints everything that affects the connection.
 func targetKey(t *Target) string {
@@ -105,15 +122,26 @@ func (s *Session) Release() { s.release() }
 // with the returned client; do not Close it.
 func (p *Pool) Get(ctx context.Context, t *Target) (*Session, error) {
 	p.startReaper()
-	pc, err := p.acquire(ctx, t)
-	if err != nil {
-		return nil, err
-	}
-	select {
-	case pc.sem <- struct{}{}:
-	case <-ctx.Done():
-		p.unref(pc)
-		return nil, ctx.Err()
+	var pc *pooled
+	for {
+		c, dialed, err := p.acquire(ctx, t)
+		if err != nil {
+			return nil, err
+		}
+		select {
+		case c.sem <- struct{}{}:
+		case <-ctx.Done():
+			p.unref(c)
+			return nil, ctx.Err()
+		}
+		// Waiting for a free slot may have taken it past its certificate;
+		// a connection this call just dialed is used either way.
+		if dialed || c.usable(p.now()) {
+			pc = c
+			break
+		}
+		<-c.sem
+		p.unref(c)
 	}
 	var once sync.Once
 	return &Session{
@@ -143,27 +171,28 @@ type dialCall struct {
 	err  error
 }
 
-// acquire returns a live pooled connection for t with refs incremented.
-func (p *Pool) acquire(ctx context.Context, t *Target) (*pooled, error) {
+// acquire returns a live pooled connection for t with refs incremented, and
+// whether this call dialed it.
+func (p *Pool) acquire(ctx context.Context, t *Target) (*pooled, bool, error) {
 	key := targetKey(t)
 	for {
 		p.mu.Lock()
 		if p.closed {
 			p.mu.Unlock()
-			return nil, context.Canceled
+			return nil, false, context.Canceled
 		}
 		if pc, ok := p.conns[t.HostID]; ok {
 			select {
 			case <-pc.dead:
 				delete(p.conns, t.HostID)
 			default:
-				if pc.key == key && (pc.expires.IsZero() || time.Now().Before(pc.expires)) {
+				if pc.key == key && pc.usable(p.now()) {
 					pc.refs++
 					p.mu.Unlock()
-					return pc, nil
+					return pc, false, nil
 				}
-				// Settings changed, or a certificate connection reached its
-				// age: retire the old connection once idle.
+				// Settings changed, or a certificate on its path expires:
+				// retire the old connection once idle.
 				delete(p.conns, t.HostID)
 				go p.closeWhenIdle(pc)
 			}
@@ -173,10 +202,10 @@ func (p *Pool) acquire(ctx context.Context, t *Target) (*pooled, error) {
 			select {
 			case <-dc.done:
 			case <-ctx.Done():
-				return nil, ctx.Err()
+				return nil, false, ctx.Err()
 			}
 			if dc.err != nil {
-				return nil, dc.err
+				return nil, false, dc.err
 			}
 			continue // the dial registered a connection; take a reference above
 		}
@@ -198,7 +227,7 @@ func (p *Pool) acquire(ctx context.Context, t *Target) (*pooled, error) {
 		}
 		p.mu.Unlock()
 		close(dc.done)
-		return dc.pc, dc.err
+		return dc.pc, dc.err == nil, dc.err
 	}
 }
 
@@ -209,13 +238,13 @@ func (p *Pool) dial(ctx context.Context, t *Target, key string) (*pooled, error)
 	var jumpPC *pooled
 	if t.Via != nil {
 		var err error
-		jumpPC, err = p.acquire(ctx, t.Via)
+		jumpPC, _, err = p.acquire(ctx, t.Via)
 		if err != nil {
 			return nil, viaError(t.Via, err)
 		}
 		jump = jumpPC.client
 	}
-	c, err := p.Dialer.dialOne(ctx, t, jump)
+	c, certNotAfter, err := p.Dialer.dialOne(ctx, t, jump)
 	if err != nil {
 		if jumpPC != nil {
 			p.unref(jumpPC)
@@ -225,10 +254,15 @@ func (p *Pool) dial(ctx context.Context, t *Target, key string) (*pooled, error)
 	pc := &pooled{key: key, client: c, sem: make(chan struct{}, p.maxSessions()),
 		refs: 1, lastUsed: time.Now(), dead: make(chan struct{})}
 	if t.Certificate != nil {
-		pc.expires = time.Now().Add(MaxCertConnAge)
+		pc.expires = certNotAfter.Add(-CertReuseMargin)
 	}
 	if jumpPC != nil {
 		pc.jumpID = t.Via.HostID
+		// The tunnel runs over the jump connection: once that one is no
+		// longer handed out, neither is this one.
+		if !jumpPC.expires.IsZero() && (pc.expires.IsZero() || jumpPC.expires.Before(pc.expires)) {
+			pc.expires = jumpPC.expires
+		}
 	}
 	// A tunnelled connection keeps a reference on its jump connection for its
 	// whole lifetime, so the jump host is never reaped while in use.
@@ -327,7 +361,7 @@ func (p *Pool) reap() {
 				continue
 			default:
 			}
-			if pc.refs == 0 && (time.Since(pc.lastUsed) > idle || !pc.expires.IsZero() && time.Now().After(pc.expires)) {
+			if pc.refs == 0 && (time.Since(pc.lastUsed) > idle || !pc.usable(p.now())) {
 				delete(p.conns, id)
 				go pc.client.Close()
 				continue
