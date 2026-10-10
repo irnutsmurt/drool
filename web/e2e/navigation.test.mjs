@@ -82,7 +82,7 @@ test("sidebar: direct destinations under headings; themed names explain themselv
   const desc = await packs.evaluate((a) => document.getElementById(a.getAttribute("aria-describedby"))?.textContent);
   assert.equal(desc, "Groups of hosts used for targeting and inherited configuration.");
   await tabTo(page, () => document.activeElement?.getAttribute("href") === "/agents", "Shepherds link");
-  await waitFor(page, async () => /DROOL agents: DROOL agents installed on managed hosts\./.test(await page.$eval('[data-testid="nav-tip"]', (t) => t.textContent).catch(() => "")), "tooltip on focus");
+  await waitFor(page, async () => /Shepherds: DROOL agents installed on managed hosts\./.test(await page.$eval('[data-testid="nav-tip"]', (t) => t.textContent).catch(() => "")), "tooltip on focus");
   await shot(page, "nav-tooltip-focus");
   await page.keyboard.press("Enter");
   // The page loads on demand; until it has, the previous one stays (and stays marked).

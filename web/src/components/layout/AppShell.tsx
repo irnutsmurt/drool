@@ -143,7 +143,7 @@ function NavEntry({ item: i, active, alerts, onNavigate }: {
         )}
       </Link>
       {i.hint && <span id={descId} className="sr-only">{i.description}</span>}
-      {tip && createPortal(<NavTip rect={tip} text={`${i.hint}: ${i.description}`} />, document.body)}
+      {tip && createPortal(<NavTip rect={tip} text={`${i.label}: ${i.description}`} />, document.body)}
     </>
   );
 }

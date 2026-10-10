@@ -64,7 +64,7 @@ export function HealthOverridesCard() {
     <Card title="Health overrides (advanced)">
       <details>
         <summary className="cursor-pointer text-sm">
-          {rows.length === 0 ? "No pack, host or device overrides." : `${rows.length} pack, host and device overrides`} — show all and group priorities
+          {rows.length === 0 ? "No pack, host or device overrides." : `${rows.length} pack, host and device overrides`} — show all and pack priorities
         </summary>
         <div className="mt-3 space-y-4">
           {(ov.error || del.error) && <Alert>{errorMessage(ov.error ?? del.error)}</Alert>}

@@ -57,7 +57,7 @@ function PoliciesCard({ doc, edit, services, hosts, canWrite, highlight = [], fr
         <p className="text-sm text-muted">No rules yet. Hosts that DROOL enforces accept only their management path and replies until you add some.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="rtable w-full text-sm">
             <caption className="sr-only">Firewall rules in evaluation order</caption>
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase text-muted">
@@ -68,19 +68,19 @@ function PoliciesCard({ doc, edit, services, hosts, canWrite, highlight = [], fr
             <tbody>
               {doc.policy.map((r, i) => (
                 <tr key={r.name + i} className={`border-b border-line align-top ${highlight.includes(r.name) ? "bg-danger-bg" : fresh.includes(r.name) ? "bg-accent/10" : ""} ${r.enabled ? "" : "opacity-60"}`}>
-                  <td className="py-2 pr-2 text-muted">{i + 1}</td>
-                  <td className="py-2 pr-2">
+                  <td data-label="Order" className="py-2 pr-2 text-muted">{i + 1}</td>
+                  <td data-primary="" className="py-2 pr-2">
                     <div className="font-medium">{r.name}</div>
                     {r.description && <div className="text-xs text-muted">{r.description}</div>}
                     {!r.enabled && <Badge>disabled</Badge>}
                     {highlight.includes(r.name) && <Badge tone="danger">blocks the management path</Badge>}
                     {fresh.includes(r.name) && <Badge tone="accent">new · from an observed connection</Badge>}
                   </td>
-                  <td className="py-2 pr-2"><Badge tone={r.action === "deny" ? "danger" : "ok"}>{r.action === "deny" ? "Deny" : "Allow"}</Badge></td>
-                  <td className="py-2 pr-2"><RefList refs={r.from} /></td>
-                  <td className="py-2 pr-2"><RefList refs={r.to} /></td>
-                  <td className="py-2 pr-2 text-xs">{r.services.map((s) => <div key={s}>{serviceLabel(s, all)}</div>)}</td>
-                  <td className="whitespace-nowrap py-2">
+                  <td data-label="Action" className="py-2 pr-2"><Badge tone={r.action === "deny" ? "danger" : "ok"}>{r.action === "deny" ? "Deny" : "Allow"}</Badge></td>
+                  <td data-label="Source" className="py-2 pr-2"><RefList refs={r.from} /></td>
+                  <td data-label="Destination" className="py-2 pr-2"><RefList refs={r.to} /></td>
+                  <td data-label="Service" className="py-2 pr-2 text-xs">{r.services.map((s) => <div key={s}>{serviceLabel(s, all)}</div>)}</td>
+                  <td data-label="" className="whitespace-nowrap py-2">
                     {canWrite && (
                       <>
                         <Button size="sm" variant="ghost" aria-label={`Move ${r.name} up`} disabled={i === 0} onClick={() => edit(moveRule(doc, i, -1))}>↑</Button>

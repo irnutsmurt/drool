@@ -203,28 +203,31 @@ body {
   border: 2px solid var(--ui-surface);
 }
 
-/* Server-provided text (event titles, errors with URLs, paths, hashes)
- * breaks inside its box rather than widening the page on a phone. Only
- * words that don't fit are broken; layout sizes are unaffected. */
-main {
-  overflow-wrap: break-word;
-}
-/* A grid's columns never grow past the page to fit a child's longest
- * unbreakable content (a truncated run name, an address): its children
- * may shrink, and their text wraps or truncates instead. */
-main .grid > * {
-  min-width: 0;
-}
-
-/* Keyboard focus is always visible (mouse clicks don't draw it). */
-:focus-visible {
-  outline: 2px solid var(--ui-accent);
-  outline-offset: 2px;
-}
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline-offset: 0;
+/* Defaults components can refine (the base layer: utilities override). */
+@layer base {
+  /* Server-provided text (event titles, errors with URLs, paths, hashes)
+   * breaks inside its box rather than widening the page on a phone. Only
+   * words that don't fit are broken; layout sizes are unaffected. */
+  main {
+    overflow-wrap: break-word;
+  }
+  /* A grid's columns never grow past the page to fit a child's longest
+   * unbreakable content (a truncated run name, an address): its children
+   * may shrink, and their text wraps or truncates instead. */
+  main .grid > * {
+    min-width: 0;
+  }
+  /* Keyboard focus is always visible (mouse clicks don't draw it);
+   * fields that draw their own focus ring opt out. */
+  :focus-visible {
+    outline: 2px solid var(--ui-accent);
+    outline-offset: 2px;
+  }
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline-offset: 0;
+  }
 }
 
 /*
