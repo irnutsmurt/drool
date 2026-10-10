@@ -224,8 +224,32 @@ Nothing was changed. To restore, do one of:
 	if res.PreviousDataDir != "" {
 		fmt.Printf("  The previous files were moved to %s; delete it once you're satisfied.\n", res.PreviousDataDir)
 	}
+	if rc := res.Reconcile; rc != nil {
+		fmt.Printf(`
+The restored controller has a new controller epoch (%s, was %s). Its hosts
+still answer to the backup's: once DROOL is started, it compares each host
+with the restored data and moves it to the new epoch when nothing would be
+lost or rolled back; hosts changed after the backup wait for you
+(Settings → System → Restore). Set aside, never repeated automatically:
+`, shortEpoch(rc.Epoch), shortEpoch(rc.PreviousEpoch))
+		fmt.Printf("  %d unfinished job(s) marked interrupted (outcome unknown)\n", rc.JobsInterrupted)
+		fmt.Printf("  %d open firewall transaction(s) closed as unknown\n", rc.FirewallClosed)
+		fmt.Printf("  %d unsent notification(s) dropped, %d queued scheduled run(s) skipped\n", rc.DeliveriesDropped, rc.OccurrencesDrop)
+		fmt.Printf("  %d job schedule(s) held, %d automatic Desired State restore(s) paused, %d Shepherd rollout(s) paused\n",
+			len(rc.SchedulesHeld), len(rc.AutoPaused), rc.RolloutsPaused)
+	}
 	fmt.Println("\nStart DROOL again (systemctl start drool, or docker compose start drool).")
 	return nil
+}
+
+func shortEpoch(e string) string {
+	if len(e) > 12 {
+		return e[:12]
+	}
+	if e == "" {
+		return "none"
+	}
+	return e
 }
 
 func summarizeCounts(c map[string]int64) string {

@@ -349,3 +349,57 @@ func TestParse(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 }
+
+// TestRebase moves the committed policy to a new controller epoch (restore
+// reconciliation, M16): only from the epoch, revision and hash the
+// controller compared, never during a transaction, idempotent, and the old
+// epoch is refused afterwards.
+func TestRebase(t *testing.T) {
+	r := newRig(t)
+	c1 := candidate("# CANDIDATE one")
+	r.run(apply(c1, "fwtx_one", 4))
+	r.run(Action{Kind: Commit, TxID: "fwtx_one", Hash: Hash(c1)})
+	const newEpoch = "b9d2e4f6"
+	reb := func(from string, rev int64, hash string) *Result {
+		return r.run(Action{Kind: Rebase, FromEpoch: from, Epoch: newEpoch, Revision: rev, Hash: hash})
+	}
+	if res := reb("ffff0000", 4, Hash(c1)); res.ErrCode != "epoch" {
+		t.Fatalf("wrong from epoch: %+v", res)
+	}
+	if res := reb(epoch, 3, Hash(c1)); res.ErrCode != "changed" {
+		t.Fatalf("revision moved on: %+v", res)
+	}
+	if res := reb(epoch, 4, Hash("other")); res.ErrCode != "changed" {
+		t.Fatalf("hash differs: %+v", res)
+	}
+	res := reb(epoch, 4, Hash(c1))
+	if res.ErrCode != "" || res.Get("state") != "rebased" {
+		t.Fatalf("rebase: %+v", res)
+	}
+	st := r.run(Action{Kind: Status})
+	if st.Get("committed_epoch") != newEpoch || st.Get("committed_revision") != "4" || st.Get("committed_hash") != Hash(c1) ||
+		st.Get("live_hash") != st.Get("expected_live") || st.Get("tool_version") != "2" {
+		t.Fatalf("after rebase: %+v", st.Values)
+	}
+	if !strings.Contains(r.live(), "CANDIDATE one") {
+		t.Fatal("rules changed")
+	}
+	// Again: nothing to do, still fine.
+	if res := reb(epoch, 4, Hash(c1)); res.ErrCode != "" || res.Get("state") != "rebased" {
+		t.Fatalf("second rebase: %+v", res)
+	}
+	// The old epoch can't apply any more; the new one continues.
+	c2 := candidate("# CANDIDATE two")
+	if res := r.run(apply(c2, "fwtx_two", 5)); res.ErrCode != "epoch" {
+		t.Fatalf("old epoch after rebase: %+v", res)
+	}
+	a := apply(c2, "fwtx_three", 5)
+	a.Epoch = newEpoch
+	if res := r.run(a); res.ErrCode != "" || res.Get("state") != "pending" {
+		t.Fatalf("new epoch apply: %+v", res)
+	}
+	// Never in the middle of a transaction.
+	if res := r.run(Action{Kind: Rebase, FromEpoch: newEpoch, Epoch: "c0c0c0c0", Revision: 4, Hash: Hash(c1)}); res.ErrCode != "pending" {
+		t.Fatalf("rebase while pending: %+v", res)
+	}
+}

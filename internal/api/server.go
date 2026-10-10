@@ -15,6 +15,7 @@ import (
 	"drool/internal/model"
 	"drool/internal/monitor/monsvc"
 	"drool/internal/netmon/netsvc"
+	"drool/internal/recovery"
 	"drool/internal/sched"
 	"drool/internal/sshca"
 	"io/fs"
@@ -71,6 +72,7 @@ type Deps struct {
 	Integrity *audit.Integrity  // audit chain checks (M16); nil disables their routes
 	SSHCA     *sshca.Service    // SSH user certificate authority (M16); nil disables its routes
 	AuditSink *audit.Sink       // remote audit copy (M16); nil disables its routes
+	Recovery  *recovery.Service // restore reconciliation (M16); nil disables its routes
 	// StaleAfter is how old a status check may be before it is shown as stale.
 	StaleAfter time.Duration
 }
@@ -155,6 +157,11 @@ func (s *Server) routes() []route {
 		{method: "POST", path: APIPrefix + "/audit/sink/test", auth: authed, perm: auth.PermSettingsWrite, h: s.handleTestAuditSink},
 
 		{method: "GET", path: APIPrefix + "/system/info", auth: authed, h: s.handleSystemInfo},
+		{method: "GET", path: APIPrefix + "/system/restore", auth: authed, perm: auth.PermSettingsRead, h: s.handleRestoreStatus},
+		{method: "POST", path: APIPrefix + "/system/restore/finish", auth: authed, perm: auth.PermSettingsWrite, reauth: true, h: s.handleFinishRestore},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/reconciliation", auth: authed, perm: auth.PermHostsRead, h: s.handleHostReconciliation},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/reconciliation/accept", auth: authed, perm: auth.PermSettingsWrite, reauth: true, h: s.handleAcceptHostState},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/reconciliation/retry", auth: authed, perm: auth.PermSettingsWrite, h: s.handleRetryHostReconciliation},
 
 		{method: "GET", path: APIPrefix + "/secrets", auth: authed, perm: auth.PermCredentialsUse, h: s.handleListSecrets},
 		{method: "POST", path: APIPrefix + "/secrets", auth: authed, perm: auth.PermCredentialsManage, h: s.handleCreateSecret},
@@ -277,6 +284,8 @@ func (s *Server) routes() []route {
 		{method: "POST", path: APIPrefix + "/agents/pki/rotate", auth: authed, perm: auth.PermAgentsPKI, sessionOnly: true, h: s.handleAgentRotate},
 		{method: "POST", path: APIPrefix + "/agents/pki/manifests", auth: authed, perm: auth.PermAgentsPKI, h: s.handleAgentImportManifest},
 		{method: "GET", path: APIPrefix + "/agents/presets", auth: authed, perm: auth.PermAgentsRead, h: s.handleAgentPresets},
+		{method: "GET", path: APIPrefix + "/agents/unknown", auth: authed, perm: auth.PermAgentsRead, h: s.handleListUnknownAgents},
+		{method: "POST", path: APIPrefix + "/agents/unknown/{id}/dismiss", auth: authed, perm: auth.PermAgentsManage, h: s.handleDismissUnknownAgent},
 		{method: "GET", path: APIPrefix + "/agents/tokens", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleListAgentTokens},
 		{method: "POST", path: APIPrefix + "/agents/tokens", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleCreateAgentToken},
 		{method: "POST", path: APIPrefix + "/agents/tokens/{id}/revoke", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleRevokeAgentToken},

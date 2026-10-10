@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/Card";
 import { Table } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
 import { Alert } from "@/components/ui/Alert";
+import { RestoreReconciliationCard } from "@/components/system/RestoreReconciliation";
 import { errorMessage } from "@/lib/format";
 import type { Schemas } from "@/api/client";
 
@@ -25,6 +26,7 @@ export function SystemPage() {
           {d?.config_file !== undefined && (<><dt className="text-muted">Config file</dt><dd>{d.config_file || "none"}</dd></>)}
         </dl>
       </Card>
+      <RestoreReconciliationCard />
       <Card title="Backup and restore">
         <div className="space-y-3 text-sm">
           <p>

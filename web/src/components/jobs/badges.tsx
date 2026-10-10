@@ -42,7 +42,7 @@ export const errorExplanations: Record<string, string> = {
   ServiceError: "The service could not be put in the requested state.",
   CancelledError: "The job was cancelled.",
   LockTimeoutError: "Another job kept this host busy for too long.",
-  InterruptedError: "The controller restarted while this host was running; the outcome is unknown.",
+  InterruptedError: "The controller stopped (a restart, or a restore from a backup) while this host was running; the outcome is unknown.",
   InternalError: "Something went wrong inside DROOL. The controller log has details.",
   CapabilityError: "Refused by the host's Shepherd (DROOL agent): outside what the host allows.",
   VerificationError: "A check after the change didn't pass (the host, its services or its health).",

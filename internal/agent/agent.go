@@ -74,6 +74,8 @@ type Agent struct {
 	coll          *collect.Collector // connection collector, while collection is on
 	collectStop   context.CancelFunc
 
+	recoveredAt time.Time // the last certificate recovery the controller asked for
+
 	mon           *agentmon.Engine // system monitoring (M11), while enabled
 	monStop       context.CancelFunc
 	monConfigured bool // this process received a MonitorConfig

@@ -13,7 +13,7 @@
 # DROOL_FW_SELF and DROOL_FW_LOCK.
 set -u
 umask 077
-TOOL_VERSION=1
+TOOL_VERSION=2
 STATE=${DROOL_FW_STATE:-/var/lib/drool/firewall}
 SELF=${DROOL_FW_SELF:-/usr/libexec/drool-firewall/drool-fw}
 LOCK=${DROOL_FW_LOCK:-/run/drool-fw.lock}
@@ -346,6 +346,46 @@ cmd_sets() {
 	kv sets_generation "$gen"
 }
 
+# rebase: move the committed policy to a new controller epoch (a controller
+# restored from a backup starts a new one, DESIGN §10.3). Nothing about the
+# rules changes. Only when no transaction is pending and the committed state
+# is exactly the one the controller compared (epoch, revision, hash); done
+# twice, the second run changes nothing. Old-epoch commands are refused from
+# then on.
+cmd_rebase() {
+	from= epoch= rev= hash=
+	while [ $# -gt 0 ]; do
+		case $1 in
+		--from) from=$2; shift ;;
+		--epoch) epoch=$2; shift ;;
+		--revision) rev=$2; shift ;;
+		--hash) hash=$2; shift ;;
+		*) err usage "unknown argument $1" ;;
+		esac
+		shift
+	done
+	case $from$epoch in *[!0-9a-f]* | '') err usage "bad epoch" ;; esac
+	case $rev in *[!0-9]* | '') err usage "bad revision" ;; esac
+	lock
+	[ "$(jget "$J" state)" != pending ] || err pending "a firewall transaction is pending; it must commit or roll back first"
+	[ -f "$C" ] || err base "this host has no committed DROOL policy"
+	cep=$(jget "$C" controller_epoch)
+	crev=$(jget "$C" revision)
+	chash=$(jget "$C" hash)
+	if [ "$cep" = "$epoch" ] && [ "${crev:-0}" = "$rev" ] && [ "$chash" = "$hash" ]; then
+		kv state rebased
+		kv committed_epoch "$epoch"
+		exit 0
+	fi
+	[ "$cep" = "$from" ] || err epoch "the committed policy belongs to controller epoch ${cep:-none}, not $from"
+	[ "${crev:-0}" = "$rev" ] && [ "$chash" = "$hash" ] ||
+		err changed "the committed policy changed since it was compared (revision ${crev:-0}, hash $chash)"
+	committed_meta "$chash" "$crev" "$epoch" "$(jget "$C" transaction_id)" "$(jget "$C" live_hash)" \
+		"$(jget "$C" sets_generation)" "$(jget "$C" rules_hash)" || err state "cannot write committed.json"
+	kv state rebased
+	kv committed_epoch "$epoch"
+}
+
 cmd_status() {
 	kv tool_version "$TOOL_VERSION"
 	kv journal_state "$(jget "$J" state)"
@@ -373,7 +413,8 @@ commit) shift; cmd_commit "$@" ;;
 rollback) shift; cmd_rollback "$@" ;;
 boot) shift; cmd_boot ;;
 sets) shift; cmd_sets "$@" ;;
+rebase) shift; cmd_rebase "$@" ;;
 status) cmd_status ;;
 version) echo "$TOOL_VERSION" ;;
-*) err usage "usage: drool-fw apply|commit|rollback|boot|sets|status|version" ;;
+*) err usage "usage: drool-fw apply|commit|rollback|boot|sets|rebase|status|version" ;;
 esac

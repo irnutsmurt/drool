@@ -121,6 +121,7 @@ message AgentMessage {
     ManifestAck manifest_ack = 8;
     ChannelFailed channel_failed = 9;
     ConfigAck config_ack = 10;
+    EpochTransitionResult epoch_transition = 11;
   }
 }
 
@@ -141,6 +142,7 @@ message ControllerMessage {
     ConfigPush config = 13;
     FirewallConfig firewall_config = 14;
     MonitorConfig monitor_config = 15;
+    EpochTransition epoch_transition = 16;
   }
 }
 
@@ -157,6 +159,17 @@ message Hello {
   string controller_epoch = 10;   // the epoch the agent was enrolled with
   bytes firewall_json = 11;       // drool-fw status and resolved endpoints (M8)
   repeated string features = 12;  // optional capabilities of this agent build, e.g. "firewall-1"
+  // A controller told this agent that its identity is revoked (M16). The
+  // agent keeps saying so until a controller moves it to a new epoch: a
+  // controller restored from a backup older than the revocation doesn't
+  // know about it otherwise.
+  Revocation revocation = 13;
+}
+
+message Revocation {
+  string reason = 1;
+  int64 at_unix = 2;
+  string controller_epoch = 3;    // the epoch of the controller that revoked it
 }
 
 message StateReport {
@@ -305,6 +318,38 @@ message ConfigAck {
   bool applied = 2;
   string error = 3;
   bytes effective_json = 4;
+}
+
+// EpochTransition moves an agent to the controller's current epoch after a
+// restore (DESIGN §10.3, ARCHITECTURE-ALPHA §33.1), once the controller
+// compared what the agent reported with what it knows and found it either
+// identical or adopted by an administrator. The agent applies it only from
+// from_epoch, and only if every domain still has exactly the expected state;
+// afterwards commands of the old epoch are refused. Agents announce
+// "epoch-1" when they understand it.
+message EpochTransition {
+  string transition_id = 1;
+  string from_epoch = 2;
+  string to_epoch = 3;
+  repeated EpochDomain domains = 4;
+}
+
+// EpochDomain is one domain's state as compared (expect_*): it keeps its
+// revision and content in the new epoch.
+message EpochDomain {
+  string domain = 1;
+  string expect_epoch = 2;
+  uint64 expect_revision = 3;
+  string expect_hash = 4;
+}
+
+message EpochTransitionResult {
+  string transition_id = 1;
+  bool ok = 2;
+  string error = 3;
+  string code = 4;                 // changed | epoch | pending | unsupported | ...
+  StateReport state = 5;           // the agent's domains afterwards
+  string controller_epoch = 6;     // the agent's epoch afterwards
 }
 
 message Disconnect {

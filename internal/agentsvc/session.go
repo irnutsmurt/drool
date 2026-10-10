@@ -43,6 +43,10 @@ type Session struct {
 
 	mu          sync.Mutex
 	effective   agentcaps.Caps
+	epoch       string          // the controller epoch the agent answers to
+	state       *pb.StateReport // its applied domains (hello, then each transition)
+	firewall    []byte          // its latest firewall report (hello, then telemetry)
+	transWait   map[string]chan *pb.EpochTransitionResult
 	bootID      string
 	lastSeen    time.Time
 	lastTouch   time.Time
@@ -177,6 +181,8 @@ func (s *Service) Session(stream pb.Agent_SessionServer) error {
 	if err != nil {
 		if ident.ID != "" && ident.Status == "revoked" {
 			stream.Send(&pb.ControllerMessage{Msg: &pb.ControllerMessage_Disconnect{Disconnect: &pb.Disconnect{Code: "revoked", Reason: status.Convert(err).Message()}}})
+		} else {
+			s.refused(ctx, stream)
 		}
 		return err
 	}
@@ -191,7 +197,8 @@ func (s *Service) Session(stream pb.Agent_SessionServer) error {
 	}
 	now := s.now()
 	se := &Session{svc: s, ident: ident, stream: stream, hello: hello, addr: hostOnly(addr), connectedAt: now, lastSeen: now,
-		bootID: hello.Info.BootId, opWait: map[string]chan *pb.OpStatus{}, done: make(chan struct{})}
+		bootID: hello.Info.BootId, opWait: map[string]chan *pb.OpStatus{}, done: make(chan struct{}),
+		epoch: hello.ControllerEpoch, state: hello.State, firewall: hello.FirewallJson}
 	json.Unmarshal(hello.CeilingJson, &se.ceiling)
 	json.Unmarshal(hello.EffectiveJson, &se.effective)
 
@@ -203,6 +210,14 @@ func (s *Service) Session(stream pb.Agent_SessionServer) error {
 		reason = agentrpc.Incompatibility(s.ControllerRange, agentRange)
 	}
 	endpoints, _ := json.Marshal(hello.Endpoints)
+	if rh := s.recoveryHooks(); rh != nil {
+		if prev, cur := ident.MachineID, hello.Info.MachineId; prev != "" && cur != "" && prev != cur {
+			rh.MachineChanged(ident.HostID, prev, cur)
+		}
+		if hello.Revocation != nil {
+			rh.Revoked(ident.HostID, hello.Revocation)
+		}
+	}
 	if err := s.st.W.UpdateIdentityHello(ctx, db.UpdateIdentityHelloParams{AgentVersion: hello.Info.AgentVersion, Protocol: int64(se.protocol),
 		ProtocolMin: int64(agentRange.Min), ProtocolMax: int64(agentRange.Max), Compatible: boolInt(compatible), CompatReason: reason,
 		Hostname: hello.Info.Hostname, MachineID: hello.Info.MachineId, Os: hello.Info.Os, Arch: hello.Info.Arch,
@@ -287,6 +302,9 @@ func (s *Service) Session(stream pb.Agent_SessionServer) error {
 	s.agentOnlyStatus(ctx, ident.HostID, true)
 	s.hostChanged(ident.HostID)
 	go s.offerPendingUpdate(context.WithoutCancel(ctx), se)
+	if rh := s.recoveryHooks(); rh != nil {
+		rh.OnSession(ident.HostID)
+	}
 
 	for {
 		m, err := stream.Recv()
@@ -348,6 +366,8 @@ func (s *Service) Session(stream pb.Agent_SessionServer) error {
 			s.failChannel(msg.ChannelFailed.ChannelId, msg.ChannelFailed.Error)
 		case *pb.AgentMessage_ConfigAck:
 			s.onConfigAck(ctx, se, msg.ConfigAck)
+		case *pb.AgentMessage_EpochTransition:
+			se.onTransitionResult(msg.EpochTransition)
 		}
 	}
 }
@@ -475,6 +495,11 @@ func (s *Service) ingestTelemetry(ctx context.Context, se *Session, t *pb.Teleme
 			mh.OnTelemetry(hostID, t.Kind, t.Output)
 		}
 		return
+	}
+	if t.Kind == "firewall" {
+		se.mu.Lock()
+		se.firewall = t.Output
+		se.mu.Unlock()
 	}
 	if t.Kind == "firewall" || t.Kind == "flows" || t.Kind == "netflows" {
 		if fh := s.firewallHooks(); fh != nil {
@@ -660,11 +685,20 @@ func (s *Service) pushConfig(ctx context.Context, se *Session) {
 }
 
 func (s *Service) pushConfigIfNeeded(ctx context.Context, se *Session, h *pb.Hello) {
+	s.pushConfigIfBehind(ctx, se, h.State)
+}
+
+// pushConfigIfBehind pushes the agent-config domain when the agent's
+// applied revision is older than the controller's.
+func (s *Service) pushConfigIfBehind(ctx context.Context, se *Session, state *pb.StateReport) {
+	if se.agentEpoch() != "" && se.agentEpoch() != s.epoch {
+		return
+	}
 	cv, err := s.st.R.GetStateVersion(ctx, db.GetStateVersionParams{HostID: se.ident.HostID, Domain: "agent-config"})
 	if err != nil || cv.Status != "ok" {
 		return
 	}
-	for _, d := range h.State.GetDomains() {
+	for _, d := range state.GetDomains() {
 		if d.Domain == "agent-config" && int64(d.Revision) >= cv.Revision {
 			return
 		}
@@ -685,7 +719,9 @@ func (s *Service) onConfigAck(ctx context.Context, se *Session, a *pb.ConfigAck)
 			s.st.W.SetIdentityEffective(ctx, db.SetIdentityEffectiveParams{EffectiveJson: string(a.EffectiveJson), ID: se.ident.ID})
 		}
 	}
-	if a.Applied && a.Version != nil {
+	// Only a confirmation in this controller's epoch counts: a stale one
+	// (from before a restore) never advances the controller's state.
+	if a.Applied && a.Version != nil && a.Version.Epoch == s.epoch {
 		s.st.W.ReportStateVersion(ctx, db.ReportStateVersionParams{ReportedEpoch: a.Version.Epoch, ReportedRevision: int64(a.Version.Revision),
 			ReportedHash: a.Version.ContentHash, ReportedAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}, Status: "ok",
 			HostID: se.ident.HostID, Domain: "agent-config"})

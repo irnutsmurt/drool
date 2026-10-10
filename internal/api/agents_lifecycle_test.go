@@ -421,3 +421,45 @@ func TestAgentEndpointMigration(t *testing.T) {
 		return ep.Primary == alt && len(ep.Fallbacks) > 0 && ep.Fallbacks[0] == before.Primary
 	})
 }
+
+// TestManifestNumberingAfterRestore: after a restore, a new trust manifest
+// is numbered far enough ahead to supersede manifests the previous
+// controller may have issued after the backup, and always above what a
+// Shepherd reported (agents never accept an older or equal version).
+func TestManifestNumberingAfterRestore(t *testing.T) {
+	e := newAgentEnv(t)
+	ctx := context.Background()
+	rotate := func() uint64 {
+		t.Helper()
+		if r := e.c.do("POST", "/api/v1/agents/pki/rotate", map[string]any{"revoke_old": false}); r.status != 200 {
+			t.Fatalf("rotate: %d %s", r.status, r.body)
+		}
+		var st struct {
+			ManifestVersion uint64 `json:"manifest_version"`
+		}
+		e.c.do("GET", "/api/v1/agents/pki", nil).json(t, &st)
+		return st.ManifestVersion
+	}
+	if v := rotate(); v != 2 {
+		t.Fatalf("ordinary rotation: manifest %d", v)
+	}
+	if _, err := e.h.st.Writer.ExecContext(ctx, `INSERT INTO controller_restores (id, restored_at, backup_created_at, epoch, status)
+		VALUES ('rst_1', ?, 0, 'e', 'reconciling')`, time.Now().Add(time.Second).UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(1100 * time.Millisecond)
+	if v := rotate(); v != 1002 {
+		t.Fatalf("first rotation after a restore: manifest %d, want 1002", v)
+	}
+	if v := rotate(); v != 1003 {
+		t.Fatalf("next rotation: manifest %d", v)
+	}
+	p, _ := e.enroll(t, map[string]any{}, monitorCaps(), "v1.0.0")
+	_ = p
+	if _, err := e.h.st.Writer.ExecContext(ctx, `UPDATE agent_identities SET manifest_version = 5000`); err != nil {
+		t.Fatal(err)
+	}
+	if v := rotate(); v != 5001 {
+		t.Fatalf("rotation with a Shepherd reporting 5000: manifest %d", v)
+	}
+}

@@ -419,6 +419,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/system/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The latest restore of this controller (`restore` is null when it was never restored), what the restore set aside, and every host's reconciliation with the new controller epoch (ARCHITECTURE-ALPHA §33.1). Requires `settings.read`. */
+        get: operations["getRestoreStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/system/restore/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Close the restore's reconciliation. Hosts not reconciled yet keep refusing this controller's commands until they are; their Shepherds are still compared whenever they connect. Requires `settings.write` and recent re-authentication. */
+        post: operations["finishRestore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/reconciliation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        /** @description The host's reconciliation after the latest restore (404 when the controller was never restored or the host wasn't part of it). Requires `hosts.read`. */
+        get: operations["getHostReconciliation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/reconciliation/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Accept the host's state as it is (state changed after the backup, state that disagrees with the restored controller's, or a Shepherd identity now presented by another machine) and compare it again: it is moved to the new epoch without anything on the host changing, and DROOL's own configuration then shows where it differs. Refused (409) for hosts blocked for other reasons. Requires `settings.write` and recent re-authentication. */
+        post: operations["acceptHostState"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/reconciliation/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Compare the host again now. Requires `settings.write`. */
+        post: operations["retryHostReconciliation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/secrets": {
         parameters: {
             query?: never;
@@ -1648,6 +1739,42 @@ export interface paths {
         put?: never;
         /** @description Import a trust manifest signed offline (`drool agent-ca sign-manifest`). It must verify against the root and be newer. */
         post: operations["importTrustManifest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/unknown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Shepherds that presented a certificate from this controller's root with an identity it has no record of (enrolled after the backup it was restored from). They are refused; enroll them again. Requires `agents.read`. */
+        get: operations["listUnknownAgents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/unknown/{id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Hide an unknown Shepherd from the list (it is listed again if it still tries to connect a day later). Requires `agents.manage`. */
+        post: operations["dismissUnknownAgent"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3841,6 +3968,8 @@ export interface components {
         AgentPKI: components["schemas"]["AgentPKIStatus"] & {
             endpoint_port: string;
             controller_epoch: string;
+            /** @description The newest trust manifest version a Shepherd reported. Newer than manifest_version after a restore from a backup older than an intermediate rotation: rotate the intermediate (the next manifest is numbered to supersede it). */
+            newest_agent_manifest: number;
         };
         EnrollmentToken: {
             id: string;
@@ -4508,6 +4637,92 @@ export interface components {
         };
         SSHCANameRequest: {
             name?: string;
+        };
+        RestoreStatus: {
+            restore: components["schemas"]["RestoreInfo"] | null;
+            /** @description Hosts per reconciliation state. */
+            counts: {
+                [key: string]: number;
+            };
+            hosts: components["schemas"]["HostReconciliation"][];
+            /** @description Job schedules the restore held. */
+            schedules: components["schemas"]["RestoreHeldItem"][];
+            /** @description Baselines whose automatic restore the restore paused. */
+            baselines: components["schemas"]["RestoreHeldItem"][];
+            agent_rollouts_paused: number;
+            /** @description What the restore closed without knowing how it ended (never repeated). */
+            unknown_outcome: {
+                jobs: number;
+                job_hosts: number;
+                firewall_transactions: number;
+                notifications: number;
+                queued_runs: number;
+            };
+        };
+        RestoreInfo: {
+            id: string;
+            /** Format: date-time */
+            restored_at: string;
+            /** Format: date-time */
+            backup_created_at: string;
+            backup_version: string;
+            backup_host: string;
+            previous_epoch: string;
+            epoch: string;
+            restored_by: string;
+            /** @enum {string} */
+            status: "reconciling" | "finished";
+            /** Format: date-time */
+            finished_at?: string;
+            finished_by?: string;
+        };
+        RestoreHeldItem: {
+            id: string;
+            name: string;
+            /** @description Still held (false once an administrator resumed it). */
+            held: boolean;
+        };
+        HostReconciliation: {
+            host_id: string;
+            host_name: string;
+            /** @enum {string} */
+            state: "pending" | "recovered" | "reconciled" | "ahead" | "attention" | "incompatible" | "blocked" | "unreachable";
+            reason: string;
+            domains: components["schemas"]["ReconciliationDomain"][];
+            /** Format: date-time */
+            checked_at?: string;
+            /** Format: date-time */
+            reconciled_at?: string;
+            /** @description Who accepted the host's state. */
+            decided_by?: string;
+            attempts: number;
+            /** Format: date-time */
+            next_attempt_at?: string;
+            restore_id: string;
+        };
+        ReconciliationDomain: {
+            domain: string;
+            /** @enum {string} */
+            verdict: "same" | "controller_ahead" | "host_ahead" | "conflict" | "foreign_epoch" | "accepted";
+            controller_epoch?: string;
+            controller_revision: number;
+            controller_hash?: string;
+            host_epoch?: string;
+            host_revision: number;
+            host_hash?: string;
+        };
+        UnknownAgent: {
+            identity_id: string;
+            hostname: string;
+            machine_id: string;
+            agent_version: string;
+            address: string;
+            key_fingerprint: string;
+            /** Format: date-time */
+            first_seen_at: string;
+            /** Format: date-time */
+            last_seen_at: string;
+            attempts: number;
         };
         HostSSHAuth: {
             /** @enum {string} */
@@ -8324,6 +8539,120 @@ export interface operations {
             };
         };
     };
+    getRestoreStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Restore reconciliation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreStatus"];
+                };
+            };
+            403: components["responses"]["Problem"];
+        };
+    };
+    finishRestore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Restore reconciliation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreStatus"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    getHostReconciliation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reconciliation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostReconciliation"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    acceptHostState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reconciliation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostReconciliation"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    retryHostReconciliation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reconciliation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostReconciliation"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
     listSecrets: {
         parameters: {
             query?: never;
@@ -10583,6 +10912,49 @@ export interface operations {
                 };
             };
             422: components["responses"]["Problem"];
+        };
+    };
+    listUnknownAgents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unknown Shepherds. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["UnknownAgent"][];
+                    };
+                };
+            };
+        };
+    };
+    dismissUnknownAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Dismissed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
         };
     };
     listAgentPresets: {

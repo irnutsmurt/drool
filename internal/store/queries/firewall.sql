@@ -114,7 +114,8 @@ FROM fw_transactions WHERE (sqlc.narg('host_id') IS NULL OR host_id = sqlc.narg(
 ORDER BY created_at DESC LIMIT sqlc.arg('lim');
 
 -- name: ListOpenFwTransactions :many
-SELECT * FROM fw_transactions WHERE state IN ('preparing','pending','unknown') ORDER BY created_at;
+-- closed_reason: set aside by a controller restore (M16); never pursued again.
+SELECT * FROM fw_transactions WHERE state IN ('preparing','pending','unknown') AND closed_reason = '' ORDER BY created_at;
 
 -- name: ListAllHostAddresses :many
 SELECT * FROM host_addresses ORDER BY host_id, family, address;

@@ -21,8 +21,11 @@ import (
 // Features are optional capabilities of this agent build, announced in the
 // hello. The controller only sends firewall operations to agents that
 // announce "firewall-1"; "netmon-1" agents report "netflows" (M10);
-// "monitor-1" agents run system monitoring (M11).
-var Features = []string{"firewall-1", "netmon-1", "monitor-1"}
+// "monitor-1" agents run system monitoring (M11); "query-1" agents answer
+// read-only state queries (M14; announced from M16, older M14 agents
+// answer them too); "epoch-1" agents move to a restored controller's new
+// epoch (M16).
+var Features = []string{"firewall-1", "netmon-1", "monitor-1", "query-1", "epoch-1"}
 
 // errReconnect ends a session on purpose: after applying a firewall
 // candidate the agent proves the management path with a completely new

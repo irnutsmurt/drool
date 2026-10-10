@@ -491,6 +491,72 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SystemInfo' }
+  /system/restore:
+    get:
+      operationId: getRestoreStatus
+      tags: [system]
+      description: 'The latest restore of this controller (`restore` is null when it was never restored), what the restore set aside, and every host''s reconciliation with the new controller epoch (ARCHITECTURE-ALPHA §33.1). Requires `settings.read`.'
+      responses:
+        '200':
+          description: Restore reconciliation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RestoreStatus' }
+        '403': { $ref: '#/components/responses/Problem' }
+  /system/restore/finish:
+    post:
+      operationId: finishRestore
+      tags: [system]
+      description: 'Close the restore''s reconciliation. Hosts not reconciled yet keep refusing this controller''s commands until they are; their Shepherds are still compared whenever they connect. Requires `settings.write` and recent re-authentication.'
+      responses:
+        '200':
+          description: Restore reconciliation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RestoreStatus' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/reconciliation:
+    parameters: [{ $ref: '#/components/parameters/HostId' }]
+    get:
+      operationId: getHostReconciliation
+      tags: [hosts]
+      description: 'The host''s reconciliation after the latest restore (404 when the controller was never restored or the host wasn''t part of it). Requires `hosts.read`.'
+      responses:
+        '200':
+          description: Reconciliation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HostReconciliation' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/reconciliation/accept:
+    parameters: [{ $ref: '#/components/parameters/HostId' }]
+    post:
+      operationId: acceptHostState
+      tags: [hosts]
+      description: 'Accept the host''s state as it is (state changed after the backup, state that disagrees with the restored controller''s, or a Shepherd identity now presented by another machine) and compare it again: it is moved to the new epoch without anything on the host changing, and DROOL''s own configuration then shows where it differs. Refused (409) for hosts blocked for other reasons. Requires `settings.write` and recent re-authentication.'
+      responses:
+        '200':
+          description: Reconciliation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HostReconciliation' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/reconciliation/retry:
+    parameters: [{ $ref: '#/components/parameters/HostId' }]
+    post:
+      operationId: retryHostReconciliation
+      tags: [hosts]
+      description: 'Compare the host again now. Requires `settings.write`.'
+      responses:
+        '200':
+          description: Reconciliation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HostReconciliation' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
 
   /secrets:
     get:
@@ -1838,6 +1904,24 @@ paths:
       responses:
         '200': { description: PKI status., content: { application/json: { schema: { $ref: '#/components/schemas/AgentPKIStatus' } } } }
         '422': { $ref: '#/components/responses/Problem' }
+  /agents/unknown:
+    get:
+      operationId: listUnknownAgents
+      tags: [agents]
+      description: 'Shepherds that presented a certificate from this controller''s root with an identity it has no record of (enrolled after the backup it was restored from). They are refused; enroll them again. Requires `agents.read`.'
+      responses:
+        '200':
+          description: Unknown Shepherds.
+          content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/UnknownAgent' } } } } } }
+  /agents/unknown/{id}/dismiss:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: dismissUnknownAgent
+      tags: [agents]
+      description: 'Hide an unknown Shepherd from the list (it is listed again if it still tries to connect a day later). Requires `agents.manage`.'
+      responses:
+        '204': { description: Dismissed. }
+        '404': { $ref: '#/components/responses/Problem' }
   /agents/presets:
     get:
       operationId: listAgentPresets
@@ -3523,10 +3607,11 @@ components:
       allOf:
         - $ref: '#/components/schemas/AgentPKIStatus'
         - type: object
-          required: [endpoint_port, controller_epoch]
+          required: [endpoint_port, controller_epoch, newest_agent_manifest]
           properties:
             endpoint_port: { type: string }
             controller_epoch: { type: string }
+            newest_agent_manifest: { type: integer, description: 'The newest trust manifest version a Shepherd reported. Newer than manifest_version after a restore from a backup older than an intermediate rotation: rotate the intermediate (the next manifest is numbered to supersede it).' }
     EnrollmentToken:
       type: object
       required: [id, description, host_id, host_name, group_id, group_name, preset, created_at, expires_at, used_at, revoked_at, state]
@@ -4276,6 +4361,91 @@ components:
       properties:
         name: { type: string, maxLength: 64 }
 
+    RestoreStatus:
+      type: object
+      required: [restore, counts, hosts, schedules, baselines, agent_rollouts_paused, unknown_outcome]
+      properties:
+        restore:
+          oneOf:
+            - { $ref: '#/components/schemas/RestoreInfo' }
+            - { type: 'null' }
+        counts: { type: object, additionalProperties: { type: integer }, description: Hosts per reconciliation state. }
+        hosts: { type: array, items: { $ref: '#/components/schemas/HostReconciliation' } }
+        schedules: { type: array, items: { $ref: '#/components/schemas/RestoreHeldItem' }, description: Job schedules the restore held. }
+        baselines: { type: array, items: { $ref: '#/components/schemas/RestoreHeldItem' }, description: Baselines whose automatic restore the restore paused. }
+        agent_rollouts_paused: { type: integer }
+        unknown_outcome:
+          type: object
+          description: What the restore closed without knowing how it ended (never repeated).
+          required: [jobs, job_hosts, firewall_transactions, notifications, queued_runs]
+          properties:
+            jobs: { type: integer }
+            job_hosts: { type: integer }
+            firewall_transactions: { type: integer }
+            notifications: { type: integer }
+            queued_runs: { type: integer }
+    RestoreInfo:
+      type: object
+      required: [id, restored_at, backup_created_at, backup_version, backup_host, previous_epoch, epoch, restored_by, status]
+      properties:
+        id: { type: string }
+        restored_at: { type: string, format: date-time }
+        backup_created_at: { type: string, format: date-time }
+        backup_version: { type: string }
+        backup_host: { type: string }
+        previous_epoch: { type: string }
+        epoch: { type: string }
+        restored_by: { type: string }
+        status: { type: string, enum: [reconciling, finished] }
+        finished_at: { type: string, format: date-time }
+        finished_by: { type: string }
+    RestoreHeldItem:
+      type: object
+      required: [id, name, held]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        held: { type: boolean, description: Still held (false once an administrator resumed it). }
+    HostReconciliation:
+      type: object
+      required: [host_id, host_name, state, reason, domains, attempts, restore_id]
+      properties:
+        host_id: { type: string }
+        host_name: { type: string }
+        state: { type: string, enum: [pending, recovered, reconciled, ahead, attention, incompatible, blocked, unreachable] }
+        reason: { type: string }
+        domains: { type: array, items: { $ref: '#/components/schemas/ReconciliationDomain' } }
+        checked_at: { type: string, format: date-time }
+        reconciled_at: { type: string, format: date-time }
+        decided_by: { type: string, description: Who accepted the host's state. }
+        attempts: { type: integer }
+        next_attempt_at: { type: string, format: date-time }
+        restore_id: { type: string }
+    ReconciliationDomain:
+      type: object
+      required: [domain, verdict, controller_revision, host_revision]
+      properties:
+        domain: { type: string }
+        verdict: { type: string, enum: [same, controller_ahead, host_ahead, conflict, foreign_epoch, accepted] }
+        controller_epoch: { type: string }
+        controller_revision: { type: integer }
+        controller_hash: { type: string }
+        host_epoch: { type: string }
+        host_revision: { type: integer }
+        host_hash: { type: string }
+    UnknownAgent:
+      type: object
+      required: [identity_id, hostname, machine_id, agent_version, address, key_fingerprint, first_seen_at, last_seen_at, attempts]
+      properties:
+        identity_id: { type: string }
+        hostname: { type: string }
+        machine_id: { type: string }
+        agent_version: { type: string }
+        address: { type: string }
+        key_fingerprint: { type: string }
+        first_seen_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        attempts: { type: integer }
     HostSSHAuth:
       type: object
       required: [mode, principal, credential_assigned, trust]

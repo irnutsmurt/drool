@@ -38,9 +38,10 @@ type FirewallApplyOp struct {
 
 // FirewallOp is one action of the on-host firewall tooling (drool-fw).
 type FirewallOp struct {
-	Kind           string    `json:"kind"` // detect | status | snapshot | apply | commit | rollback | sets
+	Kind           string    `json:"kind"` // detect | status | snapshot | apply | commit | rollback | sets | rebase
 	TxID           string    `json:"tx_id,omitempty"`
 	Epoch          string    `json:"epoch,omitempty"`
+	FromEpoch      string    `json:"from_epoch,omitempty"` // rebase: the epoch the committed state must have
 	Revision       int64     `json:"revision,omitempty"`
 	Hash           string    `json:"hash,omitempty"`
 	TimeoutS       int       `json:"timeout_s,omitempty"` // rollback timeout (apply)
@@ -65,7 +66,7 @@ func (o FirewallOp) Mutating() bool {
 
 func (o *FirewallOp) normalize() error {
 	switch o.Kind {
-	case "detect", "status", "snapshot", "apply", "commit", "rollback", "sets":
+	case "detect", "status", "snapshot", "apply", "commit", "rollback", "sets", "rebase":
 		return nil
 	}
 	return fmt.Errorf("unknown firewall action %q", o.Kind)

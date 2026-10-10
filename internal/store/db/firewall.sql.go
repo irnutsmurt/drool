@@ -156,7 +156,7 @@ func (q *Queries) GetFwService(ctx context.Context, id string) (FwService, error
 }
 
 const getFwTransaction = `-- name: GetFwTransaction :one
-SELECT id, host_id, job_id, kind, state, transport, epoch, revision, previous_hash, candidate_hash, rules_hash, sets_hash, timeout_s, deadline, measured_ms, override_mgmt, override_timeout, allow_drift, detail, error_class, candidate, policy_json, steps_json, created_by, created_at, updated_at, finished_at FROM fw_transactions WHERE id = ?
+SELECT id, host_id, job_id, kind, state, transport, epoch, revision, previous_hash, candidate_hash, rules_hash, sets_hash, timeout_s, deadline, measured_ms, override_mgmt, override_timeout, allow_drift, detail, error_class, candidate, policy_json, steps_json, created_by, created_at, updated_at, finished_at, closed_reason FROM fw_transactions WHERE id = ?
 `
 
 func (q *Queries) GetFwTransaction(ctx context.Context, id string) (FwTransaction, error) {
@@ -190,6 +190,7 @@ func (q *Queries) GetFwTransaction(ctx context.Context, id string) (FwTransactio
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.FinishedAt,
+		&i.ClosedReason,
 	)
 	return i, err
 }
@@ -727,9 +728,10 @@ func (q *Queries) ListFwTransactions(ctx context.Context, arg ListFwTransactions
 }
 
 const listOpenFwTransactions = `-- name: ListOpenFwTransactions :many
-SELECT id, host_id, job_id, kind, state, transport, epoch, revision, previous_hash, candidate_hash, rules_hash, sets_hash, timeout_s, deadline, measured_ms, override_mgmt, override_timeout, allow_drift, detail, error_class, candidate, policy_json, steps_json, created_by, created_at, updated_at, finished_at FROM fw_transactions WHERE state IN ('preparing','pending','unknown') ORDER BY created_at
+SELECT id, host_id, job_id, kind, state, transport, epoch, revision, previous_hash, candidate_hash, rules_hash, sets_hash, timeout_s, deadline, measured_ms, override_mgmt, override_timeout, allow_drift, detail, error_class, candidate, policy_json, steps_json, created_by, created_at, updated_at, finished_at, closed_reason FROM fw_transactions WHERE state IN ('preparing','pending','unknown') AND closed_reason = '' ORDER BY created_at
 `
 
+// closed_reason: set aside by a controller restore (M16); never pursued again.
 func (q *Queries) ListOpenFwTransactions(ctx context.Context) ([]FwTransaction, error) {
 	rows, err := q.db.QueryContext(ctx, listOpenFwTransactions)
 	if err != nil {
@@ -767,6 +769,7 @@ func (q *Queries) ListOpenFwTransactions(ctx context.Context) ([]FwTransaction, 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.FinishedAt,
+			&i.ClosedReason,
 		); err != nil {
 			return nil, err
 		}

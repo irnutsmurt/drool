@@ -73,6 +73,9 @@ type pkiJSON struct {
 	agentsvc.Status
 	Endpoint        string `json:"endpoint_port"`
 	ControllerEpoch string `json:"controller_epoch"`
+	// The newest trust manifest a Shepherd reported (newer than this
+	// controller's after a restore from a backup older than a rotation).
+	NewestAgentManifest uint64 `json:"newest_agent_manifest"`
 }
 
 func (s *Server) handleAgentPKI(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +83,7 @@ func (s *Server) handleAgentPKI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, pkiJSON{Status: s.d.Agents.PKI().Status(), Endpoint: fmt.Sprint(s.d.Config.Agent.Port),
-		ControllerEpoch: s.d.Agents.Epoch()})
+		ControllerEpoch: s.d.Agents.Epoch(), NewestAgentManifest: s.d.Agents.PKI().NewestAgentManifest(r.Context())})
 }
 
 func (s *Server) handleAgentRootCert(w http.ResponseWriter, r *http.Request) {

@@ -6,6 +6,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { usePKI } from "@/components/agents/queries";
 import { plainLink } from "@/components/ui/links";
 import { useAuditIntegrity, useAuditSink } from "@/components/audit/AuditIntegrity";
+import { useRestoreStatus } from "@/components/system/RestoreReconciliation";
 
 export function useSystemInfo() {
   return useQuery({ queryKey: ["system", "info"], queryFn: () => unwrap(api.GET("/system/info")), staleTime: 5 * 60_000 });
@@ -27,7 +28,25 @@ export function useSecurityItems(): SecurityItem[] {
   const pki = usePKI(can("agents.read"));
   const integrity = useAuditIntegrity(can("audit.read"));
   const sink = useAuditSink(can("settings.read"));
+  const restore = useRestoreStatus(can("settings.read"));
   const items: SecurityItem[] = [];
+  const rs = restore.data;
+  if (rs?.restore?.status === "reconciling") {
+    const decide = (rs.counts.ahead ?? 0) + (rs.counts.attention ?? 0) + (rs.counts.blocked ?? 0) + (rs.counts.incompatible ?? 0);
+    const waiting = (rs.counts.pending ?? 0) + (rs.counts.unreachable ?? 0);
+    items.push({
+      id: "restore",
+      tone: "warn",
+      title: "This controller was restored from a backup",
+      body: (
+        <>
+          {decide > 0 ? `${decide} host${decide === 1 ? " needs" : "s need"} a decision` : "Hosts are being reconciled"}
+          {waiting > 0 ? `, ${waiting} not compared yet` : ""}. Until a host is reconciled, DROOL sends it nothing.{" "}
+          <Link className={plainLink} to="/settings/system">Settings → System → Restore</Link>.
+        </>
+      ),
+    });
+  }
   if (integrity.data?.state === "failed") {
     items.push({
       id: "audit-chain",

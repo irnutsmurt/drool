@@ -25,6 +25,7 @@ import { HostMonitoringSummary } from "@/components/monitoring/HostMonitoringSum
 import { HostAlertsCard, HostMaintenanceBanner } from "@/components/alerts/HostAlerts";
 import { useAlertSummary } from "@/components/alerts/queries";
 import { Alert } from "@/components/ui/Alert";
+import { HostReconciliationNotice } from "@/components/system/RestoreReconciliation";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -187,6 +188,7 @@ export function HostDetailPage() {
       />
       <div className="space-y-4">
         {can("alerts.read") && managed && <HostMaintenanceBanner hostId={h.id} />}
+        <HostReconciliationNotice hostId={h.id} />
         {help && <Alert tone={help.tone}>{help.text}</Alert>}
         {needsKey && (
           <Card title={h.status === "hostkey_mismatch" ? "The host key changed" : "Approve the host key"}>

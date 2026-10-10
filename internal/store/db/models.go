@@ -278,6 +278,21 @@ type AuditVerification struct {
 	EvidenceFile            string
 }
 
+type ControllerRestore struct {
+	ID              string
+	RestoredAt      int64
+	BackupCreatedAt int64
+	BackupVersion   string
+	BackupHost      string
+	PreviousEpoch   string
+	Epoch           string
+	RestoredBy      string
+	Status          string
+	FinishedAt      sql.NullInt64
+	FinishedBy      string
+	SummaryJson     string
+}
+
 type DsAssignment struct {
 	BaselineID string
 	Scope      string
@@ -579,6 +594,7 @@ type FwTransaction struct {
 	CreatedAt       int64
 	UpdatedAt       int64
 	FinishedAt      sql.NullInt64
+	ClosedReason    string
 }
 
 type Group struct {
@@ -651,6 +667,19 @@ type HostHop struct {
 	HostID    string
 	HopIndex  int64
 	ViaHostID string
+}
+
+type HostReconciliation struct {
+	RestoreID     string
+	HostID        string
+	State         string
+	Reason        string
+	DomainsJson   string
+	CheckedAt     sql.NullInt64
+	ReconciledAt  sql.NullInt64
+	DecidedBy     string
+	Attempts      int64
+	NextAttemptAt int64
 }
 
 type HostStatus struct {
@@ -1144,6 +1173,20 @@ type StateVersion struct {
 	ReportedHash     string
 	ReportedAt       sql.NullInt64
 	Status           string
+}
+
+type UnknownAgent struct {
+	IdentityID     string
+	Hostname       string
+	MachineID      string
+	AgentVersion   string
+	Address        string
+	KeyFingerprint string
+	CertNotAfter   sql.NullInt64
+	FirstSeenAt    int64
+	LastSeenAt     int64
+	Attempts       int64
+	DismissedAt    sql.NullInt64
 }
 
 type User struct {

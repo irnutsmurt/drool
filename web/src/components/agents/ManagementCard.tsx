@@ -111,7 +111,7 @@ export function ManagementCard({ host, children }: { host: Host; children?: Reac
         || id.update_state === "failed" || id.update_state === "rolled_back") && (
         <div className="mt-3 space-y-2">
           {!id.compatible && <Alert>Shepherd version {id.agent_version} isn&apos;t compatible with this controller{id.compat_reason ? `: ${id.compat_reason}` : ""}.</Alert>}
-          {!id.epoch_matches && <Alert>The Shepherd reports a different controller epoch ({id.epoch_reported.slice(0, 12)}): it refuses commands until this is reconciled.</Alert>}
+          {!id.epoch_matches && <Alert tone="warn">The Shepherd still answers to another controller epoch ({id.epoch_reported.slice(0, 12)}), from before this controller was restored: it refuses this controller&apos;s commands until it is reconciled (see the notice above, or Settings → System → Restore).</Alert>}
           {(a?.sessions ?? []).length > 1 && <Alert>{a!.sessions.length} sessions are connected with this identity.</Alert>}
           {(a?.state_versions ?? []).some((sv) => sv.status !== "ok") && <Alert tone="warn">Managed state on the host is ahead of, or foreign to, this controller: reconcile it under Shepherd details.</Alert>}
           {(id.update_state === "failed" || id.update_state === "rolled_back") && <Alert tone="warn">The last Shepherd update {id.update_state === "failed" ? "failed" : "was rolled back"}{id.update_detail ? `: ${id.update_detail}` : ""}.</Alert>}

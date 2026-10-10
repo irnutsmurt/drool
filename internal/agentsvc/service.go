@@ -75,6 +75,8 @@ type Hooks struct {
 	Firewall FirewallHooks
 	// Monitor connects sessions and telemetry to system monitoring (M11).
 	Monitor MonitorHooks
+	// Recovery connects sessions to restore reconciliation (M16).
+	Recovery RecoveryHooks
 }
 
 type challenge struct {
@@ -114,8 +116,8 @@ func New(ctx context.Context, o Options) (*Service, error) {
 }
 
 // ControllerEpoch returns the controller epoch (DESIGN §9), creating it on
-// first use. Backups carry it, so a restored controller keeps its epoch;
-// only reconciliation (Beta) starts a new one.
+// first use. drool restore gives the restored controller a new one, and
+// agents move to it only through reconciliation (internal/recovery).
 func ControllerEpoch(ctx context.Context, st *store.Store) (string, error) {
 	row, err := st.R.GetSetting(ctx, "controller_epoch")
 	if err == nil {

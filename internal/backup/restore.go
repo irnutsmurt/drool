@@ -78,6 +78,9 @@ type RestoreResult struct {
 	ConfigRestoredTo string
 	TLSRestored      bool
 	SessionsCleared  int64
+	// Reconciliation: the new controller epoch and what the restore set
+	// aside (DESIGN §10.3).
+	Reconcile *RestoreSummary
 }
 
 // staged is an extracted, verified archive.
@@ -187,15 +190,35 @@ func Restore(ctx context.Context, cfg *config.Loaded, r io.Reader, opts RestoreO
 	if _, err := sdb.Writer.ExecContext(ctx, `DELETE FROM setup_codes`); err != nil {
 		return nil, err
 	}
+	actor := cliActor()
+	// A new controller epoch, and nothing the backup recorded as in
+	// progress is resumed or repeated.
+	tx, err := sdb.Writer.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	if res.Reconcile, err = PrepareRestored(ctx, tx, m, actor.Name, time.Now()); err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("prepare the restored database for reconciliation: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	rc := res.Reconcile
 	details := map[string]any{
 		"backup_created_at": m.CreatedAt, "backup_version": m.DroolVersion, "backup_schema": m.SchemaVersion,
 		"backup_host": m.Hostname, "migrations": res.Migrations, "key_source": res.KeySource,
 		"credentials_discarded": res.Discarded,
 	}
+	for k, v := range map[string]any{"restore_id": rc.RestoreID, "previous_epoch": rc.PreviousEpoch, "epoch": rc.Epoch,
+		"jobs_interrupted": rc.JobsInterrupted, "firewall_transactions_closed": rc.FirewallClosed,
+		"notifications_dropped": rc.DeliveriesDropped, "schedules_held": len(rc.SchedulesHeld),
+		"automatic_restore_paused": len(rc.AutoPaused), "agent_rollouts_paused": rc.RolloutsPaused} {
+		details[k] = v
+	}
 	if res.Discarded {
 		details["hosts_without_credentials"] = res.DiscardedFor
 	}
-	actor := cliActor()
 	if err := audit.NewWriter(sdb, slog.New(slog.DiscardHandler)).Record(ctx, audit.Event{
 		Action: "backup.restore", Actor: &actor, TargetType: "controller", Details: details,
 	}); err != nil {

@@ -343,6 +343,59 @@ func (s *Store) ApplyDomain(v agentrpc.StateVersion) error {
 	return s.writeJSON("domains.json", d)
 }
 
+// Revocation is what a controller said when it revoked this identity.
+type Revocation struct {
+	Reason          string    `json:"reason"`
+	At              time.Time `json:"at"`
+	ControllerEpoch string    `json:"controller_epoch"`
+}
+
+// SetRevocation remembers a revocation (the first one counts).
+func (s *Store) SetRevocation(r Revocation) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var cur Revocation
+	if s.readJSON("revoked.json", &cur) == nil {
+		return nil
+	}
+	return s.writeJSON("revoked.json", r)
+}
+
+// Revocation returns the remembered revocation, if any.
+func (s *Store) Revocation() *Revocation {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var r Revocation
+	if s.readJSON("revoked.json", &r) != nil {
+		return nil
+	}
+	return &r
+}
+
+// ClearRevocation forgets it: a controller moved this agent to its epoch
+// knowing about it (an administrator accepted it).
+func (s *Store) ClearRevocation() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := os.Remove(s.path("revoked.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// SetControllerEpoch moves the identity to a new controller epoch (the
+// commit point of an epoch transition after a controller restore).
+func (s *Store) SetControllerEpoch(epoch string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var id Identity
+	if err := s.readJSON("identity.json", &id); err != nil {
+		return err
+	}
+	id.ControllerEpoch = epoch
+	return s.writeJSON("identity.json", id)
+}
+
 // Requested returns the controller's narrowing request (nil: none).
 func (s *Store) Requested() ([]byte, error) {
 	s.mu.Lock()

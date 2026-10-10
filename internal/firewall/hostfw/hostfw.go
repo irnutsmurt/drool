@@ -59,6 +59,9 @@ const (
 	Commit   = "commit"
 	Rollback = "rollback"
 	Sets     = "sets"
+	// Rebase moves the committed policy to a new controller epoch (restore
+	// reconciliation, M16); tool version 2.
+	Rebase = "rebase"
 )
 
 // Action is one call into the host tooling (the same type travels to
@@ -109,7 +112,7 @@ func install(p Paths) string {
 
 // Script returns the shell body that performs a.
 func Script(p Paths, a Action) (string, error) {
-	for _, s := range []string{a.TxID, a.Epoch, a.Hash, a.RulesHash} {
+	for _, s := range []string{a.TxID, a.Epoch, a.FromEpoch, a.Hash, a.RulesHash} {
 		if !safeArg.MatchString(s) {
 			return "", fmt.Errorf("unsafe argument %q", s)
 		}
@@ -147,6 +150,9 @@ func Script(p Paths, a Action) (string, error) {
 		b.WriteString(" " + heredoc("DROOL_FW_CANDIDATE_EOF", a.Candidate))
 	case Commit:
 		fmt.Fprintf(&b, "%s%s commit --tx %s --hash %s\n", env, tool, a.TxID, a.Hash)
+	case Rebase:
+		b.WriteString(install(p))
+		fmt.Fprintf(&b, "%s%s rebase --from %s --epoch %s --revision %d --hash %s\n", env, tool, a.FromEpoch, a.Epoch, a.Revision, a.Hash)
 	case Rollback:
 		fmt.Fprintf(&b, "%s%s rollback --tx %s --reason %s\n", env, tool, a.TxID, hostops.ShQuote(a.Reason))
 	case Sets:
@@ -228,7 +234,7 @@ func (r *Result) Error() error {
 	cls := model.ClassExecution
 	hint := ""
 	switch r.ErrCode {
-	case "duplicate", "stale", "epoch", "expired", "hash", "usage", "unknown_tx", "base":
+	case "duplicate", "stale", "epoch", "expired", "hash", "usage", "unknown_tx", "base", "changed":
 		cls = model.ClassValidation
 	case "pending", "busy":
 		cls = model.ClassLock

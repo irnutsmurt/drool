@@ -37,6 +37,7 @@ import (
 	"drool/internal/mgmt"
 	"drool/internal/monitor/monsvc"
 	"drool/internal/netmon/netsvc"
+	"drool/internal/recovery"
 	"drool/internal/sched"
 	"drool/internal/secrets"
 	"drool/internal/sshx"
@@ -81,6 +82,8 @@ type harness struct {
 	sink      *audit.Sink
 	auditW    *audit.Writer
 	dataDir   string
+	recovery  *recovery.Service
+	dbPath    string
 }
 
 // now is the harness's clock (shifted by clock).
@@ -88,7 +91,26 @@ func (h *harness) now() time.Time { return time.Now().Add(time.Duration(h.clock.
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), store.FileName))
+	return newHarnessWith(t, harnessOpts{})
+}
+
+// harnessOpts start a harness on an existing database (a restored
+// controller, M16) with its master key.
+type harnessOpts struct {
+	dbPath string
+	box    *secrets.Box
+	// fwSSH/fwFake: the SSH hosts' firewall tooling (the same fake hosts
+	// before and after a restore).
+	fwSSH  *hostfw.Paths
+	fwFake string
+}
+
+func newHarnessWith(t *testing.T, o harnessOpts) *harness {
+	t.Helper()
+	if o.dbPath == "" {
+		o.dbPath = filepath.Join(t.TempDir(), store.FileName)
+	}
+	st, err := store.Open(o.dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +127,10 @@ func newHarness(t *testing.T) *harness {
 	authSvc := auth.NewService(st, auth.Options{IdleTimeout: time.Hour, AbsoluteTimeout: 24 * time.Hour,
 		Now: func() time.Time { return time.Now().Add(time.Duration(clock.Load())) }})
 	auditW := audit.NewWriter(st, logs.Audit)
-	box := secrets.NewBoxForTest()
+	box := o.box
+	if box == nil {
+		box = secrets.NewBoxForTest()
+	}
 	authSvc.SetSealer(box)
 	dataDir := t.TempDir()
 	integrity := audit.NewIntegrity(audit.IntegrityDeps{Store: st, Writer: auditW, Keys: box, DataDir: dataDir})
@@ -139,6 +164,9 @@ func newHarness(t *testing.T) *harness {
 	}
 	router := &mgmt.Router{St: st, Inv: inv, SSH: executor, Agents: agents}
 	fwFake, fwSSH := fakeHostDir(t, "ssh")
+	if o.fwSSH != nil {
+		fwFake, fwSSH = o.fwFake, *o.fwSSH
+	}
 	fw, err := fwsvc.New(context.Background(), fwsvc.Deps{Store: st, Inv: inv, Agents: agents, Audit: auditW, Log: logs.App,
 		Decide: router.FirewallDecision, ToolPaths: &fwSSH})
 	if err != nil {
@@ -149,6 +177,11 @@ func newHarness(t *testing.T) *harness {
 	fwCtx, fwCancel := context.WithCancel(context.Background())
 	go fw.Run(fwCtx)
 	t.Cleanup(fwCancel)
+	recov := recovery.New(recovery.Deps{Store: st, Agents: agents, Firewall: fw, Audit: auditW, Log: logs.App})
+	agents.SetRecoveryHooks(recov)
+	if err := recov.Start(fwCtx); err != nil {
+		t.Fatal(err)
+	}
 	geoDir := t.TempDir()
 	network := netsvc.New(netsvc.Deps{Store: st, Firewall: fw, GeoIPDir: geoDir, Log: logs.App})
 	eng := engine.New(st, inv, router, auditW, logs.Job, engine.Config{RetryDelay: 10 * time.Millisecond})
@@ -177,7 +210,7 @@ func newHarness(t *testing.T) *harness {
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng, Simulator: router, Files: router, Artifacts: arts,
 		Agents: agents, Router: router, Firewall: fw, Network: network, Monitor: mon, Alerts: alertSvc, Sched: schedSvc, Desired: desiredSvc,
-		Integrity: integrity, AuditSink: auditSink, SSHCA: caSvc,
+		Integrity: integrity, AuditSink: auditSink, SSHCA: caSvc, Recovery: recov,
 		UI: fstest.MapFS{
 			"index.html":    {Data: []byte("<!doctype html><title>ui</title>")},
 			"assets/app.js": {Data: []byte("console.log(1)")},
@@ -192,7 +225,8 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(ts.Close)
 	return &harness{t: t, srv: srv, ts: ts, auth: authSvc, st: st, eng: eng, agents: agents, pki: pki, router: router,
 		fw: fw, fwSSH: fwSSH, fwFake: fwFake, net: network, geoDir: geoDir, mon: mon, alerts: alertSvc, box: box, sched: schedSvc,
-		desired: desiredSvc, clock: clock, sshca: caSvc, integrity: integrity, sink: auditSink, auditW: auditW, dataDir: dataDir}
+		desired: desiredSvc, clock: clock, sshca: caSvc, integrity: integrity, sink: auditSink, auditW: auditW, dataDir: dataDir,
+		recovery: recov, dbPath: o.dbPath}
 }
 
 func (h *harness) mkUser(name, role string) {

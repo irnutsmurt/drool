@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { useHosts } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
@@ -61,6 +61,7 @@ function AgentsTab() {
   const [adding, setAdding] = useState(false);
   const name = (id: string) => (hosts.data?.items ?? []).find((h) => h.id === id)?.name ?? id;
   return (
+    <>
     <Card title="Enrolled Shepherds" actions={can("agents.enroll") && <Button size="sm" variant="primary" onClick={() => setAdding(true)}>Add a host with a Shepherd</Button>}>
       <p className="mb-3 text-sm text-muted">To put an existing SSH host under a Shepherd, open the host and choose <em>Install Shepherd (DROOL agent)</em>,
         or select hosts under Monitoring and use <em>Convert to Shepherd</em>.</p>
@@ -78,6 +79,44 @@ function AgentsTab() {
         ]}
       />
       {adding && <ManualInstallDialog onClose={() => setAdding(false)} />}
+    </Card>
+    <UnknownAgents />
+    </>
+  );
+}
+
+/** Shepherds this controller has no record of (enrolled after the backup
+ * it was restored from): refused, listed until dismissed. */
+function UnknownAgents() {
+  const { can } = useAuth();
+  const qc = useQueryClient();
+  const list = useQuery({ queryKey: ["agents", "unknown"], queryFn: () => unwrap(api.GET("/agents/unknown")), refetchInterval: 60_000 });
+  const dismiss = useMutation({
+    mutationFn: (id: string) => unwrap(api.POST("/agents/unknown/{id}/dismiss", { params: { path: { id } } })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["agents", "unknown"] }),
+  });
+  const items = list.data?.items ?? [];
+  if (items.length === 0) return null;
+  return (
+    <Card title="Unknown Shepherds">
+      <p className="mb-3 text-sm text-muted">
+        These Shepherds present a certificate from this controller&apos;s certificate authority, but an identity it has no record of —
+        usually because they were enrolled after the backup this controller was restored from. They are refused. To manage the host
+        again, enroll its Shepherd with a new token (Enrollment).
+      </p>
+      {dismiss.error && <div className="mb-3"><Alert>{errorMessage(dismiss.error)}</Alert></div>}
+      <Table
+        rows={items}
+        rowKey={(u) => u.identity_id}
+        columns={[
+          { header: "Host name it reports", cell: (u) => <span className="font-medium">{u.hostname || "—"}</span> },
+          { header: "Address", cell: (u) => <span className="font-mono text-xs">{u.address || "—"}</span> },
+          { header: "Version", cell: (u) => u.agent_version || "—" },
+          { header: "Last tried", cell: (u) => <span title={`first ${formatDateTime(u.first_seen_at)}, ${u.attempts} attempt${u.attempts === 1 ? "" : "s"}`}>{formatAgo(u.last_seen_at)}</span> },
+          { header: "Identity", cell: (u) => <span className="font-mono text-xs" title={u.key_fingerprint}>{u.identity_id}</span> },
+          { header: "", cell: (u) => can("agents.manage") ? <Button size="sm" variant="ghost" onClick={() => dismiss.mutate(u.identity_id)} disabled={dismiss.isPending}>Dismiss</Button> : null },
+        ]}
+      />
     </Card>
   );
 }
@@ -328,6 +367,12 @@ function TrustTab() {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card title="Agent Root CA" className="lg:col-span-2">
+        {s.newest_agent_manifest > s.manifest_version && (
+          <div className="mb-3"><Alert tone="warn">A Shepherd trusts a newer trust manifest (version {s.newest_agent_manifest}) than this controller has
+            (version {s.manifest_version}): the intermediate CA was replaced after the backup this controller was restored from. Shepherds still connect
+            while they trust this controller&apos;s intermediate; replace the intermediate below to bring them all onto one again (the new manifest
+            is numbered to supersede theirs).</Alert></div>
+        )}
         {s.root_key_online ? (
           <div className="mb-3"><Alert tone="warn">The root private key is stored on this controller. Anyone who compromises the controller (or
             a backup together with the master key) gets it and could mint a trust manifest. Export it, keep it offline (two copies), and remove it here.
@@ -339,7 +384,8 @@ function TrustTab() {
           <dt className="text-muted">Root fingerprint</dt><dd className="break-all font-mono text-xs">{s.root_fingerprint}</dd>
           <dt className="text-muted">Valid until</dt><dd>{formatDateTime(s.root_not_after)}</dd>
           <dt className="text-muted">Intermediate</dt><dd className="break-all font-mono text-xs">{s.intermediate_fingerprint} <span className="text-muted">(until {formatDateTime(s.intermediate_not_after)})</span></dd>
-          <dt className="text-muted">Trust manifest</dt><dd>version {s.manifest_version}: {(s.trusted_intermediates ?? []).length} trusted, {(s.revoked_intermediates ?? []).length} revoked intermediate(s)</dd>
+          <dt className="text-muted">Trust manifest</dt><dd>version {s.manifest_version}: {(s.trusted_intermediates ?? []).length} trusted, {(s.revoked_intermediates ?? []).length} revoked intermediate(s)
+            {s.newest_agent_manifest > s.manifest_version && <span className="text-warn"> — a Shepherd has version {s.newest_agent_manifest}</span>}</dd>
           <dt className="text-muted">Agent endpoint</dt><dd>port {s.endpoint_port} (separate from the web UI and its certificate)</dd>
           <dt className="text-muted">Controller epoch</dt><dd className="font-mono text-xs">{s.controller_epoch}</dd>
         </dl>
@@ -369,7 +415,7 @@ function TrustTab() {
 
       {can("agents.pki") && (
         <Card title="Replace the intermediate CA">
-          <p className="mb-3 text-sm text-muted">Signs a new intermediate and trust manifest {s.manifest_version + 1} with the root key. Agents take the new
+          <p className="mb-3 text-sm text-muted">Signs a new intermediate and a new trust manifest with the root key. Agents take the new
             manifest before anything else when they next connect. After a compromise, revoke the old intermediate: agents move over through
             certificate recovery (identity-key proof) without re-enrolling.</p>
           {!s.root_key_online && (

@@ -206,11 +206,15 @@ func RecoverIntermediate(ctx context.Context, st *store.Store, box *secrets.Box,
 		return 0, err
 	}
 	now := time.Now()
-	inter, err := agentpki.NewIntermediate(root, fmt.Sprint(cur.Version+1), now)
+	next, err := nextManifestVersion(ctx, st, cur.Version)
 	if err != nil {
 		return 0, err
 	}
-	m := agentpki.Manifest{Version: cur.Version + 1, IssuedAt: now.UTC(), TrustedIntermediates: []string{agentpki.Fingerprint(inter.Cert.Raw)},
+	inter, err := agentpki.NewIntermediate(root, fmt.Sprint(next), now)
+	if err != nil {
+		return 0, err
+	}
+	m := agentpki.Manifest{Version: next, IssuedAt: now.UTC(), TrustedIntermediates: []string{agentpki.Fingerprint(inter.Cert.Raw)},
 		RevokedIntermediates: append([]string(nil), cur.RevokedIntermediates...)}
 	for _, r := range rows {
 		if r.Kind == "intermediate" && r.Status != "revoked" {
@@ -243,6 +247,44 @@ func RecoverIntermediate(ctx context.Context, st *store.Store, box *secrets.Box,
 		return q.InsertTrustManifest(ctx, db.InsertTrustManifestParams{Version: int64(m.Version), Payload: sm.Payload, Signature: sm.Signature, CreatedAt: now.UnixMilli()})
 	})
 	return m.Version, err
+}
+
+// nextManifestVersion numbers a new trust manifest: above the current one
+// and above any version a Shepherd reported; and after a restore, far
+// enough above the restored one to supersede manifests the previous
+// controller may have issued after the backup (agents never accept an
+// older or equal version, and those that can't connect can't say which
+// they have).
+func nextManifestVersion(ctx context.Context, st *store.Store, cur uint64) (uint64, error) {
+	next := cur + 1
+	var reported sql.NullInt64
+	if err := st.Reader.QueryRowContext(ctx, `SELECT max(manifest_version) FROM agent_identities`).Scan(&reported); err != nil {
+		return 0, err
+	}
+	if reported.Valid && uint64(reported.Int64) >= next {
+		next = uint64(reported.Int64) + 1
+	}
+	var restored int
+	if err := st.Reader.QueryRowContext(ctx, `SELECT count(*) FROM controller_restores
+		WHERE restored_at > (SELECT coalesce(max(created_at), 0) FROM agent_trust_manifests)`).Scan(&restored); err != nil {
+		return 0, err
+	}
+	if restored > 0 {
+		next = max(next, cur+1000)
+	}
+	return next, nil
+}
+
+// NewestAgentManifest is the newest trust manifest version a Shepherd
+// reported: newer than the controller's after a restore from a backup
+// older than an intermediate rotation.
+func (p *PKI) NewestAgentManifest(ctx context.Context) uint64 {
+	var v sql.NullInt64
+	p.st.Reader.QueryRowContext(ctx, `SELECT max(manifest_version) FROM agent_identities WHERE status != 'revoked'`).Scan(&v)
+	if !v.Valid || v.Int64 < 0 {
+		return 0
+	}
+	return uint64(v.Int64)
 }
 
 // SetHosts records the names agents use (for the server certificate).
@@ -413,12 +455,16 @@ func (p *PKI) Rotate(ctx context.Context, rootKeyPEM []byte, revokeOld bool) (ui
 	cur, _ := agentpki.VerifyManifest(p.manifest, p.root.Cert)
 	p.mu.RUnlock()
 	now := p.now()
-	inter, err := agentpki.NewIntermediate(root, fmt.Sprint(cur.Version+1), now)
+	next, err := nextManifestVersion(ctx, p.st, cur.Version)
+	if err != nil {
+		return 0, err
+	}
+	inter, err := agentpki.NewIntermediate(root, fmt.Sprint(next), now)
 	if err != nil {
 		return 0, err
 	}
 	newFP := agentpki.Fingerprint(inter.Cert.Raw)
-	m := agentpki.Manifest{Version: cur.Version + 1, IssuedAt: now.UTC(), TrustedIntermediates: []string{newFP},
+	m := agentpki.Manifest{Version: next, IssuedAt: now.UTC(), TrustedIntermediates: []string{newFP},
 		RevokedIntermediates: append([]string(nil), cur.RevokedIntermediates...)}
 	if revokeOld {
 		m.RevokedIntermediates = append(m.RevokedIntermediates, oldFP)

@@ -289,8 +289,32 @@ func (a *Agent) connect(ctx context.Context, ep string) error {
 		s.controller = agentpki.Fingerprint(ti.State.PeerCertificates[0].Raw)
 	}
 	if d := first.GetDisconnect(); d != nil {
+		if d.Code == "revoked" {
+			a.rememberRevocation(d.Reason)
+		}
 		if d.Code == "revoked" || d.Code == "unknown" {
 			return &errRevoked{reason: d.Reason}
+		}
+		if d.Code == "recover" {
+			// The controller doesn't trust the intermediate that issued our
+			// certificate (it was restored from a backup older than a
+			// rotation): renew it through certificate recovery, which
+			// proves possession of the identity key. Once per few minutes
+			// at most; otherwise the ordinary backoff applies.
+			a.mu.Lock()
+			recent := a.now().Sub(a.recoveredAt) < 5*time.Minute
+			if !recent {
+				a.recoveredAt = a.now()
+			}
+			a.mu.Unlock()
+			if recent {
+				return errors.New(d.Reason)
+			}
+			a.log.Warn("the controller asked for certificate recovery", "reason", d.Reason)
+			if err := a.recover(ctx, ep, cert); err != nil {
+				return err
+			}
+			return errReconnect
 		}
 		return errors.New(d.Reason)
 	}
@@ -336,6 +360,18 @@ func (a *Agent) connect(ctx context.Context, ep string) error {
 	return err
 }
 
+// rememberRevocation keeps a controller's revocation, so that a controller
+// restored from a backup older than it learns about it (DESIGN §10.3).
+func (a *Agent) rememberRevocation(reason string) {
+	epoch := ""
+	if id, err := a.store.Identity(); err == nil {
+		epoch = id.ControllerEpoch
+	}
+	if err := a.store.SetRevocation(Revocation{Reason: reason, At: a.now().UTC(), ControllerEpoch: epoch}); err != nil {
+		a.log.Error("remember the revocation", "err", err)
+	}
+}
+
 // hello describes this agent: versions, the authoritative local ceiling,
 // the applied state versions and the outcome of any update.
 func (a *Agent) hello(leaf *x509.Certificate) *pb.Hello {
@@ -355,6 +391,9 @@ func (a *Agent) hello(leaf *x509.Certificate) *pb.Hello {
 	}
 	if m, _, err := a.store.Manifest(); err == nil {
 		h.ManifestVersion = m.Version
+	}
+	if r := a.store.Revocation(); r != nil {
+		h.Revocation = &pb.Revocation{Reason: r.Reason, AtUnix: r.At.Unix(), ControllerEpoch: r.ControllerEpoch}
 	}
 	doms, _ := a.store.Domains()
 	for _, d := range doms {
@@ -424,10 +463,15 @@ func (a *Agent) serve(ctx context.Context, s *session) error {
 			}
 		case *pb.ControllerMessage_MonitorConfig:
 			a.setMonitorConfig(msg.MonitorConfig)
+		case *pb.ControllerMessage_EpochTransition:
+			go func(t *pb.EpochTransition) {
+				s.send(&pb.AgentMessage{Msg: &pb.AgentMessage_EpochTransition{EpochTransition: a.applyEpochTransition(ctx, t)}})
+			}(msg.EpochTransition)
 		case *pb.ControllerMessage_FirewallConfig:
 			a.setFirewallConfig(msg.FirewallConfig)
 		case *pb.ControllerMessage_Disconnect:
 			if msg.Disconnect.Code == "revoked" {
+				a.rememberRevocation(msg.Disconnect.Reason)
 				return &errRevoked{reason: msg.Disconnect.Reason}
 			}
 			if msg.Disconnect.Code == "reconnect" {

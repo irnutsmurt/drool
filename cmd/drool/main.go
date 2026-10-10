@@ -47,6 +47,7 @@ import (
 	"drool/internal/monitor/monsvc"
 	"drool/internal/netmon/netsvc"
 	"drool/internal/poller"
+	"drool/internal/recovery"
 	"drool/internal/sched"
 	"drool/internal/secrets"
 	"drool/internal/sshca"
@@ -470,6 +471,19 @@ func cmdServe(path string, explicit bool) error {
 	if agents != nil {
 		agents.SetFirewallHooks(fw)
 	}
+	// Restore reconciliation (M16): after drool restore, hosts are compared
+	// and moved to the new controller epoch, a few at a time.
+	recovDeps := recovery.Deps{Store: st, Firewall: fw, Audit: auditW, Log: logs.App.With("component", "recovery")}
+	if agents != nil {
+		recovDeps.Agents = agents
+	}
+	recov := recovery.New(recovDeps)
+	if agents != nil {
+		agents.SetRecoveryHooks(recov)
+	}
+	if err := recov.Start(ctx); err != nil {
+		return fmt.Errorf("restore reconciliation: %w", err)
+	}
 	eng := engine.New(st, inv, router, auditW, logs.Job, engine.Config{
 		GlobalConcurrency:  cfg.Engine.GlobalConcurrency,
 		PerJumpConcurrency: cfg.Engine.PerJumpHostConcurrency,
@@ -640,7 +654,7 @@ func cmdServe(path string, explicit bool) error {
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
 		Poller: poll, StaleAfter: pollCfg.StaleAfter(), Simulator: router, Files: router, Artifacts: arts,
 		Agents: agents, Router: router, WebPin: webPin(tlsRes), Firewall: fw, Network: network, Monitor: mon, Alerts: alertSvc,
-		Sched: scheduler, Desired: desiredSvc, Integrity: integrity, AuditSink: auditSink, SSHCA: caSvc,
+		Sched: scheduler, Desired: desiredSvc, Integrity: integrity, AuditSink: auditSink, SSHCA: caSvc, Recovery: recov,
 	})
 	if err != nil {
 		return err

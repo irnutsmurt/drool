@@ -155,6 +155,9 @@ func (s *Service) usable(ctx context.Context, hostID string) (*Session, error) {
 	if !se.alive() {
 		return nil, notConnected("the DROOL agent stopped responding")
 	}
+	if err := s.epochRefusal(se); err != nil {
+		return nil, err
+	}
 	return se, nil
 }
 

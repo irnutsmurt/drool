@@ -85,6 +85,17 @@ type Decision struct {
 	Blocked bool
 }
 
+// unavailableError: an agent that answers to another controller epoch
+// (restore reconciliation) would refuse the operation; that is not a
+// connection problem, and nothing is sent.
+func (d Decision) unavailableError() error {
+	if d.AgentState != "epoch_mismatch" {
+		return nil
+	}
+	return &model.OpError{Class: model.ClassConfiguration, Message: d.Reason,
+		Hint: "Nothing was sent to the host. Settings → System → Restore shows what is left to reconcile."}
+}
+
 // Decide returns the management decision for a host.
 func (r *Router) Decide(ctx context.Context, h db.Host) Decision {
 	d := Decision{Preferred: h.ManagementMethod, Fallback: h.ManagementFallback}
@@ -119,7 +130,8 @@ func (r *Router) Decide(ctx context.Context, h db.Host) Decision {
 	case ident.Compatible == 0:
 		return unavailable("incompatible", "the agent's protocol version is incompatible: "+ident.CompatReason)
 	case ident.EpochReported != "" && ident.EpochReported != r.Agents.Epoch():
-		return unavailable("epoch_mismatch", "the agent belongs to a different controller epoch and refuses commands until reconciled")
+		return unavailable("epoch_mismatch", "this host's Shepherd still answers to the controller epoch of the backup this controller was restored from; "+
+			"it is moved to this controller's epoch once DROOL has compared its state")
 	}
 	if _, ok := r.Agents.SessionFor(h.ID); !ok {
 		return unavailable("not_connected", "the agent is not connected")
@@ -227,6 +239,9 @@ func (p *path) Execute(ctx context.Context, op model.Operation, out driver.Outpu
 			if agentErr != nil {
 				return nil, agentErr
 			}
+			if err := d.unavailableError(); err != nil {
+				return nil, err
+			}
 			return nil, &driver.NotStartedError{Err: &model.OpError{Class: model.ClassConnection, Message: d.Reason,
 				Hint: "Start drool-agent on the host, or configure SSH as the fallback path."}}
 		}
@@ -268,6 +283,9 @@ func (r *Router) OpenFS(ctx context.Context, hostID string, elevated bool) (file
 		d.SSHAllowed = h.ManagementFallback == "ssh" && h.SshConfigured != 0
 	}
 	if !d.SSHAllowed {
+		if err := d.unavailableError(); err != nil {
+			return nil, err
+		}
 		return nil, &model.OpError{Class: model.ClassConnection, Message: d.Reason}
 	}
 	return r.Inv.OpenFS(ctx, hostID, elevated)
@@ -294,6 +312,9 @@ func (r *Router) Simulate(ctx context.Context, hostID string, op model.Operation
 		d.SSHAllowed = h.ManagementFallback == "ssh" && h.SshConfigured != 0
 	}
 	if !d.SSHAllowed {
+		if err := d.unavailableError(); err != nil {
+			return nil, err
+		}
 		return nil, &model.OpError{Class: model.ClassConnection, Message: d.Reason}
 	}
 	conn, err := r.Inv.Resolve(ctx, hostID, true)

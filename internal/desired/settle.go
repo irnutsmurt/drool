@@ -166,6 +166,9 @@ func (s *Service) settleOne(ctx context.Context, id string) error {
 			o.ran = true
 		case hr.state == "interrupted" || step == "interrupted" || j.Status == engine.JobInterrupted:
 			o.message = "the controller restarted during the correction; its outcome on the host is unknown and it is not re-run automatically"
+			if strings.Contains(hr.errMsg, "restored from") {
+				o.message = "the correction was unfinished when the backup this controller was restored from was taken; its outcome on the host is unknown and it is not re-run automatically"
+			}
 		case step != "":
 			o.message = "the correction failed: " + hr.errMsg
 		case hr.state == engine.HostCancelled:
