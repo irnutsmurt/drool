@@ -25,6 +25,9 @@ func TestJudge(t *testing.T) {
 		{"all good", nil, all, nil, "", CompatOK, "compatible"},
 		{"update available", nil, all, nil, "v1.3.0", CompatUpdateAvailable, "v1.3.0"},
 		{"missing an optional feature", nil, all[:4], nil, "", CompatReduced, "moving to a restored controller's epoch"},
+		// What an M15 Shepherd announces: everything it can do, so only
+		// the restore transition is missing (it answers queries too).
+		{"an M15 Shepherd", nil, all[:3], nil, "", CompatReduced, "works, without moving to a restored controller's epoch (version"},
 		{"missing a needed feature", nil, all[1:], map[string]string{"firewall-1": "its firewall is managed"}, "", CompatUpdateRequired, "firewall management (its firewall is managed)"},
 		{"from before features", nil, nil, nil, "", CompatReduced, "before these were announced"},
 		{"protocol", func(i db.AgentIdentity) db.AgentIdentity {

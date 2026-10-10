@@ -95,7 +95,25 @@ func installAgent(t *testing.T, hostID, preset, keyLine string) {
 	if keyLine != "" {
 		body["release_key"] = keyLine
 	}
-	ctl.must(t, "POST", "/api/v1/hosts/"+hostID+"/agent/install", body, &res)
+	// After a package job the poller may be re-reading the host's
+	// inventory (a shared lock): the install answers "host busy, try
+	// again" until it's done. Nothing else is retried.
+	waitFor(t, 5*time.Minute, "the host free for the agent install", func() bool {
+		var raw json.RawMessage
+		st, err := ctl.do("POST", "/api/v1/hosts/"+hostID+"/agent/install", body, &raw)
+		switch {
+		case err != nil:
+			t.Fatal(err)
+		case st == 409 && strings.Contains(string(raw), `"code":"host_busy"`):
+			return false
+		case st >= 300:
+			t.Fatalf("install agent: HTTP %d %s", st, raw)
+		}
+		if err := json.Unmarshal(raw, &res); err != nil {
+			t.Fatalf("install agent: %v: %s", err, raw)
+		}
+		return true
+	})
 	if !res.OK {
 		t.Fatalf("install agent: %s\n%s", res.Error, res.Output)
 	}

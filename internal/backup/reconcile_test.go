@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"drool/internal/audit"
 	"drool/internal/store"
 )
 
@@ -145,6 +146,10 @@ func TestRestoreSetsAsideInProgressWork(t *testing.T) {
 	json.Unmarshal([]byte(one(`SELECT details_json FROM audit_events WHERE action = 'backup.restore'`)), &details)
 	if details["restore_id"] != rc.RestoreID || details["epoch"] != rc.Epoch || details["jobs_interrupted"] != float64(2) {
 		t.Errorf("audit details: %v", details)
+	}
+	// The audit history still verifies, the restore recorded in its chain.
+	if rep, err := audit.Verify(context.Background(), st.Reader, audit.VerifyOptions{}); err != nil || !rep.OK || rep.Records == 0 {
+		t.Errorf("audit chain after the restore: %+v %v", rep, err)
 	}
 
 	st.Close()

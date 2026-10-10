@@ -22,12 +22,14 @@ type Feature struct {
 	What string // what it enables, in plain words
 }
 
-// KnownFeatures are the features this controller uses.
+// KnownFeatures are the features this controller uses. Shepherds from M16
+// also announce "query-1", which isn't one: M14 and M15 Shepherds answer
+// Desired State queries without announcing it, so nothing is gated on it
+// and its absence says nothing.
 var KnownFeatures = []Feature{
 	{"firewall-1", "firewall management"},
 	{"netmon-1", "network activity"},
 	{"monitor-1", "system monitoring"},
-	{"query-1", "Desired State package and file checks"},
 	{"epoch-1", "moving to a restored controller's epoch"},
 }
 

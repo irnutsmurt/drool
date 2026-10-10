@@ -102,7 +102,12 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
   credentials encrypted at rest, an audit log of every change whose records are chained by hashes (so
   changing stored history is detectable) with an optional remote copy, two-factor authentication
   (authenticator apps) and re-authentication before high-impact actions.
-- **Backup and restore** from the command line.
+- **Backup and restore** from the command line: backups that can be checked without restoring
+  them, a restore that can't leave a half-restored controller, an automatic backup before every
+  database upgrade, and after a restore a controller that compares every host before trusting it
+  again (nothing in progress at backup time is repeated; a host changed since waits for you).
+  Master key rotation. Short-lived SSH certificates from DROOL's own SSH CA instead of stored keys,
+  if you want them.
 
 ### Not in this release
 
@@ -1407,6 +1412,60 @@ keeps at most 5 000 (the least recently seen go first); both are settings. A flo
 | `network.snapshot` | administrators, operators | Taking a snapshot of an SSH host |
 | `network.settings` | administrators | Collection, retention, enrichment (audited) |
 
+## Accounts, sign-in and the audit history
+
+**Two-factor authentication** (*Settings → Account*): scan the QR code (or type the key) into an
+authenticator app, confirm with a code, and keep the ten recovery codes it shows once (each works
+once; making new ones replaces them). From then on signing in asks for a code after the password.
+Lost the authenticator? Use a recovery code, ask another administrator (*Settings → Users*), or
+on the controller: `drool user mfa-reset --username NAME`. The header warns an administrator who
+hasn't turned it on.
+
+**Confirming it's you.** Actions that change trust or could lock DROOL out — managing users and
+tokens, two-factor, the SSH and Shepherd certificate authorities, revoking a Shepherd, release
+keys, the controller address, audit settings, restore decisions, replacing a credential hosts
+use, firewall overrides, accepting a changed host key — ask for your password again (and a code,
+with two-factor) if you haven't confirmed within the last 5 minutes (`auth.reauth_window`). The
+server enforces it; an API token can never do these.
+
+**The audit history** (*Audit Log*) records every change. Its records are chained: each one
+includes a hash of the one before it, and DROOL seals the chain every hour with a key derived from
+the master key. DROOL checks the whole history when it starts, every day and when you ask, and
+says plainly when a record was changed, removed, added or reordered outside DROOL (the details,
+and a file with what was found, come second). It is **tamper-evident, not tamper-proof**: someone
+who controls this machine and its master key can rewrite all of it consistently, and even without
+the key, someone who can write DROOL's database can rewrite the records written since the last
+hourly seal, or (while DROOL is stopped) cut off the end of the history, without DROOL noticing.
+The remote copy below is what catches that. After investigating a break you can acknowledge it
+with a note; a later break is still reported.
+
+**A remote copy** (*Audit Log → Remote copy*) sends every record, as it is written, to an HTTPS
+endpoint you run (a log collector, a small web app on another machine): what you need when the
+controller itself may be compromised. Records are sent in order, at least once, in JSON batches of
+up to 500 (`POST`, `Content-Type: application/json`, optionally one header you choose, e.g. a
+token; a CA certificate for a private TLS endpoint):
+
+```json
+{ "format": "drool-audit-export-v1", "chain_format": "drool-audit-v1", "chain_id": "…",
+  "controller": "…", "controller_epoch": "…", "sent_at": "…",
+  "records": [ { "seq": 1, "id": "aud_…", "ts": 1760000000000, "time": "…", "actor_type": "user",
+    "actor_id": "…", "actor_name": "…", "action": "…", "target_type": "…", "target_id": "…",
+    "result": "success", "source_ip": "…", "request_id": "…", "details": { },
+    "details_json": "{…}", "prev_hash": "…", "hash": "…" } ] }
+```
+
+Answer any 2xx once the batch is stored; anything else is retried with backoff (up to
+10 minutes) and the header shows when the copy fails or falls behind. Deduplicate by `seq` and
+`hash`. To verify a record without DROOL: `hash` is the hex SHA-256 of these fields, each written
+as a netstring (`<length in bytes>:<bytes>,`), in this order — `drool-audit-v1`, `prev_hash` (hex;
+64 zeros for the first record), `seq`, `id`, `ts` (decimal milliseconds), `actor_type`,
+`actor_id`, `actor_name`, `action`, `target_type`, `target_id`, `result`, `source_ip`,
+`request_id`, `details_json` (exactly as sent, not re-serialized) — and each record's `prev_hash`
+is the previous record's `hash`. After the controller is restored from a backup, its new records
+continue from the backup's last one, so the copy receives sequence numbers it already has with
+other contents, under a new `controller_epoch`: keep both, that fork is the evidence of what
+happened after the backup.
+
 ## Backup and restore
 
 ```sh
@@ -1485,9 +1544,10 @@ killed process), DROOL refuses to start on the half-restored data directory; run
 `drool restore --recover` to put the previous installation back.
 
 **What happens after a restore.** The world moved on after the backup was taken, so the restored
-controller doesn't assume it didn't. It gets a new *controller epoch*: every host still answers
-to the backup's and refuses this controller's commands until DROOL has compared it with the
-restored data. A host that is unchanged (or that DROOL has newer configuration for) is moved to
+controller doesn't assume it didn't. It gets a new *controller epoch*: Shepherds and DROOL's
+firewall tool on each host still answer to the backup's and refuse this controller's commands and
+firewall changes until DROOL has compared the host with the restored data (a host with SSH as its
+fallback still runs ordinary jobs over SSH meanwhile). A host that is unchanged (or that DROOL has newer configuration for) is moved to
 the new epoch by itself, a few hosts at a time; a host changed after the backup (a firewall
 applied, a Shepherd's configuration changed), a Shepherd revoked or re-enrolled since, a machine
 whose identity changed, or a Shepherd too old to move waits for you under **Settings → System →
@@ -1503,6 +1563,23 @@ options: `--master-key /path/to/master.key`, or `--discard-credentials` to resto
 except the stored credentials (hosts, keys, history and users are kept; you assign credentials
 again). The same command is the way out if you ever lose `master.key`: DROOL refuses to start
 with a missing or wrong key rather than silently making your credentials unreadable.
+
+### Recovery procedures
+
+| Situation | What to do |
+|---|---|
+| The controller machine is gone | Install DROOL on another machine, `drool restore` the latest backup (with its master key: `--include-master-key` backups have it, otherwise `--master-key FILE`), start it, point Shepherds' DNS name or address at it if it changed. Then work through *Settings → System → Restore*. |
+| The master key is lost | DROOL refuses to start with a missing or wrong key. Restore the latest backup with `drool restore --discard-credentials`: everything but stored credentials comes back; assign hosts a credential again. The agent CA keys go with it: issue a new intermediate with the offline root key (`drool agent-ca rotate --root-key FILE`); Shepherds move to it by themselves. |
+| A restore was interrupted | DROOL refuses to start and says so; `drool restore --recover` puts the previous installation back, then restore again. |
+| After a restore, hosts are *Ahead of DROOL*, *Needs attention* or *Blocked* | *Settings → System → Restore* explains each: accept the host's state, deal with the cause (revoke, re-enroll, accept a changed host key on the host's page), or check again. Until then DROOL doesn't change their firewalls, and their Shepherds refuse this controller's commands. |
+| Shepherds can't connect after a restore and the agent CA was replaced after the backup | Issue a new intermediate with the root key (*Shepherds → Trust*, or `drool agent-ca rotate --root-key FILE`); its trust manifest supersedes the newer one they hold. |
+| A newer DROOL was installed and you need the older one back | Downgrades aren't done in place: run the newer version again, or stop DROOL and `drool restore` the `drool-pre-upgrade-…` backup with the older version. |
+| The audit history failed verification | Investigate (the Audit Log shows what and where, the evidence file has the records); compare with the remote copy if you have one; acknowledge the break with a note when understood. |
+| A Shepherd was compromised | Revoke it (*host page* or *Shepherds*); re-enroll after reinstalling the host. If you restore an older backup later, revoke it again (older Shepherds don't report the revocation). |
+| The master key may have leaked | `drool secrets rotate-key` with DROOL stopped; keep the saved previous key file with older backups, offline. |
+
+These situations intentionally need a person: DROOL won't guess which side of a disagreement is
+right, roll a host back to an old backup, or repeat an operation whose outcome it can't know.
 
 ## Upgrading
 
@@ -1549,9 +1626,15 @@ plain HTTP to the network by accident.
   with tens of hosts, not thousands.
 - **At most one jump host.** Agents connect directly to DROOL (no relays).
 - **Agent:** Linux amd64/arm64 only. Service management and reboots need systemd, as with SSH.
-  Restoring a backup older than the hosts' agent state is detected and shown (*host ahead*), but
-  full reconciliation is manual (*Adopt host state*). Agent updates need a release-signing key that
-  you manage yourself.
+  Agent updates need a release-signing key that you manage yourself.
+- **After restoring a backup** (see [What happens after a restore](#backup-and-restore)): DROOL holds
+  no copy of state a host got after the backup, so it can't show the difference — accepting a
+  host's state means it stands, and DROOL's own configuration becomes the next change. Shepherds
+  from before this version can't move to the restored controller's epoch: update them, or enroll
+  them again. Only Shepherds from this version report a revocation made after the backup: repeat
+  revocations you made since (the remote audit copy lists them). Until a host is reconciled, its
+  Shepherd takes nothing from this controller and its firewall isn't changed; a host with SSH as
+  its fallback still runs ordinary jobs (including Desired State restores you start) over SSH.
 - **Scheduling:** times have minute precision; the scheduler looks for due work every 15 seconds,
   so a run starts within about that of its time. A recurring run that would start more than
   5 minutes late counts as missed (one-time runs start late instead). One controller only:
@@ -1568,9 +1651,7 @@ plain HTTP to the network by accident.
   with *Check now*). A baseline holds at most 200 resources; one correction at most 50 different
   changes per job (larger ones are split by host, or refused for a single host — restore it in
   parts). Agents from before this version can't report packages, or confirm services on request,
-  until updated. Desired state doesn't
-  reconcile a restored controller with newer host state: such hosts are left out of restores
-  until reconciled on the Shepherds page.
+  until updated.
 - **If the controller crashes or restarts during a job,** commands already running on hosts keep
   running; those hosts are marked *interrupted (outcome unknown)*. Check them before re-running.
 - **If a connection drops while a command runs,** the outcome is reported as unknown; only
@@ -1620,6 +1701,15 @@ plain HTTP to the network by accident.
   Home Assistant); deleting a host deletes its alert history.
 - **Local accounts only;** no single sign-on. Two-factor authentication is TOTP (authenticator apps);
   no WebAuthn/passkeys yet.
+- **Audit history** is tamper-evident, not tamper-proof: whoever controls the controller and its
+  master key can rewrite all of it consistently; without the key, the newest records (since the
+  last hourly seal) can still be rewritten, or the end cut off while DROOL is stopped. The remote
+  copy is what survives that. After a
+  restore, the remote copy receives the restored controller's records under the same sequence
+  numbers as the ones it got after the backup, with a new controller epoch, and keeps both.
+- **Master key rotation** needs DROOL stopped (it re-seals everything while nothing else writes).
+- **Containers:** tested with Docker, read-only and without capabilities; rootless Docker and
+  Podman aren't part of the automated tests.
 - **Backup and restore are command-line only** (Settings → System shows the commands).
 - The **web UI is functional, not polished**; a visual design pass comes later.
 - Migrations made before `v0.1.0-alpha` were edited during development; databases from

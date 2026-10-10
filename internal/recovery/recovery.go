@@ -446,6 +446,20 @@ func Compare(domain string, ctl *db.StateVersion, hostEpoch string, hostRev int6
 	return c
 }
 
+// domainNames are the domains as the UI names them.
+var domainNames = map[string]string{"agent-config": "Shepherd configuration", "files": "file deployment"}
+
+func domainList(domains []string) string {
+	out := make([]string, len(domains))
+	for i, d := range domains {
+		if n, ok := domainNames[d]; ok {
+			d = n
+		}
+		out[i] = d
+	}
+	return strings.Join(out, ", ")
+}
+
 // verdictState is the host state for a set of domain verdicts ("" when
 // the host can be moved).
 func verdictState(checks []DomainCheck) (string, string) {
@@ -460,9 +474,9 @@ func verdictState(checks []DomainCheck) (string, string) {
 	}
 	switch {
 	case len(other) > 0:
-		return StateAttention, "the host's " + strings.Join(other, ", ") + " state disagrees with the restored controller's (same revision with other content, or another controller epoch): review it, then accept the host's state or re-enroll"
+		return StateAttention, "the host's " + domainList(other) + " state disagrees with the restored controller's (same revision with other content, or another controller epoch): review it, then accept the host's state or re-enroll"
 	case len(ahead) > 0:
-		return StateAhead, "the host has " + strings.Join(ahead, ", ") + " changes made after the backup was taken: accept the host's state (nothing on the host changes; DROOL's own configuration then shows where it differs)"
+		return StateAhead, "the host has " + domainList(ahead) + " changes made after the backup was taken: accept the host's state (nothing on the host changes; DROOL's own configuration then shows where it differs)"
 	}
 	return "", ""
 }

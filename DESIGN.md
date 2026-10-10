@@ -1,7 +1,7 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.12**
-Status: Draft · 2026-10-09 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
+**Design Document v0.3.13**
+Status: Draft · 2026-10-10 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
 > DROOL is a web-first platform for managing, automating, monitoring, and eventually segmenting Linux systems through SSH or an agent.
@@ -13,6 +13,21 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.12 → v0.3.13 (M16: core security, recovery and platform hardening)
+
+When authentication, credentials, controller state, agents, upgrades, backups, the network or the controller itself fail, DROOL fails safely and recovers predictably. As built:
+
+| # | As built | Section |
+|---|---|---|
+| 1 | **Restore reconciliation in full:** `drool restore` gives the restored controller a new epoch itself (not per host decision); every host is compared and moved to it — identical or controller-ahead automatically, ahead / conflicting / foreign-epoch / changed-identity hosts only when an administrator accepts the host's state, which never rolls it back. Revisions continue (the controller keeps its own when ahead, adopts the host's when accepted) instead of restarting at 1; re-applying the controller's own intent is the ordinary next change; the comparison shows revisions and hashes per domain (DROOL holds no copy of a host's newer state to diff). Bounded: a few hosts at a time | §10.3 |
+| 2 | **Nothing in progress at backup time is resumed or repeated:** unfinished jobs interrupted (outcome unknown), open firewall transactions closed as unknown, unsent notifications dropped; job schedules, automatic restore and agent rollouts held until resumed | §10.3 |
+| 3 | **Identities the restored database gets wrong** are refused or blocked: enrolled after the backup (listed), revoked after it (the Shepherd reports it), certificates from a later intermediate (recovered), a newer trust manifest (the next one is numbered past it) | §10.3, §4.3 |
+| 4 | **Tamper-evident audit history** (hash chain with keyed checkpoints) and an **optional remote copy**, planned for 1.0 in v0.3; tamper-evident, never "immutable" | §4.2, §22.6 |
+| 5 | **Just-in-time SSH** with DROOL's OpenSSH user CA: a certificate per connection, valid for minutes; static credentials stay supported | §7 |
+| 6 | **Re-authentication** for high-impact actions (server-enforced) and **TOTP two-factor** sign-in with recovery codes; no SSO | §24 |
+| 7 | **Recovery tooling:** a crash-safe restore journal (`drool restore --recover`), `drool backup verify`, automatic pre-upgrade backups, master key rotation (`drool secrets rotate-key`), refused downgrades that say what to do | §10, §24, §22 |
+| 8 | **Shepherd compatibility statuses** from announced capabilities; an operation is never sent to a Shepherd that can't do it | §28 |
 
 ### v0.3.11 → v0.3.12 (M15: UI/UX and information architecture)
 
@@ -323,7 +338,7 @@ The controller has the ability to run privileged operations on every host, holds
 | Append-oriented audit log | Detection and forensics (see limitation below) |
 | Agent-side operation log | Independent record on each host of what it was asked to do |
 
-**Audit limitation:** after full controller compromise, the attacker controls the database and can rewrite local audit history. Local audit is reliable for honest mistakes and partial compromise, not for full controller compromise. The 1.0 mitigations are hash-chained audit records (tampering becomes detectable) and an optional remote append-only sink (syslog, webhook, external store). Agents also keep their own local log of received operations, which the controller cannot rewrite.
+**Audit limitation:** after full controller compromise, the attacker controls the database and can rewrite local audit history. Local audit is reliable for honest mistakes and partial compromise, not for full controller compromise. The mitigations, built in M16 (§22.6): hash-chained audit records with keyed checkpoints (tampering becomes detectable) and an optional remote copy to an HTTPS endpoint the operator runs (keeping it append-only is the receiver's part). Agents also keep their own local log of received operations, which the controller cannot rewrite.
 
 **Deferred high-security mode:** jobs must carry an operator signature in addition to controller authorization before an agent accepts them.
 
@@ -695,15 +710,11 @@ Restored controller: epoch A, revision 400, hash ABC
 → Domain marked "Reconciliation required"
 ```
 
-Admin choices (per host/domain or in bulk):
+The restore itself starts a **new epoch** (`epoch B`), so old-epoch messages can never apply again: agents refuse every command from another epoch and the firewall tool every transaction, and the controller sends a host's agent and firewall nothing until that host has reported in, been compared and been moved to epoch B (as built in M16; ARCHITECTURE-ALPHA §33.1):
 
-- **Adopt host state:** the controller imports what the host is running as its desired state.
-- **Restore controller state:** push the controller's version.
-- **Review diff**
-
-Either way, reconciliation starts a **new epoch** (`epoch B, revision 1`), so old-epoch messages can never apply again.
-
-After restore, the controller enters **reconciliation mode** and pushes no state until each host has reported in and been compared.
+- **Identical, or the controller ahead** (it holds newer intent the host never got): moved automatically, a few hosts at a time; the controller's newer intent follows as an ordinary change.
+- **Host ahead** (changed after the backup), the same revision with other content, another epoch, or a changed identity: an administrator **accepts the host's state** (the controller adopts its revision, nothing on the host changes, and DROOL's own configuration then shows where it differs) or deals with the cause (revoke, re-enroll). The controller never rolls a host back to the backup by itself; re-applying its own version is the ordinary next change (a firewall apply, a configuration push).
+- What was **in progress** when the backup was taken is never resumed or repeated: its outcome is unknown, and automation that could replay old intent is held until resumed.
 
 ---
 
@@ -1376,7 +1387,7 @@ Append-oriented record of who, what, when, where and result for logins, failed a
 
 Integrity (see §4.2 limitation):
 - **Technical Alpha:** append-only table, with no update or delete through the application.
-- **1.0:** hash-chained records (each record includes the hash of the previous one) plus an optional remote sink (syslog, webhook). Verifying the chain is part of diagnostics.
+- **As built (M16, ARCHITECTURE-ALPHA §33.4–33.5):** hash-chained records (each record's SHA-256 covers every stored field and the previous record's hash), sealed hourly, at start and at shutdown by checkpoints carrying an HMAC under a key derived from the master key; verified at start, daily, on request and by `drool backup verify`, reporting every problem found. An optional remote copy goes to one HTTPS endpoint the operator runs, in order and at least once (no syslog). Tamper-evident, never immutable: whoever holds the controller and its master key can rewrite the local history; without the key, the records after the newest checkpoint can still be rewritten, and while DROOL is stopped the end of the history can be cut off. The remote copy is the check for both.
 
 ### 22.7 Health and diagnostics
 

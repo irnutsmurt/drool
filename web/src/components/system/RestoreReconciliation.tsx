@@ -39,6 +39,13 @@ export const stateInfo: Record<State, { label: string; tone: "ok" | "warn" | "da
 
 const order: State[] = ["blocked", "attention", "ahead", "incompatible", "unreachable", "pending", "reconciled", "recovered"];
 
+/** The server's reason (a lowercase clause) as a sentence of its own. */
+function sentence(s: string) {
+  const t = s.trim();
+  if (!t) return t;
+  return t.charAt(0).toUpperCase() + t.slice(1) + (/[.!?]$/.test(t) ? "" : ".");
+}
+
 function canAccept(h: HostRec) {
   return h.state === "ahead" || h.state === "attention" || (h.state === "blocked" &&
     (h.reason.startsWith("its Shepherd's identity is now presented by another machine") || h.reason.startsWith("its Shepherd reports that a controller revoked its identity")));
@@ -99,13 +106,13 @@ export function RestoreReconciliationCard() {
         </p>
         <p className="text-muted">
           The restored controller has a new controller epoch. Each host is compared with the restored data and moved to it only when
-          nothing on the host would be lost or rolled back; until then it refuses this controller's commands. Nothing that was in
+          nothing on the host would be lost or rolled back; until then DROOL doesn't change its firewall, and its Shepherd, if it has one, refuses this controller's commands. Nothing that was in
           progress when the backup was taken is repeated.
         </p>
 
         <ul className="flex flex-wrap gap-2" aria-label="Hosts by reconciliation state">
           {order.filter((s) => d.counts[s]).map((s) => (
-            <li key={s} title={stateInfo[s].help}><Badge tone={stateInfo[s].tone}>{d.counts[s]} {stateInfo[s].label.toLowerCase()}</Badge></li>
+            <li key={s} title={stateInfo[s].help}><Badge tone={stateInfo[s].tone}>{stateInfo[s].label}: {d.counts[s]}</Badge></li>
           ))}
         </ul>
 
@@ -154,12 +161,12 @@ export function RestoreReconciliationCard() {
               rows={rows}
               rowKey={(h) => h.host_id}
               columns={[
-                { header: "Host", cell: (h) => <Link className={plainLink} to={`/hosts/${h.host_id}`}>{h.host_name}</Link> },
+                { header: "Host", cell: (h) => <Link className={`${plainLink} whitespace-nowrap`} to={`/hosts/${h.host_id}`}>{h.host_name}</Link> },
                 { header: "State", cell: (h) => <span title={stateInfo[h.state].help}><Badge tone={stateInfo[h.state].tone}>{stateInfo[h.state].label}</Badge></span> },
                 {
                   header: "Details", cell: (h) => (
                     <div className="space-y-1">
-                      {h.reason && <p>{h.reason}</p>}
+                      {h.reason && <p>{sentence(h.reason)}</p>}
                       {h.domains.length > 0 && (
                         <ul className="text-xs text-muted">{h.domains.map((x) => <li key={x.domain}>{domainText(x)}</li>)}</ul>
                       )}
@@ -218,8 +225,8 @@ export function HostReconciliationNotice({ hostId }: { hostId: string }) {
   const info = stateInfo[h.state];
   return (
     <Alert tone={info.tone === "danger" ? "danger" : "warn"}>
-      <strong>Restore reconciliation: {info.label.toLowerCase()}.</strong> {h.reason || info.help}{" "}
-      Until this host is reconciled, DROOL sends it nothing.{" "}
+      <strong>Restore reconciliation — {info.label}.</strong> {sentence(h.reason || info.help)}{" "}
+      Until then DROOL doesn't change its firewall, and its Shepherd, if it has one, refuses this controller's commands.{" "}
       {can("settings.read") && <Link className={plainLink} to="/settings/system">Settings → System → Restore</Link>}
     </Alert>
   );

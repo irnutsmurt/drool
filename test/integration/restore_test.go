@@ -134,7 +134,12 @@ func TestRestoreReconciliation(t *testing.T) {
 	jh = run(t, ha.ID, cmd("echo must-not-run", false))
 	expect(t, jh.State == "failed" && jh.ErrorClass == "ConfigurationError", "job on the held host: %v", jh)
 
-	ctl.must(t, "POST", "/api/v1/hosts/"+ha.ID+"/reconciliation/accept", nil, nil)
+	// The UI (when a browser is available): the restore on Settings →
+	// System, the host's notice, and accepting the host's state there,
+	// after re-authenticating. Otherwise through the API.
+	if !runE2E(t, rc, "restore", "DROOL_E2E_AHEAD="+ha.ID, "DROOL_E2E_SAME="+hs.ID) {
+		ctl.must(t, "POST", "/api/v1/hosts/"+ha.ID+"/reconciliation/accept", nil, nil)
+	}
 	waitFor(t, 3*time.Minute, "the accepted host reconciled", func() bool { s, _ := state(ha.ID); return s == "reconciled" })
 	expect(t, strings.Contains(identity(ahead), pki.ControllerEpoch), "accepted Shepherd's identity: %s", identity(ahead))
 	expect(t, reported(ha.ID) == 2, "the accepted host's configuration was rolled back: revision %d", reported(ha.ID))
@@ -151,4 +156,33 @@ func TestRestoreReconciliation(t *testing.T) {
 	for _, c := range []*container{same, ahead} {
 		stopAgent(t, c)
 	}
+}
+
+// runE2E runs one browser test file against c; false when no browser is
+// available here (Chromium, node, puppeteer).
+func runE2E(t *testing.T, c *controller, file string, env ...string) bool {
+	t.Helper()
+	chrome := os.Getenv("CHROME")
+	if chrome == "" {
+		chrome = "/usr/bin/chromium"
+	}
+	if _, err := os.Stat(chrome); err != nil {
+		return false
+	}
+	if _, err := exec.LookPath("node"); err != nil {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(root, "web", "node_modules", "puppeteer-core")); err != nil {
+		return false
+	}
+	cmd := exec.Command("node", "--test", "e2e/"+file+".test.mjs")
+	cmd.Dir = filepath.Join(root, "web")
+	cmd.Env = append(append(os.Environ(), "DROOL_E2E_URL="+c.base(), "DROOL_E2E_USER="+adminUser, "DROOL_E2E_PASSWORD="+adminPassword,
+		"CHROME="+chrome, "DROOL_E2E_SHOTS="+os.Getenv("DROOL_E2E_SHOTS")), env...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("browser test %s: %v\n%s", file, err, out)
+	}
+	t.Logf("browser test %s:\n%s", file, tail(string(out), 12))
+	return true
 }

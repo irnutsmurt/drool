@@ -41,7 +41,7 @@ export function useSecurityItems(): SecurityItem[] {
       body: (
         <>
           {decide > 0 ? `${decide} host${decide === 1 ? " needs" : "s need"} a decision` : "Hosts are being reconciled"}
-          {waiting > 0 ? `, ${waiting} not compared yet` : ""}. Until a host is reconciled, DROOL sends it nothing.{" "}
+          {waiting > 0 ? `, ${waiting} not compared yet` : ""}. Until a host is reconciled, DROOL doesn't change its firewall, and its Shepherd, if it has one, refuses this controller's commands.{" "}
           <Link className={plainLink} to="/settings/system">Settings → System → Restore</Link>.
         </>
       ),
