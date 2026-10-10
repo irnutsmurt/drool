@@ -61,9 +61,9 @@ export function AuditIntegrityCard() {
             )}
             <p className="text-muted">
               Each record is linked to the one before it by a hash, and DROOL seals the history every hour with a key derived
-              from the master key, so changing, removing or reordering stored records is detectable. It can't stop someone who
-              controls this machine and its master key from rewriting the whole history: for that, send a copy elsewhere
-              (see Remote copy).
+              from the master key, so changing, removing or reordering sealed records is detectable. Someone who can write
+              DROOL's database can still rewrite the records since the last seal, and with this machine's master key the whole
+              history: for that, send a copy elsewhere (see Remote copy).
             </p>
             <details>
               <summary className="cursor-pointer text-muted">Technical details</summary>

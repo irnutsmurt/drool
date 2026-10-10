@@ -193,11 +193,29 @@ test("a failing destination is visible; alert state stays accurate", async () =>
 });
 
 test("the Overview and the Monitoring page show alert counts and recent events", async () => {
-  await go("/");
-  await waitText(page, "Recent events");
+  // This file's alerting events are in the timeline...
+  const titles = (await api(page, "GET", "/events?limit=200")).body.events.map((e) => e.title);
+  for (const [re, what] of [[/^Maintenance (started|ended) by /, "maintenance"], [/^Notifications to .* are failing/, "the failing destination"],
+    [/^Critical( \(escalated\))?: nas-01 /, "nas-01's critical alert"]]) {
+    assert.ok(titles.some((s) => re.test(s)), `${what} in the timeline`);
+  }
+  // ...and the Overview shows the newest events as they are. The rest of the
+  // suite keeps adding events (the hosts of Shepherds other tests stopped go
+  // stale), so the card is compared with the timeline once both agree, not
+  // with a list fixed in advance.
+  const shown = () => page.evaluate(() => {
+    const h = [...document.querySelectorAll("section h2")].find((e) => e.textContent === "Recent events");
+    return h ? [...h.closest("section").querySelectorAll("li")].map((li) => li.children[1]?.textContent ?? "") : [];
+  });
+  let card = [], newest = [];
+  await waitFor(page, async () => {
+    await go("/");
+    card = await shown();
+    newest = (await api(page, "GET", "/events?limit=8")).body.events.map((e) => e.title);
+    return card.length > 0 && JSON.stringify(card) === JSON.stringify(newest);
+  }, "the Overview's recent events to match the timeline", 60000);
   let t = await text(page);
   assert.match(t, /\d+ critical · \d+ warning/);
-  assert.match(t, /Maintenance (started|ended) by|Notifications to .* are failing|Critical: /, "alerting events in the timeline");
   await go("/monitoring");
   await waitText(page, "Alerts:");
   t = await text(page);
