@@ -278,7 +278,9 @@ func TestHostDecisions(t *testing.T) {
 	delete(e.ag.views, "offline")
 
 	// SSH hosts: an identical firewall (rebased), none at all (recovered),
-	// a changed host key (blocked), unreachable (retried).
+	// a changed host key (blocked), a refused credential (attention: an SSH
+	// CA or key changed after the backup?), unreachable (retried, backing
+	// off).
 	ssh := func(id string) {
 		mustExec(t, e.st, `INSERT INTO hosts (id, name, connect_address, ssh_user, status, created_at, updated_at) VALUES (?, ?, '10.0.0.1', 'root', 'ready', 0, 0)`, id, id)
 		mustExec(t, e.st, `INSERT INTO host_reconciliation (restore_id, host_id, state) VALUES ('rst_1', ?, 'pending')`, id)
@@ -290,6 +292,8 @@ func TestHostDecisions(t *testing.T) {
 	e.fw.status["plain"] = map[string]string{"tool_version": "none"}
 	ssh("rekeyed")
 	e.fw.errs["rekeyed"] = &model.OpError{Class: model.ClassHostKey, Message: "host key mismatch"}
+	ssh("denied")
+	e.fw.errs["denied"] = &model.OpError{Class: model.ClassAuthentication, Message: "permission denied (publickey)"}
 	ssh("down")
 	e.fw.errs["down"] = &model.OpError{Class: model.ClassConnection, Message: "connection refused"}
 
@@ -305,7 +309,7 @@ func TestHostDecisions(t *testing.T) {
 	}
 	want := map[string]string{"same": StateReconciled, "behind": StateReconciled, "ahead": StateAhead, "old": StateIncompatible,
 		"clone": StateBlocked, "foreign": StateAttention, "offline": StatePending, "fw": StateReconciled, "plain": StateRecovered,
-		"rekeyed": StateBlocked, "down": StateUnreachable}
+		"rekeyed": StateBlocked, "denied": StateAttention, "down": StateUnreachable}
 	waitFor(t, 20*time.Second, "every host decided", func() bool {
 		for id, w := range want {
 			if st, _ := e.state(t, id); st != w {
@@ -316,6 +320,17 @@ func TestHostDecisions(t *testing.T) {
 	})
 	if e.ag.transitions["ahead"]+e.ag.transitions["old"]+e.ag.transitions["clone"]+e.ag.transitions["foreign"] != 0 {
 		t.Errorf("hosts that wait were moved: %v", e.ag.transitions)
+	}
+	// The unreachable host is tried again later and later (scaled).
+	waitFor(t, 20*time.Second, "the unreachable host retried", func() bool {
+		var n int64
+		e.st.Reader.QueryRow(`SELECT attempts FROM host_reconciliation WHERE host_id = 'down'`).Scan(&n)
+		return n >= 3
+	})
+	var attempts, checked, next int64
+	e.st.Reader.QueryRow(`SELECT attempts, checked_at, next_attempt_at FROM host_reconciliation WHERE host_id = 'down'`).Scan(&attempts, &checked, &next)
+	if want := int64(float64(backoff(attempts-1).Milliseconds()) * 0.01); next-checked != want || want <= int64(float64((30*time.Second).Milliseconds())*0.01) {
+		t.Errorf("retry after %d attempts: in %d ms, want %d", attempts, next-checked, want)
 	}
 	if e.fw.rebased["fw"] != prevEpoch+"/5/abc" {
 		t.Errorf("firewall rebase: %q", e.fw.rebased["fw"])
