@@ -155,8 +155,8 @@ func (e *fwEnv) apply(t *testing.T, hostID string, extra map[string]any) (jobHos
 	}
 	var j jobJSON
 	r.json(t, &j)
-	// Generous: the agent-death case waits out the host's rollback timer,
-	// which takes longer under the race detector and a busy machine.
+	// Generous: the agent-death case waits out the host's rollback timer
+	// and then tries to confirm the rollback for 90 s.
 	deadline := time.Now().Add(6 * time.Minute)
 	for {
 		var cur jobJSON
@@ -165,7 +165,10 @@ func (e *fwEnv) apply(t *testing.T, hostID string, extra map[string]any) (jobHos
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("firewall job stuck: %s", cur.Status)
+			var jh jobHostResp
+			e.c.do("GET", "/api/v1/jobs/"+j.ID+"/hosts/"+hostID, nil).json(t, &jh)
+			tx := e.lastTx(t, hostID)
+			t.Fatalf("firewall job stuck: %s; host %+v; transaction %s:\n%s", cur.Status, jh, tx.State, tx.timeline())
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -386,8 +389,11 @@ func TestFirewallAgentTransaction(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		// Applied, and its result received by the controller (pending, in
+		// the commit delay): dying before the reply would be a different
+		// case — the outcome unknown until the agent reports back.
 		eventually(t, 20*time.Second, "candidate applied", func() bool {
-			return strings.Contains(fileText(filepath.Join(fake, "live")), "policy db-in")
+			return strings.Contains(fileText(filepath.Join(fake, "live")), "policy db-in") && e.lastTx(t, hostID).State == "pending"
 		})
 		ag.stop() // the agent dies and does not come back
 	}()
