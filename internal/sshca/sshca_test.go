@@ -3,6 +3,7 @@ package sshca
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -134,6 +135,35 @@ func TestCertificateClockSkew(t *testing.T) {
 		if (err == nil) != c.ok {
 			t.Fatalf("skew %s: err %v", c.skew, err)
 		}
+	}
+}
+
+// A certificate changes how DROOL proves who it is, never how it checks the
+// host: a host presenting another key than the pinned one is refused in the
+// key exchange, before the certificate is even offered.
+func TestCertificateStillPinsTheHostKey(t *testing.T) {
+	e := newEnv(t)
+	ca := e.create(t, "home")
+	srv := sshtest.Start(t)
+	srv.TrustUserCA(caKey(t, ca))
+	h := host("web")
+	addr, port := srv.Host()
+	tg := &sshx.Target{HostID: h.ID, Name: h.Name, Address: addr, Port: port, User: h.SshUser,
+		PinnedKey: sshtest.NewEd25519Signer(t).PublicKey()}
+	if err := e.svc.prepare(tg, h, "", "fp"); err != nil {
+		t.Fatal(err)
+	}
+	cl, err := (&sshx.Dialer{}).Dial(context.Background(), tg)
+	if err == nil {
+		cl.Close()
+		t.Fatal("connected to a host presenting another host key")
+	}
+	var mm *sshx.HostKeyMismatchError
+	if !errors.As(err, &mm) {
+		t.Fatalf("not a host key mismatch: %v", err)
+	}
+	if c := srv.LastCertificate(); c != nil {
+		t.Fatalf("the certificate reached a host that failed verification: %s", c.KeyId)
 	}
 }
 

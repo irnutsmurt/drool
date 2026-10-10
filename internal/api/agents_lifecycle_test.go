@@ -353,6 +353,50 @@ func TestAgentProtocolCompatibility(t *testing.T) {
 	ag.stop()
 }
 
+// TestFirewallNeedsAShepherdThatCanDoIt: a Shepherd that doesn't announce
+// firewall management (an older build) is never sent a firewall
+// transaction. With no SSH path the apply is refused as a configuration
+// problem that says to update it, nothing reaches the host, and the
+// Shepherd is shown as needing an update (M16, ARCHITECTURE-ALPHA §33.8).
+func TestFirewallNeedsAShepherdThatCanDoIt(t *testing.T) {
+	orig := agent.Features
+	t.Cleanup(func() { agent.Features = orig }) // registered first: runs after the Shepherd has stopped
+	var older []string
+	for _, f := range agent.Features {
+		if f != "firewall-1" {
+			older = append(older, f)
+		}
+	}
+	agent.Features = older
+	e := newFwEnv(t)
+	hostID, _, _, fp := e.agentFwHost(t, "agent1", fullCaps(""))
+	e.setHost(t, hostID, map[string]any{"mode": "enforce", "rollback_timeout_s": 30})
+	e.policy(t, map[string]any{"name": "web-in", "action": "allow", "from": []any{map[string]any{"kind": "internet"}},
+		"to": []any{map[string]any{"kind": "host", "id": hostID}}, "services": []string{"https"}})
+	jh, _ := e.apply(t, hostID, nil)
+	if jh.State != "failed" || jh.ErrorClass != "ConfigurationError" || !strings.Contains(jh.ErrorMessage, "too old for firewall management") {
+		t.Fatalf("apply through a Shepherd without firewall-1: %+v", jh)
+	}
+	dir := filepath.Dir(fp.ToolDir)
+	for _, f := range []string{filepath.Join("tool", "drool-fw"), filepath.Join("state", "committed.json"), filepath.Join("state", "journal.json")} {
+		if _, err := os.Stat(filepath.Join(dir, f)); !os.IsNotExist(err) {
+			t.Errorf("%s on the host: something was sent (%v)", f, err)
+		}
+	}
+	var a struct {
+		Identity struct {
+			Compatibility struct {
+				Status  string `json:"status"`
+				Summary string `json:"summary"`
+			} `json:"compatibility"`
+		} `json:"identity"`
+	}
+	e.c.do("GET", "/api/v1/hosts/"+hostID+"/agent", nil).json(t, &a)
+	if c := a.Identity.Compatibility; c.Status != "update_required" || !strings.Contains(c.Summary, "firewall management (its firewall is managed)") {
+		t.Fatalf("compatibility: %+v", c)
+	}
+}
+
 func TestAgentLossDuringOperation(t *testing.T) {
 	e := newAgentEnv(t)
 	hostID := readyHost(t, e.h, e.c, "loss")
