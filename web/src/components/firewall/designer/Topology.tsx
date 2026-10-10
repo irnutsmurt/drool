@@ -308,7 +308,7 @@ function TopologyInner(p: TopologyProps) {
   };
   const addOptions = [
     ...p.hosts.map((h) => ({ v: `host:${h.name}`, l: `Host: ${h.name}` })),
-    ...p.doc.groups.map((g) => ({ v: `group:${g.name}`, l: `Group: ${g.name}` })),
+    ...p.doc.groups.map((g) => ({ v: `group:${g.name}`, l: `Pack: ${g.name}` })),
     ...p.doc.networks.map((n) => ({ v: `network:${n.name}`, l: `Network: ${n.name}` })),
     { v: "internet", l: "Internet" }, { v: "internal", l: "Internal networks" }, { v: "any", l: "Anywhere" },
   ].filter((o) => !graph.nodes.some((n) => n.key === o.v));
@@ -391,8 +391,8 @@ function TopologyInner(p: TopologyProps) {
         {graph.nodes.length === 0 && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8 text-center text-sm text-muted">
             {filter ? "Nothing matches the filter."
-              : mode === "observed" ? (obsQ.isLoading ? "Loading observed connections…" : "No observed connections match. Agent hosts report continuously; SSH hosts only after a snapshot.")
-                : "No rules yet. Place hosts, groups or networks on the canvas, then drag from the right edge of one to another to allow traffic — or use New rule."}
+              : mode === "observed" ? (obsQ.isLoading ? "Loading observed connections…" : "No observed connections match. Hosts with a Shepherd report continuously; SSH hosts only after a snapshot.")
+                : "No rules yet. Place hosts, packs or networks on the canvas, then drag from the right edge of one to another to allow traffic — or use New rule."}
           </div>
         )}
       </div>

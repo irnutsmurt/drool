@@ -54,7 +54,7 @@ function TemplateChooser({ templates }: { templates: WorkflowTemplate[] }) {
   const [, setParams] = useSearchParams();
   return (
     <>
-      <PageHeader title="New workflow" description="Start from a recommended pattern, or from nothing. Templates are ordinary workflows once saved: change anything."
+      <PageHeader crumbs={[{ label: "Workflows", to: "/jobs/workflows" }]} title="New workflow" description="Start from a recommended pattern, or from nothing. Templates are ordinary workflows once saved: change anything."
         actions={<Link to="/jobs/workflows" className="inline-flex h-9 items-center rounded-ui px-3.5 text-sm hover:bg-surface-2">Cancel</Link>} />
       <ul className="grid gap-4 md:grid-cols-2">
         {templates.map((t) => (
@@ -124,6 +124,7 @@ function WorkflowForm({ existing, draft }: { existing?: Workflow; draft: Workflo
   return (
     <>
       <PageHeader
+        crumbs={[{ label: "Workflows", to: "/jobs/workflows" }]}
         title={existing ? existing.name : "New workflow"}
         description={existing
           ? `Revision ${existing.latest_revision}${existing.archived ? " · archived" : ""}. Saving a change stores a new revision; schedules keep the revision they use until someone updates them.`

@@ -60,7 +60,7 @@ export function refLabel(s: string): string {
 
 export const kindLabel: Record<RefKind, string> = {
   host: "Host",
-  group: "Group",
+  group: "Pack",
   network: "Network",
   cidr: "Address range (CIDR)",
   internet: "Internet",

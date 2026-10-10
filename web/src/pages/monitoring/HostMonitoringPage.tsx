@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link, useParams, useSearchParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import { useHost } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { cx } from "@/components/ui/cx";
 import { errorMessage } from "@/lib/format";
-import { MonitoringTiles, fidelityText } from "@/components/monitoring/HostMonitoringCard";
+import { MonitoringTiles, fidelityText } from "@/components/monitoring/HostMonitoringSummary";
 import { HostMaintenanceBanner } from "@/components/alerts/HostAlerts";
 import { useAlertSummary } from "@/components/alerts/queries";
 import { AlertCounts } from "@/components/alerts/ui";
@@ -68,11 +68,11 @@ export function HostMonitoringPage() {
   return (
     <>
       <PageHeader
+        crumbs={[{ label: "Hosts", to: "/hosts" }, { label: host.data?.name ?? "Host", to: `/hosts/${id}` }]}
         title={`${host.data?.name ?? "Host"}: monitoring`}
         description={o?.has_data ? `${fidelityText(o)} · updated ${fmtSince(o.updated_at)}` : undefined}
         actions={
           <>
-            <Link to={`/hosts/${id}`} className="inline-flex h-9 items-center rounded-ui border border-line bg-surface px-3.5 text-sm font-medium text-fg hover:bg-surface-2">Host page</Link>
             {can("monitoring.manage") && (
               <Button onClick={() => refresh.mutate()} disabled={refresh.isPending}>{refresh.isPending ? "Requesting…" : "Collect now"}</Button>
             )}
@@ -122,8 +122,8 @@ function OverviewTab({ id, o }: { id: string; o: MonHostOverview }) {
     return (
       <Card>
         <p className="text-sm text-muted">
-          No monitoring data yet. Agent hosts report within a minute of connecting; SSH hosts on their next poll. Hosts with the DROOL
-          agent are monitored continuously; SSH-only hosts are polled every few minutes.
+          No monitoring data yet. Hosts with a Shepherd (DROOL agent) report within a minute of connecting and are monitored
+          continuously; SSH-only hosts are polled every few minutes.
         </p>
       </Card>
     );

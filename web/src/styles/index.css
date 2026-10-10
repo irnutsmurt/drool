@@ -202,3 +202,99 @@ body {
   background: var(--ui-accent);
   border: 2px solid var(--ui-surface);
 }
+
+/* Server-provided text (event titles, errors with URLs, paths, hashes)
+ * breaks inside its box rather than widening the page on a phone. Only
+ * words that don't fit are broken; layout sizes are unaffected. */
+main {
+  overflow-wrap: break-word;
+}
+/* A grid's columns never grow past the page to fit a child's longest
+ * unbreakable content (a truncated run name, an address): its children
+ * may shrink, and their text wraps or truncates instead. */
+main .grid > * {
+  min-width: 0;
+}
+
+/* Keyboard focus is always visible (mouse clicks don't draw it). */
+:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline-offset: 0;
+}
+
+/*
+ * Narrow screens: tables marked .rtable (the Table component's default)
+ * become a stack of cards, one per row, each cell a "Header: value" line
+ * (the header comes from data-label). The row's primary cell titles the
+ * card. Tables whose columns only make sense side by side scroll
+ * sideways instead (Table mobile="scroll").
+ */
+@media (max-width: 767.98px) {
+  table.rtable,
+  table.rtable > tbody,
+  table.rtable > tbody > tr,
+  table.rtable > tbody > tr > td {
+    display: block;
+    width: 100%;
+  }
+  table.rtable > thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  table.rtable > tbody > tr {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--ui-line);
+    border-radius: var(--ui-radius);
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+  table.rtable > tbody > tr > td {
+    display: grid;
+    grid-template-columns: minmax(6rem, 34%) minmax(0, 1fr);
+    column-gap: 0.75rem;
+    align-items: baseline;
+    justify-items: start;
+    padding: 0.2rem 0;
+    text-align: left;
+  }
+  table.rtable > tbody > tr > td::before {
+    content: attr(data-label);
+    color: var(--ui-muted);
+    font-size: 12px;
+  }
+  table.rtable > tbody > tr > td[data-primary] {
+    order: -1;
+    display: block;
+    font-size: 15px;
+    padding-bottom: 0.35rem;
+  }
+  table.rtable > tbody > tr > td[data-primary]::before,
+  table.rtable > tbody > tr > td[data-label=""]::before {
+    content: none;
+  }
+  table.rtable > tbody > tr > td[data-label=""] {
+    display: block;
+  }
+  table.rtable > tbody > tr > td:empty {
+    display: none;
+  }
+  table.rtable > tbody > tr:has(> td.rt-empty) {
+    border: 0;
+    padding: 0;
+  }
+  table.rtable > tbody > tr > td.rt-empty {
+    display: block;
+    text-align: center;
+    padding: 1.5rem 0.75rem;
+  }
+}

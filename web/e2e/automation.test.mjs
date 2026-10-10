@@ -1,5 +1,5 @@
 // Scheduling, workflows and rollouts (M13): the Jobs area's tabs, a
-// workflow from a template with revisions, "Schedule this job" with the
+// workflow from a template with revisions, "Schedule this run" with the
 // recommended rollout and a preview of its waves, Run now, the newer
 // revision banner, a recurring maintenance window, a canary pause and a
 // failed verification. Needs test/integration TestBrowser's environment
@@ -67,19 +67,23 @@ async function select(label, value) {
 
 const waitJobDone = (id) => waitFor(page, async () => ["completed", "cancelled", "interrupted"].includes((await api(page, "GET", `/jobs/${id}`)).body.status), "job " + id, 120000);
 
-test("jobs area: Runs, Schedules and Workflows tabs from the keyboard", async () => {
+test("Runs, Schedules and Workflows: peer sidebar destinations, from the keyboard", async () => {
   await go("/jobs");
-  const tabs = await page.$$eval('nav[aria-label="Jobs"] a', (as) => as.map((a) => [a.textContent, a.getAttribute("aria-current")]));
-  assert.deepEqual(tabs, [["Runs", "page"], ["Schedules", null], ["Workflows", null]]);
-  await tabTo(page, () => document.activeElement?.textContent === "Schedules", "Schedules tab");
+  const automate = () => page.$$eval('nav[aria-label="Main"] ul[aria-labelledby="nav-automate"] a', (as) => as.map((a) => [a.textContent.trim(), a.getAttribute("aria-current")]));
+  assert.deepEqual(await automate(), [["Runs", "page"], ["Schedules", null], ["Workflows", null], ["Desired State", null]]);
+  assert.match(await text(page), /Every job DROOL runs/);
+  await tabTo(page, () => document.activeElement?.textContent === "Schedules", "Schedules link");
   await page.keyboard.press("Enter");
   await waitFor(page, async () => page.url().endsWith("/jobs/schedules"), "schedules url");
   await waitText(page, "No schedules yet");
   assert.match(await text(page), /Every run is an ordinary job you'll find under Runs/);
+  // The page under /jobs/schedules marks Schedules, not Runs; no tabs repeat the sidebar.
+  assert.deepEqual(await automate(), [["Runs", null], ["Schedules", "page"], ["Workflows", null], ["Desired State", null]]);
+  assert.equal(await page.$('nav[aria-label="Jobs"]'), null);
   await shot(page, "schedules-empty");
-  // No new sidebar entries: scheduling lives in the Jobs area.
-  const nav = await page.$$eval("aside a, nav[aria-label='Main'] a", (as) => as.map((a) => a.textContent.trim()));
-  assert.ok(!nav.some((x) => /Schedul|Workflow/.test(x)), "sidebar: " + nav.join(", "));
+  // A run's page keeps Runs marked.
+  await go("/jobs/new");
+  assert.deepEqual((await automate())[0], ["Runs", "page"]);
   assert.deepEqual(page.errors, []);
 });
 
@@ -114,7 +118,7 @@ test("workflow from a template, then a new revision", async () => {
   await waitText(page, "Verify services are running: jellyfin.service, ssh.service");
   await page.keyboard.press("Escape");
   // Scheduling it offers today's package dry run (read-only).
-  await click(page, "a", "Schedule");
+  await click(page, "main a", "Schedule"); // in the page, not the sidebar's Schedules
   await waitFor(page, async () => page.url().includes("/jobs/schedules/new?workflow="), "schedule editor for the workflow");
   await waitText(page, "Runs revision 2 exactly as it is now");
   await check("web-1");
@@ -134,7 +138,7 @@ test("schedule this job: recommended rollout, preview waves, run now, history, d
   await click(page, "button", "Use recommended rollout");
   await waitText(page, "Canary");
   await shot(page, "new-job-rollout");
-  await click(page, "button", "Schedule this job");
+  await click(page, "button", "Schedule this run");
   await waitFor(page, async () => page.url().endsWith("/jobs/schedules/new"), "schedule editor");
   await waitText(page, "Step 1: Command");
   await fill(page, "Name", "Nightly echo");
@@ -187,7 +191,7 @@ test("a schedule keeps its workflow revision until it's updated", async () => {
   await go(`/jobs/schedules/${sc.body.id}`);
   await waitText(page, "A newer workflow revision is available");
   await shot(page, "schedule-newer-revision");
-  await click(page, "a", "Review and update");
+  await click(page, "main a", "Review and update");
   await waitText(page, "Use revision 2");
   await click(page, "button", "Use revision 2");
   await click(page, "button", "Save changes");
@@ -202,7 +206,7 @@ test("a schedule keeps its workflow revision until it's updated", async () => {
 test("recurring maintenance window from Alerts → Maintenance", async () => {
   await go("/alerts?view=maintenance");
   await waitText(page, "Recurring windows");
-  await click(page, "a", "New recurring window");
+  await click(page, "main a", "New recurring window");
   await waitText(page, "New recurring maintenance window");
   await fill(page, "Name", "Sunday patching");
   await select("Time zone", "UTC");

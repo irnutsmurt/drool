@@ -37,7 +37,7 @@ export function AccountPage() {
   return (
     <div className="grid max-w-xl gap-4">
       <Card title="Profile">
-        <dl className="grid grid-cols-[8rem_1fr] gap-y-2 text-sm">
+        <dl className="grid grid-cols-[7rem_1fr] sm:grid-cols-[8rem_1fr] gap-y-2 text-sm">
           <dt className="text-muted">Username</dt>
           <dd>{me?.user.username}</dd>
           <dt className="text-muted">Role</dt>

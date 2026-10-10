@@ -16,7 +16,7 @@ import { DesiredTabs } from "./DesiredTabs";
 
 export function appliesText(b: Pick<Baseline, "assignments">): string {
   if (b.assignments.length === 0) return "Not assigned";
-  return b.assignments.map((a) => (a.scope === "global" ? "Everywhere" : a.scope === "group" ? `group ${a.name}` : a.name)).join(", ");
+  return b.assignments.map((a) => (a.scope === "global" ? "Everywhere" : a.scope === "group" ? `pack ${a.name}` : a.name)).join(", ");
 }
 
 export function resourcesText(b: Pick<Baseline, "resources">): string {
@@ -35,13 +35,13 @@ export function BaselinesPage() {
   const items = list.data?.items ?? [];
   return (
     <>
-      <PageHeader title="Desired state" description="Baselines say what machines should look like."
+      <PageHeader title="Desired State" description="Baselines say what machines should look like: services that should run, packages that should (or shouldn't) be installed, and files that should match exactly."
         actions={can("desired.manage") && <Link to="/desired/baselines/new"><Button variant="primary">Create baseline</Button></Link>} />
       <DesiredTabs />
       {list.error && <Alert>{errorMessage(list.error)}</Alert>}
       {!list.isPending && items.length === 0 && !archived ? (
         <EmptyState title="No baselines yet"
-          body="A baseline is a named list of services, packages and files with the state they should have, applied everywhere, to groups, or to single hosts."
+          body="A baseline is a named list of services, packages and files with the state they should have, applied everywhere, to packs (host groups), or to single hosts."
           action={can("desired.manage") ? <Link to="/desired/baselines/new"><Button variant="primary">Create baseline</Button></Link> : undefined} />
       ) : (
         <Card>

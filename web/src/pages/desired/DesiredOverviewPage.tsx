@@ -49,8 +49,8 @@ export function DesiredOverviewPage() {
   return (
     <>
       <PageHeader
-        title="Desired state"
-        description="What your machines should look like, whether they still do, and how to put them back."
+        title="Desired State"
+        description="What your machines should look like — services, packages and exact files — whether they still do, and how to put them back."
         actions={
           <>
             {can("desired.restore") && (
@@ -104,8 +104,8 @@ export function DesiredOverviewPage() {
               )}
               {s.agents && s.agents.state_conflicts > 0 && (
                 <div className="rounded-ui border border-line bg-surface px-3 py-2">
-                  <span className="font-medium">Agent state</span>: <span className="text-warn">{s.agents.state_conflicts} host{s.agents.state_conflicts === 1 ? "" : "s"} ahead of or foreign to this controller</span> —{" "}
-                  <Link className={plainLink} to="/agents">Agents</Link>
+                  <span className="font-medium">Shepherd state</span>: <span className="text-warn">{s.agents.state_conflicts} host{s.agents.state_conflicts === 1 ? "" : "s"} ahead of or foreign to this controller</span> —{" "}
+                  <Link className={plainLink} to="/agents">Shepherds</Link>
                 </div>
               )}
             </div>

@@ -12,8 +12,8 @@ import { useDebounced } from "@/hooks/useDebounced";
 import { errorMessage } from "@/lib/format";
 import { useDesiredGroups, useInvalidateDesired } from "./queries";
 
-/** A group's desired state: the baselines assigned to it and its priority
- * when a host's groups disagree. */
+/** A pack's (group's) desired state: the baselines assigned to it and its
+ * priority when a host's packs disagree. */
 export function GroupDesiredState({ groupId }: { groupId: string }) {
   const { can } = useAuth();
   const groups = useDesiredGroups();
@@ -22,7 +22,7 @@ export function GroupDesiredState({ groupId }: { groupId: string }) {
   if (!g) return null;
   return (
     <div className="mt-3 border-t border-line pt-2 text-sm">
-      <span className="text-muted">Desired state: </span>
+      <span className="text-muted">Desired State: </span>
       {g.baselines.length ? g.baselines.join(", ") : <span className="text-muted">no baseline assigned</span>}
       <span className="text-muted"> · priority {g.priority}</span>
       {can("desired.manage") && <button type="button" className={`ml-2 ${plainLink}`} onClick={() => setEdit(true)}>Change priority</button>}
@@ -52,7 +52,7 @@ function PriorityDialog({ groupId, name, current, onClose }: { groupId: string; 
     <Dialog title={`Desired-state priority: ${name}`} onClose={onClose}>
       <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
         <p className="text-sm text-muted">
-          When a host is in several groups whose baselines declare the same resource differently, the group with the higher priority
+          When a host is in several packs (groups) whose baselines declare the same resource differently, the pack with the higher priority
           wins. Equal priorities that disagree are a conflict: DROOL shows it and doesn't choose. A host's own setting always wins.
         </p>
         <Field label="Priority" hint="-1000 to 1000. Default 0.">
@@ -74,7 +74,7 @@ function PriorityDialog({ groupId, name, current, onClose }: { groupId: string; 
         {impact.error && <Alert>{errorMessage(impact.error)}</Alert>}
         {save.error && <Alert>{errorMessage(save.error)}</Alert>}
         <div className="flex items-center justify-end gap-2">
-          <Link className={`mr-auto text-sm ${plainLink}`} to="/desired">Desired state</Link>
+          <Link className={`mr-auto text-sm ${plainLink}`} to="/desired">Desired State</Link>
           <Button type="button" onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" disabled={!ok || save.isPending || debounced !== n || impact.isFetching}>Save</Button>
         </div>

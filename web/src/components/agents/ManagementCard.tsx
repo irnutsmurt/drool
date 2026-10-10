@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type Schemas } from "@/api/client";
 import { qk, type Host } from "@/api/queries";
@@ -22,8 +22,10 @@ const updateLabels: Record<string, string> = {
   rolled_back: "rolled back", failed: "update failed",
 };
 
-/** The host's management paths: agent and/or SSH (DESIGN §8). */
-export function ManagementCard({ host }: { host: Host }) {
+/** How DROOL manages the host: its paths (Shepherd, the DROOL agent,
+ * and/or SSH; DESIGN §8), whatever the host page adds (connection, trust),
+ * problems in plain sight, and the Shepherd's details one click away. */
+export function ManagementCard({ host, children }: { host: Host; children?: ReactNode }) {
   const { can } = useAuth();
   const qc = useQueryClient();
   const agent = useHostAgent(host.id);
@@ -59,22 +61,23 @@ export function ManagementCard({ host }: { host: Host }) {
 
   return (
     <Card title="Management" actions={<ManagementBadge m={m} />}>
+      <div id="management" className="-mt-1 scroll-mt-4" />
       {err && <div className="mb-3"><Alert>{errorMessage(err)}</Alert></div>}
-      <dl className="grid grid-cols-[9rem_1fr] gap-y-2 text-sm">
-        <dt className="text-muted">Preferred</dt><dd>{m.preferred === "agent" ? "DROOL agent" : "SSH"}</dd>
+      <dl className="grid grid-cols-[minmax(7rem,9rem)_1fr] gap-y-2 text-sm">
+        <dt className="text-muted">Managed via</dt><dd>{m.preferred === "agent" ? "Shepherd (DROOL agent)" : "SSH"}</dd>
         {m.preferred === "agent" && (<>
-          <dt className="text-muted">Agent</dt>
+          <dt className="text-muted">Shepherd</dt>
           <dd>{stateLabels[m.agent_state] ?? m.agent_state}{m.reason && m.agent_state !== "connected" && <span className="text-muted"> — {m.reason}</span>}</dd>
           <dt className="text-muted">Fallback</dt>
           <dd>{m.fallback === "ssh" ? "SSH (only while the agent is unreachable, never to work around a refusal)" : "none"}</dd>
         </>)}
         <dt className="text-muted">Operations now</dt>
-        <dd>{m.active === "agent" ? "through the agent" : m.active === "ssh" ? "over SSH" : <span className="text-danger">blocked</span>}</dd>
+        <dd>{m.active === "agent" ? "through the Shepherd" : m.active === "ssh" ? "over SSH" : <span className="text-danger">blocked</span>}</dd>
       </dl>
 
       {m.blocked && m.agent_state === "revoked" && (
         <div className="mt-3"><Alert>
-          This host's agent identity was revoked, so DROOL manages it neither through the agent nor (silently) over SSH.
+          This host's Shepherd identity was revoked, so DROOL manages it neither through the Shepherd (DROOL agent) nor (silently) over SSH.
           Re-enroll the agent, or decide to manage the host over SSH.
           {can("hosts.write") && m.ssh_configured && (
             <div className="mt-2"><Button size="sm" onClick={() => setMgmt.mutate({ preferred: "ssh", fallback: "none" })}>Manage over SSH</Button></div>
@@ -84,7 +87,7 @@ export function ManagementCard({ host }: { host: Host }) {
 
       {id?.status === "quarantined" && (
         <div className="mt-3"><Alert>
-          <strong>Identity conflict.</strong> Two machines connected at the same time with this host's agent identity — often a
+          <strong>Identity conflict.</strong> Two machines connected at the same time with this host's Shepherd identity — often a
           cloned VM that copied the agent's key. DROOL doesn't pick one: management is paused until you resolve it.
           <ul className="mt-2 space-y-1 text-xs">
             {(id.conflict?.sessions ?? []).map((s, i) => (
@@ -102,10 +105,27 @@ export function ManagementCard({ host }: { host: Host }) {
         </Alert></div>
       )}
 
+      {children}
+
+      {live && id && (!id.compatible || !id.epoch_matches || (a?.sessions ?? []).length > 1 || (a?.state_versions ?? []).some((sv) => sv.status !== "ok")
+        || id.update_state === "failed" || id.update_state === "rolled_back") && (
+        <div className="mt-3 space-y-2">
+          {!id.compatible && <Alert>Shepherd version {id.agent_version} isn&apos;t compatible with this controller{id.compat_reason ? `: ${id.compat_reason}` : ""}.</Alert>}
+          {!id.epoch_matches && <Alert>The Shepherd reports a different controller epoch ({id.epoch_reported.slice(0, 12)}): it refuses commands until this is reconciled.</Alert>}
+          {(a?.sessions ?? []).length > 1 && <Alert>{a!.sessions.length} sessions are connected with this identity.</Alert>}
+          {(a?.state_versions ?? []).some((sv) => sv.status !== "ok") && <Alert tone="warn">Managed state on the host is ahead of, or foreign to, this controller: reconcile it under Shepherd details.</Alert>}
+          {(id.update_state === "failed" || id.update_state === "rolled_back") && <Alert tone="warn">The last Shepherd update {id.update_state === "failed" ? "failed" : "was rolled back"}{id.update_detail ? `: ${id.update_detail}` : ""}.</Alert>}
+        </div>
+      )}
+
       {live && id && (
-        <div className="mt-4 space-y-3 border-t border-line pt-3">
-          <dl className="grid grid-cols-[9rem_1fr] gap-y-1.5 text-sm">
-            <dt className="text-muted">Agent version</dt>
+        <details className="mt-4 border-t border-line pt-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            Shepherd details <span className="font-normal text-muted">— version {id.agent_version || "—"}{a?.update_available ? `, update available: ${a.update_available}` : ""}; certificate; what DROOL may do</span>
+          </summary>
+          <div className="mt-3 space-y-3">
+          <dl className="grid grid-cols-[minmax(7rem,9rem)_1fr] gap-y-1.5 text-sm">
+            <dt className="text-muted">Shepherd version</dt>
             <dd>{id.agent_version || "—"} {!id.compatible && <Badge tone="danger">incompatible</Badge>}
               {a?.update_available && <span className="ml-2"><Badge tone="accent">update available: {a.update_available}</Badge></span>}
               {id.update_state && <span className="ml-2"><Badge tone={id.update_state === "healthy" ? "ok" : id.update_state === "rolled_back" || id.update_state === "failed" ? "danger" : "warn"}>{updateLabels[id.update_state] ?? id.update_state}</Badge></span>}
@@ -147,15 +167,16 @@ export function ManagementCard({ host }: { host: Host }) {
             </div>
           )}
           {(a?.sessions ?? []).length > 1 && <p className="text-xs text-danger">{a!.sessions.length} sessions connected with this identity.</p>}
-        </div>
+          </div>
+        </details>
       )}
 
       <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-3">
-        {!live && m.ssh_configured && can("agents.enroll") && <Button variant="primary" onClick={() => setDialog("install")}>Install DROOL agent</Button>}
+        {!live && m.ssh_configured && can("agents.enroll") && <Button variant="primary" onClick={() => setDialog("install")}>Install Shepherd (DROOL agent)</Button>}
         {!live && can("agents.enroll") && <Button onClick={() => setDialog("manual")}>Manual install…</Button>}
         {live && a?.update_available && can("agents.manage") && (
-          <Button disabled={update.isPending} onClick={() => { if (confirm(`Update the agent on ${host.name} to ${a.update_available}? If it doesn't become healthy, it rolls back by itself.`)) update.mutate(a.update_available!); }}>
-            Update agent to {a.update_available}</Button>
+          <Button disabled={update.isPending} onClick={() => { if (confirm(`Update the Shepherd (DROOL agent) on ${host.name} to ${a.update_available}? If it doesn't become healthy, it rolls back by itself.`)) update.mutate(a.update_available!); }}>
+            Update Shepherd to {a.update_available}</Button>
         )}
         {can("hosts.write") && live && m.ssh_configured && m.preferred === "agent" && m.fallback === "ssh" && (
           <Button size="sm" variant="ghost" onClick={() => setMgmt.mutate({ preferred: "agent", fallback: "none" })}>Turn off SSH fallback</Button>
@@ -164,13 +185,13 @@ export function ManagementCard({ host }: { host: Host }) {
           <Button size="sm" variant="ghost" onClick={() => setMgmt.mutate({ preferred: "agent", fallback: "ssh" })}>Use SSH as fallback</Button>
         )}
         {can("hosts.write") && live && m.preferred === "ssh" && (
-          <Button size="sm" variant="ghost" onClick={() => setMgmt.mutate({ preferred: "agent", fallback: m.ssh_configured ? "ssh" : "none" })}>Prefer the agent</Button>
+          <Button size="sm" variant="ghost" onClick={() => setMgmt.mutate({ preferred: "agent", fallback: m.ssh_configured ? "ssh" : "none" })}>Prefer the Shepherd</Button>
         )}
         {can("hosts.write") && live && m.preferred === "agent" && m.ssh_configured && (
           <Button size="sm" variant="ghost" onClick={() => setMgmt.mutate({ preferred: "ssh", fallback: "none" })}>Manage over SSH only</Button>
         )}
         {live && id && can("agents.manage") && id.status !== "quarantined" && (
-          <Button size="sm" variant="danger" onClick={() => setDialog("revoke")}>Revoke agent identity</Button>
+          <Button size="sm" variant="danger" onClick={() => setDialog("revoke")}>Revoke Shepherd identity</Button>
         )}
       </div>
 
@@ -191,7 +212,7 @@ function InstallDialog({ host, onClose }: { host: Host; onClose: () => void }) {
     mutationFn: () => unwrap(api.POST("/hosts/{id}/agent/install", { params: { path: { id: host.id } }, body: { preset, release_key: key.trim() || undefined } })),
   });
   return (
-    <Dialog title={`Install the DROOL agent on ${host.name}`} onClose={onClose} wide>
+    <Dialog title={`Install a Shepherd (DROOL agent) on ${host.name}`} onClose={onClose} wide>
       <div className="space-y-4">
         <p className="text-sm">DROOL copies the agent over this host's pinned SSH connection, writes its capability ceiling
           (/etc/drool/agent.yaml), enrolls it with a single-use token, and starts the drool-agent service. The host then uses the
@@ -230,7 +251,7 @@ export function ManualInstallDialog({ host, onClose, groupId }: { host?: Host; o
   });
   const t = token.data;
   return (
-    <Dialog title={host ? `Install the agent on ${host.name} manually` : "Add a host with the DROOL agent"} onClose={onClose} wide>
+    <Dialog title={host ? `Install a Shepherd on ${host.name} manually` : "Add a host with a Shepherd (DROOL agent)"} onClose={onClose} wide>
       <div className="space-y-4">
         {!t ? (
           <>
@@ -271,7 +292,7 @@ function RevokeDialog({ identityId, hostName, onClose }: { identityId: string; h
     onSuccess: onClose,
   });
   return (
-    <Dialog title={`Revoke the agent identity of ${hostName}?`} onClose={onClose}>
+    <Dialog title={`Revoke the Shepherd identity of ${hostName}?`} onClose={onClose}>
       <div className="space-y-3 text-sm">
         <p>The agent is disconnected now and can never connect with this identity again; its certificates stop working. DROOL won't manage
           the host until the agent is re-enrolled or you choose SSH management. Use this for a lost, stolen or compromised host.</p>

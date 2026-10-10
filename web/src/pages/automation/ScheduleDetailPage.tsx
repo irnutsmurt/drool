@@ -56,6 +56,7 @@ export function ScheduleDetailPage() {
   return (
     <>
       <PageHeader
+        crumbs={maint ? [{ label: "Alerts", to: "/alerts" }, { label: "Maintenance", to: back }] : [{ label: "Schedules", to: back }]}
         title={s.name}
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
@@ -75,7 +76,6 @@ export function ScheduleDetailPage() {
           </>
         )}
       />
-      <p className="-mt-3 mb-4 text-sm"><Link className={plainLink} to={back}>← {maint ? "Maintenance" : "Schedules"}</Link></p>
       {act.error && <div className="mb-4"><Alert>{errorMessage(act.error)}</Alert></div>}
       {s.attention && (
         <div className="mb-4">
@@ -156,7 +156,7 @@ function Summary({ s }: { s: Schedule }) {
     ["Revision", <>{s.revision}{s.updated_by && <span className="text-muted"> · changed by {s.updated_by}</span>}<span className="block text-xs text-muted">{fmtTime(s.updated_at)}</span></>],
   );
   return (
-    <dl className="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-2 text-sm">
+    <dl className="grid grid-cols-[7rem_1fr] sm:grid-cols-[8rem_1fr] gap-x-3 gap-y-2 text-sm">
       {rows.map(([k, v]) => (
         <div key={k} className="contents">
           <dt className="text-muted">{k}</dt>

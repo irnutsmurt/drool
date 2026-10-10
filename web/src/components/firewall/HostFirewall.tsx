@@ -15,42 +15,74 @@ import { errorMessage, formatAgo } from "@/lib/format";
 import { ApplyDialog, ExplainTable, modeInfo, PolicyEditor, statusLabels, TxList } from "./parts";
 import { fk, useFwHost, useFwSuggestions, useFwTransactions, type FwPlan, type FwSuggestion } from "./queries";
 
-/** The host's firewall (DESIGN §15–19): mode, environment, what is
- *  enforced and why, observations, and transactions. */
-export function FirewallCard({ host }: { host: Host }) {
+/** A host's firewall (DESIGN §15–19), on its own page: mode,
+ *  environment, what is enforced and why, observations, and transactions. */
+export function HostFirewall({ host }: { host: Host }) {
   const plan = useFwHost(host.id);
   const p = plan.data;
   const [tab, setTab] = useState<"explain" | "observed" | "history" | "advanced">("explain");
-  if (plan.error) return <Card title="Firewall"><Alert>{errorMessage(plan.error)}</Alert></Card>;
-  if (!p) return <Card title="Firewall"><p className="text-sm text-muted">Loading…</p></Card>;
-  const st = statusLabels[p.summary.status];
+  if (plan.error) return <Alert>{errorMessage(plan.error)}</Alert>;
+  if (!p) return <p className="text-sm text-muted">Loading…</p>;
   return (
-    <Card title="Firewall" actions={<span className="flex gap-2"><Badge tone={st.tone}>{st.text}</Badge></span>}>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ModeForm p={p} />
-        <Environment p={p} />
-      </div>
-      <Status p={p} host={host} />
-      <div className="mt-4 flex gap-1 border-b border-line">
-        {([["explain", "Effective policy"], ["observed", "Observed connections"], ["history", "Transactions"], ["advanced", "Generated nftables"]] as const).map(([id, label]) => (
-          <button key={id} onClick={() => setTab(id)}
-            className={cx("-mb-px border-b-2 px-3 py-2 text-sm", tab === id ? "border-accent font-medium" : "border-transparent text-muted hover:text-fg")}>{label}</button>
-        ))}
-      </div>
-      <div className="pt-3">
-        {tab === "explain" && <ExplainSection p={p} />}
-        {tab === "observed" && <Observed p={p} />}
-        {tab === "history" && <History hostId={host.id} />}
-        {tab === "advanced" && (
-          <div className="space-y-2 text-sm">
-            <p className="text-muted">Diagnostics only: this is what DROOL would load into its own table <span className="font-mono">inet drool</span>.
-              DROOL never touches other tables and never runs <span className="font-mono">nft flush ruleset</span>.</p>
-            <CodeBlock text={p.rendered.full} />
-            <p className="text-xs text-muted">rules {p.rendered.rules_hash.slice(0, 16)} · sets {p.rendered.sets_hash.slice(0, 16)}</p>
-          </div>
-        )}
-      </div>
-    </Card>
+    <div className="grid gap-4">
+      <Card title="Mode and environment">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <ModeForm p={p} />
+          <Environment p={p} />
+        </div>
+      </Card>
+      <Card title="Enforcement">
+        <Status p={p} host={host} />
+      </Card>
+      <Card>
+        <div role="tablist" aria-label="Firewall details" className="-mt-1 flex gap-1 overflow-x-auto border-b border-line">
+          {([["explain", "Effective policy"], ["observed", "Observed connections"], ["history", "Transactions"], ["advanced", "Generated nftables"]] as const).map(([id, label]) => (
+            <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+              className={cx("-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm", tab === id ? "border-accent font-medium" : "border-transparent text-muted hover:text-fg")}>{label}</button>
+          ))}
+        </div>
+        <div className="pt-3" role="tabpanel">
+          {tab === "explain" && <ExplainSection p={p} />}
+          {tab === "observed" && <Observed p={p} />}
+          {tab === "history" && <History hostId={host.id} />}
+          {tab === "advanced" && (
+            <div className="space-y-2 text-sm">
+              <p className="text-muted">Diagnostics only: this is what DROOL would load into its own table <span className="font-mono">inet drool</span>.
+                DROOL never touches other tables and never runs <span className="font-mono">nft flush ruleset</span>.</p>
+              <CodeBlock text={p.rendered.full} />
+              <p className="text-xs text-muted">rules {p.rendered.rules_hash.slice(0, 16)} · sets {p.rendered.sets_hash.slice(0, 16)}</p>
+            </div>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/** The host overview's firewall line: mode, enforcement, drift and safety
+ * state, with the way to the host's firewall page. */
+export function HostFirewallSummary({ hostId }: { hostId: string }) {
+  const plan = useFwHost(hostId);
+  const p = plan.data;
+  if (plan.error) return <p className="text-sm text-danger">Couldn't load the firewall state: {errorMessage(plan.error)}</p>;
+  if (!p) return <p className="text-sm text-muted">Loading…</p>;
+  const st = statusLabels[p.summary.status];
+  const conflicts = p.policy.conflicts ?? [];
+  return (
+    <div className="space-y-1.5 text-sm">
+      <p className="flex flex-wrap items-center gap-2">
+        <Badge tone={st.tone}>{st.text}</Badge>
+        <span>Mode: <b>{modeInfo[p.config.mode]?.label ?? p.config.mode}</b></span>
+        <span className="text-muted">· {p.applied.enforced ? `revision ${p.applied.revision} enforced` : "DROOL isn't filtering this host"}</span>
+      </p>
+      {p.applied.drift && <p className="text-danger"><span aria-hidden="true">✕ </span>DROOL's rules were changed outside DROOL (drift).</p>}
+      {conflicts.length > 0 && <p className="text-danger"><span aria-hidden="true">✕ </span>Applying is refused: a policy would cut DROOL's management path.</p>}
+      {p.pending_transaction && <p className="text-warn"><span aria-hidden="true">⚠ </span>Transaction {p.pending_transaction.state}: reboots and network restarts wait for it.</p>}
+      {p.eligibility && !p.eligibility.supported && p.config.mode !== "off" && (
+        <p className="text-muted">Enforcement unavailable here{(p.eligibility.reasons ?? [])[0] ? `: ${(p.eligibility.reasons ?? [])[0]}` : ""}. Monitoring, simulation and explanation still work.</p>
+      )}
+      {p.applied.override_mgmt && <p className="text-danger">Applied with the emergency override.</p>}
+    </div>
   );
 }
 
@@ -84,7 +116,7 @@ function ModeForm({ p }: { p: FwPlan }) {
           <Input type="number" min={30} value={timeout} disabled={!can("firewall.write")} placeholder="inherit" onChange={(e) => setTimeout_(e.target.value)} />
         </Field>
       </div>
-      <p className="text-xs text-muted">Learning: {p.learning === "continuous" ? "continuous (agent)" : p.learning === "snapshot" ? "connection snapshots only (SSH host)" : "off"}</p>
+      <p className="text-xs text-muted">Learning: {p.learning === "continuous" ? "continuous (Shepherd)" : p.learning === "snapshot" ? "connection snapshots only (SSH host)" : "off"}</p>
       {save.error && <Alert>{errorMessage(save.error)}</Alert>}
       {can("firewall.write") && dirty && <Button size="sm" variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>Save</Button>}
     </div>
@@ -127,8 +159,8 @@ function Status({ p, host }: { p: FwPlan; host: Host }) {
   const conflicts = p.policy.conflicts ?? [];
   const canApply = can("firewall.write") && p.config.mode === "enforce" && !p.pending_transaction;
   return (
-    <div className="mt-4 space-y-2 border-t border-line pt-3 text-sm">
-      <dl className="grid grid-cols-[11rem_1fr] gap-y-1">
+    <div className="space-y-2 text-sm">
+      <dl className="grid grid-cols-[7rem_1fr] sm:grid-cols-[11rem_1fr] gap-y-1">
         <dt className="text-muted">Committed on the host</dt>
         <dd>{p.applied.enforced ? `revision ${p.applied.revision}` : "no DROOL policy"}{p.applied.override_mgmt && <span className="ml-2"><Badge tone="danger">applied with emergency override</Badge></span>}</dd>
         {p.applied.enforced && (<>
@@ -188,11 +220,11 @@ function Observed({ p }: { p: FwPlan }) {
   return (
     <div className="space-y-3 text-sm">
       <p className="text-muted">
-        {p.learning === "continuous" ? "The agent records connections continuously."
+        {p.learning === "continuous" ? "The Shepherd records connections continuously."
           : p.learning === "snapshot" ? "SSH hosts are never observed continuously: take a snapshot of the current connections."
-            : "Continuous collection is off for this host (Network → Collection and enrichment)."}{" "}
-        Observed connections, with how this policy classifies each of them, are under <a className="text-accent underline" href="#network">Network connections</a>
-        {" "}and on the <Link className="text-accent underline" to={`/network?host=${p.host_id}`}>Network activity</Link> page.
+            : "Continuous collection is off for this host (Network Activity → Collection and enrichment)."}{" "}
+        Observed connections, with how this policy classifies each of them, are on this host&apos;s{" "}
+        <Link className="text-accent underline" to={`/hosts/${p.host_id}/network`}>Network Activity</Link> page.
       </p>
       {(sug.data?.items ?? []).length > 0 && (
         <div className="rounded-ui border border-line p-3">

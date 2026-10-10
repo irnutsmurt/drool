@@ -11,9 +11,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Table } from "@/components/ui/Table";
 import { errorMessage } from "@/lib/format";
-import { JobsTabs } from "@/pages/jobs/JobsTabs";
 
-/** Jobs → Workflows: reusable, revisioned lists of steps. */
+/** Workflows: reusable, revisioned lists of steps. */
 export function WorkflowsPage() {
   const { can } = useAuth();
   const [archived, setArchived] = useState(false);
@@ -26,8 +25,8 @@ export function WorkflowsPage() {
   );
   return (
     <>
-      <PageHeader title="Jobs" actions={newButton} />
-      <JobsTabs />
+      <PageHeader title="Workflows" actions={newButton}
+        description="Reusable, revisioned lists of steps — for example: update, reboot if required, then check that services run. Run one now or put it on a schedule." />
       {list.error && <Alert>{errorMessage(list.error)}</Alert>}
       {!archived && list.data && rows.length === 0 ? (
         <EmptyState title="No workflows yet"

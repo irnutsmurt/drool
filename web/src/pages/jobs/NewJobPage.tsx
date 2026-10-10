@@ -40,7 +40,7 @@ export function NewJobPage() {
   const [timeout, setTimeoutS] = useState("");
   const [name, setName] = useState("");
   const [hostIds, setHostIds] = useState<string[]>(() => params.get("hosts")?.split(",").filter(Boolean) ?? []);
-  const [groupIds, setGroupIds] = useState<string[]>([]);
+  const [groupIds, setGroupIds] = useState<string[]>(() => params.get("groups")?.split(",").filter(Boolean) ?? []);
   const [tags, setTags] = useState("");
   const [rollout, setRollout] = useState<RolloutState>(defaultRollout);
   const strategy = useMemo(() => strategyFrom(rollout), [rollout]);
@@ -170,7 +170,7 @@ export function NewJobPage() {
 
   return (
     <>
-      <PageHeader title="New job" />
+      <PageHeader crumbs={[{ label: "Runs", to: "/jobs" }]} title="New run" description="Run a command, script, update, package or service change, reboot or file deployment on hosts — with a preview, and canaries and batches when you want them." />
       <form onSubmit={onSubmit} className="grid gap-4 xl:grid-cols-[1fr_24rem]">
         <div className="space-y-4">
           <Card title="What to do">
@@ -246,7 +246,7 @@ export function NewJobPage() {
                   setAllow={kind === "package" ? setPkgAllow : setSysAllow} />
               )}
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Job name" hint="Optional.">
+                <Field label="Name" hint="Optional: shown under Runs.">
                   <Input value={name} onChange={(e) => setName(e.target.value)} />
                 </Field>
                 <Field label="Timeout (seconds)" hint={`Default ${defaultTimeouts[kind]}.`}>
@@ -285,7 +285,7 @@ export function NewJobPage() {
             {can("schedules.manage") && (
               <Button type="button" disabled={!stepReady || !hasTargets}
                 onClick={() => navigate("/jobs/schedules/new", { state: { name, steps: [step], targets, strategy } })}>
-                Schedule this job
+                Schedule this run
               </Button>
             )}
             {can("workflows.manage") && (
@@ -310,7 +310,7 @@ export function NewJobPage() {
               </div>
               {(groups.data?.items.length ?? 0) > 0 && (
                 <div className="space-y-1.5 border-t border-line pt-3">
-                  <div className="text-xs font-medium uppercase text-muted">Groups</div>
+                  <div className="text-xs font-medium uppercase text-muted">Packs</div>
                   {groups.data!.items.map((g) => (
                     <Checkbox key={g.id} checked={groupIds.includes(g.id)} onChange={(on) => toggle(groupIds, setGroupIds, g.id, on)}
                       label={`${g.name} (${g.host_ids.length})`} />

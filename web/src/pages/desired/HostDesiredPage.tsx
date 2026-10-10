@@ -13,7 +13,9 @@ import { plainLink } from "@/components/ui/links";
 import { fmtSince, fmtTime } from "@/components/monitoring/format";
 import { RestoreDialog } from "@/components/desired/RestoreDialog";
 import { AcceptDialog, ReviewDialog } from "@/components/desired/ReviewDialog";
-import { Declarations, DesiredStatusBadge, DiffTable, SourceText, kindLabel, statusLabel } from "@/components/desired/ui";
+import { DesiredStatusBadge, DiffTable, kindLabel, statusLabel } from "@/components/desired/ui";
+import { desiredLayers, desiredScopes } from "@/components/desired/provenance";
+import { Provenance, ScopeLegend } from "@/components/ui/Provenance";
 import { describeKey, useDesiredHost, useDesiredResource, useInvalidateDesired, type DesiredResourceView } from "@/components/desired/queries";
 import { errorMessage } from "@/lib/format";
 
@@ -39,12 +41,12 @@ export function HostDesiredPage() {
   return (
     <>
       <PageHeader
+        crumbs={[{ label: "Hosts", to: "/hosts" }, { label: h.name, to: `/hosts/${id}` }]}
         title={`${h.name}: desired state`}
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
             <DesiredStatusBadge status={h.status} />
             {h.counts.total > 0 && <span>{h.counts.compliant} of {h.counts.total} resources compliant</span>}
-            <Link className={plainLink} to={`/hosts/${id}`}>Host overview</Link>
           </span>
         }
         actions={
@@ -68,18 +70,19 @@ export function HostDesiredPage() {
           ) : (
             <ul className="space-y-1 text-sm">
               {h.baselines.map((b) => (
-                <li key={b.id + b.via}><Link className={plainLink} to={`/desired/baselines/${b.id}`}>{b.name}</Link> <span className="text-muted">rev. {b.revision}, via {b.via}</span></li>
+                <li key={b.id + b.via}><Link className={plainLink} to={`/desired/baselines/${b.id}`}>{b.name}</Link> <span className="text-muted">rev. {b.revision}, via {b.via.replace(/^group /, "pack ")}</span></li>
               ))}
             </ul>
           )}
           {h.groups.length > 0 && (
             <p className="mt-2 text-xs text-muted">
-              Groups (higher priority wins when they disagree): {h.groups.map((g) => `${g.name} (${g.priority})`).join(", ")}.{" "}
+              Packs (higher priority wins when they disagree): {h.groups.map((g) => `${g.name} (${g.priority})`).join(", ")}.{" "}
               <Link className={plainLink} to="/groups">Change priorities</Link>
             </p>
           )}
+          <div className="mt-2"><ScopeLegend scopes={desiredScopes} /></div>
           <p className="mt-2 text-xs text-muted">
-            Precedence: custom for this host → baselines assigned to it → its groups (by priority) → everywhere. Packages and files are
+            Packages and files are
             checked every {h.check_every_s >= 120 ? `${Math.round(h.check_every_s / 60)} min` : `${h.check_every_s} s`}
             {h.packages_at || h.files_at ? ` (last ${fmtSince(Math.max(h.packages_at ?? 0, h.files_at ?? 0))})` : ""}; services come from monitoring
             {h.services_at ? ` (last report ${fmtSince(h.services_at)})` : ""}.
@@ -197,7 +200,7 @@ function ResourceDetail({ hostId, r, onRestore, onReview, onAccept }: {
       {r.status === "conflict" && (
         <Alert tone="warn">
           <strong>{src.label}.</strong> DROOL doesn't pick one: this resource isn't checked against either value, restored or restored
-          automatically until the conflict is resolved — give one group a higher priority, change a baseline, or accept the current
+          automatically until the conflict is resolved — give one pack a higher priority, change a baseline, or accept the current
           state for this host.
         </Alert>
       )}
@@ -209,8 +212,21 @@ function ResourceDetail({ hostId, r, onRestore, onReview, onAccept }: {
       <div className="grid gap-3 text-sm sm:grid-cols-2">
         <div>
           <h4 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">Where the desired value comes from</h4>
-          <SourceText source={src} />
-          {src.override && <p className="mt-1 text-xs text-muted">Set {src.override.origin === "accept" ? "by Accept current state" : "for this host"}{src.override.updated_by ? ` by ${src.override.updated_by}` : ""}{src.override.note ? `: “${src.override.note}”` : ""}.</p>}
+          <Provenance label="Where the desired value comes from" layers={desiredLayers(r).map((l) => ({
+            key: l.key,
+            scope: l.scope,
+            value: l.value,
+            state: l.state,
+            detail: (
+              <>
+                {l.baselines.map((b, i) => <span key={b.id}>{i > 0 && ", "}<Link className={plainLink} to={`/desired/baselines/${b.id}`}>{b.name}</Link> rev. {b.revision}</span>)}
+                {l.level === "host" && l.state === "effective" && src.override && (
+                  <>Set {src.override.origin === "accept" ? "by Accept current state" : "for this host"}{src.override.updated_by ? ` by ${src.override.updated_by}` : ""}{src.override.note ? `: “${src.override.note}”` : ""}</>
+                )}
+              </>
+            ),
+          }))}
+            note={r.status === "conflict" ? "Equal priorities that disagree: DROOL doesn't pick one." : src.label} />
         </div>
         <div>
           <h4 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">Automatic restore</h4>
@@ -222,8 +238,6 @@ function ResourceDetail({ hostId, r, onRestore, onReview, onAccept }: {
           ) : <p className="text-muted">Off: drift is shown, and restored when someone chooses to.</p>}
         </div>
       </div>
-      <Declarations title="Competing declarations" items={src.competing ?? []} />
-      <Declarations title="Replaces (less specific)" items={src.shadowed ?? []} />
       <div>
         <h4 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">History</h4>
         {hist.length === 0 ? <p className="text-sm text-muted">No changes recorded yet.</p> : (

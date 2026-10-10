@@ -220,7 +220,7 @@ func (e *Env) RemovalBlockers() []string {
 		r = append(r, "detection could not run as root")
 	}
 	if !e.Systemd {
-		r = append(r, "systemd is not running (the dead-man rollback timer needs it)")
+		r = append(r, "systemd is not running (the automatic rollback timer needs it)")
 	}
 	if e.Nft == "" {
 		r = append(r, "nftables (nft) is not installed")
@@ -241,7 +241,7 @@ func (e *Env) Eligibility() Eligibility {
 		refuse("detection could not run as root")
 	}
 	if !e.Systemd {
-		refuse("systemd is not running: enforcement needs it for the boot loader (drool-firewall.service) and the dead-man rollback timer")
+		refuse("systemd is not running: enforcement needs it for the boot loader (drool-firewall.service) and the automatic rollback timer")
 	}
 	if e.Nft == "" {
 		refuse("nftables (nft) is not installed: install the nftables package (for example with a DROOL package job), then check again")

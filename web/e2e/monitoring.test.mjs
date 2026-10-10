@@ -32,9 +32,9 @@ test("fleet page: what needs attention, filters, agent vs SSH", async () => {
   await go("/monitoring");
   await waitText(page, "Needs attention");
   const t = await text(page);
-  assert.match(t, /with the agent \(continuous\)/);
+  assert.match(t, /with a Shepherd \(agent, continuous\)/);
   assert.match(t, /over SSH \(polled\)/);
-  assert.match(t, /Agent · continuous/);
+  assert.match(t, /Shepherd · continuous/);
   assert.match(t, /SSH · polled/);
   assert.match(t, /\/srv\/media is over 95% full/);
   assert.match(t, /Stale/, "the stale VM is shown as stale");
@@ -52,12 +52,12 @@ test("fleet page: what needs attention, filters, agent vs SSH", async () => {
 
 test("host overview: headline tiles link to details; unknown is never zero", async () => {
   await go(`/hosts/${page.ids["nas-01"]}`);
-  await waitText(page, "Details and history");
+  await waitText(page, "View monitoring");
   let t = await text(page);
   for (const want of ["CPU", "Memory", "Storage", "Temperature", "Network", "Services", "Storage devices", "Active health issues", "5/6 healthy"]) {
     assert.ok(t.includes(want), `host page shows ${want}`);
   }
-  await click(page, "a", "Storage devices");
+  await click(page, "main a", "Storage devices");
   await waitFor(page, async () => page.url().includes("tab=storage"), "storage tab");
   // A container host over SSH: values it can't know say so.
   await go(`/hosts/${page.ids["old-vm"]}/monitoring`);
@@ -166,7 +166,7 @@ test("sensors, GPU and missing helpers", async () => {
   assert.deepEqual(page.errors, []);
 });
 
-test("bulk: helpers and agent conversion previews", async () => {
+test("bulk: helpers and Shepherd (agent) conversion previews", async () => {
   await go("/monitoring?category=all");
   await waitText(page, "web-1");
   for (const n of ["gpu-01", "web-1"]) await click(page, "input[type=checkbox]", `Select ${n}`);
@@ -174,7 +174,7 @@ test("bulk: helpers and agent conversion previews", async () => {
   await page.waitForSelector('[role="dialog"]');
   await waitText(page, "hosts selected");
   await click(page, '[role="dialog"] button', "Cancel");
-  await click(page, "button", "Convert to agent");
+  await click(page, "button", "Convert to Shepherd");
   await page.waitForSelector('[role="dialog"]');
   await waitText(page, "Compatible:");
   const t = await page.$eval('[role="dialog"]', (d) => d.innerText);
@@ -188,10 +188,10 @@ test("bulk: helpers and agent conversion previews", async () => {
 test("settings: the Recommended health profile and saving fleet settings", async () => {
   // Thresholds are health overrides since M12.1 (web/e2e/health.test.mjs);
   // the fleet's sampling and retention settings still save here.
-  await go("/settings/monitoring");
+  await go("/monitoring/settings");
   await waitText(page, "Health checks");
   assert.match(await text(page), /Recommended profile/);
   await click(page, "button", "Save monitoring settings");
-  await waitText(page, "Saved and sent to connected agents");
+  await waitText(page, "Saved and sent to connected Shepherds");
   assert.deepEqual(page.errors, []);
 });

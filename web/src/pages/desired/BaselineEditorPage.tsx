@@ -166,7 +166,8 @@ export function BaselineEditorPage() {
   const nextRev = existing.data ? existing.data.revision + 1 : 1;
   return (
     <>
-      <PageHeader title={id ? `Change baseline: ${existing.data?.name}` : "Create baseline"}
+      <PageHeader crumbs={[{ label: "Desired State", to: "/desired" }, { label: "Baselines", to: "/desired/baselines" }, ...(id ? [{ label: existing.data?.name ?? "Baseline", to: `/desired/baselines/${id}` }] : [])]}
+        title={id ? `Change baseline: ${existing.data?.name}` : "Create baseline"}
         description={id ? `Saving creates revision ${nextRev}; earlier revisions are kept unchanged.` : "Say what machines should look like. DROOL checks it continuously and tells you when they drift."} />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (upToDate) save.mutate(); }}>
@@ -181,14 +182,14 @@ export function BaselineEditorPage() {
             <fieldset className="space-y-2">
               <legend className="sr-only">Applies to</legend>
               <label className="flex items-center gap-2 text-sm"><input type="radio" name="scope" checked={everywhere} onChange={() => setEverywhere(true)} /> Every host</label>
-              <label className="flex items-center gap-2 text-sm"><input type="radio" name="scope" checked={!everywhere} onChange={() => setEverywhere(false)} /> Groups and hosts I choose</label>
+              <label className="flex items-center gap-2 text-sm"><input type="radio" name="scope" checked={!everywhere} onChange={() => setEverywhere(false)} /> Packs and hosts I choose</label>
             </fieldset>
             {!everywhere && (
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <div>
-                  <h3 className="mb-1 text-sm font-medium">Groups</h3>
+                  <h3 className="mb-1 text-sm font-medium">Packs</h3>
                   <div className="max-h-48 space-y-1 overflow-y-auto rounded-ui border border-line p-2">
-                    {(groups.data?.items ?? []).length === 0 && <p className="text-xs text-muted">No groups yet.</p>}
+                    {(groups.data?.items ?? []).length === 0 && <p className="text-xs text-muted">No packs yet.</p>}
                     {(groups.data?.items ?? []).map((g) => (
                       <Checkbox key={g.id} checked={pickedGroups.includes(g.id)} label={g.name}
                         onChange={(on) => setPickedGroups(on ? [...pickedGroups, g.id] : pickedGroups.filter((x) => x !== g.id))} />
@@ -208,7 +209,7 @@ export function BaselineEditorPage() {
             )}
             <p className="mt-2 text-xs text-muted">
               When baselines disagree about a resource, the most specific wins: a host's own setting, then baselines assigned to the host,
-              then its groups (the higher <Link className={plainLink} to="/groups">group priority</Link> wins), then baselines for every host.
+              then its packs (the higher <Link className={plainLink} to="/groups">pack priority</Link> wins), then baselines for every host.
               Equal priorities that disagree are shown as a conflict — DROOL never picks one silently.
             </p>
           </Card>
@@ -254,7 +255,7 @@ export function BaselineEditorPage() {
                     <Button className="mt-2" type="button" size="sm" onClick={() => setRollout(defaultRollout)}>All hosts at once</Button>
                   </div>
                 )}
-                <p className="text-xs text-muted">Group priorities are set on the <Link className={plainLink} to="/groups">Groups</Link> page.</p>
+                <p className="text-xs text-muted">Pack priorities are set on the <Link className={plainLink} to="/groups">Packs</Link> page.</p>
               </div>
             )}
           </Card>

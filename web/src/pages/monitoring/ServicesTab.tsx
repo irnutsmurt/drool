@@ -86,7 +86,7 @@ export function ServicesTab({ id, o }: { id: string; o: MonHostOverview }) {
               ))}
             </div>
             <Checkbox label={`Show all units (advanced${v.hidden ? `, ${v.hidden} hidden` : ""})`} checked={all} onChange={setAll} />
-            <span className="ml-auto text-xs text-muted">{v.source === "ssh" ? "Polled over SSH" : "Reported by the agent"} · {fmtSince(v.updated_at)}</span>
+            <span className="ml-auto text-xs text-muted">{v.source === "ssh" ? "Polled over SSH" : "Reported by the Shepherd"} · {fmtSince(v.updated_at)}</span>
           </div>
           {save.error && <Alert>{errorMessage(save.error)}</Alert>}
           <div className="overflow-x-auto">

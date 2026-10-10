@@ -18,11 +18,12 @@ export async function launch() {
   return browser;
 }
 
-/** A logged-in page that records page errors. */
-export async function session(browser, { width = 1440, height = 1000 } = {}) {
+/** A logged-in page that records page errors (the admin unless another
+ * user is given; a phone-sized viewport with mobile: true). */
+export async function session(browser, { width = 1440, height = 1000, mobile = false, as } = {}) {
   const ctx = await browser.createBrowserContext();
   const page = await ctx.newPage();
-  await page.setViewport({ width, height });
+  await page.setViewport(mobile ? { width, height, isMobile: true, hasTouch: true } : { width, height });
   page.errors = [];
   page.on("pageerror", (e) => page.errors.push("pageerror: " + e.message));
   page.on("console", (m) => {
@@ -30,8 +31,8 @@ export async function session(browser, { width = 1440, height = 1000 } = {}) {
   });
   await page.goto(base + "/", { waitUntil: "networkidle0" });
   if ((await text(page)).includes("Sign in")) {
-    await fill(page, "Username", user);
-    await fill(page, "Password", password);
+    await fill(page, "Username", as?.user ?? user);
+    await fill(page, "Password", as?.password ?? password);
     await Promise.all([page.waitForNetworkIdle({ idleTime: 500 }).catch(() => {}), page.keyboard.press("Enter")]);
     await waitFor(page, async () => !(await text(page)).includes("Sign in to DROOL"), "login");
   }
@@ -119,3 +120,60 @@ export async function api(page, method, path, body) {
     return { status: r.status, body: t ? JSON.parse(t) : null };
   }, method, path, body);
 }
+
+/** Runs in the page: returns texts below the required contrast. */
+export function lowContrast() {
+  const parse = (c) => {
+    const m = c.match(/rgba?\(([^)]+)\)/);
+    if (!m) return null;
+    const [r, g, b, a = 1] = m[1].split(/[ ,/]+/).filter(Boolean).map(Number);
+    return { r, g, b, a };
+  };
+  const lum = ({ r, g, b }) => {
+    const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+  const over = (top, bottom) => ({ r: top.r * top.a + bottom.r * (1 - top.a), g: top.g * top.a + bottom.g * (1 - top.a), b: top.b * top.a + bottom.b * (1 - top.a), a: 1 });
+  const background = (el) => {
+    const layers = [];
+    for (let e = el; e; e = e.parentElement) {
+      const c = parse(getComputedStyle(e).backgroundColor);
+      if (c && c.a > 0) {
+        layers.push(c);
+        if (c.a >= 1) break;
+      }
+    }
+    let bg = { r: 255, g: 255, b: 255, a: 1 };
+    const root = parse(getComputedStyle(document.body).backgroundColor);
+    if (root) bg = root;
+    for (const l of layers.reverse()) bg = over(l, bg);
+    return bg;
+  };
+  const out = [];
+  const seen = new Set();
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const el = n.parentElement;
+    if (!el || seen.has(el) || !n.textContent.trim()) continue;
+    seen.add(el);
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0 || cs.visibility === "hidden" || el.closest("[aria-hidden='true'], .sr-only, svg, option")) continue;
+    if (el.closest("button:disabled, [disabled], [aria-disabled='true']")) continue;
+    let op = 1;
+    for (let e = el; e; e = e.parentElement) op *= Number(getComputedStyle(e).opacity);
+    if (op < 0.95) continue; // deliberately dimmed (disabled rules, members)
+    const fg = parse(cs.color);
+    if (!fg) continue;
+    const bg = background(el);
+    const L1 = lum(over(fg, bg));
+    const L2 = lum(bg);
+    const ratio = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+    const size = parseFloat(cs.fontSize);
+    const large = size >= 24 || (size >= 18.66 && Number(cs.fontWeight) >= 700);
+    const need = large ? 3 : 4.5;
+    if (ratio < need) out.push(`${ratio.toFixed(2)} < ${need}: "${n.textContent.trim().slice(0, 50)}" (${cs.color} on rgb(${Math.round(bg.r)},${Math.round(bg.g)},${Math.round(bg.b)}))`);
+  }
+  return out;
+}
+

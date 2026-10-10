@@ -212,7 +212,7 @@ export function StorageTab({ id, o }: { id: string; o: MonHostOverview }) {
           <p className="mt-2 text-xs text-muted">Only messages matching known storage problems are kept; the rest of the kernel log is never collected.</p>
         </Card>
       )}
-      {o.source === "ssh" && <p className="text-xs text-muted">The write/read probe needs the DROOL agent.</p>}
+      {o.source === "ssh" && <p className="text-xs text-muted">The write/read probe needs a Shepherd (DROOL agent).</p>}
     </div>
   );
 }

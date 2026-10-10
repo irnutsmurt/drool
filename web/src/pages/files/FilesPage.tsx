@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type Schemas } from "@/api/client";
 import { useHost } from "@/api/queries";
@@ -121,8 +121,9 @@ export function FilesPage() {
   return (
     <>
       <PageHeader
+        crumbs={[{ label: "Hosts", to: "/hosts" }, { label: host.data?.name ?? "Host", to: `/hosts/${id}` }]}
         title={`Files on ${host.data?.name ?? ""}`}
-        description={host.data && <Link className="text-accent" to={`/hosts/${id}`}>Back to host</Link>}
+        description="Browse, view, edit and upload files on this host. Every change is audited."
         actions={can("files.elevate") && !viaAgent && (
           <Checkbox checked={elevated} onChange={setElevated} label="Use administrator privileges"
             hint="Act as root through this host's sudo setting." />
@@ -131,7 +132,7 @@ export function FilesPage() {
       {viaAgent && (
         <div className="mb-4">
           <Alert tone="warn">
-            Files on this host go through the <strong>DROOL agent</strong>, which acts as <strong>root</strong>
+            Files on this host go through its <strong>Shepherd (DROOL agent)</strong>, which acts as <strong>root</strong>
             {caps?.allowed_paths?.length ? <> within the paths its owner allowed: <span className="font-mono">{caps.allowed_paths.join(", ")}</span></> : <> on the whole filesystem (root-equivalent)</>}.
             Every change is in the audit log and in the agent's own log on the host.
           </Alert>

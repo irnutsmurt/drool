@@ -475,7 +475,7 @@ func (s *Service) Apply(ctx context.Context, hostID string, op *model.FirewallAp
 			for _, cf := range hp.Conflicts {
 				msgs = append(msgs, cf.Message)
 			}
-			return tres(c), fail(model.ClassValidation, "Change the policy, or use the audited emergency override (the dead-man rollback still applies).",
+			return tres(c), fail(model.ClassValidation, "Change the policy, or use the audited emergency override (automatic rollback protection still applies).",
 				"refused: %s", strings.Join(msgs, "; "))
 		}
 		if op.ExpectRulesHash != "" && op.ExpectRulesHash != rend.RulesHash {

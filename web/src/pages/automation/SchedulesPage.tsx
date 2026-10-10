@@ -10,10 +10,10 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Table } from "@/components/ui/Table";
+import { plainLink } from "@/components/ui/links";
 import { errorMessage } from "@/lib/format";
-import { JobsTabs } from "@/pages/jobs/JobsTabs";
 
-/** Jobs → Schedules: what runs when, and whether it worked last time. */
+/** Schedules: what runs when, and whether it worked last time. */
 export function SchedulesPage() {
   const { can } = useAuth();
   const [archived, setArchived] = useState(false);
@@ -27,12 +27,12 @@ export function SchedulesPage() {
   const attention = rows.filter((s) => s.attention).length;
   return (
     <>
-      <PageHeader title="Jobs" actions={newButton} />
-      <JobsTabs />
+      <PageHeader title="Schedules" actions={newButton}
+        description={<>Jobs and workflows that run at the times you choose. Each run is an ordinary job under <Link className={plainLink} to="/jobs">Runs</Link>; recurring maintenance windows are under <Link className={plainLink} to="/alerts?view=maintenance">Alerts → Maintenance</Link>.</>} />
       {list.error && <Alert>{errorMessage(list.error)}</Alert>}
       {!archived && list.data && rows.length === 0 ? (
         <EmptyState title="No schedules yet"
-          body="A schedule runs a job or a workflow at the times you choose, for example every Sunday at 03:00. Every run is an ordinary job you'll find under Runs."
+          body="A schedule runs a job or a workflow at the times you choose — for example, install updates every Sunday at 03:00 with a canary first. Every run is an ordinary job you'll find under Runs."
           action={newButton} />
       ) : (
         <Card title={archived ? "Archived schedules" : "Schedules"}

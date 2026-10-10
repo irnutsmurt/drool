@@ -71,7 +71,7 @@ const secs = (n?: number) => (n == null ? "" : n < 90 ? `${Math.round(n)}s` : n 
 
 function RebootSummary({ r }: { r: RebootResult }) {
   return (
-    <dl className="grid grid-cols-[9rem_1fr] gap-y-1 text-sm">
+    <dl className="grid grid-cols-[7rem_1fr] sm:grid-cols-[9rem_1fr] gap-y-1 text-sm">
       <dt className="text-muted">Boot id before</dt><dd className="font-mono text-xs">{r.boot_id_before ?? "—"}</dd>
       <dt className="text-muted">Boot id after</dt><dd className="font-mono text-xs">{r.boot_id_after ?? "— (not confirmed)"}</dd>
       {r.total_seconds != null && (<><dt className="text-muted">Back after</dt><dd>{secs(r.total_seconds)}{r.down_seconds != null && ` (unreachable ${secs(r.down_seconds)})`}</dd></>)}
@@ -113,7 +113,7 @@ export function StepResult({ step }: { step: Schemas["JobStep"] }) {
       )}
       {changes && changes.length > 0 && !plan && <ChangeList items={changes} />}
       {before && (
-        <dl className="grid grid-cols-[9rem_1fr] gap-y-1 text-sm">
+        <dl className="grid grid-cols-[7rem_1fr] sm:grid-cols-[9rem_1fr] gap-y-1 text-sm">
           <dt className="text-muted">Before</dt><dd>{before.active} ({before.sub}), {before.unit_file || "—"}</dd>
           {after && (<><dt className="text-muted">After</dt><dd>{after.active} ({after.sub}), {after.unit_file || "—"}</dd></>)}
           {Array.isArray(r.actions) && r.actions.length > 0 && (<><dt className="text-muted">Ran</dt><dd className="font-mono text-xs">{(r.actions as string[]).map((a) => `systemctl ${a}`).join("; ")}</dd></>)}
@@ -121,7 +121,7 @@ export function StepResult({ step }: { step: Schemas["JobStep"] }) {
       )}
       {reboot && <RebootSummary r={reboot} />}
       {services && Object.keys(services).length > 0 && (
-        <dl className="grid grid-cols-[12rem_1fr] gap-y-1 text-sm">
+        <dl className="grid grid-cols-[7rem_1fr] sm:grid-cols-[12rem_1fr] gap-y-1 text-sm">
           {Object.entries(services).map(([name, st]) => (
             <div key={name} className="contents">
               <dt className="font-mono text-xs">{name}</dt>

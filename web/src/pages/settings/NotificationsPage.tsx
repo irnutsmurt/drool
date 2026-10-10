@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useAuth } from "@/auth/AuthContext";
 import { useGroups, useHosts } from "@/api/queries";
 import { Alert as Notice } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { plainLink } from "@/components/ui/links";
+import { ReadOnlyNote } from "@/components/ui/ReadOnlyNote";
 import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Dialog } from "@/components/ui/Dialog";
@@ -35,6 +37,16 @@ export function NotificationsPage() {
   const setAdvanced = (v: boolean) => setParams((p) => { if (v) p.set("advanced", "1"); else p.delete("advanced"); return p; }, { replace: true });
   return (
     <div className="space-y-6">
+      <p className="text-sm text-muted">
+        Where alerts are sent. The alerts themselves, acknowledgements and maintenance are under <Link className={plainLink} to="/alerts">Alerts</Link>;
+        what counts as a problem is set in <Link className={plainLink} to="/monitoring/settings">Monitoring → Health checks</Link>.
+      </p>
+      {!can("notifications.manage") && (
+        <ReadOnlyNote>
+          you can see destinations and routing (never their secrets); changing them needs the notifications.manage permission (administrators).
+          {can("notifications.test") && " You can send test notifications."}
+        </ReadOnlyNote>
+      )}
       <Destinations />
       <div>
         <Button variant="ghost" aria-expanded={advanced} aria-controls="notify-advanced" onClick={() => setAdvanced(!advanced)}>
@@ -256,7 +268,7 @@ function DestinationDialog({ dest, onClose }: { dest?: Destination; onClose: () 
 function routeSummary(r: Route, hostName: (id: string) => string, groupName: (id: string) => string) {
   const parts: string[] = [];
   parts.push(r.severities.length === 0 || r.severities.length === 2 ? "Warning and Critical" : r.severities.map((s) => (s === "critical" ? "Critical" : "Warning")).join(", "));
-  const scope = [...r.host_ids.map(hostName), ...r.group_ids.map((g) => `group ${groupName(g)}`)];
+  const scope = [...r.host_ids.map(hostName), ...r.group_ids.map((g) => `pack ${groupName(g)}`)];
   if (scope.length) parts.push(`on ${scope.join(", ")}`);
   const what = [...r.categories.map((c) => categoryLabel[c] ?? c), ...r.checks.map((c) => checkLabel[c] ?? c)];
   if (what.length) parts.push(`(${what.join(", ")})`);
@@ -338,9 +350,9 @@ function RouteDialog({ route, categories, onClose }: { route?: Route; categories
           </div>
         </fieldset>
         <fieldset>
-          <legend className="mb-1 text-sm font-medium">Hosts and groups <span className="font-normal text-muted">(none: all hosts)</span></legend>
+          <legend className="mb-1 text-sm font-medium">Hosts and packs <span className="font-normal text-muted">(none: all hosts)</span></legend>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
-            {(groups.data?.items ?? []).map((g) => <Checkbox key={g.id} checked={r.group_ids.includes(g.id)} onChange={() => up({ group_ids: toggle(r.group_ids, g.id) })} label={<>Group <b>{g.name}</b></>} />)}
+            {(groups.data?.items ?? []).map((g) => <Checkbox key={g.id} checked={r.group_ids.includes(g.id)} onChange={() => up({ group_ids: toggle(r.group_ids, g.id) })} label={<>Pack <b>{g.name}</b></>} />)}
           </div>
           <div className="mt-1 max-h-28 overflow-y-auto rounded-ui border border-line p-2">
             <div className="flex flex-wrap gap-x-4 gap-y-1">

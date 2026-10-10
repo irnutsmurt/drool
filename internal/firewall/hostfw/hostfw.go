@@ -241,7 +241,7 @@ func (r *Result) Error() error {
 		hint = "Someone changed DROOL's nftables table outside DROOL. Review the host, then apply again and choose to replace the drifted rules."
 	case "timer":
 		cls = model.ClassConfiguration
-		hint = "The dead-man rollback timer could not be armed (systemd-run); nothing was applied."
+		hint = "The automatic rollback timer could not be armed (systemd-run); nothing was applied."
 	case "rolled_back", "deadline":
 		cls = model.ClassConnection
 	}

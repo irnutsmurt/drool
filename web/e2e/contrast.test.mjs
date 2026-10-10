@@ -4,7 +4,7 @@
 // each theme are kept when DROOL_E2E_SHOTS is set.
 import { test, after, before } from "node:test";
 import assert from "node:assert/strict";
-import { api, base, launch, session, shot, sleep } from "./lib.mjs";
+import { api, base, launch, lowContrast, session, shot, sleep } from "./lib.mjs";
 
 let browser;
 let page;
@@ -17,65 +17,9 @@ after(async () => {
   await browser?.close();
 });
 
-/** Runs in the page: returns texts below the required contrast. */
-function lowContrast() {
-  const parse = (c) => {
-    const m = c.match(/rgba?\(([^)]+)\)/);
-    if (!m) return null;
-    const [r, g, b, a = 1] = m[1].split(/[ ,/]+/).filter(Boolean).map(Number);
-    return { r, g, b, a };
-  };
-  const lum = ({ r, g, b }) => {
-    const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
-    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
-  };
-  const over = (top, bottom) => ({ r: top.r * top.a + bottom.r * (1 - top.a), g: top.g * top.a + bottom.g * (1 - top.a), b: top.b * top.a + bottom.b * (1 - top.a), a: 1 });
-  const background = (el) => {
-    const layers = [];
-    for (let e = el; e; e = e.parentElement) {
-      const c = parse(getComputedStyle(e).backgroundColor);
-      if (c && c.a > 0) {
-        layers.push(c);
-        if (c.a >= 1) break;
-      }
-    }
-    let bg = { r: 255, g: 255, b: 255, a: 1 };
-    const root = parse(getComputedStyle(document.body).backgroundColor);
-    if (root) bg = root;
-    for (const l of layers.reverse()) bg = over(l, bg);
-    return bg;
-  };
-  const out = [];
-  const seen = new Set();
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    const el = n.parentElement;
-    if (!el || seen.has(el) || !n.textContent.trim()) continue;
-    seen.add(el);
-    const cs = getComputedStyle(el);
-    const r = el.getBoundingClientRect();
-    if (r.width === 0 || r.height === 0 || cs.visibility === "hidden" || el.closest("[aria-hidden='true'], .sr-only, svg, option")) continue;
-    if (el.closest("button:disabled, [disabled], [aria-disabled='true']")) continue;
-    let op = 1;
-    for (let e = el; e; e = e.parentElement) op *= Number(getComputedStyle(e).opacity);
-    if (op < 0.95) continue; // deliberately dimmed (disabled rules, members)
-    const fg = parse(cs.color);
-    if (!fg) continue;
-    const bg = background(el);
-    const L1 = lum(over(fg, bg));
-    const L2 = lum(bg);
-    const ratio = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
-    const size = parseFloat(cs.fontSize);
-    const large = size >= 24 || (size >= 18.66 && Number(cs.fontWeight) >= 700);
-    const need = large ? 3 : 4.5;
-    if (ratio < need) out.push(`${ratio.toFixed(2)} < ${need}: "${n.textContent.trim().slice(0, 50)}" (${cs.color} on rgb(${Math.round(bg.r)},${Math.round(bg.g)},${Math.round(bg.b)}))`);
-  }
-  return out;
-}
-
 const monitoringPages = (hosts) => {
   const id = (n) => hosts.find((h) => h.name === n)?.id;
-  const out = ["/monitoring", "/monitoring?category=unhealthy", "/settings/monitoring"];
+  const out = ["/monitoring", "/monitoring?category=unhealthy", "/monitoring/settings"];
   if (id("nas-01")) {
     for (const tab of ["overview", "metrics", "services", "storage", "hardware", "health", "agent"]) out.push(`/hosts/${id("nas-01")}/monitoring?tab=${tab}`);
     out.push(`/hosts/${id("pi-sd")}/monitoring?tab=storage`, `/hosts/${id("gpu-01")}/monitoring?tab=hardware`, `/hosts/${id("gpu-01")}/monitoring?tab=health`, `/hosts/${id("old-vm")}/monitoring`);
@@ -149,6 +93,8 @@ const pages = async () => {
   const host = hosts.find((h) => h.name === "web-1") ?? hosts[0];
   return [
     "/", "/hosts", `/hosts/${host.id}`, "/groups", "/jobs", "/jobs/new", "/agents", "/credentials", "/audit",
+    // M15: a host's firewall and network pages, runs for one host.
+    `/hosts/${host.id}/firewall`, `/hosts/${host.id}/network`, `/jobs?host=${host.id}`,
     "/settings/account", "/settings/system", "/settings/users", "/settings/tokens",
     "/firewall", "/firewall?tab=designer&view=topology", "/firewall?tab=designer&view=rules", "/firewall?tab=designer&view=yaml",
     "/firewall?tab=simulate", "/firewall?tab=transactions", "/firewall?tab=settings",
@@ -179,7 +125,7 @@ for (const theme of ["light", "dark"]) {
       await shot(page, `${theme}${p.replace(/[/?&=]+/g, "-")}`);
     }
     // M12.1: the fleet's health checks and a check's editor.
-    await page.goto(base + "/settings/monitoring", { waitUntil: "networkidle0" });
+    await page.goto(base + "/monitoring/settings", { waitUntil: "networkidle0" });
     await sleep(600);
     const cust = await page.evaluateHandle(() => [...document.querySelectorAll("button")].find((b) => b.textContent === "Customize"));
     if (cust.asElement()) {
@@ -247,6 +193,48 @@ for (const theme of ["light", "dark"]) {
       if (low.length) failures.push(`connection details:\n  ${low.join("\n  ")}`);
       await shot(page, `${theme}-connection-details`);
       await page.keyboard.press("Escape");
+    }
+    // M15: the navigation search, the security indicator, and the
+    // narrow-screen menu and card tables.
+    await page.goto(base + "/", { waitUntil: "networkidle0" });
+    await sleep(500);
+    await page.keyboard.down("Control");
+    await page.keyboard.press("k");
+    await page.keyboard.up("Control");
+    await page.waitForSelector('[data-testid="command-palette"]', { timeout: 5000 });
+    await page.keyboard.type("agent");
+    await sleep(300);
+    let low = await page.evaluate(lowContrast);
+    if (low.length) failures.push(`navigation search:\n  ${low.join("\n  ")}`);
+    await shot(page, `${theme}-command-palette`);
+    await page.keyboard.press("Escape");
+    const sec = await page.$('[data-testid="security-status"]');
+    if (sec) {
+      await sec.click();
+      await sleep(300);
+      low = await page.evaluate(lowContrast);
+      if (low.length) failures.push(`security status:\n  ${low.join("\n  ")}`);
+      await page.keyboard.press("Escape");
+    }
+    const hosts = (await api(page, "GET", "/hosts")).body.items;
+    await page.setViewport({ width: 390, height: 844 });
+    try {
+      for (const p of ["/", "/hosts", `/hosts/${(hosts.find((h) => h.name === "web-1") ?? hosts[0]).id}`, "/network", "/monitoring"]) {
+        await page.goto(base + p, { waitUntil: "networkidle0" });
+        await sleep(700);
+        low = await page.evaluate(lowContrast);
+        if (low.length) failures.push(`${p} (narrow):\n  ${low.join("\n  ")}`);
+        await shot(page, `${theme}-narrow${p.replace(/[/?&=]+/g, "-")}`);
+      }
+      await page.click('button[aria-label="Open navigation"]');
+      await page.waitForSelector("#mobile-nav", { timeout: 5000 });
+      await sleep(300);
+      low = await page.evaluate(lowContrast);
+      if (low.length) failures.push(`narrow menu:\n  ${low.join("\n  ")}`);
+      await shot(page, `${theme}-narrow-menu`);
+      await page.keyboard.press("Escape");
+    } finally {
+      await page.setViewport({ width: 1440, height: 1000 });
     }
     assert.deepEqual(failures, [], `low-contrast text in ${theme} mode`);
     assert.deepEqual(page.errors, []);

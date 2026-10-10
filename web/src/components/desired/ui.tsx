@@ -1,7 +1,6 @@
 import { Link } from "react-router";
 import { Badge } from "@/components/ui/Badge";
-import { plainLink } from "@/components/ui/links";
-import { describeKey, shortSha, type DesiredDiff, type DesiredSource } from "./queries";
+import { describeKey, shortSha, type DesiredDiff } from "./queries";
 
 const statusLabels: Record<string, [string, "ok" | "warn" | "danger" | "neutral" | "accent"]> = {
   compliant: ["Compliant", "ok"],
@@ -57,43 +56,6 @@ export function DiffTable({ diffs }: { diffs: DesiredDiff[] }) {
 /** One line: "state: running → failed; at boot: …". */
 export function diffLine(diffs: DesiredDiff[]): string {
   return diffs.map((d) => `${(fieldLabels[d.field] ?? d.field).toLowerCase()}: ${d.field === "content" ? shortSha(d.desired) : d.desired} → ${d.field === "content" ? shortSha(d.current) : d.current}`).join("; ");
-}
-
-/** Where a value comes from, with links to the baselines and groups. */
-export function SourceText({ source }: { source: DesiredSource }) {
-  return (
-    <span>
-      {source.label}
-      {source.baselines && source.baselines.length > 0 && (
-        <span className="text-muted">
-          {" · "}
-          {source.baselines.map((b, i) => (
-            <span key={b.id}>
-              {i > 0 && ", "}
-              <Link className={plainLink} to={`/desired/baselines/${b.id}`}>{b.name}</Link> rev. {b.revision}
-            </span>
-          ))}
-        </span>
-      )}
-    </span>
-  );
-}
-
-/** The declarations a value replaces, or a conflict's competitors. */
-export function Declarations({ title, items }: { title: string; items: NonNullable<DesiredSource["competing"]> }) {
-  if (items.length === 0) return null;
-  return (
-    <div>
-      <h4 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">{title}</h4>
-      <ul className="space-y-1 text-sm">
-        {items.map((d, i) => (
-          <li key={i}>
-            <span className="font-medium">{d.want || "—"}</span> <span className="text-muted">— {d.label}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
 }
 
 export function ResourceName({ k }: { k: string }) {

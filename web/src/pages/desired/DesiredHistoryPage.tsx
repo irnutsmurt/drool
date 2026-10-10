@@ -37,7 +37,7 @@ export function DesiredHistoryPage() {
   const hist = useDesiredHistory({ kind, baseline });
   return (
     <>
-      <PageHeader title="Desired state" description="What changed, and how it ended: restored by DROOL, resolved by configuration, or changed on the host." />
+      <PageHeader title="Desired State" description="What changed, and how it ended: restored by DROOL, resolved by configuration, or changed on the host." />
       <DesiredTabs />
       <Card>
         <div className="mb-3 flex flex-wrap items-center gap-2">

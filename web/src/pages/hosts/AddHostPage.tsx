@@ -50,7 +50,8 @@ export function AddHostPage() {
 
   return (
     <>
-      <PageHeader title="Add host" />
+      <PageHeader crumbs={[{ label: "Hosts", to: "/hosts" }]} title="Add host"
+        description="Connect a Linux machine over SSH. To manage it through a Shepherd (DROOL agent) instead, install one afterwards from the host's page, or add the host from Shepherds → Add a host with a Shepherd." />
       <ol className="mb-6 flex gap-6 text-sm">
         {steps.map((s, i) => (
           <li key={s} className={cx(i === step ? "font-semibold text-fg" : i < step ? "text-ok" : "text-muted")}>

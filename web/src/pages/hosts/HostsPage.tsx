@@ -6,7 +6,7 @@ import { HostStatusBadge } from "@/components/hosts/HostStatusBadge";
 import { ReachabilityBadge, osLabel } from "@/components/hosts/health";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import { Button, primaryLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Select } from "@/components/ui/Field";
@@ -35,23 +35,24 @@ export function HostsPage() {
   });
 
   const addButton = can("hosts.write") && (
-    <Link to="/hosts/new" className="inline-flex h-9 items-center rounded-ui bg-accent px-3.5 text-sm font-medium text-accent-fg hover:opacity-90">
-      Add host
-    </Link>
+    <Link to="/hosts/new" className={primaryLink}>Add host</Link>
   );
+  const header = <PageHeader title="Hosts" description="The Linux machines DROOL manages, over SSH or through a Shepherd (DROOL agent)." actions={addButton} />;
 
   if (hosts.data && hosts.data.items.length === 0) {
     return (
       <>
-        <PageHeader title="Hosts" />
-        <EmptyState title="No hosts yet" body="Add your first Linux host to manage it over SSH." action={addButton} />
+        {header}
+        <EmptyState title="No hosts yet"
+          body="Hosts are the Linux machines DROOL manages. Add one over SSH to see its health and updates, run commands on it and keep it the way you want; you can install a Shepherd (the DROOL agent) on it later for continuous monitoring."
+          action={addButton || <span className="text-sm text-muted">Ask an administrator to add hosts.</span>} />
       </>
     );
   }
 
   return (
     <>
-      <PageHeader title="Hosts" actions={addButton} />
+      {header}
       <div className="mb-4 flex flex-wrap gap-3">
         <Input className="max-w-xs" placeholder="Search name, address, tag…" value={q} onChange={(e) => setQ(e.target.value)} />
         <Select className="max-w-[12rem]" value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -65,7 +66,7 @@ export function HostsPage() {
           <option value="unsupported">Unsupported</option>
         </Select>
         <Select className="max-w-[12rem]" value={group} onChange={(e) => setGroup(e.target.value)}>
-          <option value="">All groups</option>
+          <option value="">All packs</option>
           {(groups.data?.items ?? []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
         </Select>
       </div>

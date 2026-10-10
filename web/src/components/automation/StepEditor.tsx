@@ -17,7 +17,7 @@ export type StepKind = OpKind | "wait" | "verify_host" | "verify_services" | "ve
 
 export const checkKinds: { kind: StepKind; label: string; help: string }[] = [
   { kind: "wait", label: "Wait", help: "Pause before the next step, e.g. to let services settle." },
-  { kind: "verify_host", label: "Verify host is reachable", help: "Passes when the host answers DROOL again (its agent is connected, or SSH works)." },
+  { kind: "verify_host", label: "Verify host is reachable", help: "Passes when the host answers DROOL again (its Shepherd is connected, or SSH works)." },
   { kind: "verify_services", label: "Verify services are running", help: "Passes when every listed systemd service is active, from freshly collected monitoring data." },
   { kind: "verify_health", label: "Verify health", help: "Passes when the host has no active Critical health issues (or no Warning ones either)." },
 ];

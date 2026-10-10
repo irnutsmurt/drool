@@ -30,7 +30,7 @@ export function CapsList({ caps, compact }: { caps: AgentCaps; compact?: boolean
         <div className="mb-2"><Badge tone="danger">ROOT-EQUIVALENT</Badge>{" "}
           <span className="text-xs text-muted">The controller can do anything root can on this host.</span></div>
       )}
-      <dl className={compact ? "grid grid-cols-[10rem_1fr] gap-y-0.5 text-xs" : "grid grid-cols-[11rem_1fr] gap-y-1 text-sm"}>
+      <dl className={compact ? "grid grid-cols-[7rem_1fr] sm:grid-cols-[10rem_1fr] gap-y-0.5 text-xs" : "grid grid-cols-[7rem_1fr] sm:grid-cols-[11rem_1fr] gap-y-1 text-sm"}>
         {rows.map((r) => (
           <div key={r.name} className="contents">
             <dt className="text-muted">{r.name}</dt>

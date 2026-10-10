@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -30,7 +30,7 @@ export function FlowDialog({ id, onClose }: { id: number; onClose: () => void })
       {q.error && <Alert>{errorMessage(q.error)}</Alert>}
       {!f ? <p className="text-sm text-muted">Loading…</p> : (
         <div className="space-y-4 text-sm" data-testid="flow-details">
-          <dl className="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-1.5">
+          <dl className="grid grid-cols-[7rem_1fr] sm:grid-cols-[9rem_1fr] gap-x-3 gap-y-1.5">
             <dt className="text-muted">Direction</dt><dd><DirectionLabel dir={f.direction} /> · <ScopeBadge flow={f} /></dd>
             <dt className="text-muted">Source</dt><dd><strong>{src!.name}</strong> <span className="font-mono text-xs">{src!.ep}</span></dd>
             <dt className="text-muted">Destination</dt><dd><strong>{dst!.name}</strong> <span className="font-mono text-xs">{dst!.ep}</span></dd>
@@ -60,7 +60,10 @@ export function FlowDialog({ id, onClose }: { id: number; onClose: () => void })
               {f.policy.policy_name ? <span>{f.policy.status === "denied" ? "Denied" : "Allowed"} by policy <strong>“{f.policy.policy_name}”</strong>{f.policy.rule && <span className="text-muted"> ({f.policy.rule})</span>}</span>
                 : <span>{t!.help} <span className="text-muted">({f.policy.reason})</span></span>}
             </p>
-            <p className="mt-1 text-xs text-muted">Host firewall: {enforcementText[f.policy.enforcement] ?? f.policy.enforcement}.</p>
+            <p className="mt-1 text-xs text-muted">
+              Host firewall: {enforcementText[f.policy.enforcement] ?? f.policy.enforcement}.
+              {can("firewall.read") && <> <Link className="text-accent underline" to={`/hosts/${f.host.id}/firewall`} onClick={onClose}>{f.host.name}&apos;s firewall</Link></>}
+            </p>
             {f.policy.notes.length > 0 && <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs">{f.policy.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
             {f.suggestion && (
               <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">

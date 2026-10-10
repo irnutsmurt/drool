@@ -1,6 +1,6 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.11**
+**Design Document v0.3.12**
 Status: Draft · 2026-10-09 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
@@ -13,6 +13,20 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.11 → v0.3.12 (M15: UI/UX and information architecture)
+
+The functional core existed; M15 made it easy to find again after six months away. The backend, safety semantics and object model are unchanged — this is the user-facing structure and wording:
+
+| # | As built | Section |
+|---|---|---|
+| 1 | **Recognition over recall:** the sidebar lists direct destinations under non-clickable headings (Overview · Fleet: Hosts, Packs, Shepherds · Observe: Monitoring, Alerts, Network Activity · Automate: Runs, Schedules, Workflows, Desired State · Protect: Firewall, Credentials, Audit Log · Settings), never umbrella pages; at most one local tab level per page | §2.7 |
+| 2 | **Themed names with the conventional term always visible:** *Pack* = host group, *Shepherd* = DROOL agent; *Runs* for jobs, *Overview* for the dashboard. UI wording only: API, database, Go types, `drool-agent`, the protocol and YAML keep *group*, *agent* and *job* | §2.7 |
+| 3 | **Navigation search** (Ctrl+K/⌘K, "/", a header control): pages and settings by name, conventional words and questions ("can A reach B", "who changed"), filtered by the user's permissions; destinations, not data | §2.7 |
+| 4 | **The host page is triage** (is it okay, how is DROOL managing it, what needs attention), with summaries linking to the host's Monitoring, Desired State, Firewall, Network Activity, Runs and Files pages; a host's firewall and network activity got their own pages | §2.7 |
+| 5 | **One inheritance pattern** for monitoring health settings and desired state, rendering the server's provenance (effective value prominent, overridden ones subdued, equal-priority conflicts explicit and unresolved) | §2.7, §11.3, §14.3 |
+| 6 | **Areas own their settings:** health checks live under Monitoring; Alerts link to notification settings; Network Activity and Firewall link to each other at every level; firewall copy says *automatic rollback protection* (technical docs keep *dead-man*) | §2.7 |
+| 7 | **Honest, intentional states and a real phone layout:** loading ≠ empty ≠ healthy everywhere; unpermitted destinations hidden from navigation and search, a plain 403 on direct links, read-only pages that say so; off-canvas navigation, card rows for dense tables, dialogs that fit; unresolved security posture as a persistent indicator plus the Overview | §2.7 |
 
 ### v0.3.10 → v0.3.11 (M14: desired state, drift and reconciliation)
 
@@ -249,6 +263,14 @@ New defaults must be placed in one of these categories deliberately. When in dou
 ### 2.6 Linux first, platform-neutral operations
 
 Linux is the implemented platform. A **Windows agent is deferred future work**, not out of scope forever. To keep that door open, the controller speaks in typed operations and typed telemetry (services, packages and updates, files, reboots, metrics, storage health) rather than in Linux command lines: the Linux agent and the SSH path implement them with systemd, apt/dnf, /proc and sysfs; a future Windows agent would implement the same operations with the Service Control Manager, Windows Update/winget, NTFS ACLs and performance counters. Linux-specific details (nftables, systemd unit states, SMART via smartmontools) stay behind those typed boundaries. No Windows code is built until it is scheduled.
+
+### 2.7 Finding things: recognition over recall
+
+The test for the UI is *"I haven't used DROOL in six months, but I can still find the thing I'm looking for."* So the navigation lists **direct destinations** (Hosts, Alerts, Firewall, Schedules…) under headings that are only labels; it never makes a returning user remember DROOL's taxonomy first. Each page has at most one level of local views; specialist pages own their depth (a host's page summarizes and links, it doesn't embed every subsystem). Related places link to each other where the concept appears (host ↔ monitoring, desired state, firewall, network activity, runs; alerts → notifications; network activity ↔ firewall), without creating a second way to configure the same object.
+
+DROOL may give things its own names — a **Pack** (host group), a **Shepherd** (the DROOL agent) — but never requires knowing the joke: the conventional term is shown next to the themed one, in page text and as a search alias, and technical surfaces (API, CLI, files, protocol) keep the conventional names. A **navigation search** finds pages and settings by any of those words, and by the questions people ask ("can A reach B?").
+
+States are honest: loading is not empty, stale is not healthy, unknown is not compliant. What a role can't view is absent from navigation and search; what it can view but not change is shown read-only and says so. Phone-sized screens get a real layout, not a shrunken desktop.
 
 ---
 
@@ -924,7 +946,7 @@ Only declarations are stored; the server computes each host's effective desired 
 
 ### 14.4 Conflicts
 
-A conflict is first-class: visible on the host, the fleet view and the dashboard, explained with every competing declaration and where it comes from, never compliant, never checked against either value, and **never restored, manually or automatically, until resolved**. It is resolved by giving one group a higher priority (with an impact preview), changing a baseline, or a host-level declaration — *Accept current state* resolves it for that host.
+A conflict is first-class: visible on the host, the fleet view and the Overview, explained with every competing declaration and where it comes from, never compliant, never checked against either value, and **never restored, manually or automatically, until resolved**. It is resolved by giving one group a higher priority (with an impact preview), changing a baseline, or a host-level declaration — *Accept current state* resolves it for that host.
 
 ### 14.5 Observation and freshness
 
@@ -991,7 +1013,7 @@ During **maintenance** (§12.13) observation continues and drift stays visible; 
 
 New job's preview **warns** when an ordinary operation contradicts desired state ("On media-01: jellyfin.service is managed to keep running (Inherited from group: media-servers (baseline Media Server)). Stopping it will create desired-state drift."; "On lab-box: htop is prohibited by baseline “Server Defaults”. Installing it will create drift."). With automatic restore on, the warning adds: "Automatic reconciliation may restore this setting after the job completes. Use maintenance or change desired state if this change is intentional."
 
-Events (never alerts or notifications): drift detected, a conflict appeared, automatic restore paused — aggregated, never one per resource or check. The dashboard and the fleet view show one compact summary ("Desired state: 3 drifted · Firewall: 1 drifted"); firewall drift and agent state-version problems are linked, not merged.
+Events (never alerts or notifications): drift detected, a conflict appeared, automatic restore paused — aggregated, never one per resource or check. The Overview and the fleet view show one compact summary ("Desired state: 3 drifted · Firewall: 1 drifted"); firewall drift and agent state-version problems are linked, not merged.
 
 ---
 
@@ -1362,7 +1384,7 @@ Integrity (see §4.2 limitation):
 
 ### 22.8 Event timeline
 
-The dashboard shows an event stream where every event links to its object: alerts opened, critical or escalated, acknowledged and recovered; maintenance started and ended; a notification destination failing and recovering; desired-state drift detected, conflicts appearing, automatic restore paused (§14.12, aggregated). Routine activity (each delivery attempt, each sample, each unchanged check) never appears there.
+The Overview shows an event stream where every event links to its object: alerts opened, critical or escalated, acknowledged and recovered; maintenance started and ended; a notification destination failing and recovering; desired-state drift detected, conflicts appearing, automatic restore paused (§14.12, aggregated). Routine activity (each delivery attempt, each sample, each unchanged check) never appears there.
 
 ---
 

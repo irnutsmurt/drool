@@ -192,7 +192,7 @@ test("a failing destination is visible; alert state stays accurate", async () =>
   assert.deepEqual(page.errors, []);
 });
 
-test("dashboard and fleet page show alert counts and recent events", async () => {
+test("the Overview and the Monitoring page show alert counts and recent events", async () => {
   await go("/");
   await waitText(page, "Recent events");
   let t = await text(page);

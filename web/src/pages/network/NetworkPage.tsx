@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import { Button, secondaryLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field, Select, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -24,6 +24,7 @@ const tabs = [
 
 /** Fleet-wide Network Activity: what hosts actually talk to. */
 export function NetworkPage() {
+  const { can } = useAuth();
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "settings" ? "settings" : "activity";
   const setTab = (t: string) => {
@@ -33,12 +34,18 @@ export function NetworkPage() {
   };
   return (
     <>
-      <PageHeader title="Network activity"
-        description="Connections DROOL has observed on your hosts, how the firewall policy classifies them, and where public addresses belong. Monitoring only: nothing here blocks traffic." />
-      <div role="tablist" aria-label="Network views" className="mb-4 flex gap-1 border-b border-line">
+      <PageHeader title="Network Activity"
+        description="What your hosts are talking to: connections DROOL has observed, how the firewall policy classifies them, and where public addresses belong. Monitoring only: nothing here blocks traffic."
+        actions={can("firewall.read") && (
+          <>
+            <Link to="/firewall?tab=designer" className={secondaryLink}>Firewall policy</Link>
+            <Link to="/firewall?tab=simulate" className={secondaryLink}>Can A reach B?</Link>
+          </>
+        )} />
+      <div role="tablist" aria-label="Network views" className="mb-4 flex gap-1 overflow-x-auto border-b border-line">
         {tabs.map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
-            className={cx("-mb-px border-b-2 px-3 py-2 text-sm", tab === t.id ? "border-accent font-medium" : "border-transparent text-muted hover:text-fg")}>
+            className={cx("-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm", tab === t.id ? "border-accent font-medium" : "border-transparent text-muted hover:text-fg")}>
             {t.label}
           </button>
         ))}
@@ -84,8 +91,8 @@ function Activity() {
 function NoData() {
   return (
     <span>
-      No connections observed yet. Agent hosts report continuously; for SSH hosts, take a snapshot from the host&apos;s page
-      (Network connections → Take snapshot).
+      No connections observed yet. Hosts with a Shepherd report continuously; for SSH hosts, take a snapshot on the host&apos;s
+      Network Activity page (Take snapshot).
     </span>
   );
 }
@@ -147,9 +154,9 @@ function SettingsTab() {
     <div className="grid gap-4 xl:grid-cols-2">
       <Card title="Collection">
         <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); save.mutate(form); }}>
-          <Field label="Continuous collection on agent hosts" hint="SSH-only hosts are never collected continuously; take snapshots from their pages.">
+          <Field label="Continuous collection on hosts with a Shepherd" hint="SSH-only hosts are never collected continuously; take snapshots on their Network Activity pages.">
             <Select value={form.collection} disabled={!canEdit} onChange={(e) => setForm({ ...form, collection: e.target.value as NetSettings["collection"] })}>
-              <option value="all">Every agent host</option>
+              <option value="all">Every host with a Shepherd</option>
               <option value="firewall">Only hosts whose firewall mode isn&apos;t Off</option>
               <option value="off">Off</option>
             </Select>
@@ -167,7 +174,7 @@ function SettingsTab() {
           {save.error && <Alert>{errorMessage(save.error)}</Alert>}
           {save.isSuccess && <Alert tone="ok">Saved.</Alert>}
           {canEdit ? <Button variant="primary" type="submit" disabled={save.isPending}>Save</Button>
-            : <p className="text-xs text-muted">Only administrators can change these settings.</p>}
+            : <p className="text-xs text-muted" role="note">Read-only: changing collection and enrichment needs the network.settings permission (administrators).</p>}
           {q.data && <p className="text-xs text-muted">Changes are recorded in the audit log.</p>}
         </form>
       </Card>

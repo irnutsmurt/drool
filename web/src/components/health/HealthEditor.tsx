@@ -6,7 +6,9 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Input, Select } from "@/components/ui/Field";
 import { errorMessage } from "@/lib/format";
 import { useDeleteOverride, usePreview, usePutOverride, type HealthCheck, type HealthField, type HealthFields, type HealthPreview, type OverrideKey } from "./queries";
-import { SourceBadge, fieldValue } from "./ui";
+import { fieldValue } from "./ui";
+import { healthLayers, type EditScope } from "./provenance";
+import { Provenance, type ProvenanceLayer } from "@/components/ui/Provenance";
 
 type Draft = Record<string, string | undefined>; // undefined: inherited
 
@@ -28,7 +30,7 @@ function toFields(d: Draft, c: HealthCheck): HealthFields {
   return out as HealthFields;
 }
 
-const scopeWord = { global: "every host", group: "this group", host: "this host" } as const;
+const scopeWord = { global: "every host", group: "this pack", host: "this host" } as const;
 
 /** Customize one health check at one scope. Every field is either
  * inherited (shown with its value and where it comes from) or set here;
@@ -61,12 +63,12 @@ export function HealthEditor({ k, check, title, onClose }: { k: OverrideKey; che
     <Dialog title={title} onClose={onClose} wide>
       <p className="mb-3 text-sm text-muted">{check.description}</p>
       <p className="mb-4 text-xs text-muted">
-        Changes here decide what monitoring considers unhealthy for {scopeWord[k.scope]}. Who gets notified is set separately under
+        Changes here decide what monitoring considers unhealthy for {k.subject ? "this device" : scopeWord[k.scope]}. Who gets notified is set separately under
         Settings → Notifications.
       </p>
       <div className="space-y-3">
         {check.fields.map((f) => (
-          <FieldRow key={f.name} f={f} value={draft[f.name]} disabled={!edit} onChange={(v) => setDraft({ ...draft, [f.name]: v })} />
+          <FieldRow key={f.name} f={f} scope={k.subject ? "subject" : k.scope} value={draft[f.name]} disabled={!edit} onChange={(v) => setDraft({ ...draft, [f.name]: v })} />
         ))}
       </div>
       {changed && !invalid && (preview.data || preview.isPending) && <Impact p={preview.data} pending={preview.isPending} broad={broad} />}
@@ -84,20 +86,25 @@ export function HealthEditor({ k, check, title, onClose }: { k: OverrideKey; che
   );
 }
 
-function FieldRow({ f, value, disabled, onChange }: { f: HealthField; value: string | undefined; disabled: boolean; onChange: (v: string | undefined) => void }) {
+function FieldRow({ f, scope, value, disabled, onChange }: { f: HealthField; scope: EditScope; value: string | undefined; disabled: boolean; onChange: (v: string | undefined) => void }) {
   const custom = value !== undefined;
   const id = `hf-${f.name}`;
   const bad = custom && f.type !== "bool" && (value === "" || isNaN(Number(value)) || Number(value) < f.min || Number(value) > f.max ||
     ((f.type === "minutes" || f.type === "count") && !Number.isInteger(Number(value))));
   const inherited = fieldValue(f.inherited.value, f, f.inherited.source);
+  const own = !custom || bad ? undefined : f.type === "bool" ? (value === "on" ? 1 : 0) : Number(value);
+  const layers: ProvenanceLayer[] = healthLayers(f, scope, own).map((l) => ({
+    key: l.key,
+    scope: l.scope,
+    value: l.state === "conflict" ? "set different values" : l.value === undefined ? undefined : fieldValue(l.value, f, l.src),
+    detail: l.conflict ? `Equal priority (${l.conflict.priority}): DROOL doesn't pick one, so the value above applies until a priority or an override settles it.` : undefined,
+    state: l.state,
+  }));
   return (
-    <div className="grid gap-2 rounded-ui border border-line p-3 sm:grid-cols-[12rem_1fr]">
+    <div className="grid gap-3 rounded-ui border border-line p-3 sm:grid-cols-[minmax(0,15rem)_1fr]">
       <div>
-        <div className="text-sm font-medium" id={`${id}-label`}>{f.label}</div>
-        <div className="mt-1 text-xs text-muted">
-          Inherited: <b className="text-fg">{inherited}</b> <SourceBadge src={f.inherited.source} />
-        </div>
-        {f.inherited.conflict && <div className="mt-1 text-xs text-warn">⚠ {f.inherited.source.label}</div>}
+        <div className="mb-1 text-sm font-medium" id={`${id}-label`}>{f.label}</div>
+        <Provenance compact label={`Where ${f.label} comes from`} layers={layers} />
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {f.type === "bool" ? (

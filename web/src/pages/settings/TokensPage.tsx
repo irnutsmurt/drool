@@ -63,7 +63,7 @@ export function TokensPage() {
         <Table<Token>
           rows={list.data?.items ?? []}
           rowKey={(t) => t.id}
-          empty={list.isPending ? "Loading…" : "No tokens."}
+          empty={list.isPending ? "Loading…" : "No API tokens yet. A token lets a script or integration use the DROOL API as you; it is shown once, when you create it."}
           columns={[
             { header: "Name", cell: (t) => t.name },
             { header: "Created", cell: (t) => formatDateTime(t.created_at) },

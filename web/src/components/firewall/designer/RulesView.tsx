@@ -174,8 +174,8 @@ function GroupsCard({ doc, edit, hosts, canWrite, storedGroups }: Props) {
   const [open, setOpen] = useState<{ g?: Group } | null>(null);
   const [err, setErr] = useState("");
   return (
-    <Card title="Groups" actions={canWrite && <Button size="sm" onClick={() => setOpen({})}>New group</Button>}>
-      <p className="mb-2 text-xs text-muted">DROOL host groups (shared with jobs and the rest of DROOL). A rule for a group is one rule for all its members.</p>
+    <Card title="Packs (host groups)" actions={canWrite && <Button size="sm" onClick={() => setOpen({})}>New pack</Button>}>
+      <p className="mb-2 text-xs text-muted">DROOL&apos;s packs, shared with runs and the rest of DROOL (written <span className="font-mono">group:NAME</span> in YAML). A rule for a pack is one rule for all its members.</p>
       {err && <Alert>{err}</Alert>}
       <ul className="divide-y divide-line text-sm">
         {doc.groups.map((g) => (
@@ -187,7 +187,7 @@ function GroupsCard({ doc, edit, hosts, canWrite, storedGroups }: Props) {
                 {!storedGroups.has(g.name.toLowerCase()) && (
                   <Button size="sm" variant="ghost" onClick={() => {
                     const used = rulesUsing(doc, `group:${g.name}`);
-                    if (used.length) setErr(`Group ${g.name} is used by: ${usedBy(doc, used)}. Change those rules first.`);
+                    if (used.length) setErr(`Pack ${g.name} is used by: ${usedBy(doc, used)}. Change those rules first.`);
                     else { setErr(""); edit({ ...doc, groups: doc.groups.filter((x) => x.name !== g.name) }); }
                   }}>Remove<span className="sr-only"> {g.name}</span></Button>
                 )}
@@ -197,7 +197,7 @@ function GroupsCard({ doc, edit, hosts, canWrite, storedGroups }: Props) {
         ))}
         {doc.groups.length === 0 && <li className="py-2 text-xs text-muted">None.</li>}
       </ul>
-      <p className="mt-2 text-xs text-muted">Existing groups are deleted on the Groups page, not here.</p>
+      <p className="mt-2 text-xs text-muted">Existing packs are deleted on the Packs page, not here.</p>
       {open && <GroupDialog doc={doc} group={open.g} hosts={hosts} onClose={() => setOpen(null)} onSave={(g) => { edit(upsertGroup(doc, g, open.g?.name)); setOpen(null); }} />}
     </Card>
   );
@@ -211,12 +211,12 @@ function GroupDialog({ doc, group, hosts, onSave, onClose }: { doc: Doc; group?:
   const [q, setQ] = useState("");
   const save = () => {
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/.test(name)) return setErr("Use letters, digits, '.', '_' or '-' for the name.");
-    if (!group && doc.groups.some((g) => g.name.toLowerCase() === name.toLowerCase())) return setErr("A group with this name exists.");
+    if (!group && doc.groups.some((g) => g.name.toLowerCase() === name.toLowerCase())) return setErr("A pack with this name exists.");
     onSave({ name, description, members });
   };
   const shown = hosts.filter((h) => h.name.toLowerCase().includes(q.toLowerCase()));
   return (
-    <Dialog title={group ? `Members of ${group.name}` : "New group"} onClose={onClose}>
+    <Dialog title={group ? `Members of ${group.name}` : "New pack"} onClose={onClose}>
       <div className="space-y-3">
         <Field label="Name"><Input data-autofocus value={name} onChange={(e) => setName(e.target.value)} disabled={!!group} /></Field>
         <Field label="Description (optional)"><Input value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
@@ -232,9 +232,9 @@ function GroupDialog({ doc, group, hosts, onSave, onClose }: { doc: Doc; group?:
             ))}
           </div>
         </fieldset>
-        <p className="text-xs text-muted">Membership changes the group everywhere in DROOL when you save. Rules that use the group change on its members' firewalls.</p>
+        <p className="text-xs text-muted">Membership changes the pack everywhere in DROOL when you save. Rules that use the pack change on its members' firewalls.</p>
         {err && <Alert>{err}</Alert>}
-        <div className="flex justify-end gap-2"><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Save group</Button></div>
+        <div className="flex justify-end gap-2"><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Save pack</Button></div>
       </div>
     </Dialog>
   );

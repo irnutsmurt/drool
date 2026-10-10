@@ -55,7 +55,7 @@ export function JobDetailPage() {
     },
   });
 
-  if (job.error) return <Alert>{errorMessage(job.error)}</Alert>;
+  if (job.error) return <><PageHeader crumbs={[{ label: "Runs", to: "/jobs" }]} title="Run" /><Alert>{errorMessage(job.error)}</Alert></>;
   const j = job.data;
   if (!j) return <p className="text-muted">Loading…</p>;
   const items = hosts.data?.items ?? [];
@@ -76,6 +76,7 @@ export function JobDetailPage() {
   return (
     <>
       <PageHeader
+        crumbs={[{ label: "Runs", to: "/jobs" }]}
         title={j.name}
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
@@ -91,7 +92,7 @@ export function JobDetailPage() {
                 onClick={() => {
                   const q = o?.schedule_id
                     ? `Cancel this run? Running commands will be terminated.\nThe schedule “${o.schedule_name ?? ""}” stays enabled; its next run happens as planned.`
-                    : "Cancel this job? Running commands will be terminated.";
+                    : "Cancel this run? Running commands will be terminated.";
                   if (confirm(q)) action.mutate("cancel");
                 }}>
                 Cancel
@@ -137,7 +138,7 @@ export function JobDetailPage() {
         </div>
       )}
       {j.status === "interrupted" && (
-        <div className="mb-4"><Alert tone="warn">The controller restarted while this job was running. Hosts that were in progress have an unknown outcome{o?.schedule_id ? "; the schedule doesn't re-run it automatically" : ""}.</Alert></div>
+        <div className="mb-4"><Alert tone="warn">The controller restarted while this run was in progress. Hosts that were in progress have an unknown outcome{o?.schedule_id ? "; the schedule doesn't re-run it automatically" : ""}.</Alert></div>
       )}
       {active && o?.schedule_id && (
         <p className="mb-4 rounded-ui border border-line bg-surface px-3 py-2 text-sm" role="note">

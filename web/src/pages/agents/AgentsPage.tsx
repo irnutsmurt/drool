@@ -20,7 +20,7 @@ import { errorMessage, formatAgo, formatBytes, formatDateTime } from "@/lib/form
 import { upload } from "@/lib/upload";
 
 const tabs = [
-  { id: "agents", label: "Agents" },
+  { id: "agents", label: "Shepherds" },
   { id: "enroll", label: "Enrollment" },
   { id: "updates", label: "Updates" },
   { id: "trust", label: "Trust (PKI)" },
@@ -32,11 +32,13 @@ export function AgentsPage() {
   const tab = params.get("tab") ?? "agents";
   return (
     <>
-      <PageHeader title="Agents" description="The DROOL agent: enrollment, trust, capabilities and updates." />
-      <div className="mb-4 flex gap-1 border-b border-line">
+      <PageHeader title="Shepherds"
+        description={<>DROOL agents installed on managed hosts: enrollment, trust, capabilities and updates. A Shepherd is the DROOL agent
+          (<span className="font-mono text-xs">drool-agent</span>); it reports continuously and runs work for DROOL within the limits its host allows.</>} />
+      <div role="tablist" aria-label="Shepherd sections" className="-mx-1 mb-4 flex gap-1 overflow-x-auto border-b border-line px-1">
         {tabs.map((t) => (
-          <button key={t.id} onClick={() => setParams({ tab: t.id })}
-            className={cx("-mb-px border-b-2 px-3 py-2 text-sm", tab === t.id ? "border-accent font-medium" : "border-transparent text-muted hover:text-fg")}>
+          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setParams({ tab: t.id })}
+            className={cx("-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm", tab === t.id ? "border-accent font-medium" : "border-transparent text-muted hover:text-fg")}>
             {t.label}
           </button>
         ))}
@@ -59,12 +61,13 @@ function AgentsTab() {
   const [adding, setAdding] = useState(false);
   const name = (id: string) => (hosts.data?.items ?? []).find((h) => h.id === id)?.name ?? id;
   return (
-    <Card title="Enrolled agents" actions={can("agents.enroll") && <Button size="sm" variant="primary" onClick={() => setAdding(true)}>Add a host with the agent</Button>}>
-      <p className="mb-3 text-sm text-muted">To put an existing SSH host under the agent, open the host and choose <em>Install DROOL agent</em>.</p>
+    <Card title="Enrolled Shepherds" actions={can("agents.enroll") && <Button size="sm" variant="primary" onClick={() => setAdding(true)}>Add a host with a Shepherd</Button>}>
+      <p className="mb-3 text-sm text-muted">To put an existing SSH host under a Shepherd, open the host and choose <em>Install Shepherd (DROOL agent)</em>,
+        or select hosts under Monitoring and use <em>Convert to Shepherd</em>.</p>
       <Table
         rows={agents.data?.items ?? []}
         rowKey={(a) => a.id}
-        empty={agents.isPending ? "Loading…" : "No agents enrolled yet."}
+        empty={agents.isPending ? "Loading…" : "No Shepherds enrolled yet. Hosts without one are managed over SSH."}
         columns={[
           { header: "Host", cell: (a) => <Link className="font-medium text-accent" to={`/hosts/${a.host_id}`}>{name(a.host_id)}</Link> },
           { header: "State", cell: (a) => a.status === "quarantined" ? <Badge tone="danger">identity conflict</Badge> : !a.compatible ? <Badge tone="danger">incompatible</Badge> : a.connected ? <Badge tone="ok">connected</Badge> : <Badge tone="warn">offline {formatAgo(a.last_seen_at)}</Badge> },
@@ -332,7 +335,7 @@ function TrustTab() {
         ) : (
           <div className="mb-3"><Alert tone="ok">The root private key is offline{s.root_key_removed_at && ` (removed ${formatDateTime(s.root_key_removed_at)})`}. It is not in this controller's backups.</Alert></div>
         )}
-        <dl className="grid grid-cols-[11rem_1fr] gap-y-1.5 text-sm">
+        <dl className="grid grid-cols-[7rem_1fr] sm:grid-cols-[11rem_1fr] gap-y-1.5 text-sm">
           <dt className="text-muted">Root fingerprint</dt><dd className="break-all font-mono text-xs">{s.root_fingerprint}</dd>
           <dt className="text-muted">Valid until</dt><dd>{formatDateTime(s.root_not_after)}</dd>
           <dt className="text-muted">Intermediate</dt><dd className="break-all font-mono text-xs">{s.intermediate_fingerprint} <span className="text-muted">(until {formatDateTime(s.intermediate_not_after)})</span></dd>

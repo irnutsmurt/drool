@@ -68,7 +68,8 @@ export function EditFilePage() {
   const notText = file.error instanceof ApiError && file.error.problem?.code === "not_text";
   return (
     <>
-      <PageHeader title={path.split("/").pop() || path}
+      <PageHeader crumbs={[{ label: "Hosts", to: "/hosts" }, { label: host.data?.name ?? "Host", to: `/hosts/${id}` }, { label: "Files", to: back }]}
+        title={path.split("/").pop() || path}
         description={<span className="font-mono">{host.data?.name}:{path}</span>}
         actions={<Link className="text-sm text-accent" to={back}>Back to {dir}</Link>} />
       {elevated && <div className="mb-4"><Alert tone="warn">Editing as <strong>root</strong> (administrator privileges). The save is audited.</Alert></div>}

@@ -9,7 +9,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { errorMessage } from "@/lib/format";
 import type { ConversionPreview } from "./queries";
 
-const statusWord: Record<string, string> = { compatible: "Compatible", agent: "Already agent-managed", unsupported: "Unsupported", unreachable: "Unreachable" };
+const statusWord: Record<string, string> = { compatible: "Compatible", agent: "Already has a Shepherd", unsupported: "Unsupported", unreachable: "Unreachable" };
 
 /** Bulk SSH → agent conversion: preview, then a canary-first rollout of
  * the existing single-host installation over each host's pinned SSH
@@ -29,7 +29,7 @@ export function ConvertDialog({ hostIds, onClose }: { hostIds: string[]; onClose
   if (!pv && !preview.isPending && !preview.error) preview.mutate();
   const n = pv?.counts.compatible ?? 0;
   return (
-    <Dialog title="Convert to agent management" onClose={onClose} wide>
+    <Dialog title="Convert to Shepherd management (DROOL agent)" onClose={onClose} wide>
       {preview.error && <Alert>{errorMessage(preview.error)}</Alert>}
       {!pv ? <p className="text-sm text-muted">Checking the selected hosts…</p> : (
         <div className="space-y-3 text-sm">

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { errorMessage } from "@/lib/format";
 import { HealthEditor } from "./HealthEditor";
 import { useDeleteOverride, type HealthCheck, type HealthField, type HealthSubject, type OverrideKey } from "./queries";
+import { healthScope } from "./provenance";
 
 type Src = HealthField["source"];
 
@@ -31,11 +32,11 @@ export function SourceBadge({ src }: { src: Src }) {
     case "global":
       return <Badge tone="accent">Global</Badge>;
     case "group":
-      return <Badge tone="accent">{src.label.replace("Inherited from ", "")}</Badge>;
+      return <Badge tone="accent">{healthScope(src)}</Badge>;
     case "host":
       return <Badge tone="accent">This host</Badge>;
     case "subject":
-      return <Badge tone="accent">{src.label}</Badge>;
+      return <Badge tone="accent">{healthScope(src)}</Badge>;
   }
   return <Badge>{src.label}</Badge>;
 }
@@ -86,7 +87,8 @@ export function HealthChecksTable({ checks, k, title, only }: {
     <>
       {del.error && <div className="mb-2"><Alert>{errorMessage(del.error)}</Alert></div>}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
+        <table className="rtable w-full text-left text-sm">
+          <caption className="sr-only">Health checks</caption>
           <thead>
             <tr className="border-b border-line text-xs text-muted">
               <th className="px-2 py-1.5 font-medium">Check</th>
@@ -98,18 +100,18 @@ export function HealthChecksTable({ checks, k, title, only }: {
           <tbody>
             {rows.map((c) => (
               <tr key={c.check} className="border-b border-line last:border-0 align-top">
-                <td className="px-2 py-2">
+                <td data-primary="" className="px-2 py-2">
                   <div className="font-medium">{c.label}</div>
                   <div className="text-xs text-muted">{c.description}</div>
                 </td>
-                <td className="px-2 py-2">{effectText(c)}</td>
-                <td className="px-2 py-2">
+                <td data-label="Now" className="px-2 py-2">{effectText(c)}</td>
+                <td data-label="Source" className="px-2 py-2">
                   <div className="flex flex-wrap gap-1">
                     {sources(c).length === 0 ? <Badge>Recommended</Badge> : sources(c).map((s) => <SourceBadge key={s.label} src={s} />)}
-                    {c.conflicts > 0 && <span title="Groups of equal priority set different values"><Badge tone="warn">⚠ Group conflict</Badge></span>}
+                    {c.conflicts > 0 && <span title="Packs of equal priority set different values"><Badge tone="warn">⚠ Pack conflict</Badge></span>}
                   </div>
                 </td>
-                <td className="whitespace-nowrap px-2 py-2 text-right">
+                <td data-label="" className="whitespace-nowrap px-2 py-2 text-right">
                   <Button size="sm" onClick={() => setEditing(c)} aria-label={`${edit ? "Customize" : "View"} ${c.label}`}>{c.customized ? "Edit" : edit ? "Customize" : "View"}</Button>
                   {edit && c.override_id && (
                     <Button size="sm" variant="ghost" className="ml-1" disabled={del.isPending} onClick={() => del.mutate(c.override_id!)} aria-label={`Reset ${c.label} to inherited`}>

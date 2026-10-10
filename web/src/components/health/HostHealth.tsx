@@ -9,6 +9,8 @@ import { Dialog } from "@/components/ui/Dialog";
 import { errorMessage } from "@/lib/format";
 import { useHostHealth, type HealthSubject } from "./queries";
 import { HealthChecksTable, IdentityBadge } from "./ui";
+import { healthScopes } from "./provenance";
+import { ScopeLegend } from "@/components/ui/Provenance";
 
 const kindWord: Record<string, string> = {
   filesystem: "Filesystems", disk: "Disks", gpu: "GPUs", sensor: "Temperature sensors", interface: "Network interfaces", service: "Services", probe: "Probe targets",
@@ -33,12 +35,13 @@ export function HostHealthPanel({ hostId }: { hostId: string }) {
         </p>
         {(v.groups ?? []).length > 0 && (
           <p className="mt-1 text-xs text-muted">
-            Groups: {(v.groups ?? []).map((g) => `${g.name} (priority ${g.priority}${g.overrides ? `, ${g.overrides} overrides` : ""})`).join(", ")}.
-            {" "}When groups disagree, the higher priority wins; equal priorities are shown as a conflict.
+            Packs: {(v.groups ?? []).map((g) => `${g.name} (priority ${g.priority}${g.overrides ? `, ${g.overrides} overrides` : ""})`).join(", ")}.
+            {" "}When packs disagree, the higher priority wins; equal priorities are shown as a conflict.
           </p>
         )}
+        <div className="mt-2"><ScopeLegend scopes={healthScopes} /></div>
         {(v.summary?.conflicts ?? 0) > 0 && (
-          <div className="mt-2"><Alert tone="warn">Groups of equal priority set different values for this host. Until a priority or a host override settles it, those fields use the global or Recommended value.</Alert></div>
+          <div className="mt-2"><Alert tone="warn">Packs (groups) of equal priority set different values for this host. Until a priority or a host override settles it, those fields use the global or Recommended value.</Alert></div>
         )}
         <p className="mt-2 text-xs text-muted">
           These decide what monitoring considers unhealthy here. Who gets notified is configured in <Link className="text-accent" to="/settings/notifications">Settings → Notifications</Link>.

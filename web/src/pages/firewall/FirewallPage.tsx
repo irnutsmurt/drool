@@ -4,36 +4,41 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { useHosts } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
-import { ApplyDialog, statusLabels, TxList } from "@/components/firewall/parts";
+import { ApplyDialog, modeInfo, statusLabels, TxList } from "@/components/firewall/parts";
 import { fk, useFwGroups, useFwHosts, useFwSettings, useFwTransactions, type FwSimResult } from "@/components/firewall/queries";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import { Button, secondaryLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cx } from "@/components/ui/cx";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { ReadOnlyNote } from "@/components/ui/ReadOnlyNote";
 import { DesignerPage } from "@/components/firewall/designer/DesignerPage";
 import { Table } from "@/components/ui/Table";
 import { errorMessage } from "@/lib/format";
 
 const tabs = [
   { id: "hosts", label: "Hosts" },
-  { id: "designer", label: "Designer" },
+  { id: "designer", label: "Policy" },
   { id: "simulate", label: "Can A reach B?" },
   { id: "transactions", label: "Transactions" },
   { id: "settings", label: "Settings" },
 ] as const;
 
 export function FirewallPage() {
+  const { can } = useAuth();
   const [params, setParams] = useSearchParams();
   let tab = params.get("tab") ?? "hosts";
   // Policies and services are edited in the designer now (M8 links still work).
   if (tab === "policies" || tab === "services") tab = "designer";
   return (
     <>
-      <PageHeader title="Firewall" description="Network intent: who may reach whom, applied safely as dead-man transactions on plain-nftables hosts." />
-      <div role="tablist" aria-label="Firewall sections" className="mb-4 flex gap-1 overflow-x-auto border-b border-line">
+      <PageHeader title="Firewall"
+        description={<>What may talk to what, applied to plain-nftables hosts with <span className="font-medium text-fg">automatic rollback protection</span>: if a fresh
+          management connection can&apos;t verify a change, the host reverts it by itself.</>}
+        actions={can("network.read") && <Link to="/network" className={secondaryLink}>Observed traffic</Link>} />
+      <div role="tablist" aria-label="Firewall sections" className="-mx-1 mb-4 flex gap-1 overflow-x-auto border-b border-line px-1">
         {tabs.map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setParams({ tab: t.id })}
             className={cx("-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm", tab === t.id ? "border-accent font-medium" : "border-transparent text-muted hover:text-fg")}>
@@ -71,15 +76,17 @@ function HostsTab() {
         <Table
           rows={items}
           rowKey={(h) => h.host_id}
+          empty={hosts.isPending ? "Loading…" : "No hosts yet. Each host you add appears here with its firewall mode (Off until you choose) and status."}
           columns={[
-            { header: "", cell: (h) => can("firewall.write") && h.mode === "enforce" ? <input type="checkbox" checked={sel.includes(h.host_id)} onChange={() => toggle(h.host_id)} /> : null },
-            { header: "Host", cell: (h) => <Link className="font-medium underline" to={`/hosts/${h.host_id}`}>{h.host_name}</Link> },
-            { header: "Mode", cell: (h) => h.mode },
+            { header: "", cell: (h) => can("firewall.write") && h.mode === "enforce" ? <input type="checkbox" aria-label={`Select ${h.host_name}`} checked={sel.includes(h.host_id)} onChange={() => toggle(h.host_id)} /> : null },
+            { header: "Host", cell: (h) => <Link className="font-medium underline" to={`/hosts/${h.host_id}/firewall`}>{h.host_name}</Link> },
+            { header: "Mode", cell: (h) => modeInfo[h.mode]?.label ?? h.mode },
             { header: "Environment", cell: (h) => !h.checked ? <span className="text-muted">not checked</span>
               : h.supported ? <Badge tone="ok">supported</Badge> : <span title={h.reason}><Badge tone="danger">refused</Badge> <span className="text-xs text-muted">{h.reason}</span></span> },
             { header: "Status", cell: (h) => <Badge tone={statusLabels[h.status].tone}>{statusLabels[h.status].text}</Badge> },
             { header: "Revision", cell: (h) => (h.enforced ? h.revision : "—") },
-            { header: "Path", cell: (h) => <span>{h.transport} <span className="text-xs text-muted">{h.learning === "continuous" ? "· learning" : h.learning === "snapshot" ? "· snapshots" : ""}</span></span> },
+            { header: "Path", cell: (h) => <span>{h.transport === "agent" ? "Shepherd" : h.transport} <span className="text-xs text-muted">{h.learning === "continuous" ? "· learning" : h.learning === "snapshot" ? "· snapshots" : ""}</span></span> },
+            ...(can("network.read") ? [{ header: "Traffic", cell: (h: (typeof items)[number]) => <Link className="text-sm underline" to={`/hosts/${h.host_id}/network`}>Observed</Link> }] : []),
           ]}
         />
       </Card>
@@ -171,8 +178,10 @@ function SettingsTab() {
     mutationFn: (v: { id: string; t: number }) => unwrap(api.PUT("/firewall/groups/{id}", { params: { path: { id: v.id } }, body: { rollback_timeout_s: v.t } })),
     onSuccess: () => void qc.invalidateQueries({ queryKey: fk.groups }),
   });
-  if (!s.data) return null;
+  if (!s.data) return <p className="text-sm text-muted">Loading…</p>;
   return (
+    <>
+    {!can("firewall.write") && <ReadOnlyNote>changing firewall settings needs the firewall.write permission (administrators).</ReadOnlyNote>}
     <div className="grid gap-4 lg:grid-cols-2">
       <Card title="Internal networks">
         <p className="mb-2 text-sm text-muted">The <strong>internet</strong> target is everything outside these ranges. Add routed LANs, VLANs and VPNs here.</p>
@@ -184,14 +193,14 @@ function SettingsTab() {
         {save.error && <div className="mt-2"><Alert>{errorMessage(save.error)}</Alert></div>}
         {can("firewall.write") && (ranges !== null || timeout !== null) && <Button className="mt-2" variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>Save</Button>}
       </Card>
-      <Card title="Rollback timeout per group">
-        <p className="mb-2 text-sm text-muted">A host's own timeout wins; otherwise the shortest of its groups'; otherwise the default.</p>
+      <Card title="Rollback timeout per pack">
+        <p className="mb-2 text-sm text-muted">A host's own timeout wins; otherwise the shortest of its packs'; otherwise the default.</p>
         {setGroup.error && <Alert>{errorMessage(setGroup.error)}</Alert>}
         <Table
           rows={groups.data?.items ?? []}
           rowKey={(g) => g.id}
           columns={[
-            { header: "Group", cell: (g) => g.name },
+            { header: "Pack", cell: (g) => g.name },
             { header: "Timeout", cell: (g) => (g.rollback_timeout_s ? `${g.rollback_timeout_s}s` : <span className="text-muted">default</span>) },
             { header: "", cell: (g) => can("firewall.write") && (
               <Button size="sm" variant="ghost" onClick={() => {
@@ -203,6 +212,7 @@ function SettingsTab() {
         />
       </Card>
     </div>
+    </>
   );
 }
 

@@ -155,6 +155,7 @@ function ScheduleForm({ existing, draft }: { existing?: Schedule; draft: Schedul
   return (
     <>
       <PageHeader
+        crumbs={maint ? [{ label: "Alerts", to: "/alerts" }, { label: "Maintenance", to: "/alerts?view=maintenance" }] : [{ label: "Schedules", to: "/jobs/schedules" }]}
         title={existing ? `Edit ${existing.name}` : maint ? "New recurring maintenance window" : "New schedule"}
         description={existing
           ? "Changes apply to future runs only. A run in progress and earlier runs keep exactly what they ran."
@@ -183,7 +184,7 @@ function ScheduleForm({ existing, draft }: { existing?: Schedule; draft: Schedul
 
           <Card title="Targets">
             <TargetPicker v={targets} set={setTargets} noTags={maint}
-              groupsHint="Groups are checked again at every run: hosts added to a group later take part." />
+              groupsHint="Packs are checked again at every run: hosts added to a pack later take part." />
           </Card>
 
           {maint ? (

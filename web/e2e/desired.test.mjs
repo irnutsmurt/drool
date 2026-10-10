@@ -97,11 +97,11 @@ const waitStatus = async (host, key, status, ms = 120000) => {
 
 test("desired state: sidebar entry and tabs from the keyboard", async () => {
   await go("/");
-  await tabTo(page, () => document.activeElement?.textContent === "Desired state", "Desired state link");
+  await tabTo(page, () => document.activeElement?.textContent === "Desired State", "Desired State link");
   await page.keyboard.press("Enter");
   await waitFor(page, async () => page.url().endsWith("/desired"), "desired url");
   await waitText(page, "What your machines should look like");
-  const tabs = await page.$$eval('nav[aria-label="Desired state"] a', (as) => as.map((a) => [a.textContent, a.getAttribute("aria-current")]));
+  const tabs = await page.$$eval('nav[aria-label="Desired State"] a', (as) => as.map((a) => [a.textContent, a.getAttribute("aria-current")]));
   assert.deepEqual(tabs, [["Overview", "page"], ["Baselines", null], ["History", null]]);
   assert.match(await text(page), /What your machines should look like/);
   await shot(page, "desired-overview-first");
@@ -112,7 +112,7 @@ test("create a baseline: simple case, impact before saving", async () => {
   await go("/desired/baselines/new");
   await waitText(page, "Impact before saving");
   await fill(page, "Name", `AI box ${run}`);
-  await click(page, "label", "Groups and hosts I choose");
+  await click(page, "label", "Packs and hosts I choose");
   await check("gpu-01");
   // The first row is a service: running and enabled by default.
   await fill(page, "Service", "ollama");
@@ -153,6 +153,8 @@ test("a host's effective desired state: compliant, drift, unknown and where each
   await waitRe(/where the desired value comes from/i);
   t = await text(page);
   assert.match(t, /Baseline AI box .*, assigned to this host/);
+  // The provenance shows the scope in effect, in the shared pattern.
+  assert.match(t, /Baseline for this host\s+stopped\s+✓ In effect/);
   assert.match(t, /State\s+stopped\s+running/);
   assert.match(t, /Drift detected/);
   await shot(page, "host-drift-detail");
@@ -166,7 +168,7 @@ test("a host's effective desired state: compliant, drift, unknown and where each
   await openResource(`e2e-pkg-${run}`);
   await waitText(page, "couldn't check");
   await shot(page, "host-unknown");
-  // The host overview links here; the dashboard counts the drift.
+  // The host overview links here; the Overview counts the drift.
   await go(`/hosts/${page.ids["gpu-01"]}`);
   await waitText(page, "nvidia-persistenced.service — drift detected");
   await go("/");
@@ -185,7 +187,7 @@ test("equal group priorities that disagree are a conflict until a priority settl
   await waitStatus("pi-sd", "service:pihole-FTL.service", "conflict");
   await go(`/hosts/${page.ids["pi-sd"]}/desired`);
   await openResource("pihole-FTL.service");
-  await waitRe(/competing declarations/i);
+  await waitRe(/Conflict — not resolved/);
   const t = await text(page);
   assert.match(t, new RegExp(`Conflict between groups .*quiet-${run}.*storage-${run}.* \\(same priority 0\\)`));
   assert.match(t, /DROOL doesn't pick one/);

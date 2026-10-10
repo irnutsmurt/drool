@@ -47,6 +47,7 @@ export function BaselineDetailPage() {
   return (
     <>
       <PageHeader
+        crumbs={[{ label: "Desired State", to: "/desired" }, { label: "Baselines", to: "/desired/baselines" }]}
         title={v.name}
         description={<>{v.description && <>{v.description} · </>}Revision {v.revision} · applies to {appliesText(v)}{v.archived && " · archived"}</>}
         actions={

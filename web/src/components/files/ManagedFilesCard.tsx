@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { formatDateTime } from "@/lib/format";
 
-/** Files DROOL has deployed to this host, with their latest deployment. */
+/** Files DROOL has deployed to this host (file deployments, not Desired
+ * State's managed files), with their latest deployment. */
 export function ManagedFilesCard({ hostId }: { hostId: string }) {
   const q = useQuery({
     queryKey: ["managed-files", hostId],
@@ -14,7 +15,7 @@ export function ManagedFilesCard({ hostId }: { hostId: string }) {
   const items = q.data?.items ?? [];
   if (items.length === 0) return null;
   return (
-    <Card title="Managed files">
+    <Card title="Deployed files" actions={<Link className="whitespace-nowrap text-sm text-accent" to={`/hosts/${hostId}/files`}>Open file manager <span aria-hidden="true">→</span></Link>}>
       <ul className="space-y-1.5 text-sm">
         {items.map((d) => (
           <li key={d.id} className="flex flex-wrap items-center gap-3">

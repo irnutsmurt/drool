@@ -16,7 +16,7 @@ export function SystemPage() {
   return (
     <div className="grid gap-4">
       <Card title="Controller">
-        <dl className="grid grid-cols-[10rem_1fr] gap-y-2 text-sm">
+        <dl className="grid grid-cols-[7rem_1fr] sm:grid-cols-[10rem_1fr] gap-y-2 text-sm">
           <dt className="text-muted">Version</dt><dd>{d?.version} ({d?.commit})</dd>
           <dt className="text-muted">Built</dt><dd>{d?.build_date}</dd>
           <dt className="text-muted">Go</dt><dd>{d?.go_version}</dd>

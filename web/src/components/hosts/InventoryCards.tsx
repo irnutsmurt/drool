@@ -15,29 +15,28 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 const unknown = <span className="text-muted">unknown</span>;
 
-export function HealthCard({ host }: { host: Host }) {
+/** Reachability, updates and reboot from the latest status check; CPU,
+ * memory, disks and failed units too when the user can't see Monitoring
+ * (which shows those in detail). */
+export function StatusLines({ host }: { host: Host }) {
   const h = host.health;
-  // CPU, memory, disks and services live in Monitoring (M11) now.
   const mon = useAuth().can("monitoring.read");
+  if (!h) return <p className="text-sm text-muted">Not checked yet. Status is collected automatically every few minutes.</p>;
   return (
-    <Card title={mon ? "Updates and reboot" : "Current status"}>
-      {!h ? (
-        <p className="text-sm text-muted">Not checked yet. Status is collected automatically every few minutes.</p>
-      ) : (
-        <>
-        {h.stale && (
-          <p className="mb-3 text-sm text-warn">
-            DROOL hasn't been able to check this host for a while (busy with jobs, or the host is unreachable). The values below
-            are from the last successful check, {formatAgo(h.checked_at)}.
-          </p>
-        )}
-        <dl className="grid grid-cols-[9rem_1fr] gap-y-2 text-sm">
-          <Row label="Last check">
-            {formatAgo(h.checked_at)} {h.stale && <Badge tone="warn">stale</Badge>}
-            {!h.reachable && <span className="ml-2 text-danger">failed: {h.last_error}</span>}
-          </Row>
-          <Row label="Uptime">{formatUptime(h.uptime_s)}</Row>
-          {!mon && (<>
+    <div className="space-y-2">
+      {h.stale && (
+        <p className="text-sm text-warn">
+          <span aria-hidden="true">⚠ </span>DROOL hasn't been able to check this host for a while (busy with jobs, or the host is unreachable). The
+          values below are from the last successful check, {formatAgo(h.checked_at)}.
+        </p>
+      )}
+      <dl className="grid grid-cols-[minmax(6.5rem,9rem)_1fr] gap-y-1.5 text-sm">
+        <Row label="Last check">
+          {formatAgo(h.checked_at)} {h.stale && <Badge tone="warn">stale</Badge>}
+          {!h.reachable && <span className="ml-2 text-danger">failed: {h.last_error}</span>}
+        </Row>
+        <Row label="Uptime">{formatUptime(h.uptime_s)}</Row>
+        {!mon && (<>
           <Row label="Load (1 min)">{h.load1 ?? "—"}</Row>
           <Row label="Memory used">{formatPct(h.mem_used_pct)}</Row>
           <Row label="Fullest disk">
@@ -49,34 +48,35 @@ export function HealthCard({ host }: { host: Host }) {
             {h.failed_units == null ? <span className="text-muted">n/a (systemd not running)</span>
               : h.failed_units === 0 ? "none" : <span className="text-danger">{h.failed_unit_names.join(", ")}</span>}
           </Row>
-          </>)}
-          <Row label="Reboot">
-            {h.reboot_required == null ? unknown : h.reboot_required ? <span className="text-warn">required{h.reboot_reason && ` (${h.reboot_reason})`}</span> : "not required"}
-          </Row>
-          <Row label="Updates">
-            {h.updates_available == null ? <span className="text-muted">unknown (package cache not available yet)</span> : (
-              <>{h.updates_available} pending{h.security_updates ? <span className="text-warn">, {h.security_updates} security</span> : h.security_updates === 0 ? ", none security" : ""}
-                <span className="text-muted"> · checked {formatAgo(h.updates_checked_at)}</span></>
-            )}
-          </Row>
-        </dl>
-        </>
-      )}
-    </Card>
+        </>)}
+        <Row label="Reboot">
+          {h.reboot_required == null ? unknown : h.reboot_required ? <span className="text-warn">required{h.reboot_reason && ` (${h.reboot_reason})`}</span> : "not required"}
+        </Row>
+        <Row label="Updates">
+          {h.updates_available == null ? <span className="text-muted">unknown (package cache not available yet)</span> : (
+            <>{h.updates_available} pending{h.security_updates ? <span className="text-warn">, {h.security_updates} security</span> : h.security_updates === 0 ? ", none security" : ""}
+              <span className="text-muted"> · checked {formatAgo(h.updates_checked_at)}</span></>
+          )}
+        </Row>
+      </dl>
+    </div>
   );
 }
 
-export function FactsCard({ host }: { host: Host }) {
+/** The host overview's system facts: the essentials, with filesystems,
+ * addresses and interfaces one click away. */
+export function SystemCard({ host }: { host: Host }) {
   const f = host.facts;
   const q = useHostFacts(host.id);
   const full = q.data?.facts as DiscoveredFacts | null | undefined;
+  const addresses = q.data?.addresses ?? [];
   return (
     <Card title="System">
       {!f ? (
         <p className="text-sm text-muted">Not discovered yet. Discovery runs automatically once the connection test passes.</p>
       ) : (
         <div className="space-y-3">
-          <dl className="grid grid-cols-[9rem_1fr] gap-y-2 text-sm">
+          <dl className="grid grid-cols-[minmax(6.5rem,9rem)_1fr] gap-y-1.5 text-sm">
             <Row label="OS">{f.distro_name || `${f.distro} ${f.distro_version}`} <span className="text-muted">({f.os_family})</span></Row>
             <Row label="Kernel">{f.kernel || unknown} <span className="text-muted">{f.arch}</span></Row>
             <Row label="Hostname">{f.hostname || unknown}</Row>
@@ -84,68 +84,50 @@ export function FactsCard({ host }: { host: Host }) {
             <Row label="Memory">{formatBytes(f.mem_bytes)}{full?.swap_bytes ? ` + ${formatBytes(full.swap_bytes)} swap` : ""}</Row>
             <Row label="Packages">{f.pkg_manager || unknown}</Row>
             <Row label="Init system">{f.init_system || unknown}</Row>
-            <Row label="Containers">{f.container_runtimes.length ? f.container_runtimes.join(", ") : "none found"}</Row>
             {full?.virtualization && full.virtualization !== "none" && <Row label="Virtualization">{full.virtualization}</Row>}
             <Row label="Discovered">{formatDateTime(f.collected_at)}</Row>
           </dl>
-          {full && full.filesystems.length > 0 && (
-            <Table
-              rows={full.filesystems}
-              rowKey={(fs) => fs.mount}
-              columns={[
-                { header: "Mount", cell: (fs) => <span className="font-mono text-xs">{fs.mount}</span> },
-                { header: "Type", cell: (fs) => fs.type ?? "" },
-                { header: "Size", cell: (fs) => formatBytes(fs.size_bytes) },
-                { header: "Used", cell: (fs) => <span className={cx(fs.used_pct >= 90 && "text-danger")}>{formatPct(fs.used_pct)}</span> },
-              ]}
-            />
-          )}
-          {full && full.warnings.length > 0 && (
-            <details className="text-xs text-muted">
-              <summary className="cursor-pointer">{full.warnings.length} discovery note{full.warnings.length === 1 ? "" : "s"}</summary>
-              <ul className="mt-1 list-disc pl-5">{full.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
-            </details>
-          )}
+          <details className="border-t border-line pt-3">
+            <summary className="cursor-pointer text-sm font-medium">Filesystems, addresses and interfaces
+              <span className="font-normal text-muted"> — {full?.filesystems.length ?? 0} filesystems, {addresses.length} addresses</span></summary>
+            <div className="mt-3 space-y-4">
+              <p className="text-xs text-muted">Containers: {f.container_runtimes.length ? f.container_runtimes.join(", ") : "none found"}.
+                Addresses are informational: DROOL identifies hosts by their SSH key or Shepherd identity, not by IP address.</p>
+              {full && full.filesystems.length > 0 && (
+                <Table caption="Filesystems" rows={full.filesystems} rowKey={(fs) => fs.mount}
+                  columns={[
+                    { header: "Mount", cell: (fs) => <span className="font-mono text-xs">{fs.mount}</span> },
+                    { header: "Type", cell: (fs) => fs.type ?? "" },
+                    { header: "Size", cell: (fs) => formatBytes(fs.size_bytes) },
+                    { header: "Used", cell: (fs) => <span className={cx(fs.used_pct >= 90 && "text-danger")}>{formatPct(fs.used_pct)}</span> },
+                  ]} />
+              )}
+              <Table caption="Addresses" rows={addresses} rowKey={(a) => a.address} empty="No addresses known."
+                columns={[
+                  { header: "Address", cell: (a) => <span className="font-mono text-xs">{a.address}</span> },
+                  { header: "Interface", cell: (a) => a.interface || "—" },
+                  { header: "Source", cell: (a) => <Badge tone={a.source === "configured" ? "accent" : "neutral"}>{a.source}</Badge> },
+                  { header: "Last seen", cell: (a) => <span className="text-muted">{formatAgo(a.last_seen_at)}</span> },
+                ]} />
+              {full && full.interfaces.length > 0 && (
+                <Table caption="Interfaces" rows={full.interfaces} rowKey={(i) => i.name}
+                  columns={[
+                    { header: "Interface", cell: (i) => <span className="font-mono text-xs">{i.name}</span> },
+                    { header: "State", cell: (i) => i.state ?? "" },
+                    { header: "MAC", cell: (i) => <span className="font-mono text-xs">{i.mac ?? ""}</span> },
+                    { header: "Addresses", cell: (i) => <span className="font-mono text-xs [overflow-wrap:anywhere]">{i.addresses.map((a) => `${a.address}/${a.prefix}`).join(", ")}</span> },
+                  ]} />
+              )}
+              {full && full.warnings.length > 0 && (
+                <div className="text-xs text-muted">
+                  <div className="font-medium">Discovery notes</div>
+                  <ul className="mt-1 list-disc pl-5">{full.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+                </div>
+              )}
+            </div>
+          </details>
         </div>
       )}
-    </Card>
-  );
-}
-
-export function NetworkCard({ host }: { host: Host }) {
-  const q = useHostFacts(host.id);
-  const full = q.data?.facts as DiscoveredFacts | null | undefined;
-  const addresses = q.data?.addresses ?? [];
-  return (
-    <Card title="Addresses and interfaces">
-      <div className="space-y-3">
-        <p className="text-xs text-muted">
-          Addresses are informational. DROOL identifies hosts by their SSH key, not by IP address.
-        </p>
-        <Table
-          rows={addresses}
-          rowKey={(a) => a.address}
-          empty="No addresses known."
-          columns={[
-            { header: "Address", cell: (a) => <span className="font-mono text-xs">{a.address}</span> },
-            { header: "Interface", cell: (a) => a.interface || "—" },
-            { header: "Source", cell: (a) => <Badge tone={a.source === "configured" ? "accent" : "neutral"}>{a.source}</Badge> },
-            { header: "Last seen", cell: (a) => <span className="text-muted">{formatAgo(a.last_seen_at)}</span> },
-          ]}
-        />
-        {full && full.interfaces.length > 0 && (
-          <Table
-            rows={full.interfaces}
-            rowKey={(i) => i.name}
-            columns={[
-              { header: "Interface", cell: (i) => <span className="font-mono text-xs">{i.name}</span> },
-              { header: "State", cell: (i) => i.state ?? "" },
-              { header: "MAC", cell: (i) => <span className="font-mono text-xs">{i.mac ?? ""}</span> },
-              { header: "Addresses", cell: (i) => <span className="font-mono text-xs">{i.addresses.map((a) => `${a.address}/${a.prefix}`).join(", ")}</span> },
-            ]}
-          />
-        )}
-      </div>
     </Card>
   );
 }
@@ -210,7 +192,7 @@ export function ServicesCard({ host }: { host: Host }) {
           {can("network.read") ? (
             <p className="text-sm text-muted">
               Listening ports, with the connections observed arriving on them, are shown under{" "}
-              <a className="text-accent underline" href="#network">Network connections</a>.
+              <Link className="text-accent underline" to={`/hosts/${host.id}/network`}>the host's Network Activity page</Link>.
             </p>
           ) : (
             <>

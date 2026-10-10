@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { Card } from "@/components/ui/Card";
+import { errorMessage } from "@/lib/format";
 import { describeKey, useDesiredHost } from "./queries";
 import { DesiredStatusBadge, statusLabel } from "./ui";
 
@@ -9,8 +10,8 @@ export function DesiredStateCard({ hostId }: { hostId: string }) {
   const h = q.data;
   const problems = (h?.resources ?? []).filter((r) => r.status !== "compliant").slice(0, 5);
   return (
-    <Card title="Desired state" className="lg:col-span-2" actions={<Link className="text-sm text-accent" to={`/hosts/${hostId}/desired`}>Details</Link>}>
-      {!h ? <p className="text-sm text-muted">Loading…</p> : h.counts.total === 0 ? (
+    <Card title="Desired State" actions={<Link className="whitespace-nowrap text-sm text-accent" to={`/hosts/${hostId}/desired`}>View desired state <span aria-hidden="true">→</span></Link>}>
+      {q.error ? <p className="text-sm text-danger">Couldn't load desired state: {errorMessage(q.error)}</p> : !h ? <p className="text-sm text-muted">Loading…</p> : h.counts.total === 0 ? (
         <p className="text-sm text-muted">No baseline applies to this host.</p>
       ) : (
         <div className="space-y-2 text-sm">

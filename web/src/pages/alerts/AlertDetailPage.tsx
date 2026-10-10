@@ -5,6 +5,7 @@ import { Alert as Notice } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { secondaryLink } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { errorMessage } from "@/lib/format";
@@ -24,9 +25,15 @@ export function AlertDetailPage() {
   return (
     <>
       <PageHeader
+        crumbs={[{ label: "Alerts", to: "/alerts" }]}
         title={a.title}
         description={<><Link className="font-medium text-fg underline" to={`/hosts/${a.host_id}`}>{a.host_name}</Link> · {checkLabel[a.check] ?? a.check}{a.subject ? ` · ${a.subject}` : ""}</>}
-        actions={<Link to="/alerts" className="inline-flex h-9 items-center rounded-ui border border-line bg-surface px-3.5 text-sm font-medium text-fg hover:bg-surface-2">All alerts</Link>}
+        actions={
+          <>
+            <Link to={`/hosts/${a.host_id}`} className={secondaryLink}>View host</Link>
+            <Link to={`/hosts/${a.host_id}/monitoring`} className={secondaryLink}>View monitoring</Link>
+          </>
+        }
       />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <AlertSeverity severity={a.severity} />

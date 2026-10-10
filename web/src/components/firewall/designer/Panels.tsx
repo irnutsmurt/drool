@@ -51,7 +51,7 @@ export function MgmtAlerts({ management, onShow }: { management: MgmtPath[]; onS
               </>
             )}
             {seg && <p className="mt-1 text-xs"><span className="text-muted">Blocked segment:</span> <span className="font-mono">{hopText(seg)}</span> by rule <strong>{seg.blocked_by.join(", ")}</strong></p>}
-            <p className="mt-1 text-xs text-muted">Applying is refused while this is so. You can still save the draft; an administrator&apos;s audited emergency override still goes through the dead-man rollback.</p>
+            <p className="mt-1 text-xs text-muted">Applying is refused while this is so. You can still save the draft; an administrator&apos;s audited emergency override is still protected by automatic rollback.</p>
             <Button size="sm" className="mt-1" onClick={() => onShow(p)}>Show on the topology</Button>
           </div>
         );
@@ -292,12 +292,12 @@ export function Inspector({ selection, doc, services, hosts, management, onEditR
           <p>{refLabel(e.source === "controller" ? "host:DROOL Controller" : e.source)} → {refLabel(e.target)}</p>
           <p className="text-xs">{e.detail}</p>
           <p className="text-xs text-muted">DROOL needs this connection to manage {e.count === 1 ? "this host" : `${e.count} hosts`}. It is always allowed ahead of every rule and can&apos;t be edited as a rule.
-            A deny that overlaps it makes applying refuse (an audited emergency override still goes through the dead-man rollback).</p>
+            A deny that overlaps it makes applying refuse (an audited emergency override is still protected by automatic rollback).</p>
           {e.status !== "protected" && <Alert tone={e.status === "blocked" ? "danger" : "warn"}>{e.status === "blocked" ? "Blocked by the draft: applying is refused." : "Not measured yet: click Check on the host."}</Alert>}
         </div>
       );
     }
-    if (e.kind === "member") return <div className="text-sm">{head("Group membership", "member")}<p className="text-xs text-muted">{refLabel(e.target)} is a member of {refLabel(e.source)}. Edit members in the Rules view.</p></div>;
+    if (e.kind === "member") return <div className="text-sm">{head("Pack membership", "member")}<p className="text-xs text-muted">{refLabel(e.target)} is a member of {refLabel(e.source)}. Edit members in the Rules view.</p></div>;
     return (
       <div className="space-y-3 text-sm">
         {head(`${refLabel(e.source)} → ${refLabel(e.target)}`, e.action === "deny" ? "deny" : "allow")}
@@ -416,7 +416,7 @@ function ObservedEdge({ e, hosts, onClose }: { e: GEdge; hosts: { id: string; na
       <div>
         <div className="mb-1 text-xs font-medium uppercase text-muted">Connections</div>
         <ul className="space-y-1">{o.flow_ids.slice(0, 6).map((id) => <FlowLine key={id} id={id} onOpen={() => setOpen(id)} />)}</ul>
-        <Link className="mt-1 inline-block text-xs text-accent underline" to={flowsLink(e, hosts)}>Show all in Network activity</Link>
+        <Link className="mt-1 inline-block text-xs text-accent underline" to={flowsLink(e, hosts)}>Show all in Network Activity</Link>
       </div>
       <p className="text-[11px] text-muted">Observed lines show traffic DROOL has seen, not routes. The firewall policy decides the status; nothing here changes it — use “Create policy from observed connection” in a connection&apos;s details to start a draft rule.</p>
       {open !== undefined && <FlowDialog id={open} onClose={() => setOpen(undefined)} />}
@@ -448,7 +448,7 @@ function ObservedNode({ nodeKey, head }: { nodeKey: string; head: (title: string
         {kind === "asn" ? "Public addresses grouped by the network that owns them, from the local ASN database. Country and owner are context, not a verdict."
           : "An address DROOL has seen hosts connect to or from."}
       </p>
-      <Link className="text-xs text-accent underline" to={link}>Show its connections in Network activity</Link>
+      <Link className="text-xs text-accent underline" to={link}>Show its connections in Network Activity</Link>
     </div>
   );
 }

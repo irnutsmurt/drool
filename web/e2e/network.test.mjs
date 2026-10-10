@@ -161,10 +161,16 @@ test("create policy from an observed connection opens a designer draft — nothi
   assert.deepEqual(page.errors, []);
 });
 
-test("a host's Network connections: listening, snapshot only for SSH, filters", async () => {
+test("a host's network activity: summary on the host, its own page with listening, snapshot only for SSH, filters", async () => {
   const id = page.ids["web-1"];
+  // The host overview summarizes and links to the host's Network Activity page.
   await page.goto(`${base}/hosts/${id}`, { waitUntil: "networkidle0" });
-  await waitText(page, "Network connections");
+  await waitText(page, "View network activity");
+  assert.equal(await page.$eval('main a[href$="/network"]', (a) => a.getAttribute("href")), `/hosts/${id}/network`);
+  assert.equal(await page.$('[data-testid="flow-table"]'), null, "no connection table on the host overview");
+  await click(page, "main a", "View network activity");
+  await waitFor(page, async () => page.url().endsWith(`/hosts/${id}/network`), "host network page");
+  await waitText(page, "How this host is observed");
   await waitFor(page, async () => (await text(page)).includes("Snapshot only: SSH"), "snapshot label");
   assert.match(await text(page), /never continuously monitored/);
   // A real snapshot over SSH: the controller's own connection shows up as
@@ -220,7 +226,7 @@ test("topology: Configured, Observed and both, grouped by network owner, with a 
   await waitFor(page, async () => !!(await page.$('[data-testid="observed-details"]')), "observed details");
   const d = await page.$eval('[data-testid="observed-details"]', (e) => e.innerText);
   assert.match(d, /Connections/);
-  assert.match(d, /Show all in Network activity/);
+  assert.match(d, /Show all in Network Activity/);
   assert.deepEqual(page.errors, []);
 });
 

@@ -28,7 +28,7 @@ implementations can be added later.
 ## Status: v0.1.0-alpha (Technical Alpha)
 
 `main` additionally contains file management and file deployment ([Files](#files)), the
-[DROOL agent](#the-drool-agent) and the [firewall](#firewall), which are not part of a tagged
+[DROOL agent](#the-drool-agent-shepherds) and the [firewall](#firewall), which are not part of a tagged
 release yet.
 
 "Technical Alpha" means: the core works end to end and has been tested against real
@@ -44,8 +44,8 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
   to an unapproved key), one jump host, step-by-step connection test that explains failures.
 - **Inventory and monitoring:** automatic discovery (OS, kernel, CPU, memory, disks, network,
   services, listening ports), background status checks (reachable, uptime, load, disk, failed
-  units, pending and security updates, reboot required), a dashboard of what needs attention.
-- **Jobs:** run a command or script on many hosts with live output, per-host results, timeouts,
+  units, pending and security updates, reboot required), and an Overview of what needs attention.
+- **Runs (jobs):** run a command or script on many hosts with live output, per-host results, timeouts,
   cancellation, retries of connection failures, and OS conditions (e.g. a different script for
   Debian and RHEL hosts).
 - **Packages and updates:** install, remove and upgrade packages; system updates (APT and DNF,
@@ -59,13 +59,14 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
   with administrator privileges. **File deployment** sends one file to many hosts with a per-host
   preview and diff, an optional validation command, an optional service reload or restart, and
   one-click rollback.
-- **DROOL agent** (on `main`, after v0.1.0-alpha): an optional agent that connects out to DROOL
+- **Shepherds — the DROOL agent** (on `main`, after v0.1.0-alpha): an optional agent that connects out to DROOL
   over mutually authenticated TLS. It runs the same operations as SSH, within limits set on the
   host itself, and falls back to SSH safely when it's offline. It updates itself from signed
   releases and rolls back automatically.
-- **Firewall** (on `main`): policies from hosts, groups and services ("web may reach database on
-  PostgreSQL"), compiled to nftables, explained per host, simulated ("can A reach B?"), and applied
-  as dead-man transactions that roll back on their own if DROOL loses the host. Plain-nftables
+- **Firewall** (on `main`): policies from hosts, packs (host groups) and services ("web may reach
+  database on PostgreSQL"), compiled to nftables, explained per host, simulated ("can A reach
+  B?"), and applied with automatic rollback protection (dead-man transactions that roll back on
+  their own if DROOL loses the host). Plain-nftables
   hosts only; Docker, firewalld, UFW and Tailscale are detected and refused. The **Firewall
   Designer** edits the policy as a topology, as rules or as YAML, and shows DROOL's own management
   paths and anything that would cut them.
@@ -73,12 +74,12 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
   internal, external, which process — how the firewall policy classifies every connection, and,
   for public addresses, the country and network owner from local GeoIP/ASN databases you install.
   Agent hosts are observed continuously (conntrack when available), SSH hosts by snapshot. See
-  [Network monitoring](#network-monitoring).
+  [Network monitoring](#network-monitoring-network-activity).
 - **System monitoring** (on `main`): CPU, memory, disks, network, temperatures, GPUs, services and
   storage device health for every host, with history (hour to 30 days), health issues that need a
   condition to last before they appear, and a fleet view. Agent hosts are continuous, within a
   small enforced resource budget; SSH hosts are polled every 5 minutes. The Recommended health
-  profile can be adjusted for the whole fleet, a group, a host or a single filesystem, disk, GPU,
+  profile can be adjusted for the whole fleet, a pack, a host or a single filesystem, disk, GPU,
   sensor or service, each setting showing where it comes from. See
   [System monitoring](#system-monitoring).
 - **Alerts and notifications** (on `main`): problems monitoring confirms become alerts you can
@@ -90,11 +91,11 @@ a beta. Run it where a mistake is recoverable, keep backups, and read the
   SSH are running afterwards" — set up in the browser, without cron or playbooks. Rollouts with a
   canary and batches, reusable workflows with revisions, recurring maintenance windows. See
   [Scheduling and workflows](#scheduling-and-workflows).
-- **Desired state** (on `main`): say what a machine should look like — these services running
+- **Desired State** (on `main`): say what a machine should look like — these services running
   and enabled, these packages installed or absent, these files with exactly this content — for
-  the whole fleet, a group or one host. DROOL tells you whether each machine still matches
+  the whole fleet, a pack or one host. DROOL tells you whether each machine still matches
   (*Compliant*, *Drift detected*), shows exactly what differs, and lets you **review** it,
-  **accept** what's there for that host, or **restore** it with an ordinary job. Optional
+  **accept** what's there for that host, or **restore** it with an ordinary run. Optional
   automatic restore, off by default. See [Desired state](#desired-state).
 - **Appearance:** Light, Dark or System (follows your OS), from the header or *Settings → Account*.
 - **Accounts and audit:** local users with roles (admin, operator, auditor, viewer), API tokens,
@@ -117,6 +118,50 @@ These are planned (see `DESIGN.md`) but **do not exist yet**:
   reputation, packet capture, intrusion detection, alerting on network activity
 - on-call rotations, escalation and paging, incident grouping, alert rule expressions, custom
   dashboards, log collection
+
+## Finding your way around
+
+The sidebar lists destinations directly, under headings that are only labels:
+
+| Heading | Destinations |
+|---|---|
+| | **Overview** — fleet triage: what needs attention right now |
+| Fleet | **Hosts** · **Packs** (host groups) · **Shepherds** (DROOL agents) |
+| Observe | **Monitoring** · **Alerts** · **Network Activity** |
+| Automate | **Runs** (jobs) · **Schedules** · **Workflows** · **Desired State** |
+| Protect | **Firewall** · **Credentials** · **Audit Log** |
+| Settings | **Settings** — your account, API tokens, users, notifications, the controller |
+
+Three names in the UI are DROOL's own:
+
+- A **Pack** is a *host group*: a named set of hosts you target together, which also gives its hosts
+  shared settings (monitoring overrides, desired state, firewall rollback timeouts). The API and
+  the database still call it a group (`/api/v1/groups`), and so do the firewall YAML (`group:NAME`)
+  and the CLI.
+- A **Shepherd** is the *DROOL agent* (`drool-agent`, `drool-agent.service`) on a host. Everything
+  technical — the binary, the service, the API (`/api/v1/agents`), the protocol — keeps the name
+  agent.
+- A **Run** is a *job*: a command, update, file deployment, scheduled run or desired-state
+  correction. The API calls them jobs (`/api/v1/jobs`).
+
+**Search:** press **Ctrl+K** (**⌘K** on a Mac) or **/**, or click the search box at the top, and
+type what you're looking for in your own words — "api token", "threshold", "can A reach B", "who
+changed", "agent", "group" or "cron" all go straight to the right page or setting. It finds pages
+and settings (not hosts or runs), and only those your role may open.
+
+A **host's page** is a triage summary — is it okay, how DROOL manages it, what needs attention —
+with a short summary of its monitoring, alerts, desired state, firewall, network activity and
+recent runs. Each links to that area's page for the host (for example *Hosts → web-01 → View
+firewall* opens `/hosts/<id>/firewall`).
+
+**Health checks and thresholds** are under *Monitoring → Health checks and settings*
+(`/monitoring/settings`; the old *Settings → Monitoring* address still works). Where notifications
+go is under *Settings → Notifications*, linked from *Alerts*.
+
+On a **phone**, the sidebar is behind the ☰ button, tables become one card per row, and the
+firewall opens in its Rules view (Topology is a desktop map). Unresolved security posture (the
+Agent Root CA key still on the controller, plaintext HTTP) stays visible: in full on the Overview,
+and as a compact indicator at the top of every page.
 
 ## Supported hosts
 
@@ -190,7 +235,7 @@ An optional config file goes in `/etc/drool/config.yaml`.
    refuses to connect if the key ever changes, until you review it.
 5. **Test the connection.** Each step (reachable, host key, login, sudo, OS, systemd) is shown
    with an explanation if it fails. Inventory is collected automatically afterwards.
-6. From the host page or *Jobs → New job*: run commands and scripts, install updates, manage
+6. From the host page or *Runs → New run*: run commands and scripts, install updates, manage
    services, reboot.
 
 ### SSH and sudo
@@ -256,7 +301,7 @@ type a path to jump there.
 
 ### File deployment
 
-*Jobs → New job → Deploy file* puts one file on many hosts (by host, group or tag):
+*Runs → New run → Deploy file* puts one file on many hosts (by host, pack or tag):
 
 1. Upload the file. DROOL stores it once, identified by its SHA-256 checksum.
 2. Choose the destination path, whether to replace an existing file or only create a missing
@@ -291,9 +336,10 @@ secrets. Every change is audited with host, path, action, result, checksums befo
 owner, group and permissions; file contents never go into the audit log. Reads with
 administrator privileges are audited too.
 
-## The DROOL agent
+## The DROOL agent (Shepherds)
 
-SSH stays fully supported. The agent is optional, and useful when:
+In the UI the DROOL agent is called a **Shepherd** (*Shepherds* in the sidebar); on the host and in
+the API it is `drool-agent`. SSH stays fully supported. The agent is optional, and useful when:
 
 - DROOL can't reach the host (behind NAT, on another network): the agent connects **out** to
   DROOL, and the host needs no open port.
@@ -310,7 +356,7 @@ hosts. With Docker, `compose.yaml` publishes it.
 preset and confirm. DROOL copies the agent over the SSH connection it already trusts, enrolls it,
 and switches the host to *Preferred: Agent, Fallback: SSH*.
 
-**Any host, with a token:** *Agents → Enrollment → New token* gives you a one-line install command:
+**Any host, with a token:** *Shepherds → Enrollment → New token* gives you a one-line install command:
 
 ```sh
 curl -fsSL -k --pinnedpubkey 'sha256//…' https://drool.example:8080/agent/install.sh | sudo sh -s -- --token 'drool-enroll-1.…' --preset managed
@@ -320,7 +366,7 @@ The command pins DROOL's web certificate, so `-k` doesn't weaken it. Tokens expi
 by default and work once. They can be revoked, and they can be bound to one host or put new
 hosts into a group.
 
-**Manually:** copy `drool-agent-linux-<arch>` (from *Agents → Enrollment*, or `make agent`) to the
+**Manually:** copy `drool-agent-linux-<arch>` (from *Shepherds → Enrollment*, or `make agent`) to the
 host, then run:
 
 ```sh
@@ -369,7 +415,7 @@ column), and each job result shows the path used (*Via*).
 
 Agent certificates last 30 days and renew automatically. An agent that was off long enough for its
 certificate to expire recovers by proving it still holds its key, within 180 days
-(`agent.recovery_grace`). After that it must be enrolled again. *Revoke* on the Agents page takes
+(`agent.recovery_grace`). After that it must be enrolled again. *Revoke* on the host's page takes
 effect immediately.
 
 If two machines connect with the same identity (typically a cloned VM), DROOL quarantines the
@@ -385,7 +431,7 @@ drool agent-ca export-root -o drool-agent-root      # writes .key/.crt: store th
 drool agent-ca remove-root --confirm <fingerprint>
 ```
 
-(*Agents → Trust* does the same in the browser.) With the root key offline you still need it for
+(*Shepherds → Trust (PKI)* does the same in the browser.) With the root key offline you still need it for
 two jobs: **rotating the intermediate** (`drool agent-ca rotate --root-key FILE [--revoke-old]`)
 and signing a new trust manifest. Agents only accept a newer manifest signed by the root, and they
 never accept an older one.
@@ -411,11 +457,11 @@ make agent                                         # bin/drool-agent-linux-{amd6
 drool release sign --key drool-release.key --version v1.2.3 bin/drool-agent-linux-amd64
 ```
 
-1. Register `drool-release.pub` under *Agents → Updates*. Hosts must trust it too: pass it to
+1. Register `drool-release.pub` under *Shepherds → Updates*. Hosts must trust it too: pass it to
    *Install DROOL agent*, use `--trust-release-key` at install, or run
    `drool-agent trust-release-key drool-release.pub` on the host. Trusting a key is
    security-sensitive, and DROOL can't do it for you remotely.
-2. Upload the binary together with its `.release.json` under *Agents → Updates*.
+2. Upload the binary together with its `.release.json` under *Shepherds → Updates*.
 3. Start a rollout, or set the policy to *Automatic* (newest version in a channel, or one exact
    version).
 
@@ -430,7 +476,7 @@ automatic rollback.
 ### Agent compatibility and versions
 
 The agent protocol has its own version, separate from DROOL's (currently protocol 1, accepted range
-1–1). The Agents page shows each agent's version, protocol and compatibility. An incompatible agent
+1–1). The Shepherds page shows each agent's version, protocol and compatibility. An incompatible agent
 isn't used, and hosts with an SSH fallback keep working over SSH.
 
 ### On the host
@@ -445,7 +491,7 @@ isn't used, and hosts with an SSH fallback keep working over SSH.
 
 ### Changing DROOL's address
 
-*Agents → Controller address* proposes a new address. Every connected agent tests it first. Commit
+*Shepherds → Controller address* proposes a new address. Every connected agent tests it first. Commit
 once enough agents have confirmed. Agents keep the old address as a fallback, so none are stranded.
 
 ## Firewall
@@ -479,18 +525,19 @@ Minimal cloud images (Debian 12 genericcloud, for example) don't include nftable
 
 ### Getting started
 
-1. On a host page, open the **Firewall** card and click **Check** to inspect the host. Check also
-   records DROOL's management path, so **Effective policy** shows it from the start.
+1. On a host's page, open **View firewall** (the host's firewall page, `/hosts/<id>/firewall`) and
+   click **Check** to inspect the host. Check also records DROOL's management path, so **Effective
+   policy** shows it from the start.
 2. Choose a mode:
    - **Monitor** observes connections and explains what a policy would do.
    - **Guided** also suggests policies from what it saw.
-   - **Enforce** applies the policy.
-3. In **Firewall → Designer**, draw or write the policy (see below): hosts, groups, named networks,
+   - **Enforce** applies the policy, with automatic rollback protection (below).
+3. In **Firewall → Policy**, draw or write the policy (see below): hosts, packs (host groups), named networks,
    **internal networks**, **the internet** (everything outside the internal ranges), **anywhere** or
    a CIDR, and the services between them. **Save policy** when the preview looks right.
 4. Check the result: the host's **Effective policy** tab lists every allowance with its reason, and
    **Firewall → Can A reach B?** answers questions like "can web01 reach database01 on TCP 5432?".
-5. Click **Apply policy** on the host, or select hosts under **Firewall → Hosts**.
+5. Click **Apply policy** on the host's firewall page, or select hosts under **Firewall → Hosts**.
 
 Inbound traffic is denied unless a policy, or the management path, allows it. Outbound traffic is
 allowed unless you set the host's outbound mode to **restrict**. Deny policies always apply and win
@@ -503,8 +550,9 @@ under **Firewall → Settings**. Add your routed LANs, VLANs and VPNs there.
 
 ### Firewall Designer
 
-**Firewall → Designer** shows the same policy three ways. Edit in whichever suits you; the other two
-follow immediately, because they are views of one document.
+**Firewall → Policy** (the designer) shows the same policy three ways — a view switcher with
+**Topology**, **Rules** and **YAML**. Edit in whichever suits you; the other two follow immediately,
+because they are views of one document. On a phone it opens in Rules; Topology is a desktop map.
 
 - **Topology** — boxes for hosts, groups, networks, the Internet and internal networks; arrows for
   allowed (blue) or denied (red, dashed) communication, labelled with each service and what it
@@ -556,16 +604,17 @@ whose effect blocks it — a red **Management path blocked** banner names the ho
 and the blocked segment, the canvas highlights it, saving asks you to confirm, and applying is
 refused. (Deleting an allow can't cut it: DROOL always allows its own path ahead of every rule.)
 
-Groups in the designer are DROOL's host groups: changing members here changes the group
-everywhere. Removing a group from the YAML doesn't delete it (do that on the Groups page).
+Groups in the designer (*Packs* in the UI, `group:` in YAML) are DROOL's host groups: changing
+members here changes the pack everywhere. Removing a group from the YAML doesn't delete it (do that
+on the Packs page).
 
 ### How applying works (you can't lock yourself out)
 
-Each host gets a **dead-man transaction**:
+Each host gets a **dead-man transaction** — *automatic rollback protection* in the UI:
 
 1. DROOL measures a brand-new management connection to the host.
 2. The host writes a durable journal and arms a rollback timer (default **120 s**, configurable per
-   host or group). Only then does it apply the new rules, atomically.
+   host or pack). Only then does it apply the new rules, atomically.
 3. DROOL must then reach the host over a completely **new** connection to commit: a new agent
    connection, or a new SSH connection through every jump host. An old connection proves nothing,
    because firewalls keep established connections open.
@@ -600,9 +649,9 @@ transaction. The Firewall page shows "Policy propagation incomplete" until every
 
 ### Observations
 
-Observed connections are shown under [Network monitoring](#network-monitoring), each with what
+Observed connections are shown under [Network monitoring](#network-monitoring-network-activity), each with what
 the firewall policy says about it. Flows that no policy covers are **unclassified**: in Guided
-mode they become suggested policies (host page → Firewall → Observed connections), and from any
+mode they become suggested policies (the host's firewall page → Observed connections), and from any
 connection's details **Create policy from observed connection** starts a draft rule in the
 Designer. Nothing is created until you review, save and apply it.
 
@@ -648,7 +697,7 @@ system, which handles acknowledgement, maintenance suppression and configured no
 
 | | Agent hosts | SSH-only hosts |
 |---|---|---|
-| How | **Continuous**: samples every 10 s (services every 30 s), kept as one-minute averages and maxima; storage health every 30 min; kernel storage errors as they happen | **Polled** every 5 min (Settings → Monitoring); storage health and kernel errors hourly, and only where sudo is allowed without a password |
+| How | **Continuous**: samples every 10 s (services every 30 s), kept as one-minute averages and maxima; storage health every 30 min; kernel storage errors as they happen | **Polled** every 5 min (Monitoring → Health checks and settings); storage health and kernel errors hourly, and only where sudo is allowed without a password |
 | While DROOL is unreachable | Kept in the agent's memory (2 MB by default, about a day for a typical host) and delivered later; anything older is dropped and shown as a gap | Missed polls are gaps |
 | On the host's disk | Nothing but the agent's configuration (and the optional probe file, below) | Nothing |
 
@@ -669,7 +718,7 @@ scripts) are **not** limited by this budget. When the host is under pressure —
 its own limits — the agent samples less often and postpones storage scans; the host page says
 **Reduced to save resources** and why, and full detail returns once things are calm. If the agent's own memory
 ever kept growing (a bug), it restarts itself rather than lingering at its limit. Admins can
-change the budget for all hosts (Settings → Monitoring) or one host.
+change the budget for all hosts (Monitoring → Health checks and settings) or one host.
 
 ### Storage health
 
@@ -689,7 +738,7 @@ wakes a sleeping disk.
 tab says which would help and why; **Install** shows exactly what would be installed and runs an
 ordinary package job (audited, in the job history). On the fleet page, select hosts and choose
 **Install recommended helpers** for a preview with counts first. Admins can also give a standing
-approval (all hosts or a group) in Settings → Monitoring, after which DROOL installs a needed
+approval (all hosts or a pack) in Monitoring → Health checks and settings, after which DROOL installs a needed
 helper once per host. DROOL never uninstalls helpers and never installs GPU drivers.
 
 ### Moving SSH hosts to the agent
@@ -716,7 +765,7 @@ any single setting can be changed where it matters:
 
 | Where | Example | How |
 |---|---|---|
-| Every host | "Disk warning at 80%" | Settings → Monitoring → Health checks → **Customize** |
+| Every host | "Disk warning at 80%" | Monitoring → Health checks and settings → Health checks → **Customize** |
 | A group | *AI-Hosts*: high GPU utilization off | Groups → **Customize monitoring** |
 | A host | *gaming-pc*: high CPU utilization off | The host's monitoring page → **Health settings** |
 | One device or service | `/srv/media`: warning 92%, critical 98% (while `/` keeps 85%/95%) | **Customize health check** next to the filesystem, disk, sensor, GPU or service |
@@ -749,7 +798,7 @@ limit*, *Global custom setting*, *Inherited from group: NAS*, *Custom for this h
   its setting is kept, shown as *currently unavailable*, and applies again if it returns; it is
   never moved to a different device.
 - **Hosts in several groups:** if two groups set the same thing differently, the group with the
-  higher **priority** (Settings → Monitoring → Health overrides) wins. With equal priorities DROOL
+  higher **priority** (Monitoring → Health checks and settings → Health overrides) wins. With equal priorities DROOL
   doesn't pick one: it shows a *group conflict* and uses your fleet-wide value until you set a
   priority or a host setting.
 - **Changes apply at once.** A problem that still qualifies stays the same alert. One that no
@@ -878,7 +927,7 @@ the background, so a restart or crash never loses one. If a destination fails, D
 about an hour with growing gaps (30 seconds up to 30 minutes), unless the failure can't fix itself
 — wrong credentials, a rejected request, a certificate problem — which stops at once. It never
 retries forever, and a retry is never a new alert. Each destination shows **Last success** and
-**Last failure**; when one keeps failing, the dashboard's event list says so once (and again when
+**Last failure**; when one keeps failing, the Overview's event list says so once (and again when
 it works). Alerts stay correct whatever happens to the destinations.
 
 Delivery is *at least once*: if a server received a notification but its answer got lost (a
@@ -946,17 +995,17 @@ and details stay around a millisecond.
 ## Scheduling and workflows
 
 A **schedule** runs something at the times you choose: a job, a saved workflow, or a maintenance
-window. Every scheduled run is an ordinary job — it appears under **Jobs → Runs** with live output
+window. Every scheduled run is an ordinary job — it appears under **Runs** with live output
 and per-host results, and it is checked, locked, logged and cancellable exactly like a job you
 start by hand. You never write cron expressions or playbooks.
 
-### Schedule a job
+### Schedule a run
 
-The quickest way: set up a job as usual (**Jobs → New job**), then choose **Schedule this job**
+The quickest way: set up a job as usual (**Runs → New run**), then choose **Schedule this run**
 instead of running it. Pick when, check the preview, save. **Save as workflow** keeps the job as a
 reusable workflow instead.
 
-Or go to **Jobs → Schedules → New schedule** and fill in three things:
+Or go to **Schedules → New schedule** and fill in three things:
 
 1. **When.** *Once*, *every few hours*, *every day*, *selected weekdays*, *every week* or *every
    month*, at a time, in a **time zone** you choose (your browser's is suggested). DROOL never
@@ -1072,7 +1121,7 @@ skipped with the reason, as in any job.
 
 Each schedule keeps its own **History**: when a run was due, when it started, what happened
 (succeeded, failed on 2 hosts, skipped and why, missed, blocked) and a link to the job. The list
-under **Jobs → Schedules** shows the next run, the last result, the owner, and which schedules need
+under **Schedules** shows the next run, the last result, the owner, and which schedules need
 attention.
 
 | Permission | Allows |
@@ -1085,7 +1134,7 @@ attention.
 Creating, changing, enabling, disabling, archiving, running now and changing owners are all in the
 audit log.
 
-## Desired state
+## Desired State
 
 *What should this machine look like, is it still that way, and how do I safely put it back?*
 
@@ -1105,8 +1154,8 @@ own page, and a host's desired-state view links to it.
 
 ### Getting started
 
-**Desired state → Baselines → New baseline:** name it, choose where it applies (*everywhere*,
-groups or hosts), add resources, check the **impact preview** — which hosts are affected, which
+**Desired State → Baselines → Create baseline:** name it, choose where it applies (*everywhere*,
+packs or hosts), add resources, check the **impact preview** — which hosts are affected, which
 would start to differ and which would comply — and save. DROOL checks the hosts and shows each
 one as **Compliant**, **Drift detected**, **Conflict**, **Unknown**, **Restoring…** or **Restore
 failed**, with exactly what differs:
@@ -1116,19 +1165,19 @@ jellyfin.service  wants running, enabled at boot  is failed, enabled at boot   D
 /etc/motd         content: sha256 4f1e2a9c03b7… → sha256 9a07b3d1e8c2…; mode: 0644 → 0664
 ```
 
-The **Overview** shows hosts that need attention; a host's **Desired state** page shows every
+The **Overview** shows hosts that need attention; a host's **Desired State** page shows every
 managed resource, where each desired value comes from ("Required by Global baseline Server
 Defaults", "Inherited from group: media-servers", "Custom for this host"), and its history.
 
 ### Where desired values come from
 
 The most specific declaration of a resource wins: **this host** → **baselines assigned to the
-host** → **baselines of its groups** → **everywhere**. When two of a host's groups declare the
-same resource differently, the group with the higher **priority** wins (set on the Groups page,
+host** → **baselines of its packs (groups)** → **everywhere**. When two of a host's packs declare the
+same resource differently, the pack with the higher **priority** wins (set on the Packs page,
 default 0). Same priority, different values: that's a **Conflict**. DROOL never picks one:
 the resource is shown as a conflict with both values and where they come from, is never checked
 against either, and can't be restored (by hand or automatically) until you resolve it — give one
-group a higher priority, change a baseline, or accept the current state for that host.
+pack a higher priority, change a baseline, or accept the current state for that host.
 
 ### Review, accept or restore
 
@@ -1221,10 +1270,11 @@ Creating, changing and archiving baselines, priorities, accepting, restoring (by
 automatically, with the owner), reviewing file contents and automatic-restore changes and pauses
 are all in the audit log.
 
-## Network monitoring
+## Network monitoring (Network Activity)
 
-**Network** in the sidebar shows what your hosts actually talk to; every host page has a
-**Network connections** card. Monitoring only: nothing here blocks traffic, scores addresses or
+**Network Activity** in the sidebar shows what your hosts actually talk to; every host has its own
+**Network Activity** page (*Hosts → web-01 → View network activity*), with what it listens on and a
+**Take snapshot** button for SSH hosts. Monitoring only: nothing here blocks traffic, scores addresses or
 raises alarms.
 
 For every observed connection DROOL shows the direction, the process (or **Unknown** — it never
@@ -1395,7 +1445,7 @@ plain HTTP to the network by accident.
   so a run starts within about that of its time. A recurring run that would start more than
   5 minutes late counts as missed (one-time runs start late instead). One controller only:
   schedules don't fail over. Job results aren't sent as
-  notifications (watch the schedule's history or the dashboard's events). A burst of thousands of
+  notifications (watch the schedule's history or the Overview's events). A burst of thousands of
   runs due in the same minute is handled (tested with 3 000), but they queue in the job engine,
   which runs 20 hosts at a time.
 - **Workflows** are a list of steps — no branches, conditions, loops or approval steps. *Verify
@@ -1409,7 +1459,7 @@ plain HTTP to the network by accident.
   parts). Agents from before this version can't report packages, or confirm services on request,
   until updated. Desired state doesn't
   reconcile a restored controller with newer host state: such hosts are left out of restores
-  until reconciled on the Agents page.
+  until reconciled on the Shepherds page.
 - **If the controller crashes or restarts during a job,** commands already running on hosts keep
   running; those hosts are marked *interrupted (outcome unknown)*. Check them before re-running.
 - **If a connection drops while a command runs,** the outcome is reported as unknown; only

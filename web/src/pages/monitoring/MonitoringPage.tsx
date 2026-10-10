@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
-import { Button } from "@/components/ui/Button";
+import { Button, primaryLink } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Card } from "@/components/ui/Card";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -15,6 +16,7 @@ import { HelperInstallDialog } from "@/components/monitoring/HelperInstall";
 import { ConvertDialog } from "@/components/monitoring/ConvertDialog";
 import { useAlertSummary } from "@/components/alerts/queries";
 import { AlertCounts } from "@/components/alerts/ui";
+import { MonitoringTabs } from "./MonitoringTabs";
 
 const categories = [
   { key: "unhealthy", label: "Needs attention" },
@@ -61,11 +63,24 @@ export function MonitoringPage() {
   const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const rows = d?.rows ?? [];
   const allSel = rows.length > 0 && rows.every((r) => sel.has(r.host_id));
+  if (d && d.hosts === 0) {
+    return (
+      <>
+        <PageHeader title="Monitoring" description="Health, metrics, services and hardware of every host." />
+        <MonitoringTabs />
+        <EmptyState title="Nothing to monitor yet"
+          body="Monitoring shows every host's health — CPU, memory, disks, services, temperatures and storage health — and turns confirmed problems into alerts. Add a host and it appears here within minutes."
+          action={can("hosts.write") ? <Link className={primaryLink} to="/hosts/new">Add host</Link> : undefined} />
+      </>
+    );
+  }
   return (
     <>
       <PageHeader title="Monitoring"
-        description={d ? `${d.monitored} of ${d.hosts} hosts reporting: ${d.agent} with the agent (continuous), ${d.ssh} over SSH (polled)` : undefined} />
+        description={d ? `${d.monitored} of ${d.hosts} hosts reporting: ${d.agent} with a Shepherd (agent, continuous), ${d.ssh} over SSH (polled)` : "Health, metrics, services and hardware of every host."} />
+      <MonitoringTabs />
       {f.error && <Alert>{errorMessage(f.error)}</Alert>}
+
       {as && (
         <p className="mb-3 rounded-ui border border-line bg-surface px-3 py-2 text-sm" role="status">
           <Link className="font-medium text-accent" to="/alerts">Alerts</Link>:{" "}
@@ -100,11 +115,11 @@ export function MonitoringPage() {
           </Field>
           <div className="ml-auto flex gap-2">
             {can("jobs.execute") && <Button disabled={sel.size === 0} onClick={() => setDialog("helpers")}>Install recommended helpers{sel.size ? ` (${sel.size})` : ""}</Button>}
-            {can("agents.enroll") && <Button disabled={sel.size === 0} onClick={() => setDialog("convert")}>Convert to agent{sel.size ? ` (${sel.size})` : ""}</Button>}
+            {can("agents.enroll") && <Button disabled={sel.size === 0} onClick={() => setDialog("convert")}>Convert to Shepherd{sel.size ? ` (${sel.size})` : ""}</Button>}
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="rtable w-full text-left text-sm">
             <caption className="sr-only">Hosts ({category})</caption>
             <thead>
               <tr className="border-b border-line text-xs text-muted">
@@ -124,30 +139,30 @@ export function MonitoringPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={as ? 12 : 11} className="px-2 py-8 text-center text-muted">{d ? "No hosts in this view." : "Loading…"}</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={as ? 12 : 11} className="rt-empty px-2 py-8 text-center text-muted">{d ? "No hosts in this view." : "Loading…"}</td></tr>}
               {rows.map((r) => (
                 <tr key={r.host_id} className="border-b border-line last:border-0">
-                  <td className="px-2 py-1.5"><input type="checkbox" aria-label={`Select ${r.name}`} checked={sel.has(r.host_id)} onChange={() => toggle(r.host_id)} /></td>
-                  <td className="px-2 py-1.5"><Link className="text-accent" to={`/hosts/${r.host_id}/monitoring`}>{r.name}</Link></td>
-                  <td className="px-2 py-1.5"><Worst r={r} /></td>
+                  <td data-label="" className="px-2 py-1.5"><input type="checkbox" aria-label={`Select ${r.name}`} checked={sel.has(r.host_id)} onChange={() => toggle(r.host_id)} /></td>
+                  <td data-primary="" className="px-2 py-1.5"><Link className="text-accent" to={`/hosts/${r.host_id}/monitoring`}>{r.name}</Link></td>
+                  <td data-label="Health" className="px-2 py-1.5"><Worst r={r} /></td>
                   {as && (
-                    <td className="px-2 py-1.5">
+                    <td data-label="Alerts" className="px-2 py-1.5">
                       <AlertCounts critical={as.hosts[r.host_id]?.critical ?? 0} warning={as.hosts[r.host_id]?.warning ?? 0} hostId={r.host_id} />
                       {as.maintenance[r.host_id] && <div className="text-xs text-muted" title={as.maintenance[r.host_id]!.reason}>⏸ maintenance</div>}
                     </td>
                   )}
-                  <td className="px-2 py-1.5 text-xs">
-                    {r.mode === "continuous" ? "Agent · continuous" : r.mode === "polled" ? "SSH · polled" : "—"}
+                  <td data-label="Monitoring" className="px-2 py-1.5 text-xs">
+                    {r.mode === "continuous" ? "Shepherd · continuous" : r.mode === "polled" ? "SSH · polled" : "—"}
                     {r.reduced && <div className="text-warn">⚠ reduced fidelity</div>}
                     {r.helpers.length > 0 && <div className="text-muted">helpers would help: {r.helpers.join(", ")}</div>}
                   </td>
-                  <td className="px-2 py-1.5 tabular-nums">{fmtPct(r.cpu)}</td>
-                  <td className="px-2 py-1.5 tabular-nums">{fmtPct(r.memory)}</td>
-                  <td className="px-2 py-1.5 tabular-nums">{fmtPct(r.disk)}{r.disk_mount && <span className="text-xs text-muted"> {r.disk_mount}</span>}</td>
-                  <td className="px-2 py-1.5 tabular-nums">{fmtTemp(r.temperature)}</td>
-                  <td className="px-2 py-1.5 tabular-nums">{r.services === 0 ? "—" : r.failed_services ? <span className="text-danger">✕ {r.failed_services} failed</span> : `${r.services} ok`}</td>
-                  <td className="px-2 py-1.5">{r.storage ? <StatusBadge status={deviceHealth[r.storage]?.status ?? "unknown"}>{deviceHealth[r.storage]?.word ?? r.storage}</StatusBadge> : "—"}</td>
-                  <td className="px-2 py-1.5 text-xs text-muted">{r.updated_at ? fmtSince(r.updated_at) : "never"}</td>
+                  <td data-label="CPU" className="px-2 py-1.5 tabular-nums">{fmtPct(r.cpu)}</td>
+                  <td data-label="Memory" className="px-2 py-1.5 tabular-nums">{fmtPct(r.memory)}</td>
+                  <td data-label="Disk" className="px-2 py-1.5 tabular-nums">{fmtPct(r.disk)}{r.disk_mount && <span className="text-xs text-muted"> {r.disk_mount}</span>}</td>
+                  <td data-label="Temperature" className="px-2 py-1.5 tabular-nums">{fmtTemp(r.temperature)}</td>
+                  <td data-label="Services" className="px-2 py-1.5 tabular-nums">{r.services === 0 ? "—" : r.failed_services ? <span className="text-danger">✕ {r.failed_services} failed</span> : `${r.services} ok`}</td>
+                  <td data-label="Storage devices" className="px-2 py-1.5">{r.storage ? <StatusBadge status={deviceHealth[r.storage]?.status ?? "unknown"}>{deviceHealth[r.storage]?.word ?? r.storage}</StatusBadge> : "—"}</td>
+                  <td data-label="Updated" className="px-2 py-1.5 text-xs text-muted">{r.updated_at ? fmtSince(r.updated_at) : "never"}</td>
                 </tr>
               ))}
             </tbody>
@@ -175,6 +190,7 @@ export function MonitoringPage() {
           </ul>
         )}
         <p className="mt-2 text-xs text-muted">
+          What counts as an issue is set under <Link className="text-accent" to="/monitoring/settings">Health checks and settings</Link>.
           Warning and Critical health issues become <Link className="text-accent" to="/alerts">alerts</Link>, which notify the destinations set up under{" "}
           <Link className="text-accent" to="/settings/notifications">Settings → Notifications</Link>. Informational issues are shown here only.
         </p>

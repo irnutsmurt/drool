@@ -26,13 +26,14 @@ export const fk = {
   suggestions: (id: string) => ["firewall", "suggestions", id] as const,
 };
 
-export const useFwHosts = () =>
-  useQuery({ queryKey: fk.hosts, queryFn: () => unwrap(api.GET("/firewall/hosts")), refetchInterval: 5000 });
-export const useFwHost = (id: string) =>
+export const useFwHosts = (enabled = true) =>
+  useQuery({ queryKey: fk.hosts, queryFn: () => unwrap(api.GET("/firewall/hosts")), refetchInterval: 5000, enabled });
+export const useFwHost = (id: string, enabled = true) =>
   useQuery({
     queryKey: fk.host(id),
     queryFn: () => unwrap(api.GET("/firewall/hosts/{id}", { params: { path: { id } } })),
     refetchInterval: 4000,
+    enabled,
   });
 export const useFwPolicies = () => useQuery({ queryKey: fk.policies, queryFn: () => unwrap(api.GET("/firewall/policies")) });
 export const useFwServices = () => useQuery({ queryKey: fk.services, queryFn: () => unwrap(api.GET("/firewall/services")), staleTime: 60_000 });

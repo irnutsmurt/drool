@@ -11,6 +11,9 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { errorMessage } from "@/lib/format";
 import { useApprovals, useMonInvalidate, useMonSettings, type MonSettings } from "@/components/monitoring/queries";
 import { HealthChecksCard, HealthOverridesCard } from "@/components/health/GlobalHealth";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { ReadOnlyNote } from "@/components/ui/ReadOnlyNote";
+import { MonitoringTabs } from "./MonitoringTabs";
 
 export function MonitoringSettingsPage() {
   const { can } = useAuth();
@@ -23,18 +26,33 @@ export function MonitoringSettingsPage() {
     onSuccess: (r) => { setS(r.settings); inv(); },
   });
   const edit = can("monitoring.settings");
-  if (q.error) return <Alert>{errorMessage(q.error)}</Alert>;
-  if (!s || !q.data) return <p className="text-sm text-muted">Loading…</p>;
+  const header = (
+    <>
+      <PageHeader title="Monitoring" description="What monitoring considers unhealthy, how often hosts are observed, and how long history is kept." />
+      <MonitoringTabs />
+    </>
+  );
+  if (q.error) return <>{header}<Alert>{errorMessage(q.error)}</Alert></>;
+  if (!s || !q.data) return <>{header}<p className="text-sm text-muted">Loading…</p></>;
   const set = <K extends keyof MonSettings>(k: K, v: MonSettings[K]) => setS({ ...s, [k]: v });
   const int = (v: string) => Math.max(0, Number(v) || 0);
   return (
     <div className="space-y-4">
+      {header}
+      {!edit && (
+        <ReadOnlyNote>
+          you can see these settings; changing them needs the monitoring.settings permission (administrators).
+          {can("monitoring.manage") && " Host and device health settings can be changed on each host's monitoring page."}
+        </ReadOnlyNote>
+      )}
+      <HealthChecksCard />
+      <HealthOverridesCard />
+      <h2 className="pt-2 text-sm font-semibold">Collection</h2>
       <Card title="Monitoring">
         <div className="space-y-3">
-          <Checkbox label="Monitor hosts (agents stream continuously; SSH hosts are polled)" checked={s.enabled} disabled={!edit} onChange={(v) => set("enabled", v)} />
+          <Checkbox label="Monitor hosts (Shepherds stream continuously; SSH hosts are polled)" checked={s.enabled} disabled={!edit} onChange={(v) => set("enabled", v)} />
         </div>
       </Card>
-      <HealthChecksCard />
       <Card title="History">
         <Field label="Keep hourly history for (days)" hint="Raw points are kept for a day and five-minute averages for eight days.">
           <Input type="number" min={7} max={400} value={s.retention_days} disabled={!edit} onChange={(e) => set("retention_days", int(e.target.value))} className="max-w-xs" />
@@ -43,7 +61,7 @@ export function MonitoringSettingsPage() {
           <p className="mt-2 text-xs text-muted">Last pruning: {q.data.last_prune.points} points, {q.data.last_prune.events} events removed in {q.data.last_prune.ms} ms.</p>
         )}
       </Card>
-      <Card title="Agents (continuous)">
+      <Card title="Shepherds (DROOL agents, continuous)">
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="CPU, memory, network, disk IO every (s)"><Input type="number" value={s.sample_s} disabled={!edit} onChange={(e) => set("sample_s", int(e.target.value))} /></Field>
           <Field label="Filesystems, sensors, GPU every (s)"><Input type="number" value={s.slow_s} disabled={!edit} onChange={(e) => set("slow_s", int(e.target.value))} /></Field>
@@ -52,7 +70,7 @@ export function MonitoringSettingsPage() {
           <Field label="SMART / NVMe health every (s)"><Input type="number" value={s.smart_s} disabled={!edit} onChange={(e) => set("smart_s", int(e.target.value))} /></Field>
           <Field label="Offline buffer (KB)" hint="Memory only: when full, the oldest routine samples go and the gap is reported"><Input type="number" value={s.buffer_kb} disabled={!edit} onChange={(e) => set("buffer_kb", int(e.target.value))} /></Field>
         </div>
-        <div className="mt-3 text-sm font-medium">Default agent resource budget</div>
+        <div className="mt-3 text-sm font-medium">Default Shepherd resource budget</div>
         <div className="mt-1 grid gap-3 sm:grid-cols-4">
           {(["cpu_quota_percent", "cpu_weight", "memory_high_mb", "memory_max_mb"] as const).map((k) => (
             <Field key={k} label={{ cpu_quota_percent: "CPU quota (% of one CPU)", cpu_weight: "CPU weight", memory_high_mb: "Memory high (MB)", memory_max_mb: "Memory max (MB)" }[k]}>
@@ -76,11 +94,10 @@ export function MonitoringSettingsPage() {
         <div className="flex items-center gap-3">
           <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate(s)}>{save.isPending ? "Saving…" : "Save monitoring settings"}</Button>
           {save.error && <Alert>{errorMessage(save.error)}</Alert>}
-          {save.isSuccess && <span className="text-sm text-ok">✓ Saved and sent to connected agents.</span>}
+          {save.isSuccess && <span className="text-sm text-ok">✓ Saved and sent to connected Shepherds.</span>}
         </div>
       )}
       <Approvals />
-      <HealthOverridesCard />
     </div>
   );
 }
@@ -130,11 +147,11 @@ function Approvals() {
           <Field label="Where">
             <Select value={scope} onChange={(e) => setScope(e.target.value)}>
               <option value="global">Every host</option>
-              <option value="group">A group</option>
+              <option value="group">A pack</option>
             </Select>
           </Field>
           {scope === "group" && (
-            <Field label="Group">
+            <Field label="Pack">
               <Select value={group} onChange={(e) => setGroup(e.target.value)}>
                 <option value="">Choose…</option>
                 {(groups.data?.items ?? []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}

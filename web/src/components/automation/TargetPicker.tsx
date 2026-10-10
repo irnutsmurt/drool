@@ -34,7 +34,7 @@ export function TargetPicker({ v, set, groupsHint, noTags }: { v: TargetSpec; se
       </div>
       {(groups.data?.items.length ?? 0) > 0 && (
         <div className="space-y-1.5 border-t border-line pt-3">
-          <div className="text-xs font-medium uppercase text-muted">Groups</div>
+          <div className="text-xs font-medium uppercase text-muted">Packs</div>
           {groupsHint && <p className="text-xs text-muted">{groupsHint}</p>}
           {groups.data!.items.map((g) => (
             <Checkbox key={g.id} checked={groupIds.includes(g.id)} onChange={(on) => set({ ...v, groups: toggle(groupIds, g.id, on) })}

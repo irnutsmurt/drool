@@ -15,6 +15,8 @@ import { AlertSeverity, AlertStateBadge, categoryLabel, fmtDuration, Maintenance
 import { MaintenanceDialog } from "@/components/alerts/MaintenanceDialog";
 import { useSchedules, minutesText } from "@/components/automation/queries";
 import { ScheduleStateBadge } from "@/components/automation/ui";
+import { plainLink } from "@/components/ui/links";
+import { secondaryLink } from "@/components/ui/Button";
 
 const tabs = [
   { key: "active", label: "Active" },
@@ -24,6 +26,7 @@ const tabs = [
 ] as const;
 
 export function AlertsPage() {
+  const { can } = useAuth();
   const [params, setParams] = useSearchParams();
   const tab = params.get("view") ?? "active";
   const sum = useAlertSummary();
@@ -45,7 +48,11 @@ export function AlertsPage() {
   return (
     <>
       <PageHeader title="Alerts"
-        description="Problems monitoring confirmed and how people were told. An alert closes only when its condition recovers; acknowledging says someone is on it." />
+        description={<>Problems monitoring confirmed and how people were told. An alert closes only when its condition recovers; acknowledging says someone is on it.
+          What counts as a problem is set in <Link className={plainLink} to="/monitoring/settings">Monitoring → Health checks</Link>.</>}
+        actions={can("notifications.read") && (
+          <Link to="/settings/notifications" className={secondaryLink}>Notification settings</Link>
+        )} />
       {s && (s.critical > 0 || s.warning > 0) && (
         <p className="mb-3 rounded-ui border border-line bg-surface px-3 py-2 text-sm" role="status">
           <b>{s.active + s.acknowledged}</b> open: <span className="text-danger">{s.critical} critical</span>, <span className="text-warn">{s.warning} warning</span>
@@ -54,11 +61,16 @@ export function AlertsPage() {
           {s.destinations && s.destinations.failing > 0 && <span className="text-warn"> · {s.destinations.failing} destination{s.destinations.failing === 1 ? "" : "s"} failing</span>}
         </p>
       )}
-      <div role="tablist" aria-label="Alerts" className="mb-4 flex flex-wrap gap-1 border-b border-line">
+      {s?.destinations && s.destinations.configured === 0 && !(s.critical > 0 || s.warning > 0) && can("notifications.read") && (
+        <p className="mb-3 rounded-ui border border-line bg-surface px-3 py-2 text-sm" role="note">
+          Nobody is notified about alerts yet. <Link className={plainLink} to="/settings/notifications">Configure notifications</Link> to send them to email, Discord, Slack or a webhook.
+        </p>
+      )}
+      <div role="tablist" aria-label="Alerts" className="-mx-1 mb-4 flex gap-1 overflow-x-auto border-b border-line px-1">
         {tabs.map((t, i) => (
           <button key={t.key} id={`alerttab-${t.key}`} role="tab" type="button" aria-selected={tab === t.key} aria-controls="alertpanel"
             tabIndex={tab === t.key ? 0 : -1} onKeyDown={(e) => onKey(e, i)} onClick={() => set("view", t.key)}
-            className={cx("-mb-px border-b-2 px-3 py-2 text-sm", tab === t.key ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg")}>
+            className={cx("-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm", tab === t.key ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg")}>
             {t.label}{count[t.key] != null && <span className="ml-1.5 tabular-nums text-muted">{count[t.key]}</span>}
           </button>
         ))}
@@ -102,9 +114,9 @@ function AlertList({ view, params, set }: { view: "active" | "acknowledged" | "r
             {(hosts.data?.items ?? []).filter((h) => !h.jump_only).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
           </Select>
         </Field>
-        <Field label="Group">
+        <Field label="Pack">
           <Select value={f.group_id ?? ""} onChange={(e) => set("group_id", e.target.value)}>
-            <option value="">All groups</option>
+            <option value="">All packs</option>
             {(groups.data?.items ?? []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </Select>
         </Field>
@@ -128,7 +140,7 @@ function AlertList({ view, params, set }: { view: "active" | "acknowledged" | "r
       </div>
       {q.error && <Notice>{errorMessage(q.error)}</Notice>}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
+        <table className="rtable w-full text-left text-sm">
           <caption className="sr-only">{view} alerts</caption>
           <thead>
             <tr className="border-b border-line text-xs uppercase tracking-wide text-muted">
@@ -142,7 +154,7 @@ function AlertList({ view, params, set }: { view: "active" | "acknowledged" | "r
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={6} className="px-3 py-6 text-center text-muted">{q.isLoading ? "Loading…" : empty}</td></tr>
+              <tr><td colSpan={6} className="rt-empty px-3 py-6 text-center text-muted">{q.isLoading ? "Loading…" : empty}</td></tr>
             ) : rows.map((a) => <AlertRow key={a.id} a={a} history={history} />)}
           </tbody>
         </table>
@@ -159,23 +171,23 @@ function AlertList({ view, params, set }: { view: "active" | "acknowledged" | "r
 function AlertRow({ a, history }: { a: Alert; history: boolean }) {
   return (
     <tr className="border-b border-line last:border-0 align-top">
-      <td className="px-3 py-2"><AlertSeverity severity={a.severity} /></td>
-      <td className="px-3 py-2"><Link className="text-accent" to={`/hosts/${a.host_id}`}>{a.host_name}</Link></td>
-      <td className="px-3 py-2">
+      <td data-label="Severity" className="px-3 py-2"><AlertSeverity severity={a.severity} /></td>
+      <td data-label="Host" className="px-3 py-2"><Link className="text-accent" to={`/hosts/${a.host_id}`}>{a.host_name}</Link></td>
+      <td data-primary="" className="px-3 py-2">
         <Link className="font-medium hover:underline" to={`/alerts/${a.id}`}>{a.title}</Link>
         <div className="text-xs text-muted">{categoryLabel[a.category] ?? a.category}{a.value_text ? ` · ${a.value_text}` : ""}</div>
       </td>
-      <td className="px-3 py-2 whitespace-nowrap tabular-nums" title={`Opened ${fmtTime(a.opened_at)}`}>
+      <td data-label={history ? "Duration" : "Age"} className="px-3 py-2 whitespace-nowrap tabular-nums" title={`Opened ${fmtTime(a.opened_at)}`}>
         {history ? fmtDuration(a.duration_ms) : fmtSince(a.observed_at ?? a.issue_started_at).replace(" ago", "")}
       </td>
-      <td className="px-3 py-2">
+      <td data-label="State" className="px-3 py-2">
         <div className="flex flex-col items-start gap-1">
           <AlertStateBadge a={a} />
           {a.acknowledgement && <span className="text-xs text-muted">by {a.acknowledgement.by}</span>}
           <MaintenanceNote a={a} />
         </div>
       </td>
-      <td className="px-3 py-2"><NotificationBadge a={a} /></td>
+      <td data-label="Notification" className="px-3 py-2"><NotificationBadge a={a} /></td>
     </tr>
   );
 }
@@ -209,7 +221,7 @@ function MaintenanceTab() {
                 <div className="font-medium">{x.reason || "No reason given"}</div>
                 {x.schedule_id && <div className="text-xs"><Link className="text-accent" to={`/jobs/schedules/${x.schedule_id}`}>Started by a recurring window</Link></div>}
                 <div className="text-muted">
-                  {x.targets.map((t) => (t.kind === "group" ? `group ${t.name}` : t.name)).join(", ")} · {x.host_count} host{x.host_count === 1 ? "" : "s"}
+                  {x.targets.map((t) => (t.kind === "group" ? `pack ${t.name}` : t.name)).join(", ")} · {x.host_count} host{x.host_count === 1 ? "" : "s"}
                 </div>
                 <div className="text-xs text-muted">
                   Started {fmtTime(x.started_at)} by {x.created_by || "unknown"} ·{" "}

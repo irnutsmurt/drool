@@ -28,3 +28,8 @@ export function Button({
     />
   );
 }
+
+/** Link styles matching the buttons, for navigation that looks like an action. */
+export const primaryLink = "inline-flex h-9 items-center justify-center rounded-ui bg-accent px-3.5 text-sm font-medium text-accent-fg hover:opacity-90";
+export const secondaryLink = "inline-flex h-9 items-center justify-center rounded-ui border border-line bg-surface px-3.5 text-sm font-medium text-fg hover:bg-surface-2";
+export const smallSecondaryLink = "inline-flex h-7 items-center justify-center rounded-ui border border-line bg-surface px-2.5 text-xs font-medium text-fg hover:bg-surface-2";

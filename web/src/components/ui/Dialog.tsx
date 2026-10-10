@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
+import { CloseIcon } from "./icons";
 
 const focusable = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -36,12 +37,17 @@ export function Dialog({ title, children, onClose, wide }: { title: string; chil
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-[var(--ui-backdrop)] p-4 pt-16" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-[var(--ui-backdrop)] p-2 sm:p-4 sm:pt-16" onMouseDown={onClose}>
       <div ref={box} role="dialog" aria-modal="true" aria-label={title}
-        className={`w-full ${wide ? "max-w-4xl" : "max-w-lg"} max-h-[85vh] overflow-y-auto rounded-ui border border-line bg-surface p-5 shadow-lg`}
+        className={`relative w-full ${wide ? "max-w-4xl" : "max-w-lg"} max-h-[calc(100dvh-1rem)] overflow-y-auto rounded-ui border border-line bg-surface p-4 shadow-lg sm:max-h-[85vh] sm:p-5`}
         onMouseDown={(e) => e.stopPropagation()}>
-        <h2 className="mb-4 text-base font-semibold">{title}</h2>
+        <h2 className="mb-4 pr-8 text-base font-semibold">{title}</h2>
         {children}
+        {/* Last in the tab order: the first field keeps the initial focus. */}
+        <button type="button" onClick={onClose} aria-label="Close dialog"
+          className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-ui text-muted hover:bg-surface-2 hover:text-fg">
+          <CloseIcon />
+        </button>
       </div>
     </div>
   );

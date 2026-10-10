@@ -13,6 +13,7 @@ import { useFwServices } from "../queries";
 import { addRule, deleteRule, uniqueRuleName, upsertService, type MgmtPath, type Rule, type Service, type ServiceInfo, type TopologyMode } from "./model";
 import { useNetFlow } from "@/components/network/queries";
 import { useDesigner } from "./useDesigner";
+import { narrowQuery, useMediaQuery } from "@/hooks/useMediaQuery";
 import { Topology, type Selection } from "./Topology";
 import { RulesView } from "./RulesView";
 import { YamlView } from "./YamlView";
@@ -34,7 +35,10 @@ export function DesignerPage() {
   const hostsQ = useHosts();
   const svcQ = useFwServices();
   const [params, setParams] = useSearchParams();
-  const view = (params.get("view") as View) ?? "topology";
+  // Topology is a spatial, desktop interaction: narrow screens open the
+  // Rules view (same policy document) unless a view was chosen.
+  const narrow = useMediaQuery(narrowQuery);
+  const view = (params.get("view") as View) ?? (narrow ? "rules" : "topology");
   const setView = (v: View) => {
     if (view === "yaml" && v !== "yaml") d.normalizeYAML();
     const next = new URLSearchParams(params);
@@ -120,9 +124,10 @@ export function DesignerPage() {
   return (
     <div className="flex flex-col gap-3" data-testid="designer">
       <div className="flex flex-wrap items-center gap-2">
-        <div role="tablist" aria-label="Designer views" className="inline-flex overflow-hidden rounded-ui border border-line">
+        {/* Three views of one policy document: a view switcher, not more navigation. */}
+        <div role="group" aria-label="View the policy as" className="inline-flex overflow-hidden rounded-ui border border-line">
           {views.map((v) => (
-            <button key={v.id} role="tab" aria-selected={view === v.id} onClick={() => setView(v.id)}
+            <button key={v.id} type="button" aria-pressed={view === v.id} onClick={() => setView(v.id)}
               className={cx("px-3 py-1.5 text-sm", view === v.id ? "bg-accent text-accent-fg" : "bg-surface hover:bg-surface-2")}>
               {v.label}
             </button>
@@ -159,7 +164,12 @@ export function DesignerPage() {
       <MgmtAlerts management={d.management} onShow={showPath} />
 
       <div className="grid min-h-[38rem] gap-3 xl:grid-cols-[1fr_24rem]">
-        <div className={cx("min-h-[38rem] overflow-hidden rounded-ui border border-line bg-surface", view === "rules" && "overflow-visible border-0 bg-transparent")} role="tabpanel" aria-label={`${view} view`}>
+        <div className={cx("min-h-[38rem] overflow-hidden rounded-ui border border-line bg-surface", view === "rules" && "min-h-0 overflow-visible border-0 bg-transparent")} role="region" aria-label={`${views.find((v) => v.id === view)!.label} view`}>
+          {view === "topology" && narrow && (
+            <p className="border-b border-line bg-surface-2 px-3 py-2 text-xs text-muted" role="note">
+              Topology is a drag-and-connect map and works best on a larger screen. The Rules and YAML views show the same policy.
+            </p>
+          )}
           {view === "topology" && (
             <div className={topoMode === "configured" ? "h-[38rem]" : "h-[46rem]"}>
               <Topology doc={d.draft} services={services} hosts={hosts} management={d.management} layout={d.layout} saveLayout={d.saveLayout}

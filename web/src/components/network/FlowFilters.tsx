@@ -105,9 +105,9 @@ export function FlowFilters({ value, onChange, facets, fleet = true }: {
           </Labeled>
         )}
         {fleet && (
-          <Labeled label="Host group">
+          <Labeled label="Pack (host group)">
             <Select className="h-8 text-xs" value={value.group ?? ""} onChange={(e) => set("group", e.target.value)}>
-              <option value="">any group</option>
+              <option value="">any pack</option>
               {facets?.groups.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
             </Select>
           </Labeled>

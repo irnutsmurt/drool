@@ -41,7 +41,7 @@ export function MaintenanceDialog({ hostIds = [], groupIds = [], onClose }: { ho
   };
   const names = [
     ...managed.filter((h) => selHosts.has(h.id)).map((h) => h.name),
-    ...(groups.data?.items ?? []).filter((g) => selGroups.has(g.id)).map((g) => `group ${g.name}`),
+    ...(groups.data?.items ?? []).filter((g) => selGroups.has(g.id)).map((g) => `pack ${g.name}`),
   ];
   const submit = () => {
     const body: MaintenanceInput = { host_ids: [...selHosts], group_ids: [...selGroups], reason };
@@ -64,11 +64,11 @@ export function MaintenanceDialog({ hostIds = [], groupIds = [], onClose }: { ho
           </div>
         ) : (
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">Hosts and groups</legend>
+            <legend className="text-sm font-medium">Hosts and packs</legend>
             {(groups.data?.items.length ?? 0) > 0 && (
               <div className="flex flex-wrap gap-x-4 gap-y-1">
                 {groups.data!.items.map((g) => (
-                  <Checkbox key={g.id} checked={selGroups.has(g.id)} onChange={() => toggle(selGroups, g.id, setSelGroups)} label={<>Group <b>{g.name}</b></>} />
+                  <Checkbox key={g.id} checked={selGroups.has(g.id)} onChange={() => toggle(selGroups, g.id, setSelGroups)} label={<>Pack <b>{g.name}</b></>} />
                 ))}
               </div>
             )}

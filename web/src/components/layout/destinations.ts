@@ -1,0 +1,110 @@
+import type { Destination } from "@/lib/navsearch";
+
+/**
+ * Everything the navigation search can open: every sidebar destination,
+ * plus the places inside pages people look for by name (health
+ * thresholds, maintenance, reachability, API tokens…). Each carries the
+ * permissions its page needs, so search never offers a page the user
+ * can't open.
+ */
+export const destinations: Destination[] = [
+  // Overview
+  { id: "overview", title: "Overview", section: "Overview", to: "/", description: "Fleet triage: what needs attention right now.",
+    aliases: ["dashboard", "home", "start", "fleet status", "triage", "summary"] },
+
+  // Fleet
+  { id: "hosts", title: "Hosts", section: "Fleet", to: "/hosts", description: "The Linux machines DROOL manages.",
+    aliases: ["host", "server", "servers", "machine", "machines", "node", "nodes", "inventory", "computers"], permissions: ["hosts.read"] },
+  { id: "hosts-new", title: "Add host", section: "Fleet", to: "/hosts/new", description: "Start managing another Linux machine over SSH.",
+    aliases: ["new host", "add server", "add machine", "new server"], permissions: ["hosts.write"] },
+  { id: "packs", title: "Packs", hint: "Groups", section: "Fleet", to: "/groups", description: "Groups of hosts used for targeting and inherited configuration.",
+    aliases: ["group", "groups", "pack", "host group", "host groups", "group priority"], permissions: ["hosts.read"] },
+  { id: "shepherds", title: "Shepherds", hint: "DROOL agents", section: "Fleet", to: "/agents", description: "DROOL agents installed on managed hosts.",
+    aliases: ["agent", "agents", "drool agent", "drool-agent", "shepherd", "installed agents"], permissions: ["agents.read"] },
+  { id: "shepherds-enroll", title: "Shepherd enrollment", section: "Fleet", to: "/agents?tab=enroll", description: "Single-use tokens and installers for new Shepherds (DROOL agents).",
+    aliases: ["enrollment token", "enroll agent", "install agent", "add agent", "agent installer"], permissions: ["agents.read"] },
+  { id: "shepherds-updates", title: "Shepherd updates", section: "Fleet", to: "/agents?tab=updates", description: "Agent releases, update policy and rollouts.",
+    aliases: ["agent update", "update agents", "upgrade agent", "agent release", "agent rollout"], permissions: ["agents.read"] },
+  { id: "shepherds-trust", title: "Shepherd trust (PKI)", section: "Fleet", to: "/agents?tab=trust", description: "The Agent Root CA, certificates and the trust manifest.",
+    aliases: ["pki", "root ca", "certificate authority", "agent certificate", "ca key", "trust manifest"], permissions: ["agents.read"] },
+  { id: "shepherds-endpoints", title: "Controller address", section: "Fleet", to: "/agents?tab=endpoints", description: "The address agents use to reach this controller.",
+    aliases: ["agent endpoint", "controller endpoint", "agent address"], permissions: ["agents.read"] },
+
+  // Observe
+  { id: "monitoring", title: "Monitoring", section: "Observe", to: "/monitoring", description: "Health, metrics, services and hardware of every host.",
+    aliases: ["monitor", "metrics", "cpu", "memory", "disk space", "load", "health", "temperature", "sensors", "storage health", "smart", "services", "gpu"],
+    permissions: ["monitoring.read"] },
+  { id: "monitoring-settings", title: "Monitoring health settings", section: "Observe", to: "/monitoring/settings",
+    description: "Health checks and thresholds for every host, pack and device; collection intervals.",
+    aliases: ["threshold", "thresholds", "health setting", "health settings", "health check", "health checks", "warning level", "critical level",
+      "health override", "monitoring settings", "sample interval", "polling interval", "monitoring retention"], permissions: ["monitoring.read"] },
+  { id: "alerts", title: "Alerts", section: "Observe", to: "/alerts", description: "Problems monitoring confirmed, acknowledgements and who was told.",
+    aliases: ["alert", "alarm", "alarms", "incident", "incidents", "problem", "acknowledge", "whats wrong"], permissions: ["alerts.read"] },
+  { id: "maintenance", title: "Maintenance", section: "Observe", to: "/alerts?view=maintenance",
+    description: "Pause notifications for hosts during planned work; monitoring and alerts continue.",
+    aliases: ["maintenance window", "downtime", "planned work", "pause notifications", "recurring maintenance"], permissions: ["alerts.read"] },
+  { id: "network", title: "Network Activity", section: "Observe", to: "/network", description: "What your hosts are talking to, and how the firewall policy classifies it.",
+    aliases: ["network", "traffic", "connections", "flows", "talking to", "who talks to", "conntrack", "listening ports", "outbound", "inbound"],
+    permissions: ["network.read"] },
+  { id: "network-settings", title: "Network collection and GeoIP", section: "Observe", to: "/network?tab=settings",
+    description: "Connection collection, retention and local GeoIP/ASN databases.",
+    aliases: ["geoip", "asn", "enrichment", "network collection", "network retention", "mmdb"], permissions: ["network.read"] },
+
+  // Automate
+  { id: "runs", title: "Runs", section: "Automate", to: "/jobs", description: "Every job DROOL runs: commands, updates, deployments and corrections.",
+    aliases: ["run", "runs", "job", "jobs", "job history", "run history", "execution", "output", "activity"], permissions: ["jobs.read"] },
+  { id: "runs-new", title: "New run", section: "Automate", to: "/jobs/new", description: "Run a command, script, update, package or service change on hosts.",
+    aliases: ["new job", "run command", "execute", "command", "script", "install updates", "update packages", "reboot", "restart service"],
+    permissions: ["jobs.execute"] },
+  { id: "schedules", title: "Schedules", section: "Automate", to: "/jobs/schedules", description: "Jobs and workflows that run at times you choose.",
+    aliases: ["schedule", "scheduled", "recurring", "cron", "timer", "nightly", "every night", "scheduled updates", "schedule updates"],
+    permissions: ["schedules.read"] },
+  { id: "schedules-new", title: "New schedule", section: "Automate", to: "/jobs/schedules/new", description: "Run a job or workflow at times you choose.",
+    aliases: ["create schedule", "add schedule"], permissions: ["schedules.manage", "jobs.execute"] },
+  { id: "workflows", title: "Workflows", section: "Automate", to: "/jobs/workflows", description: "Reusable, revisioned lists of steps.",
+    aliases: ["workflow", "playbook", "runbook", "steps", "template", "templates"], permissions: ["workflows.read"] },
+  { id: "workflows-new", title: "New workflow", section: "Automate", to: "/jobs/workflows/new", description: "Start from a template or from nothing.",
+    aliases: ["create workflow", "add workflow"], permissions: ["workflows.manage"] },
+  { id: "desired", title: "Desired State", section: "Automate", to: "/desired",
+    description: "Services, packages and files that should stay as you defined them: drift, conflicts and restore.",
+    aliases: ["desired", "drift", "baseline", "keep running", "make sure", "stays running", "configuration drift", "compliant", "restore managed state"],
+    permissions: ["desired.read"] },
+  { id: "baselines", title: "Baselines", section: "Automate", to: "/desired/baselines", description: "Named lists of services, packages and files with the state they should have.",
+    aliases: ["baselines", "managed file", "managed files", "ensure service", "ensure package"], permissions: ["desired.read"] },
+  { id: "baselines-new", title: "Create baseline", section: "Automate", to: "/desired/baselines/new", description: "Say what machines should look like.",
+    aliases: ["new baseline", "add baseline"], permissions: ["desired.manage"] },
+  { id: "desired-history", title: "Desired State history", section: "Automate", to: "/desired/history", description: "What changed, and how it ended.",
+    aliases: ["drift history", "restore history"], permissions: ["desired.read"] },
+
+  // Protect
+  { id: "firewall", title: "Firewall", section: "Protect", to: "/firewall", description: "What may talk to what, applied with automatic rollback protection.",
+    aliases: ["firewall", "nftables", "allow port", "block port", "firewall mode", "enforce"], permissions: ["firewall.read"] },
+  { id: "firewall-policy", title: "Firewall policy", section: "Protect", to: "/firewall?tab=designer",
+    description: "The policy document: Topology, Rules and YAML views.",
+    aliases: ["firewall designer", "firewall rules", "firewall rule", "topology", "policy yaml", "firewall policy"], permissions: ["firewall.read"] },
+  { id: "firewall-simulate", title: "Firewall reachability simulation", section: "Protect", to: "/firewall?tab=simulate",
+    description: "Can A reach B? Ask the policy before you change anything.",
+    aliases: ["can a reach b", "reachability", "reach", "simulate", "simulation", "is port open", "can it connect"], permissions: ["firewall.read"] },
+  { id: "firewall-transactions", title: "Firewall transactions", section: "Protect", to: "/firewall?tab=transactions",
+    description: "Every apply, commit and automatic rollback.",
+    aliases: ["rollback", "firewall history", "transactions", "dead man", "apply history"], permissions: ["firewall.read"] },
+  { id: "credentials", title: "Credentials", section: "Protect", to: "/credentials", description: "SSH keys and passwords DROOL uses to reach hosts.",
+    aliases: ["credential", "ssh key", "ssh keys", "private key", "password", "sudo password", "authorized keys", "keys"], permissions: ["credentials.use"] },
+  { id: "audit", title: "Audit Log", section: "Protect", to: "/audit", description: "Who changed what, and when.",
+    aliases: ["audit", "who changed", "who did", "audit trail", "security log", "changes"], permissions: ["audit.read"] },
+
+  // Settings
+  { id: "settings-account", title: "Account", section: "Settings", to: "/settings/account", description: "Your profile, password and appearance.",
+    aliases: ["settings", "profile", "password", "change password", "my account", "theme", "dark mode", "light mode", "appearance"] },
+  { id: "settings-tokens", title: "API tokens", section: "Settings", to: "/settings/tokens", description: "Tokens for scripts and integrations to use the DROOL API.",
+    aliases: ["api token", "api tokens", "api key", "api keys", "token", "rest api", "automation token"] },
+  { id: "settings-users", title: "Users", section: "Settings", to: "/settings/users", description: "People who can sign in, and their roles.",
+    aliases: ["user", "users", "add user", "administrator", "admin", "add administrator", "roles", "operator", "viewer", "accounts"],
+    permissions: ["users.manage"] },
+  { id: "settings-notifications", title: "Notifications", section: "Settings", to: "/settings/notifications",
+    description: "Where alerts are sent: email, Discord, Slack and webhooks.",
+    aliases: ["notification", "notifications", "notify", "email", "smtp", "discord", "slack", "webhook", "home assistant", "destination", "routing"],
+    permissions: ["notifications.read"] },
+  { id: "settings-system", title: "System", section: "Settings", to: "/settings/system", description: "Controller version, backup and restore, effective configuration.",
+    aliases: ["system", "version", "backup", "restore backup", "configuration", "about", "tls"] },
+];

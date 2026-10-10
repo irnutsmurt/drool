@@ -30,7 +30,7 @@ export function FlowTable({ filter, showHost = true, empty, pageSize = 50 }: {
   return (
     <div className="space-y-2" data-testid="flow-table">
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
+        <table className="rtable w-full text-left text-sm">
           <caption className="sr-only">Observed connections</caption>
           <thead>
             <tr className="border-b border-line text-xs uppercase tracking-wide text-muted">
@@ -48,7 +48,7 @@ export function FlowTable({ filter, showHost = true, empty, pageSize = 50 }: {
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={showHost ? 10 : 9} className="px-3 py-8 text-center text-muted">{q.isLoading ? "Loading…" : empty ?? "No connections match."}</td></tr>
+              <tr><td colSpan={showHost ? 10 : 9} className="rt-empty px-3 py-8 text-center text-muted">{q.isLoading ? "Loading…" : empty ?? "No connections match."}</td></tr>
             ) : rows.map((f) => <Row key={f.id} f={f} showHost={showHost} onOpen={() => setOpen(f.id)} />)}
           </tbody>
         </table>
@@ -79,7 +79,7 @@ export function FlowTable({ filter, showHost = true, empty, pageSize = 50 }: {
 function Row({ f, showHost, onOpen }: { f: NetFlow; showHost: boolean; onOpen: () => void }) {
   return (
     <tr className="cursor-pointer border-b border-line align-top last:border-0 hover:bg-surface-2" onClick={onOpen} data-flow-id={f.id}>
-      <td className="px-2 py-2">
+      <td className="px-2 py-2" data-primary="">
         <button type="button" className="text-left text-accent underline-offset-2 hover:underline focus:outline focus:outline-2 focus:outline-accent"
           onClick={(e) => { e.stopPropagation(); onOpen(); }}
           aria-label={`Details: ${f.direction === "in" ? "inbound" : "outbound"} ${f.protocol.toUpperCase()} ${f.direction === "in" ? "from" : "to"} ${f.remote_ip} port ${f.port}`}>
@@ -87,15 +87,15 @@ function Row({ f, showHost, onOpen }: { f: NetFlow; showHost: boolean; onOpen: (
         </button>
         <div className="mt-0.5"><ScopeBadge flow={f} /></div>
       </td>
-      {showHost && <td className="whitespace-nowrap px-2 py-2"><Link className="text-accent" to={`/hosts/${f.host.id}`} onClick={(e) => e.stopPropagation()}>{f.host.name}</Link></td>}
-      <td className="px-2 py-2"><ProcessLabel flow={f} /></td>
-      <td className="px-2 py-2"><Endpoint ip={f.local_ip || "?"} port={f.local_port} /></td>
-      <td className="px-2 py-2"><RemoteLabel flow={f} /></td>
-      <td className="whitespace-nowrap px-2 py-2 text-xs">{f.protocol.toUpperCase()} {f.port}</td>
-      <td className="px-2 py-2"><span className="flex flex-col"><CountryLabel flow={f} /><NetworkLabel flow={f} /></span></td>
-      <td className="whitespace-nowrap px-2 py-2 text-xs"><span className="flex flex-col"><span>{when(f.first_seen)}</span><span className="text-muted">{when(f.last_seen)}</span></span></td>
-      <td className="px-2 py-2 text-right tabular-nums">{f.count.toLocaleString()}</td>
-      <td className="px-2 py-2"><PolicyBadge flow={f} /></td>
+      {showHost && <td data-label="Host" className="whitespace-nowrap px-2 py-2"><Link className="text-accent" to={`/hosts/${f.host.id}`} onClick={(e) => e.stopPropagation()}>{f.host.name}</Link></td>}
+      <td data-label="Process / service" className="px-2 py-2"><ProcessLabel flow={f} /></td>
+      <td data-label="Local" className="px-2 py-2"><Endpoint ip={f.local_ip || "?"} port={f.local_port} /></td>
+      <td data-label="Remote" className="px-2 py-2"><RemoteLabel flow={f} /></td>
+      <td data-label="Protocol" className="whitespace-nowrap px-2 py-2 text-xs">{f.protocol.toUpperCase()} {f.port}</td>
+      <td data-label="Country · network" className="px-2 py-2"><span className="flex flex-col"><CountryLabel flow={f} /><NetworkLabel flow={f} /></span></td>
+      <td data-label="First · last seen" className="whitespace-nowrap px-2 py-2 text-xs"><span className="flex flex-col"><span>{when(f.first_seen)}</span><span className="text-muted">{when(f.last_seen)}</span></span></td>
+      <td data-label="Connections" className="px-2 py-2 text-right tabular-nums">{f.count.toLocaleString()}</td>
+      <td data-label="Policy status" className="px-2 py-2"><PolicyBadge flow={f} /></td>
     </tr>
   );
 }

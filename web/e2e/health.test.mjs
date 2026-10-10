@@ -44,7 +44,9 @@ const dialogText = () => page.$eval('[role="dialog"]', (d) => d.innerText);
 
 test("settings: Recommended by default; a global change shows its impact, its source, and resets", async () => {
   await cleanup();
+  // Health settings live under Monitoring; the old Settings address redirects there.
   await go("/settings/monitoring");
+  await waitFor(page, async () => page.url().endsWith("/monitoring/settings"), "redirect to Monitoring");
   await waitText(page, "Using the Recommended profile");
   assert.match(await text(page), /high GPU utilization is off/);
   await click(page, "button", "Customize");
@@ -52,7 +54,9 @@ test("settings: Recommended by default; a global change shows its impact, its so
   await click(page, "button", "Customize Memory pressure");
   await waitFor(page, async () => (await page.$('[role="dialog"]')) !== null, "editor");
   const d = await dialogText();
-  assert.match(d, /Inherited: 90%\s*Recommended/);
+  // Where the value comes from: the shared inheritance pattern.
+  assert.match(d, /Recommended\s*90%\s*✓ In effect/);
+  assert.match(d, /Global\s*Not set/);
   assert.match(d, /Who gets notified is set separately/);
   // Custom warning level: the impact appears before saving.
   const boxes = await page.$$('[role="dialog"] input[type="checkbox"]');
@@ -118,7 +122,8 @@ test("host health settings: summary, identities, a GPU customized by keyboard, h
   await sel.select("on");
   await click(page, '[role="dialog"] button', "Save");
   await waitFor(page, async () => (await page.$$('[role="dialog"]')).length === 1, "editor closed");
-  await waitFor(page, async () => /Custom for NVIDIA GeForce RTX 4090/.test(await dialogText()), "subject source");
+  // The source in the shared scope vocabulary (Recommended → Global → Pack → Host → Device).
+  await waitFor(page, async () => /Device: NVIDIA GeForce RTX 4090/.test(await dialogText()), "subject source");
   await shot(page, "health-gpu-subject");
   await page.keyboard.press("Escape");
   // The effective setting comes from the server, with its source.
@@ -135,7 +140,7 @@ test("host health settings: summary, identities, a GPU customized by keyboard, h
   await click(page, '[role="dialog"] button', "Customize Temperature");
   await waitFor(page, async () => (await page.$$('[role="dialog"]')).length === 2, "temperature editor");
   const ed = await (await page.$$('[role="dialog"]'))[1].evaluate((x) => x.innerText);
-  assert.match(ed, /Inherited: 100 °C\s*⚙ Hardware limit/);
+  assert.match(ed, /Hardware limit\s*100 °C\s*✓ In effect/);
   await page.keyboard.press("Escape");
   await cleanup();
   assert.deepEqual(page.errors, []);
@@ -165,7 +170,7 @@ test("group: overrides only when chosen, with an impact preview; hosts show the 
     await waitText(page, "1 inherited group override");
     const row = await page.$$eval("tbody tr", (rs) => rs.map((r) => r.innerText).find((t) => t.startsWith("High CPU utilization")));
     assert.match(row, /Off/);
-    assert.match(row, /group: e2e-render/);
+    assert.match(row, /Pack: e2e-render/);
   } finally {
     await cleanup();
     await api(page, "DELETE", `/groups/${g.id}`);

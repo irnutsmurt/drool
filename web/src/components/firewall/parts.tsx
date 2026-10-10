@@ -23,7 +23,7 @@ export function useSelectorLabel() {
       case "host":
         return hosts.data?.items.find((h) => h.id === s.id)?.name ?? "host " + s.id;
       case "group":
-        return "group " + (groups.data?.items.find((g) => g.id === s.id)?.name ?? s.id);
+        return "pack " + (groups.data?.items.find((g) => g.id === s.id)?.name ?? s.id);
       case "internet":
         return "the internet";
       case "internal":
@@ -50,7 +50,7 @@ export const modeInfo: Record<string, { label: string; text: string }> = {
   off: { label: "Off", text: "DROOL doesn't observe or change this host's firewall." },
   monitor: { label: "Monitor", text: "Observe connections and explain what a policy would do. Nothing is changed." },
   guided: { label: "Guided", text: "Observe, and suggest policies from what is observed for you to approve. Nothing is changed." },
-  enforce: { label: "Enforce", text: "Apply the policy as a dead-man transaction and watch for drift." },
+  enforce: { label: "Enforce", text: "Apply the policy with automatic rollback protection — the host reverts a change by itself unless a fresh management connection verifies it — and watch for drift." },
 };
 
 export function TxStateBadge({ state }: { state: string }) {
@@ -142,7 +142,7 @@ export function TxList({ txs, hostName }: { txs: FwTransaction[]; hostName?: (id
 // --- policy editor ---
 
 const kinds: { kind: FwSelector["kind"]; label: string }[] = [
-  { kind: "group", label: "Group" },
+  { kind: "group", label: "Pack" },
   { kind: "host", label: "Host" },
   { kind: "internal", label: "Internal networks" },
   { kind: "internet", label: "The internet" },
@@ -189,7 +189,7 @@ function SelectorPicker({ value, onChange, label }: { value: FwSelector[]; onCha
         )}
         {kind === "group" && (
           <Select value={id} onChange={(e) => setId(e.target.value)}>
-            <option value="">choose a group…</option>
+            <option value="">choose a pack…</option>
             {(groups.data?.items ?? []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </Select>
         )}
@@ -231,7 +231,7 @@ export function PolicyEditor({ initial, draft, onClose }: { initial?: FwPolicy; 
     <Dialog title={initial ? `Edit policy ${initial.name}` : "New firewall policy"} onClose={onClose} wide>
       <div className="space-y-4 text-sm">
         <p className="text-muted">Say who may reach whom on which services. DROOL compiles this for every affected host, protects the management
-          path, and applies it only as a dead-man transaction you start from a host or the Firewall page.</p>
+          path, and applies it only when you start it from a host or the Firewall page, with automatic rollback protection.</p>
         <div className="grid gap-3 md:grid-cols-[1fr_14rem]">
           <Field label="Name"><Input value={p.name} onChange={(e) => setP({ ...p, name: e.target.value })} placeholder="web-to-database" /></Field>
           <Field label="Action">
@@ -315,7 +315,8 @@ export function ApplyDialog({ hostIds, names, remove, changes, onClose }: {
             {changes.removed.map((a) => <span key={"-" + a} className="block text-xs text-danger">− {a}</span>)}
           </div>
         )}
-        {!changes && !remove && hostIds.length > 1 && <p className="text-xs text-muted">Each host's changes are listed on its host page.</p>}
+        {!changes && !remove && hostIds.length > 1 && <p className="text-xs text-muted">Each host's changes are listed on its firewall page.</p>}
+        <p className="font-medium">Automatic rollback protection</p>
         <ol className="list-decimal space-y-1 pl-5 text-muted">
           <li>DROOL checks the host's firewall environment and measures a brand-new management connection.</li>
           <li>The host writes a durable journal and arms a rollback timer <em>before</em> its rules change, then applies the policy atomically.</li>
@@ -327,7 +328,7 @@ export function ApplyDialog({ hostIds, names, remove, changes, onClose }: {
             <summary className="cursor-pointer font-medium">Overrides (audited)</summary>
             <div className="mt-2 space-y-2">
               <Checkbox checked={overrideMgmt} onChange={setOverrideMgmt} label="Emergency override: apply even if a deny removes a management path"
-                hint="The dead-man rollback still applies: if the new policy really cuts DROOL off, the host restores the previous policy." />
+                hint="Automatic rollback protection still applies: if the new policy really cuts DROOL off, the host restores the previous policy." />
               <Checkbox checked={overrideTimeout} onChange={setOverrideTimeout} label="Accept a rollback timeout shorter than 3× the measured connection time" />
               <Checkbox checked={allowDrift} onChange={setAllowDrift} label="Replace DROOL rules that were changed outside DROOL (drift)" />
               {overrideMgmt && (
@@ -335,7 +336,7 @@ export function ApplyDialog({ hostIds, names, remove, changes, onClose }: {
                   <p className="font-semibold text-danger">Emergency override: you are about to apply a policy that DROOL&apos;s own checks say cuts its management path.</p>
                   <ul className="list-disc pl-5 text-xs">
                     <li>DROOL may lose contact with {names.join(", ")} as soon as the rules are applied.</li>
-                    <li>The dead-man rollback still applies: if DROOL can&apos;t commit over a brand-new connection, each host restores its previous policy on its own when its rollback timeout runs out.</li>
+                    <li>Automatic rollback protection still applies: if DROOL can&apos;t commit over a brand-new connection, each host restores its previous policy on its own when its rollback timeout runs out.</li>
                     <li>If the new policy keeps a path DROOL didn&apos;t know about, the override can succeed and leave DROOL depending on it. Use this only to recover from a mistake.</li>
                     <li>The override, your reason and the outcome are recorded in the audit log.</li>
                   </ul>
@@ -348,7 +349,7 @@ export function ApplyDialog({ hostIds, names, remove, changes, onClose }: {
         )}
         {apply.error && <Alert>{errorMessage(apply.error)}</Alert>}
         {apply.data ? (
-          <Alert tone="ok">Started. Follow it on the <Link className="underline" to={`/jobs/${apply.data.id}`}>job page</Link>; the transaction timeline appears on each host.</Alert>
+          <Alert tone="ok">Started. Follow it on its <Link className="underline" to={`/jobs/${apply.data.id}`}>run page</Link>; each host&apos;s transaction timeline is on its firewall page.</Alert>
         ) : null}
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>{apply.data ? "Close" : "Cancel"}</Button>

@@ -55,9 +55,11 @@ async function waitStatus(s) {
   await waitFor(page, async () => (await status()).includes(s), "status " + s);
 }
 const yamlValue = () => page.$eval('textarea[aria-label="Firewall policy as YAML"]', (t) => t.value);
+// Topology, Rules and YAML: a view switcher over one policy document.
+const switcher = '[role="group"][aria-label="View the policy as"] button';
 async function view(v) {
-  await click(page, '[role="tab"]', v);
-  await waitFor(page, () => page.$$eval('[role="tab"][aria-selected="true"]', (xs, v) => xs.some((x) => x.textContent === v), v), "view " + v);
+  await click(page, switcher, v);
+  await waitFor(page, () => page.$$eval(`${switcher}[aria-pressed="true"]`, (xs, v) => xs.some((x) => x.textContent === v), v), "view " + v);
   await sleep(300);
 }
 const edgeLabels = () => page.$$eval("[data-edge-label]", (xs) => xs.map((x) => x.innerText.replace(/\n/g, " ")));
@@ -173,8 +175,8 @@ test("Rules (keyboard only) → canonical model → Topology", async () => {
   await tabTo(page, () => document.activeElement?.textContent === "Add source", "Add source");
   await page.keyboard.press("Enter");
   await tabTo(page, () => document.activeElement?.getAttribute("aria-label") === "Destination kind", "destination kind");
-  await page.keyboard.type("Group");
-  await tabTo(page, () => document.activeElement?.getAttribute("aria-label") === "Destination group", "destination group");
+  await page.keyboard.type("Pack");
+  await tabTo(page, () => document.activeElement?.getAttribute("aria-label") === "Destination pack", "destination pack");
   await page.keyboard.press("ArrowDown");
   await tabTo(page, () => document.activeElement?.textContent === "Add destination", "Add destination");
   await page.keyboard.press("Enter");
@@ -261,7 +263,8 @@ test("inspector: edge rules, host explain and simulation on the draft", async ()
 
 test("emergency override needs explicit confirmation", async () => {
   await api(page, "PUT", "/firewall/hosts/" + page.ids["web-1"], { mode: "enforce" });
-  await page.goto(`${base}/hosts/${page.ids["web-1"]}`, { waitUntil: "networkidle0" });
+  // A host's firewall has its own page now (the host overview summarizes it).
+  await page.goto(`${base}/hosts/${page.ids["web-1"]}/firewall`, { waitUntil: "networkidle0" });
   await click(page, "button", "Apply policy");
   await waitText(page, "Overrides (audited)");
   await click(page, "summary", "Overrides");

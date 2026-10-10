@@ -11,7 +11,7 @@ import { Field, Input } from "@/components/ui/Field";
 import { errorMessage, formatBytes } from "@/lib/format";
 import { StatusBadge } from "@/components/monitoring/Status";
 import { fmtTime } from "@/components/monitoring/format";
-import { fidelityText } from "@/components/monitoring/HostMonitoringCard";
+import { fidelityText } from "@/components/monitoring/HostMonitoringSummary";
 import { InstallHelperButton } from "@/components/monitoring/HelperInstall";
 import { useDiagnostics, useSaveHostSettings, type MonHostOverview, type MonLimits } from "@/components/monitoring/queries";
 

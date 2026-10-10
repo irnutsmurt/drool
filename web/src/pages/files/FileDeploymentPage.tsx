@@ -31,9 +31,9 @@ export function FileDeploymentPage() {
   };
   return (
     <>
-      <PageHeader title={x.path}
+      <PageHeader crumbs={[{ label: "Hosts", to: "/hosts" }, { label: x.host_name, to: `/hosts/${x.host_id}` }]} title={x.path}
         description={<span>{x.kind === "rollback" ? "Rollback" : "Deployment"} on <Link className="text-accent" to={`/hosts/${x.host_id}`}>{x.host_name}</Link> · {formatDateTime(x.created_at)}
-          {x.job_id && <> · <Link className="text-accent" to={`/jobs/${x.job_id}`}>job</Link></>}</span>} />
+          {x.job_id && <> · <Link className="text-accent" to={`/jobs/${x.job_id}`}>run</Link></>}</span>} />
       <div className="grid gap-4">
         <FileDeployResult r={result} standalone />
         {x.error && <Alert>{x.error}</Alert>}
