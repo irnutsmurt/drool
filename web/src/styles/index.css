@@ -217,6 +217,12 @@ body {
   main .grid > * {
     min-width: 0;
   }
+  /* A sideways scroller holds its absolutely positioned content too:
+   * visually hidden labels in a wide table otherwise escape it and widen
+   * the whole page. */
+  .overflow-x-auto {
+    position: relative;
+  }
   /* Keyboard focus is always visible (mouse clicks don't draw it);
    * fields that draw their own focus ring opt out. */
   :focus-visible {
@@ -274,6 +280,11 @@ body {
     content: attr(data-label);
     color: var(--ui-muted);
     font-size: 12px;
+  }
+  /* A value made of several blocks (two services, a figure and its bar)
+     stays in the value column instead of wrapping under the label. */
+  table.rtable > tbody > tr > td > * {
+    grid-column: 2;
   }
   table.rtable > tbody > tr > td[data-primary] {
     order: -1;

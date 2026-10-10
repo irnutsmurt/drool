@@ -142,7 +142,13 @@ export function MonitoringPage() {
               {rows.length === 0 && <tr><td colSpan={as ? 12 : 11} className="rt-empty px-2 py-8 text-center text-muted">{d ? "No hosts in this view." : "Loading…"}</td></tr>}
               {rows.map((r) => (
                 <tr key={r.host_id} className="border-b border-line last:border-0">
-                  <td data-label="" className="px-2 py-1.5"><input type="checkbox" aria-label={`Select ${r.name}`} checked={sel.has(r.host_id)} onChange={() => toggle(r.host_id)} /></td>
+                  <td data-label="" className="px-2 py-1.5">
+                    <label className="inline-flex items-center gap-2">
+                      <input type="checkbox" aria-label={`Select ${r.name}`} checked={sel.has(r.host_id)} onChange={() => toggle(r.host_id)} />
+                      {/* On a phone the row is a card and the column header is gone. */}
+                      <span aria-hidden="true" className="text-xs text-muted md:hidden">Select</span>
+                    </label>
+                  </td>
                   <td data-primary="" className="px-2 py-1.5"><Link className="text-accent" to={`/hosts/${r.host_id}/monitoring`}>{r.name}</Link></td>
                   <td data-label="Health" className="px-2 py-1.5"><Worst r={r} /></td>
                   {as && (

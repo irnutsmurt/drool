@@ -24,7 +24,7 @@ export function HardwareTab({ o }: { o: MonHostOverview }) {
         {sensors.length === 0 ? (
           <p className="text-sm text-muted">This host exposes no temperature sensors. That is normal for virtual machines and containers; on physical machines the sensor chip's kernel driver may not be loaded.</p>
         ) : (
-          <table className="w-full text-left text-sm">
+          <table className="rtable w-full text-left text-sm">
             <caption className="sr-only">Temperature sensors</caption>
             <thead><tr className="border-b border-line text-xs text-muted">
               <th className="py-1 font-medium">Sensor</th><th className="py-1 font-medium">Type</th><th className="py-1 font-medium">Now</th>
@@ -34,13 +34,13 @@ export function HardwareTab({ o }: { o: MonHostOverview }) {
             <tbody>
               {sensors.map((s) => (
                 <tr key={s.id} className="border-b border-line last:border-0">
-                  <td className="py-1"><span className="font-mono text-xs">{s.chip}</span> {s.label}{s.device ? <span className="text-muted"> · {s.device}</span> : ""}</td>
-                  <td className="py-1 text-xs">{kindWord[s.kind] ?? s.kind}</td>
-                  <td className="py-1 tabular-nums">{fmtTemp(s.celsius)}</td>
-                  <td className="py-1 tabular-nums">{fmtTemp(s.high)}</td>
-                  <td className="py-1 tabular-nums">{fmtTemp(s.critical)}</td>
-                  <td className="py-1">{sensorStatus(s)}</td>
-                  <td className="py-1 text-right"><SubjectHealthButton hostId={o.host_id} kind="sensor" subjectRef={s.id} label={`${s.chip} ${s.label}`} /></td>
+                  <td data-primary="" className="py-1"><span className="font-mono text-xs">{s.chip}</span> {s.label}{s.device ? <span className="text-muted"> · {s.device}</span> : ""}</td>
+                  <td data-label="Type" className="py-1 text-xs">{kindWord[s.kind] ?? s.kind}</td>
+                  <td data-label="Now" className="py-1 tabular-nums">{fmtTemp(s.celsius)}</td>
+                  <td data-label="High" className="py-1 tabular-nums">{fmtTemp(s.high)}</td>
+                  <td data-label="Critical" className="py-1 tabular-nums">{fmtTemp(s.critical)}</td>
+                  <td data-label="State" className="py-1">{sensorStatus(s)}</td>
+                  <td data-label="" className="py-1 text-right"><SubjectHealthButton hostId={o.host_id} kind="sensor" subjectRef={s.id} label={`${s.chip} ${s.label}`} /></td>
                 </tr>
               ))}
             </tbody>

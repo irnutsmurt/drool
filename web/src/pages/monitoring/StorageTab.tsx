@@ -140,12 +140,15 @@ function DeviceCard({ id, d, events, probes, settings, canProbe, fs }: {
           <details className="text-sm">
             <summary className="cursor-pointer text-accent">Advanced: raw SMART attributes</summary>
             <p className="mt-1 text-xs text-muted">Attribute meanings vary by manufacturer; DROOL only interprets attributes whose names are standardized.</p>
-            <table className="mt-2 w-full text-left text-xs">
-              <thead><tr className="border-b border-line text-muted"><th>ID</th><th>Name</th><th>Value</th><th>Worst</th><th>Threshold</th><th>Raw</th><th>Failed</th></tr></thead>
-              <tbody>{d.raw!.map((a) => (
-                <tr key={a.id} className="border-b border-line last:border-0"><td>{a.id}</td><td className="font-mono">{a.name}</td><td>{a.value}</td><td>{a.worst}</td><td>{a.thresh}</td><td className="font-mono">{a.raw}</td><td>{a.when_failed || "—"}</td></tr>
-              ))}</tbody>
-            </table>
+            {/* The columns only make sense side by side: on a phone it scrolls. */}
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead><tr className="border-b border-line text-muted"><th>ID</th><th>Name</th><th>Value</th><th>Worst</th><th>Threshold</th><th>Raw</th><th>Failed</th></tr></thead>
+                <tbody>{d.raw!.map((a) => (
+                  <tr key={a.id} className="border-b border-line last:border-0"><td>{a.id}</td><td className="font-mono">{a.name}</td><td>{a.value}</td><td>{a.worst}</td><td>{a.thresh}</td><td className="font-mono">{a.raw}</td><td>{a.when_failed || "—"}</td></tr>
+                ))}</tbody>
+              </table>
+            </div>
           </details>
         )}
       </div>

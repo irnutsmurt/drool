@@ -96,7 +96,7 @@ export function MetricsTab({ id, o, compact }: { id: string; o: MonHostOverview;
           </Card>
           <Card title="Filesystems">
             <ChartGroup id={id} range={range} selectors={["fs:"]} title={(_, i) => `Space used${i ? ` (${i + 1})` : ""}`} />
-            <table className="mt-4 w-full text-left text-sm">
+            <table className="rtable mt-4 w-full text-left text-sm">
               <caption className="sr-only">Filesystems now</caption>
               <thead><tr className="border-b border-line text-xs text-muted">
                 <th className="py-1 font-medium">Mount</th><th className="py-1 font-medium">Device</th><th className="py-1 font-medium">Used</th>
@@ -106,13 +106,13 @@ export function MetricsTab({ id, o, compact }: { id: string; o: MonHostOverview;
               <tbody>
                 {(st?.filesystems ?? []).map((f) => (
                   <tr key={f.mount} className="border-b border-line last:border-0">
-                    <td className="py-1 font-mono text-xs">{f.mount}</td>
-                    <td className="py-1 text-xs text-muted">{f.device} ({f.type})</td>
-                    <td className="py-1 tabular-nums">{fmtPct(f.used_percent)}</td>
-                    <td className="py-1 tabular-nums">{formatBytes(f.avail_bytes)} of {formatBytes(f.total_bytes)}</td>
-                    <td className="py-1 tabular-nums">{fmtPct(f.inodes_percent)}</td>
-                    <td className="py-1">{f.unresponsive ? "⚠ not responding" : f.read_only ? "Read-only" : "Read/write"}</td>
-                    <td className="py-1 text-right"><SubjectHealthButton hostId={id} kind="filesystem" subjectRef={f.mount} label={f.mount} /></td>
+                    <td data-primary="" className="py-1 font-mono text-xs">{f.mount}</td>
+                    <td data-label="Device" className="py-1 text-xs text-muted">{f.device} ({f.type})</td>
+                    <td data-label="Used" className="py-1 tabular-nums">{fmtPct(f.used_percent)}</td>
+                    <td data-label="Free" className="py-1 tabular-nums">{formatBytes(f.avail_bytes)} of {formatBytes(f.total_bytes)}</td>
+                    <td data-label="Inodes" className="py-1 tabular-nums">{fmtPct(f.inodes_percent)}</td>
+                    <td data-label="State" className="py-1">{f.unresponsive ? "⚠ not responding" : f.read_only ? "Read-only" : "Read/write"}</td>
+                    <td data-label="" className="py-1 text-right"><SubjectHealthButton hostId={id} kind="filesystem" subjectRef={f.mount} label={f.mount} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -121,7 +121,7 @@ export function MetricsTab({ id, o, compact }: { id: string; o: MonHostOverview;
           <Card title="Network">
             <ChartGroup id={id} range={range} selectors={phys.length ? phys.flatMap((i) => [`net.rx:${i.name}`, `net.tx:${i.name}`]) : ["net.rx:", "net.tx:"]}
               title={(k) => `Throughput${k.includes(":") ? ` · ${k.slice(k.indexOf(":") + 1)}` : ""}`} max={4} />
-            <table className="mt-4 w-full text-left text-sm">
+            <table className="rtable mt-4 w-full text-left text-sm">
               <caption className="sr-only">Interfaces now</caption>
               <thead><tr className="border-b border-line text-xs text-muted">
                 <th className="py-1 font-medium">Interface</th><th className="py-1 font-medium">State</th><th className="py-1 font-medium">Speed</th>
@@ -130,12 +130,12 @@ export function MetricsTab({ id, o, compact }: { id: string; o: MonHostOverview;
               <tbody>
                 {(st?.interfaces ?? []).filter((i) => i.kind !== "loopback").slice(0, 32).map((i) => (
                   <tr key={i.name} className="border-b border-line last:border-0">
-                    <td className="py-1 font-mono text-xs">{i.name} <span className="text-muted">({i.kind})</span></td>
-                    <td className="py-1">{i.state === "up" ? "✓ up" : i.state === "down" ? "✕ down" : i.state}</td>
-                    <td className="py-1">{i.speed_mbps ? `${i.speed_mbps} Mbit/s` : "—"}</td>
-                    <td className="py-1 tabular-nums">{fmtBitRate(i.rx_bps)}</td>
-                    <td className="py-1 tabular-nums">{fmtBitRate(i.tx_bps)}</td>
-                    <td className="py-1 tabular-nums">{i.rx_errors + i.tx_errors} / {i.rx_drops + i.tx_drops}</td>
+                    <td data-primary="" className="py-1 font-mono text-xs">{i.name} <span className="text-muted">({i.kind})</span></td>
+                    <td data-label="State" className="py-1">{i.state === "up" ? "✓ up" : i.state === "down" ? "✕ down" : i.state}</td>
+                    <td data-label="Speed" className="py-1">{i.speed_mbps ? `${i.speed_mbps} Mbit/s` : "—"}</td>
+                    <td data-label="Receive" className="py-1 tabular-nums">{fmtBitRate(i.rx_bps)}</td>
+                    <td data-label="Send" className="py-1 tabular-nums">{fmtBitRate(i.tx_bps)}</td>
+                    <td data-label="Errors / drops (total)" className="py-1 tabular-nums">{i.rx_errors + i.tx_errors} / {i.rx_drops + i.tx_drops}</td>
                   </tr>
                 ))}
               </tbody>

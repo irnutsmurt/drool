@@ -90,7 +90,7 @@ export function ServicesTab({ id, o }: { id: string; o: MonHostOverview }) {
           </div>
           {save.error && <Alert>{errorMessage(save.error)}</Alert>}
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="rtable w-full text-left text-sm">
               <caption className="sr-only">Services ({filter})</caption>
               <thead>
                 <tr className="border-b border-line text-xs text-muted">
@@ -104,22 +104,22 @@ export function ServicesTab({ id, o }: { id: string; o: MonHostOverview }) {
                 </tr>
               </thead>
               <tbody>
-                {v.units.length === 0 && <tr><td colSpan={7} className="px-2 py-6 text-center text-muted">No services match.</td></tr>}
+                {v.units.length === 0 && <tr><td colSpan={7} className="rt-empty px-2 py-6 text-center text-muted">No services match.</td></tr>}
                 {v.units.map((u) => (
                   <tr key={u.name} className="border-b border-line last:border-0">
-                    <td className="px-2 py-1.5">
+                    <td data-primary="" className="px-2 py-1.5">
                       <div className="font-mono text-xs">{u.name}</div>
                       {u.description && <div className="text-xs text-muted">{u.description}</div>}
                     </td>
-                    <td className="px-2 py-1.5"><StateBadge u={u} /> <span className="text-xs text-muted">{u.active}/{u.sub}</span></td>
-                    <td className="px-2 py-1.5 text-xs">{u.file_state || "—"}</td>
-                    <td className="px-2 py-1.5 text-xs">{u.since ? fmtTime(u.since * 1000) : "—"}</td>
-                    <td className="px-2 py-1.5 tabular-nums">{u.restarts ?? "—"}</td>
-                    <td className="px-2 py-1.5">
+                    <td data-label="State" className="px-2 py-1.5"><span><StateBadge u={u} /> <span className="text-xs text-muted">{u.active}/{u.sub}</span></span></td>
+                    <td data-label="Enabled" className="px-2 py-1.5 text-xs">{u.file_state || "—"}</td>
+                    <td data-label="Since" className="px-2 py-1.5 text-xs">{u.since ? fmtTime(u.since * 1000) : "—"}</td>
+                    <td data-label="Restarts" className="px-2 py-1.5 tabular-nums">{u.restarts ?? "—"}</td>
+                    <td data-label="Watched" className="px-2 py-1.5">
                       <Checkbox label={<span className="sr-only">Watch {u.name}</span>} checked={u.watched}
                         disabled={!can("monitoring.manage") || save.isPending} onChange={(on) => watch(u.name, on)} />
                     </td>
-                    <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                    <td data-label="" className="px-2 py-1.5 text-right whitespace-nowrap">
                       <SubjectHealthButton hostId={id} kind="service" subjectRef={u.name} label={u.name} />
                       <Button size="sm" variant="ghost" onClick={() => setHist(u.name)}>History</Button>
                       {can("jobs.execute") && (

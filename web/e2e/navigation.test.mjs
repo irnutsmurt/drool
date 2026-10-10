@@ -235,10 +235,15 @@ for (const theme of ["light", "dark"]) {
       await waitFor(page, async () => (await page.$$("table.rtable tbody tr")).length > 1, "host rows");
       const card = await page.$eval("table.rtable tbody tr td[data-label='Address']", (td) => [getComputedStyle(td, "::before").content, getComputedStyle(td.closest("table").querySelector("thead")).position]);
       assert.deepEqual(card, ['"Address"', "absolute"]);
-      // No page scrolls sideways.
-      for (const p of ["/", "/hosts", `/hosts/${ids["web-1"]}`, `/hosts/${ids["nas-01"]}/monitoring`, "/monitoring", "/alerts", "/network", "/jobs", "/jobs/new",
+      // No page scrolls sideways. (The fixture hosts' monitoring data
+      // arrives shortly after the hosts exist; their tabs need it.)
+      await waitFor(page, async () => (await api(page, "GET", "/monitoring/summary")).body?.counts?.storage > 0, "monitoring fixture", 90000);
+      for (const p of ["/", "/hosts", `/hosts/${ids["web-1"]}`, `/hosts/${ids["nas-01"]}/monitoring`,
+        ...["metrics", "services", "storage", "hardware"].map((t) => `/hosts/${ids["nas-01"]}/monitoring?tab=${t}`), "/monitoring", "/alerts", "/network", "/jobs", "/jobs/new",
         "/desired", "/firewall", "/groups", "/agents", "/settings/notifications", "/monitoring/settings"]) {
         await go(page, p);
+        // A host's monitoring tab is measured with its tables drawn, not while loading.
+        if (/tab=(metrics|services|hardware)/.test(p)) await waitFor(page, async () => !!(await page.$("#monpanel table tbody tr")), `${p} tables`);
         const w = await page.evaluate(() => {
           const wide = [...document.querySelectorAll("main *")].filter((el) => el.getBoundingClientRect().right > window.innerWidth + 1 && !el.closest(".overflow-x-auto"))
             .slice(0, 3).map((el) => `${el.tagName.toLowerCase()} "${(el.textContent || "").trim().slice(0, 50)}" right=${Math.round(el.getBoundingClientRect().right)}`);
