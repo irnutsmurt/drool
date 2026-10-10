@@ -36,6 +36,10 @@ var sealedLocations = []sealedLocation{
 		Select: `SELECT user_id, 'mfa-totp', secret_ciphertext, secret_nonce, secret_key_version,
 			'two-factor secret of ' || coalesce((SELECT username FROM users WHERE users.id = user_mfa.user_id), user_id) FROM user_mfa`,
 		Update: `UPDATE user_mfa SET secret_ciphertext = ?, secret_nonce = ?, secret_key_version = ? WHERE user_id = ?`},
+	{Table: "ssh_user_cas",
+		Select: `SELECT id, 'ssh-user-ca', key_ciphertext, key_nonce, key_version, 'SSH certificate authority ' || name
+			FROM ssh_user_cas WHERE key_ciphertext IS NOT NULL`,
+		Update: `UPDATE ssh_user_cas SET key_ciphertext = ?, key_nonce = ?, key_version = ? WHERE id = ?`},
 	{Table: "audit_sink",
 		Select: `SELECT id, 'audit-sink-header', secret_ciphertext, secret_nonce, secret_key_version, 'remote audit sink header'
 			FROM audit_sink WHERE secret_ciphertext IS NOT NULL`,

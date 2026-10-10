@@ -12,6 +12,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Table } from "@/components/ui/Table";
 import { errorMessage, formatDateTime } from "@/lib/format";
+import { SSHCertificateAuthority } from "@/components/credentials/SSHCertificateAuthority";
 
 type Mode = "generate" | "import" | "password" | "sudo_password";
 
@@ -74,6 +75,7 @@ export function CredentialsPage() {
           </div>
         </Card>
       )}
+      <SSHCertificateAuthority />
       {can("credentials.manage") && (
         <Card title="Add credential" className="mb-4 max-w-3xl">
           <form onSubmit={submit} className="space-y-4">

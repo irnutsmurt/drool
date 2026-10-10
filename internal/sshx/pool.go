@@ -38,6 +38,7 @@ type Pool struct {
 type pooled struct {
 	key      string // connection settings fingerprint
 	client   *ssh.Client
+	expires  time.Time // zero: no age limit (certificate connections have one)
 	sem      chan struct{}
 	refs     int
 	lastUsed time.Time
@@ -61,6 +62,12 @@ func (p *Pool) startReaper() {
 	p.once.Do(func() { go p.reap() })
 }
 
+// MaxCertConnAge bounds how long a connection authenticated with a
+// certificate is reused: OpenSSH checks a certificate when a connection is
+// authenticated, not afterwards, so DROOL dials (and issues) again instead
+// of keeping such a connection for ever.
+var MaxCertConnAge = time.Hour
+
 // targetKey fingerprints everything that affects the connection.
 func targetKey(t *Target) string {
 	h := sha256.New()
@@ -68,6 +75,9 @@ func targetKey(t *Target) string {
 	write(t.Address)
 	write(strconv.Itoa(t.Port))
 	write(t.User)
+	if t.Certificate != nil {
+		write("cert:" + t.CertIdentity)
+	}
 	if t.Signer != nil {
 		write(string(t.Signer.PublicKey().Marshal()))
 	}
@@ -147,12 +157,13 @@ func (p *Pool) acquire(ctx context.Context, t *Target) (*pooled, error) {
 			case <-pc.dead:
 				delete(p.conns, t.HostID)
 			default:
-				if pc.key == key {
+				if pc.key == key && (pc.expires.IsZero() || time.Now().Before(pc.expires)) {
 					pc.refs++
 					p.mu.Unlock()
 					return pc, nil
 				}
-				// Settings changed: retire the old connection once idle.
+				// Settings changed, or a certificate connection reached its
+				// age: retire the old connection once idle.
 				delete(p.conns, t.HostID)
 				go p.closeWhenIdle(pc)
 			}
@@ -213,6 +224,9 @@ func (p *Pool) dial(ctx context.Context, t *Target, key string) (*pooled, error)
 	}
 	pc := &pooled{key: key, client: c, sem: make(chan struct{}, p.maxSessions()),
 		refs: 1, lastUsed: time.Now(), dead: make(chan struct{})}
+	if t.Certificate != nil {
+		pc.expires = time.Now().Add(MaxCertConnAge)
+	}
 	if jumpPC != nil {
 		pc.jumpID = t.Via.HostID
 	}
@@ -313,7 +327,7 @@ func (p *Pool) reap() {
 				continue
 			default:
 			}
-			if pc.refs == 0 && time.Since(pc.lastUsed) > idle {
+			if pc.refs == 0 && (time.Since(pc.lastUsed) > idle || !pc.expires.IsZero() && time.Now().After(pc.expires)) {
 				delete(p.conns, id)
 				go pc.client.Close()
 				continue

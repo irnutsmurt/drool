@@ -34,6 +34,7 @@ import (
 	"drool/internal/auth"
 	"drool/internal/config"
 	"drool/internal/desired"
+	"drool/internal/driver"
 	"drool/internal/driver/sshdriver"
 	"drool/internal/engine"
 	"drool/internal/filedeploy"
@@ -48,6 +49,7 @@ import (
 	"drool/internal/poller"
 	"drool/internal/sched"
 	"drool/internal/secrets"
+	"drool/internal/sshca"
 	"drool/internal/sshx"
 	"drool/internal/store"
 	"drool/internal/store/db"
@@ -414,6 +416,12 @@ func cmdServe(path string, explicit bool) error {
 	pool := sshx.NewPool(dialer)
 	defer pool.Close()
 	inv := inventory.NewService(st, secretSvc, dialer, pool)
+	// JIT SSH (M16): hosts in certificate mode get a fresh certificate
+	// from DROOL's SSH user CA for every connection.
+	caSvc := sshca.New(sshca.Deps{Store: st, Box: box, Audit: auditW, Controller: installationName(),
+		Settings: sshca.Settings{TTL: cfg.SSHCA.CertTTL, ClockSkew: cfg.SSHCA.ClockSkew}, Log: logs.App.With("component", "ssh-ca")})
+	inv.SetCertIssuer(caSvc)
+	caSvc.SetHosts(inv, sshca.Connector{Dialer: dialer, Pool: pool})
 	arts, err := artifacts.Open(cfg.DataDir, st)
 	if err != nil {
 		return err
@@ -563,7 +571,7 @@ func cmdServe(path string, explicit bool) error {
 	// Scheduling and workflows (M13): workflow verification steps run on
 	// the controller inside a host's job; the scheduler creates ordinary
 	// jobs (and ordinary maintenance) when occurrences are due.
-	eng.SetLocal(verify.New(verify.Deps{Store: st, Monitor: mon, Log: logs.Job,
+	eng.SetLocal(localSteps{sshca: caSvc, verify: verify.New(verify.Deps{Store: st, Monitor: mon, Log: logs.Job,
 		AgentConnected: func(ctx context.Context, h db.Host) bool { return router.Decide(ctx, h).UseAgent },
 		Probe: func(ctx context.Context, hostID string) verify.Reachability {
 			out, err := inv.Probe(ctx, hostID)
@@ -572,7 +580,7 @@ func cmdServe(path string, explicit bool) error {
 			}
 			return verify.Reachability{OK: out.Status == inventory.StatusReady || out.Status == inventory.StatusUnsupported, Detail: out.Detail}
 		},
-		PollSSH: poll.Monitor}))
+		PollSSH: poll.Monitor})})
 	var desiredPaused func(jobID, kind, reason string)
 	eng.OnPause(func(jobID, kind, reason string) {
 		if kind == engine.PauseBreaker {
@@ -632,7 +640,7 @@ func cmdServe(path string, explicit bool) error {
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng,
 		Poller: poll, StaleAfter: pollCfg.StaleAfter(), Simulator: router, Files: router, Artifacts: arts,
 		Agents: agents, Router: router, WebPin: webPin(tlsRes), Firewall: fw, Network: network, Monitor: mon, Alerts: alertSvc,
-		Sched: scheduler, Desired: desiredSvc, Integrity: integrity, AuditSink: auditSink,
+		Sched: scheduler, Desired: desiredSvc, Integrity: integrity, AuditSink: auditSink, SSHCA: caSvc,
 	})
 	if err != nil {
 		return err
@@ -786,6 +794,20 @@ func artifactGC(ctx context.Context, arts *artifacts.Store, log *slog.Logger) {
 		case <-t.C:
 		}
 	}
+}
+
+// localSteps runs the controller-side job steps: workflow checks (M13)
+// and SSH certificate trust (M16).
+type localSteps struct {
+	verify *verify.Executor
+	sshca  *sshca.Service
+}
+
+func (l localSteps) Execute(ctx context.Context, hostID string, op model.Operation, out driver.OutputSink) (*driver.OpResult, error) {
+	if op.Type == model.OpSSHCATrust {
+		return l.sshca.Execute(ctx, hostID, op, out)
+	}
+	return l.verify.Execute(ctx, hostID, op, out)
 }
 
 // sessionTee forwards agent sessions and telemetry to monitoring, and

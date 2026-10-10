@@ -367,7 +367,7 @@ func VerifyBox(ctx context.Context, q db.DBTX, box *Box) (int, error) {
 // the names of hosts that had a credential.
 func DiscardAllTx(ctx context.Context, tx *sql.Tx) ([]string, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT name FROM hosts
-		WHERE ssh_credential_id IS NOT NULL OR become_credential_id IS NOT NULL ORDER BY name`)
+		WHERE ssh_credential_id IS NOT NULL OR become_credential_id IS NOT NULL OR ssh_auth = 'certificate' ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -399,6 +399,13 @@ func DiscardAllTx(ctx context.Context, tx *sql.Tx) ([]string, error) {
 		// until their secrets are entered again.
 		`UPDATE notify_destinations SET secret_ciphertext = NULL, secret_nonce = NULL, secret_key_version = NULL, enabled = 0,
 			last_error = 'secrets discarded during recovery; enter them again' WHERE secret_ciphertext IS NOT NULL`,
+		// The SSH certificate authorities' keys are gone too: hosts that
+		// signed in with certificates need a credential again (or console
+		// access, if they had none).
+		`UPDATE ssh_user_cas SET key_ciphertext = NULL, key_nonce = NULL, key_version = NULL WHERE key_ciphertext IS NOT NULL`,
+		`UPDATE hosts SET status = CASE WHEN status IN ('pending_hostkey','hostkey_mismatch','disabled') THEN status ELSE 'untested' END,
+			status_detail = 'DROOL''s SSH certificate authority key was discarded during recovery; assign a credential and switch the host back to it'
+			WHERE ssh_auth = 'certificate'`,
 		// Two-factor secrets can't be checked any more: those users sign in
 		// with their password and set up their authenticator again.
 		`DELETE FROM user_recovery_codes`,

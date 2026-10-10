@@ -139,6 +139,8 @@ func RequiredPermissions(kind string, steps []model.Operation) []auth.Permission
 			if st.FileDeploy != nil && st.FileDeploy.Elevated {
 				add(auth.PermFilesElevate)
 			}
+		case model.OpSSHCATrust:
+			add(auth.PermCredentialsManage)
 		case model.OpFirewallApply:
 			add(auth.PermFirewallWrite)
 			if f := st.FirewallApply; f != nil && (f.OverrideMgmt || f.OverrideTimeout || f.AllowDrift) {

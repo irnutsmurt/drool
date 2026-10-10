@@ -44,6 +44,21 @@ var statusWarnings = map[string]string{
 // hosts matched through groups or tags are left out; naming one explicitly
 // is an error.
 func ResolveTargets(ctx context.Context, q *db.Queries, t model.TargetSpec) ([]TargetHost, []string, error) {
+	return resolveTargets(ctx, q, t, false)
+}
+
+// ResolveTargetsFor resolves the targets of a job with these steps. Jump
+// hosts can be targeted by jobs that only change how DROOL signs in to them
+// (SSH certificate trust, M16): they are managed hosts in that one respect.
+func ResolveTargetsFor(ctx context.Context, q *db.Queries, t model.TargetSpec, steps []model.Operation) ([]TargetHost, []string, error) {
+	jumpOK := len(steps) > 0
+	for _, st := range steps {
+		jumpOK = jumpOK && st.Type == model.OpSSHCATrust
+	}
+	return resolveTargets(ctx, q, t, jumpOK)
+}
+
+func resolveTargets(ctx context.Context, q *db.Queries, t model.TargetSpec, jumpOK bool) ([]TargetHost, []string, error) {
 	hosts, err := q.ListHosts(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -59,7 +74,7 @@ func ResolveTargets(ctx context.Context, q *db.Queries, t model.TargetSpec) ([]T
 		if !ok {
 			return nil, nil, invalid("host %s not found", id)
 		}
-		if h.JumpOnly != 0 {
+		if h.JumpOnly != 0 && !jumpOK {
 			return nil, nil, invalid("%s is a jump host only and cannot be targeted", h.Name)
 		}
 		selected[id] = true
@@ -67,7 +82,7 @@ func ResolveTargets(ctx context.Context, q *db.Queries, t model.TargetSpec) ([]T
 	skippedJump := 0
 	addIndirect := func(id string) {
 		if h, ok := byID[id]; ok {
-			if h.JumpOnly != 0 {
+			if h.JumpOnly != 0 && !jumpOK {
 				skippedJump++
 				return
 			}

@@ -52,6 +52,9 @@ export function describeStep(s: Schemas["Operation"]): string {
       return `Verify services are running: ${(s.services ?? []).join(", ") || "(none named yet)"}`;
     case "verify_health":
       return `Verify health: no active ${s.policy === "no_warning" ? "Warning or Critical" : "Critical"} issues`;
+    case "ssh_ca_trust":
+      return s.action === "remove" ? "Remove trust in DROOL's SSH certificate authority"
+        : "Trust DROOL's SSH certificate authority (install in sshd, then check with a certificate on a fresh connection)";
     case "file_deploy":
       if (s.rollback_of) return s.remove ? `Roll back ${s.path} (remove it)` : `Roll back ${s.path} to its previous version`;
       return [`Deploy ${s.path}`, s.elevated ? "as root" : "", s.owner || s.group ? `owner ${s.owner ?? "keep"}:${s.group ?? "keep"}` : "",

@@ -65,20 +65,36 @@ func (s *Service) Resolve(ctx context.Context, hostID string, requirePinned bool
 
 func (s *Service) target(ctx context.Context, q *db.Queries, h db.Host, requirePinned bool) (*sshx.Target, error) {
 	t := &sshx.Target{HostID: h.ID, Name: h.Name, Address: h.ConnectAddress, Port: int(h.SshPort), User: h.SshUser}
-	if !h.SshCredentialID.Valid {
+	switch {
+	case h.SshAuth == "certificate" && !requirePinned:
+		// Scanning host keys doesn't authenticate: nothing to issue.
+	case h.SshAuth == "certificate":
+		// JIT SSH (M16): a short-lived certificate per connection, never the
+		// credential, even if one is still assigned (no silent fallback).
+		certs := s.certIssuer()
+		if certs == nil {
+			return nil, model.Errorf(model.ClassConfiguration, false, "host %s uses SSH certificates, but the certificate authority is not available", h.Name)
+		}
+		if err := certs.ForHost(ctx, h, t); err != nil {
+			return nil, &model.OpError{Class: model.ClassConfiguration, Err: err,
+				Message: fmt.Sprintf("host %s uses SSH certificates, but DROOL can't issue one: %v", h.Name, err),
+				Hint:    "Check the SSH certificate authority under Credentials, or switch the host back to its credential."}
+		}
+	case !h.SshCredentialID.Valid:
 		return nil, model.Errorf(model.ClassConfiguration, false, "host %s has no SSH credential", h.Name)
-	}
-	row, value, err := s.secrets.Reveal(ctx, q, h.SshCredentialID.String)
-	if err != nil {
-		return nil, err
-	}
-	switch row.Kind {
-	case secrets.KindSSHKey:
-		if t.Signer, err = secrets.Signer(value); err != nil {
+	default:
+		row, value, err := s.secrets.Reveal(ctx, q, h.SshCredentialID.String)
+		if err != nil {
 			return nil, err
 		}
-	default:
-		t.Password = string(value)
+		switch row.Kind {
+		case secrets.KindSSHKey:
+			if t.Signer, err = secrets.Signer(value); err != nil {
+				return nil, err
+			}
+		default:
+			t.Password = string(value)
+		}
 	}
 	pinned, err := q.GetPinnedHostKey(ctx, h.ID)
 	switch {
@@ -111,7 +127,7 @@ func (s *Service) ScanHostKeys(ctx context.Context, hostID string) ([]ssh.Public
 	if err != nil {
 		return nil, err
 	}
-	c.Target.Signer, c.Target.Password, c.Target.PinnedKey = nil, "", nil
+	c.Target.Signer, c.Target.Password, c.Target.PinnedKey, c.Target.Certificate = nil, "", nil, nil
 	return s.dialer.Scan(ctx, c.Target)
 }
 

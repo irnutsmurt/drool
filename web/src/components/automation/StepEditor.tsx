@@ -65,6 +65,8 @@ const str = (n?: number | null) => (n ? String(n) : "");
 
 /** The editable form of a saved step. */
 export function draftFromOp(op: Operation): StepDraft {
+  // Shown, not edited here (SSH certificate trust, M16).
+  if (op.type === "ssh_ca_trust") return { ...newDraft("command"), raw: op };
   const d = newDraft(op.type);
   if ("timeout_s" in op) d.timeout = str(op.timeout_s);
   if ("when" in op) d.when = op.when;

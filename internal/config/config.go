@@ -47,6 +47,20 @@ type Config struct {
 	Logging   Logging   `yaml:"logging"`
 	Agent     Agent     `yaml:"agent"`
 	Network   Network   `yaml:"network"`
+	SSHCA     SSHCA     `yaml:"ssh_ca"`
+}
+
+// SSHCA configures the certificates DROOL's SSH user certificate authority
+// issues for hosts in certificate mode (M16).
+type SSHCA struct {
+	// CertTTL: how long a certificate is valid after it is issued. It is
+	// used for one handshake right away; a short life limits what a leaked
+	// certificate is worth.
+	CertTTL time.Duration `yaml:"cert_ttl"`
+	// ClockSkew: certificates are valid from this long before the
+	// controller's time, so hosts whose clock is a little behind accept
+	// them.
+	ClockSkew time.Duration `yaml:"clock_skew"`
 }
 
 // Network configures network connectivity monitoring (M10).
@@ -181,6 +195,7 @@ func Defaults() Config {
 			ReauthWindow:           5 * time.Minute,
 		},
 		Setup: Setup{CodeTTL: time.Hour},
+		SSHCA: SSHCA{CertTTL: 10 * time.Minute, ClockSkew: 5 * time.Minute},
 		Engine: Engine{
 			GlobalConcurrency:      20,
 			PerJumpHostConcurrency: 10,
@@ -501,6 +516,12 @@ func (c Config) Validate() error {
 	}
 	if c.Auth.SessionIdleTimeout <= 0 || c.Auth.SessionAbsoluteTimeout < c.Auth.SessionIdleTimeout {
 		errs = append(errs, errors.New("auth: session timeouts must be positive and absolute >= idle"))
+	}
+	if c.SSHCA.CertTTL < time.Minute || c.SSHCA.CertTTL > time.Hour {
+		errs = append(errs, fmt.Errorf("ssh_ca.cert_ttl must be between 1m and 1h (got %s)", c.SSHCA.CertTTL))
+	}
+	if c.SSHCA.ClockSkew < 0 || c.SSHCA.ClockSkew > 30*time.Minute {
+		errs = append(errs, fmt.Errorf("ssh_ca.clock_skew must be between 0 and 30m (got %s)", c.SSHCA.ClockSkew))
 	}
 	if c.Auth.ReauthWindow < time.Minute || c.Auth.ReauthWindow > time.Hour {
 		errs = append(errs, fmt.Errorf("auth.reauth_window must be between 1m and 1h (got %s)", c.Auth.ReauthWindow))

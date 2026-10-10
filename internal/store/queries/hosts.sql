@@ -59,3 +59,10 @@ DELETE FROM host_addresses WHERE host_id = ? AND source = 'configured';
 
 -- name: ListHostAddresses :many
 SELECT * FROM host_addresses WHERE host_id = ? ORDER BY family, address;
+
+-- name: SetHostSSHAuth :exec
+-- How DROOL authenticates over SSH: 'credential' or 'certificate' (M16).
+UPDATE hosts SET ssh_auth = ?, ssh_principal = ?, updated_at = ? WHERE id = ?;
+
+-- name: CountActiveSSHCA :one
+SELECT count(*) FROM ssh_user_cas WHERE state = 'active' AND key_ciphertext IS NOT NULL;

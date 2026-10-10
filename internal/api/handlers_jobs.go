@@ -177,7 +177,7 @@ func (s *Server) handlePreviewJob(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, p)
 		return
 	}
-	hosts, warnings, err := engine.ResolveTargets(r.Context(), s.d.Store.R, req.Targets)
+	hosts, warnings, err := engine.ResolveTargetsFor(r.Context(), s.d.Store.R, req.Targets, req.Steps)
 	if err != nil {
 		writeProblem(w, r, s.jobError(err))
 		return
@@ -287,6 +287,14 @@ func (s *Server) submitJobWith(w http.ResponseWriter, r *http.Request, spec mode
 					}
 				}
 			}
+		}
+	}
+	// Changing how hosts trust DROOL's SSH certificate authority changes
+	// how DROOL signs in to them: a credentials permission (M16).
+	for _, st := range spec.Steps {
+		if st.Type == model.OpSSHCATrust && !principalFrom(ctx).Can(auth.PermCredentialsManage) {
+			writeProblem(w, r, errForbidden("SSH certificate trust steps require credentials.manage"))
+			return
 		}
 	}
 	// Firewall transactions need firewall permissions whichever route

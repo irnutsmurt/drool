@@ -459,24 +459,45 @@ func (c *controller) login() error {
 }
 
 // do sends a JSON request; out may be nil. Non-2xx statuses are returned,
-// not errors.
+// not errors. A *json.RawMessage out receives the body whatever the status.
+// High-impact actions need a recent re-authentication (M16; 3 s in the
+// test controller): like the UI, do confirms with the password and repeats.
 func (c *controller) do(method, path string, body, out any) (int, error) {
-	var rd io.Reader
-	if body != nil {
-		b, _ := json.Marshal(body)
-		rd = bytes.NewReader(b)
+	send := func() (*http.Response, []byte, error) {
+		var rd io.Reader
+		if body != nil {
+			b, _ := json.Marshal(body)
+			rd = bytes.NewReader(b)
+		}
+		req, _ := http.NewRequestWithContext(context.Background(), method, c.base()+path, rd)
+		req.Header.Set("Content-Type", "application/json")
+		if c.csrf != "" {
+			req.Header.Set("X-DROOL-CSRF", c.csrf)
+		}
+		r, err := c.client.Do(req)
+		if err != nil {
+			return nil, nil, err
+		}
+		defer r.Body.Close()
+		data, _ := io.ReadAll(r.Body)
+		return r, data, nil
 	}
-	req, _ := http.NewRequestWithContext(context.Background(), method, c.base()+path, rd)
-	req.Header.Set("Content-Type", "application/json")
-	if c.csrf != "" {
-		req.Header.Set("X-DROOL-CSRF", c.csrf)
-	}
-	r, err := c.client.Do(req)
+	r, data, err := send()
 	if err != nil {
 		return 0, err
 	}
-	defer r.Body.Close()
-	data, _ := io.ReadAll(r.Body)
+	if r.StatusCode == http.StatusForbidden && path != "/api/v1/auth/reauth" && strings.Contains(string(data), `"code":"reauth_required"`) {
+		if st, err := c.do("POST", "/api/v1/auth/reauth", map[string]string{"password": adminPassword}, nil); err != nil || st != 200 {
+			return st, fmt.Errorf("re-authenticate: %d %v", st, err)
+		}
+		if r, data, err = send(); err != nil {
+			return 0, err
+		}
+	}
+	if raw, ok := out.(*json.RawMessage); ok {
+		*raw = data
+		return r.StatusCode, nil
+	}
 	if out != nil && len(data) > 0 && r.StatusCode < 300 {
 		if err := json.Unmarshal(data, out); err != nil {
 			return r.StatusCode, fmt.Errorf("decode %s %s: %v: %s", method, path, err, data)
@@ -504,8 +525,6 @@ func (c *controller) must(t *testing.T, method, path string, body, out any) {
 		t.Fatal(err)
 	}
 	if st >= 300 {
-		var p problem
-		c.do(method, path, body, &p) // not repeated for state-changing calls below
 		t.Fatalf("%s %s: HTTP %d %s", method, path, st, raw)
 	}
 	if out != nil && len(raw) > 0 {

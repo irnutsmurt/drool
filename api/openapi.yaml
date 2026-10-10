@@ -652,6 +652,128 @@ paths:
         '204': { description: Deleted. }
         '404': { $ref: '#/components/responses/Problem' }
         '409': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/ssh-auth:
+    get:
+      operationId: getHostSSHAuth
+      tags: [hosts]
+      description: 'How DROOL signs in to the host over SSH, and what it knows about the host''s trust in each SSH certificate authority. Requires `hosts.read`.'
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Sign-in method.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HostSSHAuth' }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      operationId: setHostSSHAuth
+      tags: [hosts]
+      description: >-
+        Switch to certificates only after a brand-new connection that offered nothing but a certificate from the active
+        authority (with the given principal) worked just now (409 certificate_refused otherwise; nothing changes). Back to
+        the credential only when one is assigned. Requires `credentials.manage` and recent re-authentication.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              additionalProperties: false
+              properties:
+                mode: { type: string, enum: [certificate, credential] }
+                principal: { type: string, description: 'The principal certificates name (AuthorizedPrincipalsFile setups); empty means the SSH user.' }
+      responses:
+        '200':
+          description: Sign-in method.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HostSSHAuth' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /ssh-ca:
+    get:
+      operationId: getSSHCA
+      tags: [credentials]
+      description: 'DROOL''s SSH user certificate authorities (never their private keys). Requires `credentials.use`.'
+      responses:
+        '200':
+          description: Authorities.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SSHCAState' }
+    post:
+      operationId: createSSHCA
+      tags: [credentials]
+      description: 'Create the first authority (it becomes active). 409 if one exists: rotate instead. Requires `credentials.manage` and recent re-authentication.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SSHCANameRequest' }
+      responses:
+        '200':
+          description: Authorities.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SSHCAState' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /ssh-ca/rotate:
+    post:
+      operationId: rotateSSHCA
+      tags: [credentials]
+      description: 'Introduce a new authority (state next): hosts are made to trust it with the trust step while the current one keeps issuing. Requires `credentials.manage` and recent re-authentication.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SSHCANameRequest' }
+      responses:
+        '200':
+          description: Authorities.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SSHCAState' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /ssh-ca/{id}/activate:
+    post:
+      operationId: activateSSHCA
+      tags: [credentials]
+      description: 'Switch issuance to the introduced authority. Refused (409) until every host in certificate mode accepted it on a fresh connection. The old one stays trusted (previous) until retired. Requires `credentials.manage` and recent re-authentication.'
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Authorities.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SSHCAState' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /ssh-ca/{id}/retire:
+    post:
+      operationId: retireSSHCA
+      tags: [credentials]
+      description: 'Destroy an authority''s private key (previous, or an abandoned next). The active authority is never retired. Requires `credentials.manage` and recent re-authentication.'
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Authorities.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SSHCAState' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
   /hosts/{id}/hostkeys:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string } }
@@ -3981,7 +4103,7 @@ components:
       type: object
       required: [id, name, description, address, port, user, credential_id, become_method, become_credential_id,
                  needs_pty, jump_only, via_host_id, status, status_detail, last_probe_at, tags, group_ids,
-                 pinned_key, facts, health, management, created_at, updated_at]
+                 pinned_key, facts, health, management, ssh_auth, ssh_principal, created_at, updated_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -4014,6 +4136,8 @@ components:
             - $ref: '#/components/schemas/Health'
             - type: 'null'
         management: { $ref: '#/components/schemas/Management' }
+        ssh_auth: { type: string, enum: [credential, certificate], description: 'How DROOL signs in over SSH: the credential, or short-lived certificates from its SSH certificate authority (M16).' }
+        ssh_principal: { type: string, description: The principal certificates name; empty means the SSH user. }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 
@@ -4035,6 +4159,8 @@ components:
         via_host_id: { type: [string, 'null'], description: Jump host id; empty or null for direct }
         tags: { type: array, items: { type: string } }
         group_ids: { type: array, items: { type: string } }
+        ssh_auth: { type: string, enum: [credential, certificate], description: 'Create only: certificate for a host that already trusts DROOL''s SSH certificate authority (then no credential is needed). Existing hosts switch with PUT /hosts/{id}/ssh-auth.' }
+        ssh_principal: { type: string, description: Create only. }
 
     ProbeStep:
       type: object
@@ -4087,6 +4213,7 @@ components:
         - $ref: '#/components/schemas/VerifyHostOp'
         - $ref: '#/components/schemas/VerifyServicesOp'
         - $ref: '#/components/schemas/VerifyHealthOp'
+        - $ref: '#/components/schemas/SSHCATrustOp'
       discriminator:
         propertyName: type
         mapping:
@@ -4101,6 +4228,74 @@ components:
           verify_host: '#/components/schemas/VerifyHostOp'
           verify_services: '#/components/schemas/VerifyServicesOp'
           verify_health: '#/components/schemas/VerifyHealthOp'
+          ssh_ca_trust: '#/components/schemas/SSHCATrustOp'
+
+    SSHCATrustOp:
+      type: object
+      description: >-
+        Controller-side step (M16): makes the host trust DROOL's SSH certificate authorities (every one that isn't retired)
+        through TrustedUserCAKeys in an sshd_config.d file, checks it with sshd -t and sshd -T, reloads sshd when something
+        changed, then proves each issuing authority with a brand-new connection that offers only a certificate. Refuses
+        hosts that already trust another CA file. "remove" takes DROOL's files away (refused while the host signs in with
+        certificates). Requires `credentials.manage`.
+      required: [type]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [ssh_ca_trust] }
+        action: { type: string, enum: [install, remove], default: install }
+
+    SSHCA:
+      type: object
+      required: [id, name, public_key, fingerprint, state, has_key, created_at, activated_at, retired_at, issued]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        public_key: { type: string, description: The authorized_keys line hosts trust. }
+        fingerprint: { type: string }
+        state: { type: string, enum: [active, next, previous, retired] }
+        has_key: { type: boolean, description: False once retired, or after the key was discarded in a recovery. }
+        created_at: { type: string, format: date-time }
+        activated_at: { type: [string, 'null'], format: date-time }
+        retired_at: { type: [string, 'null'], format: date-time }
+        issued: { type: integer, description: Certificates issued so far. }
+
+    SSHCAState:
+      type: object
+      required: [authorities, certificate_hosts, certificate_only_hosts, ttl_s, clock_skew_s, unverified]
+      properties:
+        authorities: { type: array, items: { $ref: '#/components/schemas/SSHCA' } }
+        certificate_hosts: { type: integer }
+        certificate_only_hosts: { type: integer, description: Hosts in certificate mode with no credential left (the CA is their only way in). }
+        ttl_s: { type: integer }
+        clock_skew_s: { type: integer }
+        unverified: { type: array, items: { type: string }, description: During a rotation, hosts in certificate mode that haven't accepted the new authority yet. }
+
+    SSHCANameRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 64 }
+
+    HostSSHAuth:
+      type: object
+      required: [mode, principal, credential_assigned, trust]
+      properties:
+        mode: { type: string, enum: [credential, certificate] }
+        principal: { type: string }
+        credential_assigned: { type: boolean }
+        trust:
+          type: array
+          items:
+            type: object
+            required: [ca_id, ca_name, ca_state, installed_at, verified_at, failed_at]
+            properties:
+              ca_id: { type: string }
+              ca_name: { type: string }
+              ca_state: { type: string, enum: [active, next, previous, retired] }
+              installed_at: { type: [string, 'null'], format: date-time }
+              verified_at: { type: [string, 'null'], format: date-time }
+              failed_at: { type: [string, 'null'], format: date-time }
+              error: { type: string }
 
     WaitOp:
       type: object

@@ -10,6 +10,17 @@ import (
 	"database/sql"
 )
 
+const countActiveSSHCA = `-- name: CountActiveSSHCA :one
+SELECT count(*) FROM ssh_user_cas WHERE state = 'active' AND key_ciphertext IS NOT NULL
+`
+
+func (q *Queries) CountActiveSSHCA(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countActiveSSHCA)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteConfiguredAddresses = `-- name: DeleteConfiguredAddresses :exec
 DELETE FROM host_addresses WHERE host_id = ? AND source = 'configured'
 `
@@ -47,7 +58,7 @@ func (q *Queries) DeleteHostTags(ctx context.Context, hostID string) error {
 }
 
 const getHost = `-- name: GetHost :one
-SELECT id, name, description, connect_address, management_method, ssh_port, ssh_user, ssh_credential_id, become_method, become_credential_id, ssh_needs_pty, jump_only, status, status_detail, last_probe_at, created_at, updated_at, management_fallback, ssh_configured, requested_caps_json FROM hosts WHERE id = ?
+SELECT id, name, description, connect_address, management_method, ssh_port, ssh_user, ssh_credential_id, become_method, become_credential_id, ssh_needs_pty, jump_only, status, status_detail, last_probe_at, created_at, updated_at, management_fallback, ssh_configured, requested_caps_json, ssh_auth, ssh_principal FROM hosts WHERE id = ?
 `
 
 func (q *Queries) GetHost(ctx context.Context, id string) (Host, error) {
@@ -74,6 +85,8 @@ func (q *Queries) GetHost(ctx context.Context, id string) (Host, error) {
 		&i.ManagementFallback,
 		&i.SshConfigured,
 		&i.RequestedCapsJson,
+		&i.SshAuth,
+		&i.SshPrincipal,
 	)
 	return i, err
 }
@@ -250,7 +263,7 @@ func (q *Queries) ListHostTags(ctx context.Context) ([]HostTag, error) {
 }
 
 const listHosts = `-- name: ListHosts :many
-SELECT id, name, description, connect_address, management_method, ssh_port, ssh_user, ssh_credential_id, become_method, become_credential_id, ssh_needs_pty, jump_only, status, status_detail, last_probe_at, created_at, updated_at, management_fallback, ssh_configured, requested_caps_json FROM hosts ORDER BY name
+SELECT id, name, description, connect_address, management_method, ssh_port, ssh_user, ssh_credential_id, become_method, become_credential_id, ssh_needs_pty, jump_only, status, status_detail, last_probe_at, created_at, updated_at, management_fallback, ssh_configured, requested_caps_json, ssh_auth, ssh_principal FROM hosts ORDER BY name
 `
 
 func (q *Queries) ListHosts(ctx context.Context) ([]Host, error) {
@@ -283,6 +296,8 @@ func (q *Queries) ListHosts(ctx context.Context) ([]Host, error) {
 			&i.ManagementFallback,
 			&i.SshConfigured,
 			&i.RequestedCapsJson,
+			&i.SshAuth,
+			&i.SshPrincipal,
 		); err != nil {
 			return nil, err
 		}
@@ -354,6 +369,28 @@ func (q *Queries) ListTagsForHost(ctx context.Context, hostID string) ([]string,
 		return nil, err
 	}
 	return items, nil
+}
+
+const setHostSSHAuth = `-- name: SetHostSSHAuth :exec
+UPDATE hosts SET ssh_auth = ?, ssh_principal = ?, updated_at = ? WHERE id = ?
+`
+
+type SetHostSSHAuthParams struct {
+	SshAuth      string
+	SshPrincipal string
+	UpdatedAt    int64
+	ID           string
+}
+
+// How DROOL authenticates over SSH: 'credential' or 'certificate' (M16).
+func (q *Queries) SetHostSSHAuth(ctx context.Context, arg SetHostSSHAuthParams) error {
+	_, err := q.db.ExecContext(ctx, setHostSSHAuth,
+		arg.SshAuth,
+		arg.SshPrincipal,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
 }
 
 const updateHost = `-- name: UpdateHost :exec

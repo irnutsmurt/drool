@@ -44,6 +44,8 @@ type Operation struct {
 	VerifyHost     *VerifyHostOp
 	VerifyServices *VerifyServicesOp
 	VerifyHealth   *VerifyHealthOp
+	// Controller-side SSH certificate authority trust (M16).
+	SSHCATrust *SSHCATrustOp
 }
 
 // CommandOp runs a single shell command line.
@@ -142,6 +144,11 @@ func (o Operation) MarshalJSON() ([]byte, error) {
 			Type string `json:"type"`
 			*VerifyHealthOp
 		}{o.Type, o.VerifyHealth}
+	case OpSSHCATrust:
+		body = struct {
+			Type string `json:"type"`
+			*SSHCATrustOp
+		}{o.Type, o.SSHCATrust}
 	default:
 		return nil, fmt.Errorf("unknown operation type %q", o.Type)
 	}
@@ -208,10 +215,13 @@ func (o *Operation) UnmarshalJSON(data []byte) error {
 	case OpVerifyHealth:
 		o.VerifyHealth = &VerifyHealthOp{}
 		return strict(o.VerifyHealth)
+	case OpSSHCATrust:
+		o.SSHCATrust = &SSHCATrustOp{}
+		return strict(o.SSHCATrust)
 	case "":
 		return errors.New("operation type is required")
 	default:
-		return fmt.Errorf("unknown operation type %q (supported: command, script, package, system_update, service, reboot, file_deploy, firewall_apply, wait, verify_host, verify_services, verify_health)", head.Type)
+		return fmt.Errorf("unknown operation type %q (supported: command, script, package, system_update, service, reboot, file_deploy, firewall_apply, wait, verify_host, verify_services, verify_health, ssh_ca_trust)", head.Type)
 	}
 }
 
@@ -271,6 +281,8 @@ func (o *Operation) Normalize() error {
 		return o.VerifyServices.normalize()
 	case OpVerifyHealth:
 		return o.VerifyHealth.normalize()
+	case OpSSHCATrust:
+		return o.SSHCATrust.normalize()
 	}
 	return fmt.Errorf("unknown operation type %q", o.Type)
 }
@@ -336,6 +348,10 @@ func (o Operation) Meta() Meta {
 		return Meta{Lock: LockShared, Idempotent: true, TimeoutS: o.VerifyServices.TimeoutS + 180}
 	case OpVerifyHealth:
 		return Meta{Lock: LockShared, Idempotent: true, TimeoutS: o.VerifyHealth.TimeoutS + 180}
+	case OpSSHCATrust:
+		// Writing the same trust again changes nothing; sshd is reloaded
+		// only when a file changed.
+		return Meta{Lock: LockExclusive, Idempotent: true, Become: true, TimeoutS: 300}
 	}
 	return Meta{Lock: LockExclusive}
 }
@@ -407,6 +423,11 @@ func (o Operation) Summary() string {
 			return "Verify health: no Warning or Critical issues"
 		}
 		return "Verify health: no Critical issues"
+	case OpSSHCATrust:
+		if o.SSHCATrust.Action == "remove" {
+			return "Remove trust in DROOL's SSH certificate authority"
+		}
+		return "Trust DROOL's SSH certificate authority"
 	}
 	return o.Type
 }

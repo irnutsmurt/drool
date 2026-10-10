@@ -16,6 +16,7 @@ import { ManagedFilesCard } from "@/components/files/ManagedFilesCard";
 import { DesiredStateCard } from "@/components/desired/DesiredStateCard";
 import { useDesiredHost } from "@/components/desired/queries";
 import { ManagementCard } from "@/components/agents/ManagementCard";
+import { SSHSignIn } from "@/components/hosts/SSHSignIn";
 import { useHostAgent } from "@/components/agents/queries";
 import { HostFirewallSummary } from "@/components/firewall/HostFirewall";
 import { useFwHost } from "@/components/firewall/queries";
@@ -109,7 +110,7 @@ export function HostDetailPage() {
   const connection = sshHost && (
     <dl className="grid grid-cols-[minmax(7rem,9rem)_1fr] gap-y-1.5 text-sm">
       <dt className="text-muted">SSH</dt><dd className="min-w-0 break-all"><span className="font-mono text-xs">{h.user}@{h.address}:{h.port}</span></dd>
-      <dt className="text-muted">Credential</dt><dd>{credName(h.credential_id) ?? "—"}</dd>
+      <dt className="text-muted">Credential</dt><dd>{credName(h.credential_id) || "—"}{h.ssh_auth === "certificate" && h.credential_id && <span className="text-muted"> (kept as a way back; DROOL signs in with certificates)</span>}</dd>
       <dt className="text-muted">Privilege</dt>
       <dd>{h.become_method === "sudo" ? (h.become_credential_id ? `sudo (password: ${credName(h.become_credential_id)})` : "passwordless sudo") : "none"}</dd>
       <dt className="text-muted">Connect through</dt>
@@ -221,11 +222,13 @@ export function HostDetailPage() {
           {managed ? (
             <ManagementCard host={h}>
               {connection && <div className="mt-3 border-t border-line pt-3">{connection}</div>}
+              {sshHost && <SSHSignIn host={h} />}
               {membership}
             </ManagementCard>
           ) : (
             <Card title="Connection">
               {connection}
+              {sshHost && <SSHSignIn host={h} />}
               {membership}
             </Card>
           )}

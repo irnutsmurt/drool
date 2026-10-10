@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"drool/internal/sshca"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -75,6 +76,7 @@ type harness struct {
 	// clock shifts the auth service's time (re-authentication windows,
 	// TOTP codes); integrity and sink are the audit chain services (M16).
 	clock     *atomic.Int64
+	sshca     *sshca.Service
 	integrity *audit.Integrity
 	sink      *audit.Sink
 	auditW    *audit.Writer
@@ -116,6 +118,10 @@ func newHarness(t *testing.T) *harness {
 	pool := sshx.NewPool(dialer)
 	t.Cleanup(pool.Close)
 	inv := inventory.NewService(st, secretSvc, dialer, pool)
+	caSvc := sshca.New(sshca.Deps{Store: st, Box: box, Audit: auditW, Controller: "test", Settings: sshca.DefaultSettings,
+		Now: func() time.Time { return time.Now().Add(time.Duration(clock.Load())) }})
+	inv.SetCertIssuer(caSvc)
+	caSvc.SetHosts(inv, sshca.Connector{Dialer: dialer, Pool: pool})
 	arts, err := artifacts.Open(t.TempDir(), st)
 	if err != nil {
 		t.Fatal(err)
@@ -149,6 +155,7 @@ func newHarness(t *testing.T) *harness {
 	if err := eng.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	eng.SetLocal(caSvc) // SSH certificate trust steps (sched tests install their own)
 	mon := monsvc.New(monsvc.Deps{Store: st, Agents: agents, Inventory: inv, Engine: eng, Audit: auditW, Log: logs.App})
 	agents.SetMonitorHooks(mon)
 	alertSvc := alerts.New(alerts.Deps{Store: st, Box: box, Audit: auditW, Log: logs.App, Sender: testSender,
@@ -170,7 +177,7 @@ func newHarness(t *testing.T) *harness {
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng, Simulator: router, Files: router, Artifacts: arts,
 		Agents: agents, Router: router, Firewall: fw, Network: network, Monitor: mon, Alerts: alertSvc, Sched: schedSvc, Desired: desiredSvc,
-		Integrity: integrity, AuditSink: auditSink,
+		Integrity: integrity, AuditSink: auditSink, SSHCA: caSvc,
 		UI: fstest.MapFS{
 			"index.html":    {Data: []byte("<!doctype html><title>ui</title>")},
 			"assets/app.js": {Data: []byte("console.log(1)")},
@@ -185,7 +192,7 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(ts.Close)
 	return &harness{t: t, srv: srv, ts: ts, auth: authSvc, st: st, eng: eng, agents: agents, pki: pki, router: router,
 		fw: fw, fwSSH: fwSSH, fwFake: fwFake, net: network, geoDir: geoDir, mon: mon, alerts: alertSvc, box: box, sched: schedSvc,
-		desired: desiredSvc, clock: clock, integrity: integrity, sink: auditSink, auditW: auditW, dataDir: dataDir}
+		desired: desiredSvc, clock: clock, sshca: caSvc, integrity: integrity, sink: auditSink, auditW: auditW, dataDir: dataDir}
 }
 
 func (h *harness) mkUser(name, role string) {

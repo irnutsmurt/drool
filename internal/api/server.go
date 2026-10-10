@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"drool/internal/agentsvc"
 	"drool/internal/alerts"
 	"drool/internal/artifacts"
@@ -15,6 +16,7 @@ import (
 	"drool/internal/monitor/monsvc"
 	"drool/internal/netmon/netsvc"
 	"drool/internal/sched"
+	"drool/internal/sshca"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -67,6 +69,7 @@ type Deps struct {
 	Desired   *desired.Service  // desired state (M14); nil disables its routes
 	Artifacts *artifacts.Store  // deployment artifacts
 	Integrity *audit.Integrity  // audit chain checks (M16); nil disables their routes
+	SSHCA     *sshca.Service    // SSH user certificate authority (M16); nil disables its routes
 	AuditSink *audit.Sink       // remote audit copy (M16); nil disables its routes
 	// StaleAfter is how old a status check may be before it is shown as stale.
 	StaleAfter time.Duration
@@ -156,6 +159,13 @@ func (s *Server) routes() []route {
 		{method: "GET", path: APIPrefix + "/secrets", auth: authed, perm: auth.PermCredentialsUse, h: s.handleListSecrets},
 		{method: "POST", path: APIPrefix + "/secrets", auth: authed, perm: auth.PermCredentialsManage, h: s.handleCreateSecret},
 		{method: "GET", path: APIPrefix + "/secrets/controller-ssh-key", auth: authed, perm: auth.PermHostsRead, h: s.handleControllerKey},
+		{method: "GET", path: APIPrefix + "/ssh-ca", auth: authed, perm: auth.PermCredentialsUse, h: s.handleGetSSHCA},
+		{method: "POST", path: APIPrefix + "/ssh-ca", auth: authed, perm: auth.PermCredentialsManage, reauth: true, h: s.handleCreateSSHCA},
+		{method: "POST", path: APIPrefix + "/ssh-ca/rotate", auth: authed, perm: auth.PermCredentialsManage, reauth: true, h: s.handleRotateSSHCA},
+		{method: "POST", path: APIPrefix + "/ssh-ca/{id}/activate", auth: authed, perm: auth.PermCredentialsManage, reauth: true, h: s.handleActivateSSHCA},
+		{method: "POST", path: APIPrefix + "/ssh-ca/{id}/retire", auth: authed, perm: auth.PermCredentialsManage, reauth: true, h: s.handleRetireSSHCA},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/ssh-auth", auth: authed, perm: auth.PermHostsRead, h: s.handleGetHostSSHAuth},
+		{method: "PUT", path: APIPrefix + "/hosts/{id}/ssh-auth", auth: authed, perm: auth.PermCredentialsManage, reauth: true, h: s.handleSetHostSSHAuth},
 		{method: "GET", path: APIPrefix + "/secrets/{id}", auth: authed, perm: auth.PermCredentialsUse, h: s.handleGetSecret},
 		{method: "PATCH", path: APIPrefix + "/secrets/{id}", auth: authed, perm: auth.PermCredentialsManage, h: s.handleUpdateSecret},
 		{method: "DELETE", path: APIPrefix + "/secrets/{id}", auth: authed, perm: auth.PermCredentialsManage, h: s.handleDeleteSecret},
@@ -556,6 +566,25 @@ func (s *Server) inTxAudited(ctx context.Context, fn func(q *db.Queries) (audit.
 	var emit func()
 	err := s.d.Store.InTx(ctx, func(q *db.Queries) error {
 		ev, err := fn(q)
+		if err != nil {
+			return err
+		}
+		emit, err = s.d.Audit.RecordTx(ctx, q, ev)
+		return err
+	})
+	if err == nil {
+		emit()
+	}
+	return err
+}
+
+// inRawTxAudited is inTxAudited for changes that use raw SQL: fn gets the
+// transaction itself and the query set over it.
+func (s *Server) inRawTxAudited(ctx context.Context, fn func(tx *sql.Tx, q *db.Queries) (audit.Event, error)) error {
+	var emit func()
+	err := s.d.Store.InRawTx(ctx, func(tx *sql.Tx) error {
+		q := db.New(tx)
+		ev, err := fn(tx, q)
 		if err != nil {
 			return err
 		}

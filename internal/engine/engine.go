@@ -311,7 +311,7 @@ func (e *Engine) Submit(ctx context.Context, q *db.Queries, spec model.JobSpec, 
 			return nil, err
 		}
 	}
-	hosts, _, err := ResolveTargets(ctx, q, spec.Targets)
+	hosts, _, err := ResolveTargetsFor(ctx, q, spec.Targets, spec.Steps)
 	if err != nil {
 		return nil, err
 	}

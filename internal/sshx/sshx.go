@@ -34,6 +34,19 @@ type Target struct {
 	Signer   ssh.Signer // key authentication (preferred)
 	Password string     // password authentication
 
+	// Certificate authenticates with a short-lived OpenSSH user
+	// certificate instead (JIT SSH, M16): it is called once per connection,
+	// during the handshake, and returns a signer over a fresh key whose
+	// certificate the CA just issued. The key exists only in memory and
+	// only as long as the handshake needs it. CertIdentity names what the
+	// certificate stands for (CA and principal), so pooled connections are
+	// keyed by it rather than by the throwaway key.
+	Certificate  func(ctx context.Context) (ssh.Signer, error)
+	CertIdentity string
+	// CertHint explains, when a host refuses the certificate, what it has
+	// to accept (CA, principal, validity window).
+	CertHint string
+
 	// PinnedKey must match the host's key. Nil is only valid for Scan.
 	PinnedKey ssh.PublicKey
 
@@ -104,6 +117,13 @@ func (c *Client) Close() error {
 	return err
 }
 
+// certIssueError: DROOL couldn't issue the certificate (no usable CA): a
+// configuration problem on DROOL's side, not the host refusing it.
+type certIssueError struct{ err error }
+
+func (e *certIssueError) Error() string { return "issue SSH certificate: " + e.err.Error() }
+func (e *certIssueError) Unwrap() error { return e.err }
+
 // HostKeyMismatchError means the presented key differs from the pinned one.
 type HostKeyMismatchError struct {
 	Host      string
@@ -128,8 +148,19 @@ func HostKeyAlgorithms(keyType string) []string {
 	}
 }
 
-func clientConfig(t *Target, hostKeyCB ssh.HostKeyCallback, algos []string, timeout time.Duration) *ssh.ClientConfig {
+func clientConfig(ctx context.Context, t *Target, hostKeyCB ssh.HostKeyCallback, algos []string, timeout time.Duration) *ssh.ClientConfig {
 	var auth []ssh.AuthMethod
+	if t.Certificate != nil {
+		// Issued when the server asks, never before: a certificate that is
+		// minted is used straight away.
+		auth = append(auth, ssh.PublicKeysCallback(func() ([]ssh.Signer, error) {
+			s, err := t.Certificate(ctx)
+			if err != nil {
+				return nil, &certIssueError{err}
+			}
+			return []ssh.Signer{s}, nil
+		}))
+	}
 	if t.Signer != nil {
 		auth = append(auth, ssh.PublicKeys(t.Signer))
 	}
@@ -223,7 +254,7 @@ func (d *Dialer) dialOne(ctx context.Context, t *Target, jump *ssh.Client) (*ssh
 	if t.PinnedKey != nil {
 		algos = HostKeyAlgorithms(t.PinnedKey.Type())
 	}
-	c, err := d.handshake(conn, t, clientConfig(t, pinnedCallback(t), algos, d.handshakeTimeout()))
+	c, err := d.handshake(conn, t, clientConfig(ctx, t, pinnedCallback(t), algos, d.handshakeTimeout()))
 	if err != nil {
 		return nil, classify(t, err)
 	}
@@ -333,9 +364,19 @@ func classify(t *Target, err error) error {
 		return &model.OpError{Class: model.ClassHostKey, Err: err, Message: mm.Error(),
 			Hint: "If the host was reinstalled or its keys were rotated, check the new fingerprint on the host itself (ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub) and approve it on the host page. Otherwise treat this as a possible attack: DROOL will not connect until a key is approved."}
 	}
+	var ce *certIssueError
+	if errors.As(err, &ce) {
+		return &model.OpError{Class: model.ClassConfiguration, Err: err,
+			Message: fmt.Sprintf("DROOL couldn't issue an SSH certificate for %s: %v", t.label(), ce.err),
+			Hint:    "Check the SSH certificate authority under Credentials. A host in certificate mode is never reached with another key automatically."}
+	}
 	msg := err.Error()
 	var ne net.Error
 	switch {
+	case strings.Contains(msg, "unable to authenticate") && t.Certificate != nil:
+		return &model.OpError{Class: model.ClassAuthentication, Err: err,
+			Message: fmt.Sprintf("%s refused DROOL's SSH certificate for %q", t.label(), t.User),
+			Hint:    "The host must trust DROOL's certificate authority (TrustedUserCAKeys) and accept the certificate for this user. " + t.CertHint}
 	case strings.Contains(msg, "unable to authenticate"):
 		return &model.OpError{Class: model.ClassAuthentication, Err: err,
 			Message: fmt.Sprintf("authentication as %q failed on %s", t.User, t.label()),

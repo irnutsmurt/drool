@@ -615,6 +615,8 @@ type Host struct {
 	ManagementFallback string
 	SshConfigured      int64
 	RequestedCapsJson  string
+	SshAuth            string
+	SshPrincipal       string
 }
 
 type HostAddress struct {
@@ -1092,6 +1094,15 @@ type SetupCode struct {
 	ExpiresAt sql.NullInt64
 }
 
+type SshCaHostTrust struct {
+	HostID      string
+	CaID        string
+	InstalledAt sql.NullInt64
+	VerifiedAt  sql.NullInt64
+	FailedAt    sql.NullInt64
+	Error       string
+}
+
 type SshHostKey struct {
 	ID                string
 	HostID            string
@@ -1103,6 +1114,22 @@ type SshHostKey struct {
 	LastSeenAt        int64
 	DecidedBy         sql.NullString
 	DecidedAt         sql.NullInt64
+}
+
+type SshUserCa struct {
+	ID            string
+	Name          string
+	PublicKey     string
+	Fingerprint   string
+	KeyCiphertext []byte
+	KeyNonce      []byte
+	KeyVersion    sql.NullInt64
+	State         string
+	NextSerial    int64
+	CreatedAt     int64
+	CreatedBy     sql.NullString
+	ActivatedAt   sql.NullInt64
+	RetiredAt     sql.NullInt64
 }
 
 type StateVersion struct {

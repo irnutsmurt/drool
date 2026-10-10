@@ -51,8 +51,12 @@ type hostJSON struct {
 	Facts              *factsSummaryJSON `json:"facts"`
 	Health             *healthJSON       `json:"health"`
 	Management         *managementJSON   `json:"management"`
-	CreatedAt          string            `json:"created_at"`
-	UpdatedAt          string            `json:"updated_at"`
+	// SSHAuth: how DROOL authenticates over SSH, "credential" or
+	// "certificate" (short-lived certificates from its CA, M16).
+	SSHAuth      string `json:"ssh_auth"`
+	SSHPrincipal string `json:"ssh_principal"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
 }
 
 func strPtr(s string) *string {
@@ -69,6 +73,7 @@ func (s *Server) toHostJSON(v inventory.HostView) hostJSON {
 		BecomeCredentialID: strPtr(v.BecomeCredentialID.String), NeedsPTY: v.SshNeedsPty != 0,
 		JumpOnly: v.JumpOnly != 0, ViaHostID: strPtr(v.ViaHostID), Status: v.Status, StatusDetail: v.StatusDetail,
 		LastProbeAt: nullMsTime(v.LastProbeAt), Tags: v.Tags, GroupIDs: v.GroupIDs,
+		SSHAuth: v.SshAuth, SSHPrincipal: v.SshPrincipal,
 		CreatedAt: msTime(v.CreatedAt), UpdatedAt: msTime(v.UpdatedAt),
 	}
 	if out.Tags == nil {
@@ -155,6 +160,10 @@ type hostRequest struct {
 	ViaHostID          *string   `json:"via_host_id"` // "" or null clears
 	Tags               *[]string `json:"tags"`
 	GroupIDs           *[]string `json:"group_ids"`
+	// Creation only: a host that already trusts DROOL's SSH certificate
+	// authority. Existing hosts switch with PUT /hosts/{id}/ssh-auth.
+	SSHAuth      *string `json:"ssh_auth"`
+	SSHPrincipal *string `json:"ssh_principal"`
 }
 
 func (req hostRequest) apply(in *inventory.HostInput) {
@@ -163,6 +172,8 @@ func (req hostRequest) apply(in *inventory.HostInput) {
 			*dst = *src
 		}
 	}
+	set(&in.SSHAuth, req.SSHAuth)
+	set(&in.Principal, req.SSHPrincipal)
 	set(&in.Name, req.Name)
 	set(&in.Description, req.Description)
 	set(&in.Address, req.Address)
@@ -200,7 +211,7 @@ func (s *Server) handleCreateHost(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var in inventory.HostInput
 	req.apply(&in)
-	if in.CredentialID == "" {
+	if in.CredentialID == "" && in.SSHAuth != "certificate" {
 		// Default to the controller's own key: the simplest path is
 		// "paste this public key into authorized_keys".
 		if row, err := s.d.Store.R.GetSecretByName(ctx, "controller-default"); err == nil {
@@ -233,6 +244,17 @@ func (s *Server) handleUpdateHost(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	id := r.PathValue("id")
+	if req.SSHAuth != nil || req.SSHPrincipal != nil {
+		writeProblem(w, r, errValidation("change how DROOL signs in with PUT /hosts/{id}/ssh-auth (it is verified first)"))
+		return
+	}
+	// Removing the credential of a host that signs in with certificates
+	// leaves DROOL's CA as its only way in: a high-impact step.
+	if req.CredentialID != nil && *req.CredentialID == "" {
+		if cur, err := s.d.Store.R.GetHost(ctx, id); err == nil && cur.SshAuth == "certificate" && cur.SshCredentialID.Valid && !s.requireReauth(w, r) {
+			return
+		}
+	}
 	var view *inventory.HostView
 	err := s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
 		cur, err := s.d.Inventory.HostViewTx(ctx, q, id)

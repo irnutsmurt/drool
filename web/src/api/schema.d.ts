@@ -515,6 +515,93 @@ export interface paths {
         patch: operations["updateHost"];
         trace?: never;
     };
+    "/hosts/{id}/ssh-auth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description How DROOL signs in to the host over SSH, and what it knows about the host's trust in each SSH certificate authority. Requires `hosts.read`. */
+        get: operations["getHostSSHAuth"];
+        /** @description Switch to certificates only after a brand-new connection that offered nothing but a certificate from the active authority (with the given principal) worked just now (409 certificate_refused otherwise; nothing changes). Back to the credential only when one is assigned. Requires `credentials.manage` and recent re-authentication. */
+        put: operations["setHostSSHAuth"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ssh-ca": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description DROOL's SSH user certificate authorities (never their private keys). Requires `credentials.use`. */
+        get: operations["getSSHCA"];
+        put?: never;
+        /** @description Create the first authority (it becomes active). 409 if one exists: rotate instead. Requires `credentials.manage` and recent re-authentication. */
+        post: operations["createSSHCA"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ssh-ca/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Introduce a new authority (state next): hosts are made to trust it with the trust step while the current one keeps issuing. Requires `credentials.manage` and recent re-authentication. */
+        post: operations["rotateSSHCA"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ssh-ca/{id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Switch issuance to the introduced authority. Refused (409) until every host in certificate mode accepted it on a fresh connection. The old one stays trusted (previous) until retired. Requires `credentials.manage` and recent re-authentication. */
+        post: operations["activateSSHCA"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ssh-ca/{id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Destroy an authority's private key (previous, or an abandoned next). The active authority is never retired. Requires `credentials.manage` and recent re-authentication. */
+        post: operations["retireSSHCA"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/hosts/{id}/hostkeys": {
         parameters: {
             query?: never;
@@ -4309,6 +4396,13 @@ export interface components {
             /** @description Latest polled status (null before the first check). */
             health: components["schemas"]["Health"] | null;
             management: components["schemas"]["Management"];
+            /**
+             * @description How DROOL signs in over SSH: the credential, or short-lived certificates from its SSH certificate authority (M16).
+             * @enum {string}
+             */
+            ssh_auth: "credential" | "certificate";
+            /** @description The principal certificates name; empty means the SSH user. */
+            ssh_principal: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -4332,6 +4426,13 @@ export interface components {
             via_host_id?: string | null;
             tags?: string[];
             group_ids?: string[];
+            /**
+             * @description Create only: certificate for a host that already trusts DROOL's SSH certificate authority (then no credential is needed). Existing hosts switch with PUT /hosts/{id}/ssh-auth.
+             * @enum {string}
+             */
+            ssh_auth?: "credential" | "certificate";
+            /** @description Create only. */
+            ssh_principal?: string;
         };
         ProbeStep: {
             name: string;
@@ -4362,7 +4463,71 @@ export interface components {
             host_ids?: string[];
         };
         /** @description One typed step. Discriminated by `type`. */
-        Operation: components["schemas"]["CommandOp"] | components["schemas"]["ScriptOp"] | components["schemas"]["PackageOp"] | components["schemas"]["SystemUpdateOp"] | components["schemas"]["ServiceOp"] | components["schemas"]["RebootOp"] | components["schemas"]["FileDeployOp"] | components["schemas"]["WaitOp"] | components["schemas"]["VerifyHostOp"] | components["schemas"]["VerifyServicesOp"] | components["schemas"]["VerifyHealthOp"];
+        Operation: components["schemas"]["CommandOp"] | components["schemas"]["ScriptOp"] | components["schemas"]["PackageOp"] | components["schemas"]["SystemUpdateOp"] | components["schemas"]["ServiceOp"] | components["schemas"]["RebootOp"] | components["schemas"]["FileDeployOp"] | components["schemas"]["WaitOp"] | components["schemas"]["VerifyHostOp"] | components["schemas"]["VerifyServicesOp"] | components["schemas"]["VerifyHealthOp"] | components["schemas"]["SSHCATrustOp"];
+        /** @description Controller-side step (M16): makes the host trust DROOL's SSH certificate authorities (every one that isn't retired) through TrustedUserCAKeys in an sshd_config.d file, checks it with sshd -t and sshd -T, reloads sshd when something changed, then proves each issuing authority with a brand-new connection that offers only a certificate. Refuses hosts that already trust another CA file. "remove" takes DROOL's files away (refused while the host signs in with certificates). Requires `credentials.manage`. */
+        SSHCATrustOp: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "ssh_ca_trust";
+            /**
+             * @default install
+             * @enum {string}
+             */
+            action?: "install" | "remove";
+        };
+        SSHCA: {
+            id: string;
+            name: string;
+            /** @description The authorized_keys line hosts trust. */
+            public_key: string;
+            fingerprint: string;
+            /** @enum {string} */
+            state: "active" | "next" | "previous" | "retired";
+            /** @description False once retired */
+            has_key: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            activated_at: string | null;
+            /** Format: date-time */
+            retired_at: string | null;
+            /** @description Certificates issued so far. */
+            issued: number;
+        };
+        SSHCAState: {
+            authorities: components["schemas"]["SSHCA"][];
+            certificate_hosts: number;
+            /** @description Hosts in certificate mode with no credential left (the CA is their only way in). */
+            certificate_only_hosts: number;
+            ttl_s: number;
+            clock_skew_s: number;
+            /** @description During a rotation */
+            unverified: string[];
+        };
+        SSHCANameRequest: {
+            name?: string;
+        };
+        HostSSHAuth: {
+            /** @enum {string} */
+            mode: "credential" | "certificate";
+            principal: string;
+            credential_assigned: boolean;
+            trust: {
+                ca_id: string;
+                ca_name: string;
+                /** @enum {string} */
+                ca_state: "active" | "next" | "previous" | "retired";
+                /** Format: date-time */
+                installed_at: string | null;
+                /** Format: date-time */
+                verified_at: string | null;
+                /** Format: date-time */
+                failed_at: string | null;
+                error?: string;
+            }[];
+        };
         /** @description Controller-side workflow step (M13). Pauses the host's run; nothing runs on the host. */
         WaitOp: {
             /**
@@ -8428,6 +8593,186 @@ export interface operations {
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
             422: components["responses"]["Problem"];
+        };
+    };
+    getHostSSHAuth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sign-in method. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostSSHAuth"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    setHostSSHAuth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    mode: "certificate" | "credential";
+                    /** @description The principal certificates name (AuthorizedPrincipalsFile setups); empty means the SSH user. */
+                    principal?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Sign-in method. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostSSHAuth"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    getSSHCA: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authorities. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSHCAState"];
+                };
+            };
+        };
+    };
+    createSSHCA: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SSHCANameRequest"];
+            };
+        };
+        responses: {
+            /** @description Authorities. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSHCAState"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    rotateSSHCA: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SSHCANameRequest"];
+            };
+        };
+        responses: {
+            /** @description Authorities. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSHCAState"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    activateSSHCA: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authorities. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSHCAState"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    retireSSHCA: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authorities. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSHCAState"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
         };
     };
     listHostKeys: {

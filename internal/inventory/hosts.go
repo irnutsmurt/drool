@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"drool/internal/ids"
@@ -59,6 +60,28 @@ type Service struct {
 	dialer  *sshx.Dialer
 	pool    *sshx.Pool
 	now     func() time.Time
+
+	mu    sync.Mutex
+	certs CertIssuer
+}
+
+// CertIssuer prepares certificate authentication for hosts in certificate
+// mode (JIT SSH, M16; internal/sshca).
+type CertIssuer interface {
+	ForHost(ctx context.Context, h db.Host, t *sshx.Target) error
+}
+
+// SetCertIssuer installs the SSH certificate authority.
+func (s *Service) SetCertIssuer(c CertIssuer) {
+	s.mu.Lock()
+	s.certs = c
+	s.mu.Unlock()
+}
+
+func (s *Service) certIssuer() CertIssuer {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.certs
 }
 
 func NewService(st *store.Store, sec *secrets.Service, dialer *sshx.Dialer, pool *sshx.Pool) *Service {
@@ -80,6 +103,12 @@ type HostInput struct {
 	ViaHostID          string // "" = direct
 	Tags               []string
 	GroupIDs           []string
+	// SSHAuth and Principal apply when a host is created: "certificate"
+	// for a host that already trusts DROOL's SSH certificate authority
+	// (no credential needed). Existing hosts switch with the CA's
+	// verified switch, never through an edit.
+	SSHAuth   string
+	Principal string
 }
 
 var (
@@ -142,17 +171,45 @@ func (s *Service) validate(ctx context.Context, q *db.Queries, hostID string, in
 	if in.BecomeMethod != "sudo" && in.BecomeMethod != "none" {
 		return invalid("become_method must be sudo or none")
 	}
-	if in.CredentialID == "" {
+	certMode := in.SSHAuth == "certificate"
+	if hostID != "" {
+		cur, err := q.GetHost(ctx, hostID)
+		if err != nil {
+			return err
+		}
+		certMode = cur.SshAuth == "certificate"
+	} else {
+		switch in.SSHAuth {
+		case "", "credential":
+			in.SSHAuth = "credential"
+		case "certificate":
+			if n, err := q.CountActiveSSHCA(ctx); err != nil {
+				return err
+			} else if n == 0 {
+				return invalid("DROOL has no SSH certificate authority yet: create one under Credentials, or use a credential")
+			}
+			if in.Principal != "" && !sshUserRE.MatchString(in.Principal) {
+				return invalid("the certificate principal is not a valid name")
+			}
+		default:
+			return invalid("ssh_auth must be credential or certificate")
+		}
+	}
+	// A host signing in with DROOL's certificates may keep a credential as
+	// a way back, or have none (the CA is then its only way in).
+	if in.CredentialID == "" && !certMode {
 		return invalid("a credential is required")
 	}
-	cred, err := q.GetSecret(ctx, in.CredentialID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return invalid("credential not found")
-	} else if err != nil {
-		return err
-	}
-	if cred.Kind != secrets.KindSSHKey && cred.Kind != secrets.KindPassword {
-		return invalid("the SSH credential must be an SSH key or a password")
+	if in.CredentialID != "" {
+		cred, err := q.GetSecret(ctx, in.CredentialID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return invalid("credential not found")
+		} else if err != nil {
+			return err
+		}
+		if cred.Kind != secrets.KindSSHKey && cred.Kind != secrets.KindPassword {
+			return invalid("the SSH credential must be an SSH key or a password")
+		}
 	}
 	if in.BecomeCredentialID != "" {
 		if in.BecomeMethod != "sudo" {
@@ -288,6 +345,12 @@ func (s *Service) CreateHostTx(ctx context.Context, q *db.Queries, in HostInput)
 	}
 	if err != nil {
 		return db.Host{}, err
+	}
+	h.SshAuth, h.SshPrincipal = in.SSHAuth, in.Principal
+	if in.SSHAuth == "certificate" {
+		if err := q.SetHostSSHAuth(ctx, db.SetHostSSHAuthParams{SshAuth: "certificate", SshPrincipal: in.Principal, UpdatedAt: now, ID: h.ID}); err != nil {
+			return db.Host{}, err
+		}
 	}
 	if in.GroupIDs == nil {
 		in.GroupIDs = []string{}

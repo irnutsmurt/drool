@@ -251,6 +251,37 @@ An optional config file goes in `/etc/drool/config.yaml`.
 - Passwords are sent to sudo on standard input, never on the command line, and are removed from
   job output.
 
+### Short-lived SSH certificates (instead of a stored key)
+
+DROOL can sign in with a fresh SSH certificate for every connection instead of a key that works
+for ever. It has its own OpenSSH user certificate authority (CA): for each connection to a host in
+*certificate mode* it creates a new Ed25519 key in memory, signs it for the host's login user only
+(or the principal you set), valid from 5 minutes before until 10 minutes after it is issued
+(`ssh_ca.clock_skew`, `ssh_ca.cert_ttl`), uses it for the handshake and forgets it. OpenSSH
+enforces the expiry. The CA's private key is stored encrypted with the master key; certificates
+and their keys are never stored or logged. Every certificate issued is in the audit log (host,
+principal, serial, validity, CA fingerprint; the host's sshd log shows the same `ID drool:…`).
+A pooled connection opened with a certificate is reused for at most an hour.
+
+Moving a host over, without ever stranding it:
+
+1. **Credentials → SSH certificate authority → Create.**
+2. **Set up trust** on hosts (from that card for many hosts, or on a host page). This run writes
+   DROOL's CA public keys to `/etc/ssh/drool_user_ca.pub`, points `TrustedUserCAKeys` at it in
+   `/etc/ssh/sshd_config.d/40-drool-user-ca.conf`, checks with `sshd -t` and `sshd -T`, reloads
+   sshd (open sessions stay up) and then proves it with a brand-new connection that offers only a
+   certificate. It puts the previous files back if sshd rejects the result, and it doesn't touch a
+   host that already trusts another CA file (add DROOL's key there yourself; the card shows it).
+3. **Use certificates** on the host page: DROOL checks once more on a fresh connection and only then
+   switches. From then on the stored credential is not used; keep it as a way back, or remove it
+   (DROOL then warns that its CA is the only way in).
+
+**Rotation** (Credentials → Rotate): a new CA is introduced while the old one keeps issuing; set up
+trust again (hosts then trust both), and only when every host in certificate mode has accepted the
+new one can it start issuing; then retire the old one (its private key is destroyed) and set up
+trust once more so hosts drop it. The issuing CA can never be retired. Needs `credentials.manage`
+and a fresh password confirmation, like every CA change.
+
 ### Packages and updates
 
 - **Install / remove / upgrade** packages by name. Installing something already installed (or
