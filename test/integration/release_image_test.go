@@ -141,14 +141,30 @@ func (p *composeProject) setupCode() string {
 	p.t.Helper()
 	var code string
 	waitFor(p.t, time.Minute, "the setup code in the logs", func() bool {
-		lines := strings.Split(p.must("logs", "--no-log-prefix", "drool"), "\n")
-		for i, l := range lines {
-			if strings.TrimSpace(l) == "Setup code:" && i+1 < len(lines) {
-				code = strings.TrimSpace(lines[i+1])
-			}
-		}
+		code = setupCodeIn(p.must("logs", "--no-log-prefix", "drool"))
 		return code != ""
 	})
+	return code
+}
+
+// setupCodeIn finds the one-time setup code in DROOL's startup banner: the
+// first non-empty line after "Setup code:" (journald, through Podman's log
+// driver, adds an empty line after each line), the last banner's if there
+// are several.
+func setupCodeIn(logs string) string {
+	var code string
+	lines := strings.Split(logs, "\n")
+	for i, l := range lines {
+		if strings.TrimSpace(l) != "Setup code:" {
+			continue
+		}
+		for _, next := range lines[i+1:] {
+			if next = strings.TrimSpace(next); next != "" {
+				code = next
+				break
+			}
+		}
+	}
 	return code
 }
 

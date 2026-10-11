@@ -119,12 +119,7 @@ func runtimeController(t *testing.T, v *vm, r *releaseUnderTest, logs, diag func
 	var code string
 	deadline := time.Now().Add(5 * time.Minute)
 	for code == "" {
-		lines := strings.Split(logs(), "\n")
-		for i, l := range lines {
-			if strings.TrimSpace(l) == "Setup code:" && i+1 < len(lines) {
-				code = strings.TrimSpace(lines[i+1])
-			}
-		}
+		code = setupCodeIn(logs())
 		if code == "" && time.Now().After(deadline) {
 			t.Fatalf("no setup code in the logs after 5 minutes; the logs:\n%s\n--- the runtime ---\n%s", tail(logs(), 40), diag())
 		}

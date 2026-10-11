@@ -93,12 +93,7 @@ func (p *vmPackage) controller(t *testing.T, fresh bool) *controller {
 	}
 	var code string
 	waitFor(t, 3*time.Minute, "the setup code in the journal", func() bool {
-		lines := strings.Split(p.sh(t, "sudo journalctl -u drool -n 60 --no-pager -o cat"), "\n")
-		for i, l := range lines {
-			if strings.TrimSpace(l) == "Setup code:" && i+1 < len(lines) {
-				code = strings.TrimSpace(lines[i+1])
-			}
-		}
+		code = setupCodeIn(p.sh(t, "sudo journalctl -u drool -n 60 --no-pager -o cat"))
 		return code != ""
 	})
 	c.setupKey = code
