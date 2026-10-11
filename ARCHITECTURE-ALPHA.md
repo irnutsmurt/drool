@@ -1414,6 +1414,7 @@ Meaningful choices made during implementation, newest last.
 | M17 | A host held as `incompatible` after a restore is remembered (also across restarts) and compared again when its Shepherd connects speaking the protocol and announcing `epoch-1` | Found by the mixed-version qualification: `incompatible` counted as settled, so an updated M15 Shepherd was never compared again although the reason (and the README) said it would be |
 | M17 | `ARCHITECTURE-ALPHA.md` keeps its name for 1.0 | 124 references in 107 files, including append-only migrations; it is the implementation record from the Technical Alpha to 1.0, and section numbers don't change |
 | M17 | No package repository and no hosted update service | Downloadable, checksummed and signed packages are enough for 1.0; a repository is infrastructure to run and secure, and the controller doesn't update itself by design (§33.11) |
+| M17 | A service operation that starts or restarts a unit looks at it again 2 s after it first reads active (`hostops.StartCheck`) and reports a `ServiceError` with `systemctl status` if it isn't running then | systemd reports a `Type=simple` service started as soon as its process exists, so a unit that exits at once read as active when the check came first: on Debian 13 under emulation a unit running `/bin/false` was reported started. M4's verification depended on timing; now a unit has to stay up. Costs 2 s per start or restart |
 
 ---
 
@@ -2353,7 +2354,7 @@ What M16 found before changing code, and what became of it:
 
 ## 34. Platforms, packaging and release engineering (M17)
 
-M17 made the software M1–M16 built installable, upgradable, recoverable, supportable, reproducible and releasable as one product, without a new product area. Everything here is about how DROOL is built, shipped, installed, upgraded and qualified; the only behavior changes are the build information it reports, a guard on root in the data directory, the Shepherd binaries' second location, the security checklist on Settings → System, and one restore fix found by the new tests (§34.12).
+M17 made the software M1–M16 built installable, upgradable, recoverable, supportable, reproducible and releasable as one product, without a new product area. Everything here is about how DROOL is built, shipped, installed, upgraded and qualified; the only behavior changes are the build information it reports, a guard on root in the data directory, the Shepherd binaries' second location, the security checklist on Settings → System, and two fixes the new tests found (§34.12).
 
 ### 34.1 Gap audit
 
@@ -2471,9 +2472,11 @@ The master key's place and handling per deployment (native `/var/lib/drool/maste
 
 Isolation: `freshController(t)` gives a test a claimed controller of its own and points the helpers at it; every new release suite uses one (or a controller per upgrade step), so it runs the same alone or after anything else; the release suites were run both ways (§34.13). RELEASING.md lists the qualification layers and which run in CI (`.github/workflows/ci.yml`: checks, race tests, web, the release build and its Docker-only release tests; `release.yml` on tags: the build twice for reproducibility and the whole integration and browser suite on the artifacts, uploaded unsigned) and which before a release on a machine you control (the VM layers).
 
-### 34.12 Restore reconciliation: updated Shepherds
+### 34.12 Fixes the qualification found
 
-The mixed-version qualification found that a host held as `incompatible` (its Shepherd can't move to the new epoch) counted as settled: when its Shepherd came back updated, nothing compared it again, although the recorded reason said it would be. `recovery.Service` now remembers incompatible hosts (loaded at start with the pending ones) and, when such a host's Shepherd connects speaking this protocol and announcing `epoch-1`, puts it back to `pending` and compares it; a Shepherd that is still too old stays held without another attempt or audit record per reconnect. Unit test `TestIncompatibleShepherdUpdated` (fails without the fix); end to end in `TestMixedVersionShepherds`.
+**Restore reconciliation: updated Shepherds.** The mixed-version qualification found that a host held as `incompatible` (its Shepherd can't move to the new epoch) counted as settled: when its Shepherd came back updated, nothing compared it again, although the recorded reason said it would be. `recovery.Service` now remembers incompatible hosts (loaded at start with the pending ones) and, when such a host's Shepherd connects speaking this protocol and announcing `epoch-1`, puts it back to `pending` and compares it; a Shepherd that is still too old stays held without another attempt or audit record per reconnect. Unit test `TestIncompatibleShepherdUpdated` (fails without the fix); end to end in `TestMixedVersionShepherds`.
+
+**Services that exit right after starting.** On Debian 13 (`TestVMPlatform`) a service operation reported a unit running `/bin/false` as started: `systemctl start` returns as soon as a `Type=simple` process exists, and DROOL's single look afterwards (M4) came before the process exited. Whether DROOL noticed depended on timing. A start or restart now looks again after `hostops.StartCheck` (2 s) and reports a `ServiceError` with `systemctl status` when the unit isn't running any more (failed, stopped, or restarting itself). The same code runs over SSH and in the Shepherd. Unit test `TestServiceStartedUnitThatExitsRightAway` (fails without the fix).
 
 ### 34.13 Results
 

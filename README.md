@@ -56,8 +56,8 @@ apart from them ([Backup and restore](#backup-and-restore)) — and read the
   including dnf5) with a dry-run preview; removals of other packages always need your explicit
   approval.
 - **Services and reboots:** start, stop, restart, reload, enable and disable systemd services, with
-  the result verified; reboots that wait for the host to come back with its trusted key and a new
-  boot id.
+  the result verified (a started service must still be running two seconds later); reboots that wait
+  for the host to come back with its trusted key and a new boot id.
 - **Files:** browse a host's files, upload, download, edit text files, rename, move, delete, change
   permissions and owners, as the login user or explicitly with administrator privileges. **File
   deployment** sends one file to many hosts with a per-host preview and diff, an optional

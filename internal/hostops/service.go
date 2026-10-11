@@ -3,6 +3,7 @@ package hostops
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -140,6 +141,14 @@ func serviceActions(unit string, u UnitState, op *model.ServiceOp) ([]string, er
 	return acts, nil
 }
 
+// StartCheck is how long a unit DROOL just started or restarted must keep
+// running to count as started. systemd reports a Type=simple service
+// started as soon as its process exists, so one that exits at once (a bad
+// configuration, a missing file) still looked active to a check made right
+// after `systemctl start`: whether DROOL noticed depended on timing (M17:
+// Debian 13 under emulation). Tests shorten it.
+var StartCheck = 2 * time.Second
+
 // Service applies a service operation and verifies the result.
 func (h Host) Service(ctx context.Context, op *model.ServiceOp, out driver.OutputSink, started func()) (*driver.OpResult, error) {
 	c, b := h.R, h.B
@@ -190,6 +199,22 @@ func (h Host) Service(ctx context.Context, op *model.ServiceOp, out driver.Outpu
 	case "running", "restarted", "reloaded":
 		if !after.running() {
 			return res, serviceFailure(ctx, c, b, unit, "start", out)
+		}
+		if slices.Contains(acts, "start") || slices.Contains(acts, "restart") {
+			select {
+			case <-ctx.Done():
+				return res, ctx.Err()
+			case <-time.After(StartCheck):
+			}
+			again, err := showUnit(ctx, c, unit)
+			if err != nil {
+				return res, err
+			}
+			if !again.running() {
+				data["after"] = again
+				Note(out, "%s stopped right after starting: now %s (%s)", unit, again.Active, again.Sub)
+				return res, serviceFailure(ctx, c, b, unit, "start", out)
+			}
 		}
 	case "stopped":
 		if after.running() {
