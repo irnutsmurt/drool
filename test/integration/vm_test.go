@@ -488,6 +488,10 @@ systemctl mask drool-masked.service
 		// What state is the package database in now? DROOL must explain it, not hide it.
 		next := run(t, h.ID, map[string]any{"type": "package", "action": "install", "names": []string{"tree"}})
 		t.Logf("after cancelling a live %s transaction, the next package operation: %v", proc, next)
+		if isApt {
+			st, _ := vmSSH(v, "echo updates: $(ls -A /var/lib/dpkg/updates | wc -l); dpkg --audit | head -3; pgrep -a 'apt|dpkg' || true")
+			t.Logf("dpkg after the next operation: %s", st)
+		}
 		if next.State != "succeeded" {
 			expect(t, next.ErrorClass == "PackageManagerError" && next.ErrorHint != "", "next operation failed without an explanation: %v", next)
 			if isApt {

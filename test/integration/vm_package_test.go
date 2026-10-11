@@ -19,7 +19,8 @@ import (
 // hardened unit, the documented native backup, restore and key rotation,
 // the package's upgrade path under systemd, removal keeping the data; then,
 // from a clean machine, a package upgrade from the tagged v0.1.0-alpha and
-// the documented way back. Needs -release and -vm (debian-12,
+// the documented way back; then, from a clean machine again, the release
+// archive's INSTALL.md as written. Needs -release and -vm (debian-12,
 // rockylinux-9, debian-12-arm64, …).
 func TestVMReleasePackage(t *testing.T) {
 	r := needRelease(t)
@@ -46,6 +47,7 @@ func TestVMReleasePackage(t *testing.T) {
 				return
 			}
 			t.Run("package upgrade from v0.1.0-alpha and back", p.upgradeAndBack)
+			t.Run("the release archive, as its INSTALL.md says", p.fromArchive)
 		})
 	}
 }
@@ -267,14 +269,64 @@ sudo systemctl start drool`)
 	p.job(t, c, hostID, "a job after reinstalling")
 }
 
+// clean leaves the VM without DROOL: package, data, account.
+func (p *vmPackage) clean(t *testing.T) {
+	t.Helper()
+	remove := map[string]string{"deb": "sudo apt-get purge -y drool", "rpm": "sudo dnf remove -y drool"}[p.kind]
+	p.sh(t, "if "+map[string]string{"deb": "dpkg -s drool", "rpm": "rpm -q drool"}[p.kind]+" >/dev/null 2>&1; then "+remove+" >/dev/null; fi; "+
+		"sudo rm -rf /var/lib/drool /etc/drool; if id drool >/dev/null 2>&1; then sudo userdel drool; fi; "+
+		"if getent group drool >/dev/null; then sudo groupdel drool; fi")
+}
+
+// fromArchive: a clean machine, DROOL installed from the release's
+// controller archive by running the archive's INSTALL.md commands as
+// written: the archive's unit under systemd, the Shepherds it hands out
+// found in /usr/local/lib/drool, a job; then removed the way INSTALL.md
+// says, keeping the data.
+func (p *vmPackage) fromArchive(t *testing.T) {
+	p.clean(t)
+	archive := p.r.artifact(t, "controller-archive", p.arch)
+	vmUpload(t, p.v, "deploy", archive, "/home/deploy/"+filepath.Base(archive))
+	dir := strings.TrimSuffix(filepath.Base(archive), ".tar.gz")
+	doc := p.sh(t, "tar xzf "+filepath.Base(archive)+" && cat "+dir+"/INSTALL.md")
+	block := regexp.MustCompile("(?s)```sh\n(.*?)```").FindStringSubmatch(doc)
+	if block == nil {
+		t.Fatalf("no commands in the archive's INSTALL.md:\n%s", doc)
+	}
+	p.sh(t, "set -e; cd "+dir+"\n"+block[1])
+	c := p.controller(t, true)
+	var info struct {
+		Version string `json:"version"`
+	}
+	c.must(t, "GET", "/api/v1/system/info", nil, &info)
+	expect(t, info.Version == p.r.Version, "installed from the archive: %s", info.Version)
+	resp, err := c.client.Get(c.base() + "/agent/install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := readAll(resp)
+	for _, arch := range []string{"amd64", "arm64"} {
+		sum, _ := fileSHA256(filepath.Join(p.r.binDir, "drool-agent-linux-"+arch))
+		expect(t, strings.Contains(script, sum), "install.sh doesn't offer the archive's %s Shepherd from /usr/local/lib/drool", arch)
+	}
+	hostID := p.selfHost(t, c)
+	p.job(t, c, hostID, "a job from the archive's service")
+	sec := p.sh(t, "sudo systemd-analyze security drool --no-pager 2>&1 | tail -n 1")
+	t.Logf("%s: the archive's unit: %s", p.v.def.Name, sec)
+
+	// Removing, as INSTALL.md says: the service off, the files deleted, the data kept.
+	p.sh(t, "sudo systemctl disable --now drool && sudo rm -r /usr/local/bin/drool /usr/local/lib/drool /etc/systemd/system/drool.service && sudo systemctl daemon-reload")
+	state, _ := vmAs(p.v, "deploy", "systemctl is-active drool; sudo test -s /var/lib/drool/drool.db && sudo test -s /var/lib/drool/master.key && echo data-kept", nil, time.Minute)
+	expect(t, !strings.HasPrefix(state, "active") && strings.Contains(state, "data-kept"), "after removing the archive's files: %s", state)
+}
+
 // upgradeAndBack: a clean machine with an older DROOL package (the tagged
 // alpha, packaged the way a release packages DROOL), upgraded to this one —
 // which backs the database up before migrating it — and taken back the way
 // "Going back" says: install the older package, restore the pre-upgrade
 // backup with it.
 func (p *vmPackage) upgradeAndBack(t *testing.T) {
-	remove := map[string]string{"deb": "sudo apt-get purge -y drool", "rpm": "sudo dnf remove -y drool"}[p.kind]
-	p.sh(t, remove+" >/dev/null && sudo rm -rf /var/lib/drool /etc/drool && sudo userdel drool")
+	p.clean(t)
 	oldPkg := p.oldPackage(t)
 	vmUpload(t, p.v, "deploy", oldPkg, "/home/deploy/"+filepath.Base(oldPkg))
 	old := "/home/deploy/" + filepath.Base(oldPkg)

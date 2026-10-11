@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -53,12 +54,37 @@ func TestVMPlatform(t *testing.T) {
 			v := startVM(t, def)
 			h := addVMHost(t, "plat-"+def.Name, v, hostOpts{})
 			// Every suite runs whatever the others did: one failure must not
-			// hide the state of the rest.
+			// hide the state of the rest. Between them the host is left the
+			// way an operator would leave it.
 			t.Run("ssh", func(t *testing.T) { testVM(t, v, h, jumpHost) })
+			packageDatabaseRepaired(t, def, v)
 			t.Run("ssh certificates", func(t *testing.T) { testVMSSHCertificates(t, def, v, h) })
 			t.Run("shepherd", func(t *testing.T) { testVMAgent(t, def, h, key) })
+			// The Shepherd suite ends by revoking the host's identity; DROOL
+			// then says to re-enroll or switch the host to SSH. The firewall
+			// suites start over SSH (and enroll a new Shepherd later).
+			ctl.must(t, "PUT", "/api/v1/hosts/"+h.ID+"/management", map[string]string{"preferred": "ssh", "fallback": "none"}, nil)
 			t.Run("firewall over ssh", func(t *testing.T) { testVMFirewallSSH(t, def, v, h) })
 			t.Run("firewall through the shepherd", func(t *testing.T) { testVMFirewallAgent(t, def, v, h) })
 		})
 	}
+}
+
+// packageDatabaseRepaired: the SSH suite cancels a live package transaction
+// on purpose, and DROOL explains what that leaves without repairing it
+// (README: the next operation says what to run). The later suites need a
+// working package manager, so the test does what an operator is told to,
+// and logs what it found.
+func packageDatabaseRepaired(t *testing.T, def vmDef, v *vm) {
+	t.Helper()
+	if def.Family != "apt" {
+		return
+	}
+	state := mustVMSSH(t, v, "ls -A /var/lib/dpkg/updates; dpkg --audit")
+	if strings.TrimSpace(state) == "" {
+		return
+	}
+	procs, _ := vmSSH(v, "pgrep -a 'apt|dpkg|unattended' || true")
+	t.Logf("%s: the package database needs dpkg --configure -a:\n%s\nrunning: %s", def.Name, state, procs)
+	mustVMSSH(t, v, "for i in $(seq 60); do dpkg --configure -a && DEBIAN_FRONTEND=noninteractive apt-get -y -f install >/dev/null && exit 0; sleep 5; done; exit 1")
 }
