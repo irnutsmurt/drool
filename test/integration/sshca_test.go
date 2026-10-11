@@ -15,6 +15,7 @@ import (
 // principals, a jump host in certificate mode, and a full rotation. sshd
 // runs in unprivileged containers; nothing here touches this machine's SSH.
 func TestSSHCertificates(t *testing.T) {
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	ds := selected()
 	d := ds[0]
 	other := ds[len(ds)-1] // a RHEL-family sshd when the whole matrix runs

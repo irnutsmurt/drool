@@ -221,6 +221,7 @@ func TestVM(t *testing.T) {
 	if *flagVMs == "" {
 		t.Skip("set -vm to run the VM tests")
 	}
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	want := wantedVMs()
 	var jump *container
 	var jumpHost host

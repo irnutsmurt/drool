@@ -17,6 +17,7 @@ import (
 // controller killed in the middle of a correction never re-runs it.
 // (The containers have no systemd: services are covered by the VM test.)
 func TestDesiredState(t *testing.T) {
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	var picks []distro
 	seen := map[string]bool{}
 	for _, d := range selected() {

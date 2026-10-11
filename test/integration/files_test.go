@@ -114,6 +114,7 @@ func (c *container) temps(t *testing.T, dir string) string {
 // SFTP as the login user, elevated access through sudo, and the failure
 // paths that must never leave a damaged file behind.
 func TestFileManager(t *testing.T) {
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	for _, d := range selected() {
 		t.Run(d.Name, func(t *testing.T) { testFileManager(t, d) })
 	}
@@ -429,6 +430,7 @@ func controllerRSS(t *testing.T) int64 {
 
 // TestFilesThroughJumpHost: the same session model over the jump path.
 func TestFilesThroughJumpHost(t *testing.T) {
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	ds := selected()
 	jump := startHost(t, image(t, ds[0]), "fjump", true, netOuter, netInner)
 	target := startHost(t, image(t, ds[len(ds)-1]), "fbehind", false, netInner)

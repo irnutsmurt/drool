@@ -85,6 +85,7 @@ func rollback(t *testing.T, id string) string {
 // TestFileDeployment: a bulk deployment across distros by tag and group,
 // with preview, no-op, validation, rollback and a failing service action.
 func TestFileDeployment(t *testing.T) {
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	ds := selected()
 	ca := startHost(t, image(t, ds[0]), "dep-a", true, netOuter)
 	cb := startHost(t, image(t, ds[len(ds)-1]), "dep-b", true, netOuter)

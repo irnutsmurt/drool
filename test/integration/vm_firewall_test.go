@@ -245,6 +245,7 @@ func TestVMFirewall(t *testing.T) {
 	if *flagVMs == "" {
 		t.Skip("set -vm to run the VM tests")
 	}
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	want := map[string]bool{}
 	for _, n := range strings.Split(*flagVMs, ",") {
 		want[strings.TrimSpace(n)] = true
@@ -658,6 +659,7 @@ func TestVMFirewallControllerCrash(t *testing.T) {
 	if *flagVMs == "" || !strings.Contains(*flagVMs, "debian-12") {
 		t.Skip("set -vm debian-12 to run")
 	}
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	jump := startHost(t, image(t, allDistros[0]), "fwcrash-jump", true, netOuter)
 	jh := addHost(t, "fwcrash-jump", jump, hostOpts{JumpOnly: true})
 	var def vmDef

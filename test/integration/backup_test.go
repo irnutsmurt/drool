@@ -21,6 +21,7 @@ import (
 // TestBackupCLI checks the backup and restore commands against a running
 // controller configured like the container image (logs on stdout).
 func TestBackupCLI(t *testing.T) {
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	env := append(os.Environ(), "DROOL_DATA_DIR="+ctl.dataDir, "DROOL_LOGGING_OUTPUT=stdout")
 
 	cmd := exec.Command(binPath, "backup", "-o", "-")

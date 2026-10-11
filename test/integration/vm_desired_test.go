@@ -22,6 +22,7 @@ func TestVMDesired(t *testing.T) {
 	if *flagVMs == "" {
 		t.Skip("set -vm to run the VM tests")
 	}
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	want := map[string]bool{}
 	for _, n := range strings.Split(*flagVMs, ",") {
 		want[strings.TrimSpace(n)] = true

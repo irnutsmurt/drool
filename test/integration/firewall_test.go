@@ -30,6 +30,7 @@ func fwObservations(t *testing.T, hostID string) []fwObsT {
 // refused with a reason; inspection, snapshots, learning and simulation
 // still work (DESIGN §16.5: only enforcement is gated).
 func TestFirewallContainers(t *testing.T) {
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	d := selected()[0]
 	c := startHost(t, image(t, d), "fw-ct", true, netOuter)
 	h := addHost(t, "fw-ct", c, hostOpts{})

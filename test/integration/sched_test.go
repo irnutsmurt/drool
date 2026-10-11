@@ -15,6 +15,7 @@ import (
 // an interrupted run is never re-run, and what was due while DROOL was down
 // follows the missed-run policies, including recurring maintenance windows.
 func TestSchedulerRestart(t *testing.T) {
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	d := selected()[0]
 	c := startHost(t, image(t, d), "sched", true, netOuter)
 	h := addHost(t, "sched", c, hostOpts{})

@@ -194,6 +194,7 @@ func TestMatrix(t *testing.T) {
 // the jump, discovery, a typed operation, cancellation, and a jump host
 // whose key changes.
 func TestJumpHost(t *testing.T) {
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	ds := selected()
 	jumpD, targetD := ds[0], ds[len(ds)-1]
 	jump := startHost(t, image(t, jumpD), "jump", true, netOuter, netInner)

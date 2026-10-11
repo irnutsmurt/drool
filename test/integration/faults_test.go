@@ -11,6 +11,7 @@ import (
 // TestFaults injects the realistic failures that could leave a host or the
 // controller in an ambiguous state, and checks each is reported clearly.
 func TestFaults(t *testing.T) {
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	d := selected()[0]
 	c := startHost(t, image(t, d), "faults", true, netOuter)
 	h := addHost(t, "faults", c, hostOpts{})

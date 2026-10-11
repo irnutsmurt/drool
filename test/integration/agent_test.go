@@ -282,6 +282,7 @@ func testAgentOnDistro(t *testing.T, d distro) {
 // TestAgentManualEnrollment: a host DROOL has no SSH access to, enrolled
 // with the real binary and a token on stdin.
 func TestAgentManualEnrollment(t *testing.T) {
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	d := selected()[0]
 	c := startHost(t, image(t, d), "agent-manual", false, netOuter)
 	var tok struct {
@@ -396,6 +397,7 @@ func getRollout(t *testing.T, id string) rolloutT {
 }
 
 func TestAgentUpdates(t *testing.T) {
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	d := selected()[0]
 	key := newReleaseKey(t)
 	ctl.must(t, "POST", "/api/v1/agents/release-keys", map[string]any{"public_key": key.line}, nil)

@@ -115,7 +115,7 @@ func (p *vmPackage) selfHost(t *testing.T, c *controller) string {
 	}
 	c.must(t, "GET", "/api/v1/secrets/controller-ssh-key", nil, &k)
 	p.sh(t, "echo "+shq(strings.TrimSpace(k.PublicKey))+" >> ~/.ssh/authorized_keys")
-	fp := strings.Fields(p.sh(t, "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub"))[1]
+	fp := p.v.fingerprint // the host key the test gave the VM (cloud-init)
 	var h struct{ ID string }
 	c.must(t, "POST", "/api/v1/hosts", map[string]any{"name": "self", "address": "127.0.0.1", "port": 22, "user": "deploy", "become_method": "sudo"}, &h)
 	c.must(t, "POST", "/api/v1/hosts/"+h.ID+"/hostkeys/scan", nil, nil)

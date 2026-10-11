@@ -43,6 +43,7 @@ func TestBrowser(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "web", "node_modules", "puppeteer-core")); err != nil {
 		t.Skip("run npm ci in web/ first")
 	}
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	img := image(t, allDistros[0])
 	jumpC := startHost(t, img, "jump-a", true, netOuter)
 	jump := addHost(t, "jump-a", jumpC, hostOpts{})

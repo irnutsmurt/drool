@@ -27,6 +27,7 @@ import (
 // filesystem) and the receiver is local: nothing outside this machine is
 // involved.
 func TestAlertsControllerCrash(t *testing.T) {
+	freshController(t) // a controller of its own: nothing from other tests (M17)
 	const (
 		hangBefore = iota // hold the request before reading it
 		normal
