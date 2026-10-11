@@ -101,7 +101,7 @@ hands out are the release's, and the release tests run.
 | Web: typecheck, unit tests, build | `make test-web` and `cd web && npm run build` | 2 min |
 | API contract | part of the Go tests (`TestOpenAPIConformance`) | — |
 | Release artifacts: contents, checksums, SBOMs, notices, signing workflow | `-run 'TestReleaseArtifacts\|TestReleaseSigning'` | 1 min |
-| The container image with its `compose.yaml` (documented setup, restrictions, backup, restore) | `-run TestContainerImage` | 1 min |
+| The container image with its `compose.yaml` (documented setup, restrictions, backup, restore; a Compose installation of the alpha upgraded to it and back) | `-run TestContainerImage` | 3 min |
 | Packages on every supported distribution (install, upgrade path, remove, purge) | `-run TestReleasePackages` | 5 min |
 | Upgrades from v0.1.0-alpha and M16, and going back | `-run TestReleaseUpgrade` | 3 min |
 | Older Shepherds (M15, M16) with this controller, through a restore and an update | `-run TestMixedVersionShepherds` | 3 min |

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -294,4 +295,94 @@ func createSecretOn(t *testing.T, c *controller, name string) string {
 	}
 	c.must(t, "POST", "/api/v1/secrets", map[string]any{"name": name, "kind": "password", "value": "secret-" + name}, &s)
 	return s.ID
+}
+
+// TestContainerImageUpgrade upgrades a Docker Compose installation of the
+// tagged Technical Alpha — its own image, built from this repository's
+// history — to the image under test the way the README says (the new
+// compose.yaml in the same directory, so the same volume), and goes back the
+// documented way: the older image restores the pre-upgrade backup on the same
+// volume. What only containers add is checked here: the volume and its
+// ownership across images and base-image versions; the data itself is
+// TestReleaseUpgrade's.
+func TestContainerImageUpgrade(t *testing.T) {
+	image, composeFile := imageUnderTest(t)
+	old := "drool-it-" + runID + ":alpha"
+	build := exec.Command("sh", "-c", "git -C "+shq(root)+" archive "+alphaBuild.Rev+" | docker build -q -t "+old+" -")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build the alpha's image: %v\n%s", err, out)
+	}
+	t.Cleanup(func() { docker("image", "rm", old) })
+	p := newComposeProject(t, image, composeFile, "upg")
+	// The alpha's compose.yaml, with its image instead of a build.
+	alphaCompose := fmt.Sprintf("services:\n  drool:\n    image: %s\n    ports:\n      - \"127.0.0.1:%d:8080\"\n    volumes:\n      - drool-data:/data\nvolumes:\n  drool-data:\n", old, p.webPort)
+	release, _ := os.ReadFile(filepath.Join(p.dir, "compose.yaml"))
+	override, _ := os.ReadFile(filepath.Join(p.dir, "compose.override.yaml"))
+	os.Remove(filepath.Join(p.dir, "compose.override.yaml"))
+	os.WriteFile(filepath.Join(p.dir, "compose.yaml"), []byte(alphaCompose), 0o644)
+	p.must("up", "-d")
+	c := p.controller("")
+	waitFor(t, 3*time.Minute, "the alpha answering", func() bool {
+		resp, err := c.client.Get(c.base() + "/health")
+		if err == nil {
+			resp.Body.Close()
+		}
+		return err == nil
+	})
+	c.setupKey = p.setupCode()
+	if err := c.claim(); err != nil {
+		t.Fatal(err)
+	}
+	onAlpha := createSecretOn(t, c, "on-the-alpha")
+	p.must("stop")
+
+	// The new release's compose.yaml in the same directory: the same volume.
+	os.WriteFile(filepath.Join(p.dir, "compose.yaml"), release, 0o644)
+	os.WriteFile(filepath.Join(p.dir, "compose.override.yaml"), override, 0o644)
+	p.must("up", "-d")
+	p.waitHealthy()
+	if err := c.login(); err != nil {
+		t.Fatalf("the alpha's administrator in the new image: %v", err)
+	}
+	var facts struct {
+		Backups struct {
+			PreUpgrade int `json:"pre_upgrade"`
+		} `json:"backups"`
+	}
+	c.must(t, "GET", "/api/v1/system/security", nil, &facts)
+	expect(t, facts.Backups.PreUpgrade == 1, "pre-upgrade backups in the volume: %+v", facts)
+	logs := p.must("logs", "--no-log-prefix", "drool")
+	backup := regexp.MustCompile(`/data/backups/drool-pre-upgrade-[0-9-]+-schema5\.tar\.gz`).FindString(logs)
+	if backup == "" {
+		t.Fatalf("the upgrade didn't say where its backup is:\n%s", tail(logs, 20))
+	}
+	var s struct {
+		Items []struct{ ID string } `json:"items"`
+	}
+	c.must(t, "GET", "/api/v1/secrets", nil, &s)
+	found := false
+	for _, x := range s.Items {
+		found = found || x.ID == onAlpha
+	}
+	expect(t, found, "the alpha's credential isn't in the upgraded volume")
+	afterUpgrade := createSecretOn(t, c, "after-the-upgrade")
+	t.Logf("upgraded the alpha's volume to %s; the pre-upgrade backup is %s", image, backup)
+
+	// Going back: the older image restores the pre-upgrade backup on the same
+	// volume, then runs.
+	p.must("stop", "drool")
+	out, err := p.sh("DROOL_IMAGE=" + old + " docker compose run --rm -T drool restore " + backup)
+	if err != nil || !strings.Contains(out, "Restored") {
+		t.Fatalf("the alpha's image restoring the pre-upgrade backup: %v\n%s", err, out)
+	}
+	if out, err := p.sh("DROOL_IMAGE=" + old + " docker compose up -d"); err != nil {
+		t.Fatalf("the alpha's image again: %v\n%s", err, out)
+	}
+	waitFor(t, 3*time.Minute, "signing in to the alpha again", func() bool { return c.login() == nil })
+	c.must(t, "GET", "/api/v1/secrets", nil, &s)
+	got := map[string]bool{}
+	for _, x := range s.Items {
+		got[x.ID] = true
+	}
+	expect(t, got[onAlpha] && !got[afterUpgrade], "after going back: the alpha's credential %v, the one made after the upgrade %v", got[onAlpha], got[afterUpgrade])
 }
