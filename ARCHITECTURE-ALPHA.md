@@ -2482,4 +2482,32 @@ Isolation: `freshController(t)` gives a test a claimed controller of its own and
 
 ### 34.13 Results
 
-(Filled in from the final qualification runs.)
+The candidate qualified is **v1.0.0-rc.1**, built by `build.sh` at `baa5c38` (untagged, so the development channel; 260 s on a 12-core workstation). Every later commit changes tests or documentation only, so its binaries are the ones the last commit ships; the release was rebuilt at the end and checked again (below).
+
+**Fast layers.** `make fmt-check vet check-generated` and `go vet -tags integration` clean; `make test-race` passes (50 packages with tests; 726 s while two emulated VMs ran — `internal/api` alone needed 606 s under that load, past Go's default 10-minute limit, so the target sets `-timeout 30m`); web typecheck clean, 88/88 unit tests, the production build.
+
+**Release suites on the candidate, each in a process of its own:** TestReleaseArtifacts (42 s, with the Shepherd archive installed by hand), TestReleaseSigning (7 s), TestContainerImage (29 s), TestContainerImageUpgrade (22 s), TestReleasePackages (127 s, ten distributions), TestReleaseUpgrade (67 s), TestMixedVersionShepherds (68 s), TestRestoreReconciliation (42 s), TestSSHCertificates (32 s), TestAgentUpdates (40 s): all pass.
+
+**Everything in one process** (the container suite with `-skip TestBrowser`, 26 min): 331 tests and subtests pass, 12 skip (the VM suites and the soak without their flags), 6 failed — all the AlmaLinux 9 test host, whose base image stopped shipping `passwd` on 2026-10-02; with the test image fixed, TestMatrix, TestAgentMatrix and TestFileManager pass on all ten distributions. **Browser tests:** 62/62, run while no other test process started or stopped (a run beside starting and stopping processes failed two tests on `net::ERR_NETWORK_CHANGED`).
+
+**VM qualification** (QEMU TCG in unprivileged containers, two VMs at a time; about eleven hours, reruns included; counts are subtests):
+
+| | `TestVMPlatform` (SSH, SSH certificates, Shepherd, firewall over SSH and through the Shepherd) | `TestVMReleasePackage` | `TestVMContainerRuntimes` |
+|---|---|---|---|
+| Debian 12 | 30/30 (40 min) | 3/3 | — |
+| Debian 13 | 29/29 (40 min) | — | — |
+| Ubuntu 22.04 | 28/29, then both firewall suites 16/16 | — | — |
+| Ubuntu 24.04 | SSH (with the unattended-upgrades lock and the HWE kernel) and certificates pass; then the Shepherd and both firewall suites 22/22 (one vCPU) | — | rootless Docker 29.9 and rootless Podman 4.9 (Quadlet): pass |
+| Ubuntu 26.04 | SSH, certificates and Shepherd pass, then both firewall suites 16/16 (one vCPU) | — | — |
+| Rocky Linux 9 | 28/29, then both firewall suites 16/16 | 3/3 | — |
+| Rocky Linux 10 | 29/29 (113 min) | — | — |
+| AlmaLinux 9 | 29/29 (87 min) | — | — |
+| AlmaLinux 10 | 29/29 (94 min) | — | — |
+| Fedora 44 | 29/29 (90 min) | — | — |
+| Debian 12 arm64 | 28/29 (52 min), then both firewall suites 16/16 | 3/3 | rootless Docker with the arm64 image: pass; Podman skipped (4.3, no Quadlet) |
+
+On Debian 12 also: `TestVMFirewallUpgrade` passes over SSH and through a Shepherd (11 min; M15's revision in sync after the upgrade, tool 1 → 2, the boot loader restoring the last committed policy); the older suites `TestVMMonitoring`, `TestVMDesired`, `TestVMFirewallControllerCrash` and `TestVMHardening` pass (44 min).
+
+Where a row says "then", the first run failed only in what a test fix or an emulator setting below changed, and the affected suites were run again on the same candidate. On Rocky Linux 9 the first run's "agent path blocked" apply failed before a transaction began: the Shepherd reported the operation interrupted, its process id afterwards (1000) suggests the VM restarted underneath it, and DROOL reported the outcome as unknown without sending anything again — as designed; the rerun passed, and the cause wasn't captured (the test now prints the Shepherd's journal and the VM's console in that case).
+
+**What the qualification found.** In DROOL, two bugs, both fixed (§34.12): a host held as incompatible after a restore was never compared again once its Shepherd was updated (M16), and a service that exits right after starting could be reported started (M4; seen on Debian 13). In the tests: the post-cancel "next operation" had been a no-op since M5 (the package was already installed), so it never showed what DROOL says about an interrupted dpkg — now it does (`PackageManagerError`, "run `dpkg --configure -a`"); M17's per-suite controllers broke the firewall tests' agent-port rules (they denied the shared controller's port, so a transaction meant to roll back committed); the platform suite chains suites written for separate hosts (a revoked identity and a deliberately changed host key blocked what came next — the host is now left as an operator would leave it); Compose's log prefix and Podman's journald blank lines hid the setup code; the Podman check relied on an earlier `apt-get update`. In the environment: Ubuntu's 7.0 kernel (26.04's, and the HWE kernel the tests install on 24.04) oopses on an int3 in kernel text, or doesn't come back from a reboot, under two-vCPU multi-threaded TCG — an emulator race — so both Ubuntu VMs run with one vCPU; on that slower VM a firewall detection can exceed DROOL's one-minute limit, which DROOL reports as retryable, and the test checks again as an operator would.

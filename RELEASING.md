@@ -107,10 +107,10 @@ hands out are the release's, and the release tests run.
 | Older Shepherds (M15, M16) with this controller, through a restore and an update | `-run TestMixedVersionShepherds` | 3 min |
 | Integration: every supported distribution in containers, jump hosts, faults, files, Shepherds, firewall detection, Desired State, scheduling, restore, SSH certificates, alerts | `make test-integration` with `-release` | 40 min |
 | Browser tests (Chromium) | `-run TestBrowser` | 15 min |
-| Real systemd, reboots, sshd and nftables on every supported distribution and arm64 | `-run TestVMPlatform -vm <all>` | ~8 h, two VMs at a time |
-| Native packages under real systemd (the hardened unit, setup, documented restore, upgrade and downgrade, removal) and the release archive's `INSTALL.md` | `-run TestVMReleasePackage -vm debian-12,rockylinux-9,debian-12-arm64` | 2 h |
-| A firewall enforced by M15 (its host tool) through the upgrade to this release, over SSH and through a Shepherd | `-run TestVMFirewallUpgrade -vm debian-12` | 1 h |
-| Rootless Docker and rootless Podman (Ubuntu 24.04), and the arm64 image under rootless Docker | `-run TestVMContainerRuntimes -vm ubuntu-24.04,debian-12-arm64` | 2 h |
+| Real systemd, reboots, sshd and nftables on every supported distribution and arm64 | `-run TestVMPlatform -vm <all>` | ~9 h, two VMs at a time (40 min to 2 h per distribution; the RHEL family's system updates are the slow part under emulation) |
+| Native packages under real systemd (the hardened unit, setup, documented restore, upgrade and downgrade, removal) and the release archive's `INSTALL.md` | `-run TestVMReleasePackage -vm debian-12,rockylinux-9,debian-12-arm64` | 30 min |
+| A firewall enforced by M15 (its host tool) through the upgrade to this release, over SSH and through a Shepherd | `-run TestVMFirewallUpgrade -vm debian-12` | 20 min |
+| Rootless Docker and rootless Podman (Ubuntu 24.04), and the arm64 image under rootless Docker | `-run TestVMContainerRuntimes -vm ubuntu-24.04,debian-12-arm64` | 1 h |
 
 All integration commands: `go test -tags integration ./test/integration -release dist/<version> -v -timeout <time>`.
 Every suite has a controller of its own (or cleans up what it made), so each runs alone as well as
@@ -121,7 +121,9 @@ networks, and Chromium aborts requests in flight when the machine's network addr
 
 The VM tests run cloud images under QEMU's software emulation (TCG) inside ordinary, unprivileged
 containers: no KVM, no privileged containers, nothing on the build machine's network, firewall or
-devices is touched. They download cloud images once into the `drool-vm-images` Docker volume.
+devices is touched. They download cloud images once into the `drool-vm-images` Docker volume. The
+Ubuntu VMs run with one vCPU: Ubuntu's 7.0 kernel can oops while booting with two vCPUs under
+multi-threaded TCG (an emulator race, not something a real machine does).
 
 `.github/workflows/ci.yml` runs the fast layers and builds the release on every push;
 `.github/workflows/release.yml` runs the container and package layers on the release's artifacts.
