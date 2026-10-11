@@ -137,11 +137,14 @@ chpasswd:
 	if def.Arch == "arm64" {
 		args = append(args, "-e", "VM_ARCH=aarch64")
 	}
-	if def.Name == "ubuntu-26.04" {
-		// Its 7.0 kernel (7.0.0-38) oopsed on an int3 in kernel text while
-		// booting with two vCPUs under multi-threaded TCG: code patching on
-		// one vCPU raced execution on the other, an emulator problem. One
-		// vCPU runs the same kernel and systemd without that race.
+	if def.Name == "ubuntu-26.04" || def.Name == "ubuntu-24.04" {
+		// Ubuntu's 7.0 kernel (7.0.0-38: 26.04's, and the HWE kernel the
+		// reboot-required test installs on 24.04) oopsed on an int3 in
+		// kernel text while booting with two vCPUs under multi-threaded TCG
+		// (26.04), or didn't come back from a reboot (24.04, the fourth boot
+		// of that kernel): code patching on one vCPU raced execution on the
+		// other, an emulator problem. One vCPU runs the same kernel and
+		// systemd without that race.
 		args = append(args, "-e", "VM_CPUS=1")
 	}
 	fwd := map[int]int{}
