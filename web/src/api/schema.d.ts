@@ -419,6 +419,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/system/security": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description What only the controller can tell about how safely it is set up, for the "Secure your installation" checklist (Settings → System): test-mode switches, administrators without two-factor sign-in, where the master key is and older key files a rotation left next to it, the backups in the data directory and their disk use, hosts on SSH certificates. Copies kept elsewhere are invisible to DROOL. Requires `settings.read`. */
+        get: operations["getSecurityFacts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/system/restore": {
         parameters: {
             query?: never;
@@ -4462,6 +4479,30 @@ export interface components {
             insecure_plaintext: boolean;
             config_file?: string;
             config?: components["schemas"]["ConfigValue"][];
+        };
+        SecurityFacts: {
+            /** @enum {string} */
+            deployment: "container" | "native";
+            /** @description DROOL_TEST_* variables set: test switches, never for production. */
+            test_mode: string[];
+            admins_without_mfa: string[];
+            master_key: {
+                path: string;
+                in_data_dir: boolean;
+                /** @description Older key files a rotation left next to the key. */
+                previous_files: string[];
+            };
+            backups: {
+                dir: string;
+                /** Format: date-time */
+                newest_manual: string | null;
+                manual: number;
+                pre_upgrade: number;
+                /** Format: int64 */
+                bytes: number;
+            };
+            certificate_hosts: number;
+            credential_hosts: number;
         };
         /** @enum {string} */
         CredentialKind: "ssh_private_key" | "password" | "sudo_password";
@@ -8567,6 +8608,27 @@ export interface operations {
                     "application/json": components["schemas"]["SystemInfo"];
                 };
             };
+        };
+    };
+    getSecurityFacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Security facts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecurityFacts"];
+                };
+            };
+            403: components["responses"]["Problem"];
         };
     };
     getRestoreStatus: {

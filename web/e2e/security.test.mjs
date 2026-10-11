@@ -190,3 +190,36 @@ test("the audit log shows that its history checks out", async () => {
   assert.ok(!/immutable/i.test(t), "the audit log is never called immutable");
   await shot(admin, "audit-integrity");
 });
+
+test("Secure your installation: problems, recommendations, what DROOL can't check", async () => {
+  await admin.goto(base + "/settings/system#secure", { waitUntil: "networkidle0" });
+  await admin.waitForSelector('[data-testid="security-checklist"]');
+  const level = async (id) => admin.$eval(`[data-check="${id}"]`, (e) => e.getAttribute("data-level")).catch(() => null);
+  // The test controller runs with DROOL_TEST_* switches: never for
+  // production, so a problem.
+  assert.equal(await level("test-mode"), "problem");
+  // The administrator has no second factor; the Agent Root CA key is on
+  // the controller: recommendations, not blockers.
+  assert.equal(await level("mfa"), "recommended");
+  assert.equal(await level("root-key"), "recommended");
+  assert.equal(await level("https"), "done");
+  assert.equal(await level("tls"), "optional");
+  // What it can't see, it says so.
+  assert.equal(await level("master-key"), "manual");
+  assert.equal(await level("backups"), "manual");
+  const t = await text(admin);
+  assert.ok(t.includes("DROOL works without any of these"), "it doesn't present hardening as a prerequisite");
+  assert.ok(/can't see whether you keep a copy/.test(t), "honest about the master key copy");
+  // Problems come first.
+  const order = await admin.$$eval("[data-check]", (els) => els.map((e) => e.getAttribute("data-level")));
+  assert.equal(order[0], "problem", order.join(","));
+  await shot(admin, "secure-your-installation");
+  // Navigation search finds it by other words.
+  await admin.goto(base + "/", { waitUntil: "networkidle0" });
+  await admin.keyboard.down("Control");
+  await admin.keyboard.press("k");
+  await admin.keyboard.up("Control");
+  await admin.keyboard.type("hardening");
+  await admin.keyboard.press("Enter");
+  await waitFor(admin, async () => admin.url().endsWith("/settings/system#secure"), "search → Secure your installation");
+});

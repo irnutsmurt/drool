@@ -107,4 +107,7 @@ export const destinations: Destination[] = [
     permissions: ["notifications.read"] },
   { id: "settings-system", title: "System", section: "Settings", to: "/settings/system", description: "Controller version, backup and restore, effective configuration.",
     aliases: ["system", "version", "backup", "restore backup", "configuration", "about", "tls"] },
+  { id: "settings-secure", title: "Secure your installation", section: "Settings", to: "/settings/system#secure",
+    description: "What DROOL's security setup looks like, and what to do about it: two-factor, the master key, backups, the Agent Root CA.",
+    aliases: ["security checklist", "checklist", "hardening", "harden", "secure", "security", "master key", "posture"], permissions: ["settings.read"] },
 ];

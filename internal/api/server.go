@@ -157,6 +157,7 @@ func (s *Server) routes() []route {
 		{method: "POST", path: APIPrefix + "/audit/sink/test", auth: authed, perm: auth.PermSettingsWrite, h: s.handleTestAuditSink},
 
 		{method: "GET", path: APIPrefix + "/system/info", auth: authed, h: s.handleSystemInfo},
+		{method: "GET", path: APIPrefix + "/system/security", auth: authed, perm: auth.PermSettingsRead, h: s.handleSecurityFacts},
 		{method: "GET", path: APIPrefix + "/system/restore", auth: authed, perm: auth.PermSettingsRead, h: s.handleRestoreStatus},
 		{method: "POST", path: APIPrefix + "/system/restore/finish", auth: authed, perm: auth.PermSettingsWrite, reauth: true, h: s.handleFinishRestore},
 		{method: "GET", path: APIPrefix + "/hosts/{id}/reconciliation", auth: authed, perm: auth.PermHostsRead, h: s.handleHostReconciliation},

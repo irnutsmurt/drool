@@ -491,6 +491,18 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SystemInfo' }
+  /system/security:
+    get:
+      operationId: getSecurityFacts
+      tags: [system]
+      description: 'What only the controller can tell about how safely it is set up, for the "Secure your installation" checklist (Settings → System): test-mode switches, administrators without two-factor sign-in, where the master key is and older key files a rotation left next to it, the backups in the data directory and their disk use, hosts on SSH certificates. Copies kept elsewhere are invisible to DROOL. Requires `settings.read`.'
+      responses:
+        '200':
+          description: Security facts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SecurityFacts' }
+        '403': { $ref: '#/components/responses/Problem' }
   /system/restore:
     get:
       operationId: getRestoreStatus
@@ -4126,6 +4138,32 @@ components:
         insecure_plaintext: { type: boolean }
         config_file: { type: string }
         config: { type: array, items: { $ref: '#/components/schemas/ConfigValue' } }
+
+    SecurityFacts:
+      type: object
+      required: [deployment, test_mode, admins_without_mfa, master_key, backups, certificate_hosts, credential_hosts]
+      properties:
+        deployment: { type: string, enum: [container, native] }
+        test_mode: { type: array, items: { type: string }, description: 'DROOL_TEST_* variables set: test switches, never for production.' }
+        admins_without_mfa: { type: array, items: { type: string } }
+        master_key:
+          type: object
+          required: [path, in_data_dir, previous_files]
+          properties:
+            path: { type: string }
+            in_data_dir: { type: boolean }
+            previous_files: { type: array, items: { type: string }, description: Older key files a rotation left next to the key. }
+        backups:
+          type: object
+          required: [dir, newest_manual, manual, pre_upgrade, bytes]
+          properties:
+            dir: { type: string }
+            newest_manual: { type: [string, 'null'], format: date-time }
+            manual: { type: integer }
+            pre_upgrade: { type: integer }
+            bytes: { type: integer, format: int64 }
+        certificate_hosts: { type: integer }
+        credential_hosts: { type: integer }
 
     CredentialKind:
       type: string

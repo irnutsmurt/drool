@@ -152,6 +152,18 @@ type Secrets struct {
 	MasterKeyFile string `yaml:"master_key_file"`
 }
 
+// InContainer reports whether this process runs in a container (Docker
+// or Podman): its addresses aren't the ones users reach it at, and its
+// commands run through the container runtime.
+func InContainer() bool {
+	for _, p := range []string{"/.dockerenv", "/run/.containerenv"} {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // MasterKeyPath returns the effective master key file path.
 func (c Config) MasterKeyPath() string {
 	if c.Secrets.MasterKeyFile != "" {

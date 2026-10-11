@@ -320,11 +320,15 @@ function UpdatesCard({ managed }: { managed: Host[] }) {
 /** Unresolved security posture, in full (the header shows it compactly). */
 function SecurityCard() {
   const items = useSecurityItems();
+  const { can } = useAuth();
   if (items.length === 0) return null;
   return (
     <Card title="Security">
       <div className="space-y-3" data-testid="security-card">
         {items.map((x) => <SecurityNote key={x.id} item={x} />)}
+        {can("settings.read") && (
+          <p className="text-sm"><Link className={plainLink} to="/settings/system#secure">Secure your installation: every check</Link></p>
+        )}
       </div>
     </Card>
   );

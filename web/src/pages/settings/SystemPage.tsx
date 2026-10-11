@@ -1,4 +1,7 @@
+import { useEffect } from "react";
+import { useLocation } from "react-router";
 import { useSystemInfo } from "@/components/layout/AppShell";
+import { SecurityChecklist } from "@/components/system/SecurityChecklist";
 import { Card } from "@/components/ui/Card";
 import { Table } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
@@ -17,10 +20,16 @@ const channels = {
 
 export function SystemPage() {
   const info = useSystemInfo();
+  const { hash } = useLocation();
+  // Links to "Secure your installation" (#secure) land on the checklist.
+  useEffect(() => {
+    if (hash === "#secure" && info.data) document.getElementById("secure")?.scrollIntoView({ block: "start" });
+  }, [hash, info.data]);
   if (info.error) return <Alert>{errorMessage(info.error)}</Alert>;
   const d = info.data;
   return (
     <div className="grid gap-4">
+      <SecurityChecklist />
       <Card title="Controller">
         <dl className="grid grid-cols-[7rem_1fr] sm:grid-cols-[10rem_1fr] gap-y-2 text-sm">
           <dt className="text-muted">Version</dt>

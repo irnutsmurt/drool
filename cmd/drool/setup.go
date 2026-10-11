@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -108,7 +107,7 @@ func displayURLs(cfg *config.Loaded, scheme string) []string {
 	if bind == nil || !bind.IsUnspecified() {
 		return []string{mk(cfg.Server.Bind)}
 	}
-	if inContainer() {
+	if config.InContainer() {
 		// Container addresses aren't reachable from the user's browser.
 		return []string{scheme + "://<this-host's-address>:" + port}
 	}
@@ -126,15 +125,6 @@ func displayURLs(cfg *config.Loaded, scheme string) []string {
 		out = append(out, mk("localhost"))
 	}
 	return out
-}
-
-func inContainer() bool {
-	for _, p := range []string{"/.dockerenv", "/run/.containerenv"} {
-		if _, err := os.Stat(p); err == nil {
-			return true
-		}
-	}
-	return false
 }
 
 func roundDuration(d time.Duration) string {

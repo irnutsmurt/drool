@@ -29,6 +29,8 @@ describe("navigation search", () => {
     ["notification", "/settings/notifications"], ["email", "/settings/notifications"], ["discord", "/settings/notifications"],
     ["slack", "/settings/notifications"], ["webhook", "/settings/notifications"],
     ["audit", "/audit"], ["who changed", "/audit"],
+    ["hardening", "/settings/system#secure"], ["security checklist", "/settings/system#secure"], ["master key", "/settings/system#secure"],
+    ["secure", "/settings/system#secure"],
   ];
   for (const [q, to] of cases) {
     it(`"${q}" opens ${to}`, () => expect(top(q)?.to).toBe(to));
