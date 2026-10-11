@@ -5,6 +5,7 @@ package integration
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -230,6 +231,7 @@ func fwPlan(t *testing.T, hostID string) fwPlanT {
 }
 
 func fwDetect(t *testing.T, hostID string) (bool, string) {
+	t.Helper()
 	var r struct {
 		Eligibility struct {
 			Supported bool     `json:"supported"`
@@ -237,7 +239,24 @@ func fwDetect(t *testing.T, hostID string) (bool, string) {
 			Detected  []string `json:"detected"`
 		} `json:"eligibility"`
 	}
-	ctl.must(t, "POST", "/api/v1/firewall/hosts/"+hostID+"/detect", nil, &r)
+	// DROOL gives a detection a minute; a cold, emulated host with one vCPU
+	// (Python's ufw, a dozen systemctl calls) can need longer the first
+	// time. DROOL calls that timeout retryable, and an operator checks again.
+	for attempt := 1; ; attempt++ {
+		var raw json.RawMessage
+		st, err := ctl.do("POST", "/api/v1/firewall/hosts/"+hostID+"/detect", nil, &raw)
+		if err == nil && st == 200 {
+			if err := json.Unmarshal(raw, &r); err != nil {
+				t.Fatalf("detect: %v", err)
+			}
+			break
+		}
+		if attempt < 3 && st == 502 && strings.Contains(string(raw), `"error_class":"TimeoutError"`) && strings.Contains(string(raw), `"retryable":true`) {
+			t.Logf("detect timed out on a slow host (attempt %d); checking again", attempt)
+			continue
+		}
+		t.Fatalf("POST /api/v1/firewall/hosts/%s/detect: HTTP %d %v %s", hostID, st, err, raw)
+	}
 	return r.Eligibility.Supported, strings.Join(append(r.Eligibility.Reasons, r.Eligibility.Detected...), "; ")
 }
 
