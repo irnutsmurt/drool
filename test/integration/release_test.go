@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 // releaseUnderTest is a release directory made by packaging/release/build.sh
@@ -221,8 +222,9 @@ func tarList(t *testing.T, archive string) []string {
 // TestReleaseArtifacts checks what a release consists of, before anything
 // installs it: every artifact is listed and checksummed, the binaries say
 // which release and commit they are, the archives hold exactly what the
-// documentation says, the SBOMs are SPDX and name what was built, and the
-// controller hands out the Shepherd binaries of the same release.
+// documentation says, the SBOMs are SPDX and name what was built, the
+// controller hands out the Shepherd binaries of the same release, and the
+// Shepherd archive installs by hand the way its INSTALL.md says.
 func TestReleaseArtifacts(t *testing.T) {
 	r := needRelease(t)
 	kinds := map[string]int{}
@@ -326,6 +328,46 @@ func TestReleaseArtifacts(t *testing.T) {
 		sum, _ := fileSHA256(filepath.Join(r.binDir, "drool-agent-linux-"+arch))
 		expect(t, strings.Contains(string(script), sum), "install.sh doesn't offer the release's %s Shepherd (%s)", arch, sum[:12])
 	}
+
+	// The Shepherd archive, installed by hand the way its INSTALL.md says:
+	// the binary copied to the host, `install --preset managed --token-file -`
+	// with a token from Shepherds → Enrollment.
+	dir := t.TempDir()
+	if err := untar(r.artifact(t, "shepherd-archive", runtime.GOARCH), dir); err != nil {
+		t.Fatal(err)
+	}
+	bins, _ := filepath.Glob(filepath.Join(dir, "*", "drool-agent"))
+	if len(bins) != 1 {
+		t.Fatalf("the Shepherd archive: %v", bins)
+	}
+	doc, _ := os.ReadFile(filepath.Join(filepath.Dir(bins[0]), "INSTALL.md"))
+	expect(t, strings.Contains(string(doc), "sudo ./drool-agent install --preset managed --token-file -"), "the Shepherd archive's INSTALL.md changed:\n%s", doc)
+	ct := startHost(t, image(t, selected()[0]), "rel-manual", true, netOuter)
+	h := addHost(t, "rel-manual", ct, hostOpts{})
+	var tok struct {
+		Token string `json:"token"`
+	}
+	ctl.must(t, "POST", "/api/v1/agents/tokens", map[string]any{"preset": "managed", "description": "release archive", "host_id": h.ID}, &tok)
+	mustDocker(t, "cp", bins[0], ct.Name+":/root/drool-agent")
+	enrolled, err := dockerStdin(ct.Name, tok.Token+"\n", "sh", "-c", "cd /root && ./drool-agent install --preset managed --token-file -")
+	if err != nil || !strings.Contains(enrolled, "Enrolled as host") {
+		t.Fatalf("installing the Shepherd from the release archive: %v\n%s", err, enrolled)
+	}
+	waitAgent(t, h.ID, 2*time.Minute, "the Shepherd from the release archive", func(a hostAgent) bool {
+		return a.Management.Active == "agent" && a.Identity != nil && a.Identity.Connected && a.Identity.AgentVersion == r.Version
+	})
+	// The preset is the ceiling: monitoring comes through, commands don't.
+	waitFor(t, 2*time.Minute, "monitoring from the Shepherd from the release archive", func() bool {
+		var m struct {
+			HasData bool   `json:"has_data"`
+			Source  string `json:"source"`
+		}
+		st, _ := ctl.do("GET", "/api/v1/hosts/"+h.ID+"/monitoring", nil, &m)
+		return st == 200 && m.HasData && m.Source == "agent"
+	})
+	jh, _ := runT(t, h.ID, cmd("echo beyond-the-managed-preset", false))
+	expect(t, jh.State == "failed" && jh.ErrorClass == "CapabilityError" && jh.Transport == "agent",
+		"a command beyond the managed preset: %+v", jh)
 }
 
 // TestReleaseSigning runs the offline signing workflow (RELEASING.md) on a
