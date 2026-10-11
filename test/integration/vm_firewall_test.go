@@ -614,7 +614,8 @@ func testVMFirewallAgent(t *testing.T, def vmDef, v *vm, h host) {
 		}()
 		jh, tx := fwApply(t, h.ID, map[string]any{"override_mgmt": true, "reason": "VM test: block the agent path"})
 		if jh.State != "failed" || tx.State != "rolled_back" {
-			t.Fatalf("%v %+v\n%s", jh, tx, tx.timeline())
+			host, _ := vmSSH(v, fmt.Sprintf("nft list table inet drool; ss -tnp | grep -F ':%d'; ip route get %s; cat /var/lib/drool/firewall/transaction.json", agentPort, agentGateway))
+			t.Fatalf("%v %+v\n%s\n--- the host ---\n%s", jh, tx, tx.timeline(), host)
 		}
 		ctl.must(t, "DELETE", "/api/v1/firewall/policies/"+pid, nil, nil)
 		deleted = true

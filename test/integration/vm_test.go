@@ -485,9 +485,22 @@ systemctl mask drool-masked.service
 		waitJob(t, id, 10*time.Minute)
 		jh := getJobHost(t, id, h.ID)
 		expect(t, jh.State == "cancelled", "cancel during the transaction: %v", jh)
-		// What state is the package database in now? DROOL must explain it, not hide it.
-		next := run(t, h.ID, map[string]any{"type": "package", "action": "install", "names": []string{"tree"}})
-		t.Logf("after cancelling a live %s transaction, the next package operation: %v", proc, next)
+		// What state is the package database in now? DROOL must explain it, not
+		// hide it. The next operation has to reach the package manager: a
+		// package that isn't installed (tree is, since the reboot-required check).
+		var pkgName string
+		for _, p := range []string{"jq", "telnet", "zip", "lsof"} {
+			q := map[bool]string{true: "dpkg-query -W -f='${Status}' " + p + " 2>/dev/null | grep -q 'ok installed'", false: "rpm -q " + p + " >/dev/null"}[isApt]
+			if out, _ := vmSSH(v, q+" && echo installed || echo absent"); out == "absent" {
+				pkgName = p
+				break
+			}
+		}
+		if pkgName == "" {
+			t.Fatal("no small package left that isn't installed")
+		}
+		next := run(t, h.ID, map[string]any{"type": "package", "action": "install", "names": []string{pkgName}})
+		t.Logf("after cancelling a live %s transaction, the next package operation (install %s): %v, changed %v", proc, pkgName, next, next.changed() != nil && *next.changed())
 		if isApt {
 			st, _ := vmSSH(v, "echo updates: $(ls -A /var/lib/dpkg/updates | wc -l); dpkg --audit | head -3; pgrep -a 'apt|dpkg' || true")
 			t.Logf("dpkg after the next operation: %s", st)
@@ -498,6 +511,8 @@ systemctl mask drool-masked.service
 				fix := run(t, h.ID, cmd("dpkg --configure -a && apt-get -y -f install", true))
 				expect(t, fix.State == "succeeded", "documented fix: %v", fix)
 			}
+			again := run(t, h.ID, map[string]any{"type": "package", "action": "install", "names": []string{pkgName}})
+			expect(t, again.State == "succeeded", "install %s after the documented fix: %v", pkgName, again)
 		}
 		if !isApt {
 			chk := run(t, h.ID, cmd("rpm -Va --nofiles --nodigest >/dev/null 2>&1; dnf -q check && echo rpmdb-ok", true))

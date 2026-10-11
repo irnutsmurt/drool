@@ -114,7 +114,10 @@ hands out are the release's, and the release tests run.
 
 All integration commands: `go test -tags integration ./test/integration -release dist/<version> -v -timeout <time>`.
 Every suite has a controller of its own (or cleans up what it made), so each runs alone as well as
-together with the others; qualification runs the release suites both ways.
+together with the others; qualification runs the release suites both ways. Run the browser tests
+while no other test process starts or stops: every test process creates and removes Docker
+networks, and Chromium aborts requests in flight when the machine's network addresses change
+(`net::ERR_NETWORK_CHANGED`), which fails a browser test for reasons outside DROOL.
 
 The VM tests run cloud images under QEMU's software emulation (TCG) inside ordinary, unprivileged
 containers: no KVM, no privileged containers, nothing on the build machine's network, firewall or
