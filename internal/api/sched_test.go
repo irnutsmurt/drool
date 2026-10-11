@@ -10,6 +10,7 @@ import (
 
 	"drool/internal/auth"
 	"drool/internal/sched"
+	"drool/internal/sshx/sshtest"
 	"drool/internal/store/db"
 	"drool/internal/verify"
 )
@@ -23,6 +24,7 @@ type schedAPI struct {
 	h                      *harness
 	admin, op, op2, viewer *client
 	hostA                  string
+	srvA                   *sshtest.Server // hostA's SSH server
 }
 
 func newSchedAPI(t *testing.T) *schedAPI {
@@ -33,7 +35,7 @@ func newSchedAPI(t *testing.T) *schedAPI {
 	h.mkUser("sam", auth.RoleOperator)
 	h.mkUser("vera", auth.RoleViewer)
 	e := &schedAPI{h: h, admin: h.login("admin"), op: h.login("rob"), op2: h.login("sam"), viewer: h.login("vera")}
-	e.hostA = readyHost(t, h, e.admin, "alpha")
+	e.hostA, e.srvA = readyHostServer(t, h, e.admin, "alpha")
 	return e
 }
 

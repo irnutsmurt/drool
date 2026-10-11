@@ -11,12 +11,15 @@ import (
 	"drool/internal/auth"
 	"drool/internal/desired"
 	"drool/internal/monitor/services"
+	"drool/internal/ops/pkg"
+	"drool/internal/sshx/sshtest"
 )
 
 // Desired state through the API, against a real SSH host (sshtest
 // running commands in a temporary directory): files are hashed and
-// deployed for real; services come from monitoring's ingestion; the
-// workstation's package manager is unsupported, which is itself tested.
+// deployed for real; services come from monitoring's ingestion; the host
+// has neither apt nor dnf (whatever the machine running the test has), and
+// that unsupported package manager is itself tested.
 
 type desiredAPI struct {
 	*schedAPI
@@ -29,6 +32,12 @@ type desiredAPI struct {
 func newDesiredAPI(t *testing.T) *desiredAPI {
 	t.Helper()
 	e := &desiredAPI{schedAPI: newSchedAPI(t)}
+	e.srvA.SetExec(func(cmd string, stdin []byte) (string, string, int) {
+		if strings.Contains(cmd, pkg.DetectCommand) {
+			return "none\n", "", 0
+		}
+		return sshtest.ExecLocal(cmd, stdin)
+	})
 	e.h.mkUser("aud", auth.RoleAuditor)
 	e.auditor = e.h.login("aud")
 	e.dir = t.TempDir()
@@ -124,7 +133,7 @@ func TestDesiredStateThroughTheAPI(t *testing.T) {
 	if s := got["service:app.service"]; s.Status != desired.StatusDrift || s.Current != "stopped, enabled at boot" {
 		t.Fatalf("service %+v", s)
 	}
-	// The workstation's package manager isn't apt or dnf: unknown, never compliant.
+	// The host's package manager isn't apt or dnf: unknown, never compliant.
 	if p := got["package:telnet"]; p.Status != desired.StatusUnknown || !strings.Contains(p.Note, "unsupported package manager") {
 		t.Fatalf("package %+v", p)
 	}

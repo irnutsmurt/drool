@@ -19,6 +19,15 @@ import (
 // commands locally, and returns its id.
 func readyHost(t *testing.T, h *harness, c *client, name string) string {
 	t.Helper()
+	id, _ := readyHostServer(t, h, c, name)
+	return id
+}
+
+// readyHostServer is readyHost that also returns the server, so a test can
+// decide what the host has (SetExec) instead of inheriting it from the
+// machine running the test.
+func readyHostServer(t *testing.T, h *harness, c *client, name string) (string, *sshtest.Server) {
+	t.Helper()
 	var ck controllerKeyResponse
 	c.do("GET", "/api/v1/secrets/controller-ssh-key", nil).json(t, &ck)
 	key := sshtest.NewEd25519Signer(t)
@@ -32,7 +41,7 @@ func readyHost(t *testing.T, h *harness, c *client, name string) string {
 	if r := c.do("POST", "/api/v1/hosts/"+host.ID+"/hostkeys/approve", map[string]string{"fingerprint": ssh.FingerprintSHA256(key.PublicKey())}); r.status != 200 {
 		t.Fatalf("approve: %s", r.body)
 	}
-	return host.ID
+	return host.ID, srv
 }
 
 func waitJob(t *testing.T, c *client, id string) jobJSON {

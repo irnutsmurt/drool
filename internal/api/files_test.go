@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"drool/internal/auth"
+	"drool/internal/sshx/sshtest"
 )
 
 // raw sends a non-JSON body (uploads) or reads a non-JSON response.
@@ -34,7 +35,15 @@ func TestFileManagerAPI(t *testing.T) {
 	h := newHarness(t)
 	h.mkUser("admin", auth.RoleAdmin)
 	c := h.login("admin")
-	id := readyHost(t, h, c, "files")
+	id, srv := readyHostServer(t, h, c, "files")
+	// This host's SSH user may not use sudo, whatever the machine running
+	// the test allows (a CI runner's user has passwordless sudo).
+	srv.SetExec(func(cmd string, stdin []byte) (string, string, int) {
+		if strings.HasPrefix(cmd, "sudo ") {
+			return "", "sudo: a password is required\n", 1
+		}
+		return sshtest.ExecLocal(cmd, stdin)
+	})
 	dir := t.TempDir()
 	f := filepath.Join(dir, "notes.txt")
 	os.WriteFile(f, []byte("secret-content-1\n"), 0o644)
