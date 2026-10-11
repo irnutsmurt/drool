@@ -1438,8 +1438,8 @@ state changed, or you accepted the current state), **Compliant again (changed on
 
 - **Services** come from system monitoring (it must be on). Agents report every change within
   about a minute; SSH hosts are polled every 5 minutes. Before restoring or accepting, and after a correction,
-  DROOL asks for fresh data and waits for it. (Agents from before this version only report
-  changes; update them so DROOL can confirm a service's state on request.)
+  DROOL asks for fresh data and waits for it. (Shepherds older than M14 only report changes;
+  update them so DROOL can confirm a service's state on request.)
 - **Packages** are checked with a read-only query of just those packages — no updates, no
   package transaction, no root needed.
 - **Files** are checked by size, owner, group, mode and a SHA-256 computed on the host; their
@@ -1910,7 +1910,7 @@ plain HTTP to the network by accident.
   Packages and files are checked every 15 minutes, so drift made in between shows up then (or
   with *Check now*). A baseline holds at most 200 resources; one correction at most 50 different
   changes per job (larger ones are split by host, or refused for a single host — restore it in
-  parts). Agents from before this version can't report packages, or confirm services on request,
+  parts). Shepherds older than M14 can't report packages, or confirm services on request,
   until updated.
 - **If the controller crashes or restarts during a job,** commands already running on hosts keep
   running; those hosts are marked *interrupted (outcome unknown)*. Check them before re-running.
