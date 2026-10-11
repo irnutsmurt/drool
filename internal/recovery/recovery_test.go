@@ -467,3 +467,65 @@ func TestCrashAfterTransition(t *testing.T) {
 		t.Errorf("controller's record not moved: %s", epoch)
 	}
 }
+
+// TestIncompatibleShepherdUpdated: a Shepherd too old to move to the new
+// epoch is held (incompatible) and its reconnects change nothing; once it
+// connects updated, it is compared again and moved — also after the
+// controller restarted meanwhile (M17: the update-then-reconcile path).
+func TestIncompatibleShepherdUpdated(t *testing.T) {
+	e := newEnv(t, 2)
+	for _, id := range []string{"old", "older"} {
+		e.agentHost(t, id, 2, 2)
+		e.ag.mu.Lock()
+		v := e.ag.views[id]
+		v.Features, v.AgentVersion = nil, "0.15"
+		e.ag.views[id] = v
+		e.ag.mu.Unlock()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := e.svc.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"old", "older"} {
+		e.svc.OnSession(id)
+		waitFor(t, 10*time.Second, id+" held", func() bool { st, _ := e.state(t, id); return st == StateIncompatible })
+	}
+	attempts := func(id string) (n int64) {
+		e.st.Reader.QueryRow(`SELECT attempts FROM host_reconciliation WHERE host_id = ?`, id).Scan(&n)
+		return n
+	}
+	before := attempts("old")
+	// Reconnecting unchanged: still held, no new attempt.
+	e.svc.OnSession("old")
+	time.Sleep(300 * time.Millisecond)
+	if st, _ := e.state(t, "old"); st != StateIncompatible || attempts("old") != before {
+		t.Fatalf("an unchanged reconnect: %s, %d attempts (was %d)", st, attempts("old"), before)
+	}
+	// Updated: it can move now.
+	updated := func(id string) {
+		e.ag.mu.Lock()
+		v := e.ag.views[id]
+		v.Features, v.AgentVersion = []string{"epoch-1"}, "1.0"
+		e.ag.views[id] = v
+		e.ag.mu.Unlock()
+	}
+	updated("old")
+	e.svc.OnSession("old")
+	waitFor(t, 10*time.Second, "the updated Shepherd reconciled", func() bool { st, _ := e.state(t, "old"); return st == StateReconciled })
+	if e.ag.transitions["old"] != 1 {
+		t.Errorf("transitions: %v", e.ag.transitions)
+	}
+	// A controller restarted while a host was held still knows it.
+	cancel()
+	svc := New(Deps{Store: e.st, Agents: e.ag, Firewall: e.fw, Workers: 2})
+	svc.tick, svc.scale = 100*time.Millisecond, 0.01
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	if err := svc.Start(ctx2); err != nil {
+		t.Fatal(err)
+	}
+	updated("older")
+	svc.OnSession("older")
+	waitFor(t, 10*time.Second, "updated after a restart, reconciled", func() bool { st, _ := e.state(t, "older"); return st == StateReconciled })
+}

@@ -280,11 +280,11 @@ func testUpgradeFromM16(t *testing.T) {
 	bin := filepath.Join(keyDir, "drool-agent")
 	b, _ := os.ReadFile(filepath.Join(agentDir, "drool-agent-linux-amd64"))
 	os.WriteFile(bin, b, 0o755)
-	out, err := droolCLI(t, binPath, keyDir, "release", "sign", "--key", filepath.Join(keyDir, "drool-release.key"), bin)
+	out, err := droolCLI(t, binPath, keyDir, signArgs("--key", filepath.Join(keyDir, "drool-release.key"), bin)...)
 	if err != nil {
 		// Only a build from a release tag records its version; others name it.
 		expect(t, strings.Contains(out, "give it with --version"), "release sign without --version: %v\n%s", err, out)
-		out, err = droolCLI(t, binPath, keyDir, "release", "sign", "--key", filepath.Join(keyDir, "drool-release.key"), "--version", agentV1, bin)
+		out, err = droolCLI(t, binPath, keyDir, signArgs("--key", filepath.Join(keyDir, "drool-release.key"), "--version", agentV1, bin)...)
 	}
 	if err != nil {
 		t.Fatalf("release sign: %v\n%s", err, out)

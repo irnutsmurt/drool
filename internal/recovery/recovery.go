@@ -91,16 +91,19 @@ type Service struct {
 	mu        sync.Mutex
 	active    *restoreRec
 	unsettled map[string]bool // hosts pending or unreachable in the active restore
-	queue     []string
-	queued    map[string]bool
-	inflight  map[string]bool // being worked on: one worker per host
-	again     map[string]bool // queued again while in flight: after it
-	wake      chan struct{}
-	running   int
-	peak      int // most hosts worked on at once (tests)
-	started   bool
-	tick      time.Duration // how often due hosts are queued
-	scale     float64       // retry delays are multiplied by this (tests)
+	// incompatible: hosts held because their Shepherd can't move to the new
+	// epoch; compared again when it connects able to (updated, M17).
+	incompatible map[string]bool
+	queue        []string
+	queued       map[string]bool
+	inflight     map[string]bool // being worked on: one worker per host
+	again        map[string]bool // queued again while in flight: after it
+	wake         chan struct{}
+	running      int
+	peak         int // most hosts worked on at once (tests)
+	started      bool
+	tick         time.Duration // how often due hosts are queued
+	scale        float64       // retry delays are multiplied by this (tests)
 }
 
 type restoreRec struct {
@@ -119,7 +122,7 @@ func New(d Deps) *Service {
 	if d.Log == nil {
 		d.Log = slog.Default()
 	}
-	return &Service{d: d, unsettled: map[string]bool{}, queued: map[string]bool{}, inflight: map[string]bool{}, again: map[string]bool{},
+	return &Service{d: d, unsettled: map[string]bool{}, incompatible: map[string]bool{}, queued: map[string]bool{}, inflight: map[string]bool{}, again: map[string]bool{},
 		wake: make(chan struct{}, 1),
 		tick: 15 * time.Second, scale: 1}
 }
@@ -163,24 +166,29 @@ func (s *Service) load(ctx context.Context) error {
 		s.d.Log.Error("the latest restore record names another controller epoch; reconciliation is off", "restore", r.ID)
 		return nil
 	}
-	rows, err := s.d.Store.Reader.QueryContext(ctx, `SELECT host_id FROM host_reconciliation WHERE restore_id = ? AND state IN ('pending','unreachable')`, r.ID)
+	rows, err := s.d.Store.Reader.QueryContext(ctx, `SELECT host_id, state FROM host_reconciliation
+		WHERE restore_id = ? AND state IN ('pending','unreachable','incompatible')`, r.ID)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
-	unsettled := map[string]bool{}
+	unsettled, incompatible := map[string]bool{}, map[string]bool{}
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		var id, state string
+		if err := rows.Scan(&id, &state); err != nil {
 			return err
 		}
-		unsettled[id] = true
+		if state == StateIncompatible {
+			incompatible[id] = true
+		} else {
+			unsettled[id] = true
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
 	s.mu.Lock()
-	s.active, s.unsettled = &r, unsettled
+	s.active, s.unsettled, s.incompatible = &r, unsettled, incompatible
 	s.mu.Unlock()
 	if len(unsettled) > 0 {
 		s.d.Log.Info("reconciling hosts after a controller restore", "restore", r.ID, "hosts", len(unsettled))
@@ -318,13 +326,47 @@ func (s *Service) enqueueDue(ctx context.Context) {
 
 // --- hooks (agentsvc.RecoveryHooks) ---
 
-// OnSession: a Shepherd connected; compare it if its host isn't settled.
+// OnSession: a Shepherd connected; compare it if its host isn't settled,
+// or if it was held as incompatible and can move now (it was updated).
 func (s *Service) OnSession(hostID string) {
 	s.mu.Lock()
 	want := s.started && s.unsettled[hostID]
+	held := s.started && s.incompatible[hostID]
 	s.mu.Unlock()
-	if want {
+	switch {
+	case want:
 		s.enqueue(hostID)
+	case held:
+		go s.recheckUpdated(hostID)
+	}
+}
+
+// recheckUpdated compares a host held as incompatible again once its
+// Shepherd is connected, speaks this protocol and can move to a new epoch:
+// an update brought it what it lacked. A Shepherd that still can't move
+// stays held without another attempt (or audit record) per reconnect.
+func (s *Service) recheckUpdated(hostID string) {
+	r := s.activeRestore()
+	if r == nil || s.d.Agents == nil {
+		return
+	}
+	if v, ok := s.d.Agents.AgentView(hostID); !ok || !v.Compatible || !v.HasFeature("epoch-1") {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	res, err := s.d.Store.Writer.ExecContext(ctx, `UPDATE host_reconciliation SET state = 'pending', next_attempt_at = 0,
+		reason = 'its Shepherd connected again and can move to the new epoch now: comparing'
+		WHERE restore_id = ? AND host_id = ? AND state = 'incompatible'`, r.ID, hostID)
+	if err != nil {
+		s.d.Log.Warn("compare an updated Shepherd again", "host", hostID, "err", err)
+		return
+	}
+	s.mu.Lock()
+	delete(s.incompatible, hostID)
+	s.mu.Unlock()
+	if n, _ := res.RowsAffected(); n > 0 {
+		s.requeue(hostID)
 	}
 }
 
@@ -574,6 +616,13 @@ func (s *Service) record(ctx context.Context, r *restoreRec, hostID string, rec 
 	if n, _ := res.RowsAffected(); n == 0 {
 		return
 	}
+	s.mu.Lock()
+	if o.state == StateIncompatible {
+		s.incompatible[hostID] = true
+	} else {
+		delete(s.incompatible, hostID)
+	}
+	s.mu.Unlock()
 	switch o.state {
 	case StatePending, StateUnreachable:
 		s.mu.Lock()
