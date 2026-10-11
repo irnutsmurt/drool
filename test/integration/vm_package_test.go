@@ -142,7 +142,7 @@ func (p *vmPackage) fromManual(t *testing.T) {
 	// M16, installed by hand as its README said.
 	old := m16Build.build(t, "drool", p.arch)
 	vmUpload(t, p.v, "deploy", old, "/home/deploy/drool-m16")
-	unit, err := exec.Command("git", "-C", root, "show", "0bb9535:packaging/systemd/drool.service").Output()
+	unit, err := exec.Command("git", "-C", root, "show", m16Build.Rev+":packaging/systemd/drool.service").Output()
 	if err != nil {
 		t.Fatal(err)
 	}

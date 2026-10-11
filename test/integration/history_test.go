@@ -24,8 +24,8 @@ var (
 	// The tagged Technical Alpha: schema 5, SSH only (no Shepherds).
 	alphaBuild = historic{"v0.1.0-alpha", "v0.1.0-alpha"}
 	// M15 and M16 on main: what homelabs dogfooding DROOL run.
-	m15Build = historic{"M15", "f328ba8"}
-	m16Build = historic{"M16", "0bb9535"}
+	m15Build = historic{"M15", "75f2f41"}
+	m16Build = historic{"M16", "3079311"}
 )
 
 var (
