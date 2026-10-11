@@ -533,6 +533,27 @@ systemctl mask drool-masked.service
 			jh := run(t, h.ID, map[string]any{"type": "reboot"})
 			expect(t, jh.State == "failed" && jh.ErrorClass == "HostKeyError", "reboot onto a new host key must not be trusted: %v", jh)
 			expect(t, getHost(t, h.ID).Status == "hostkey_mismatch" || probe(t, h.ID).OK == false, "host should need key review")
+			// What an operator does next: compare the key DROOL is offered with
+			// the host's own (here read on the host, as from its console),
+			// approve it, and the host works again.
+			onHost := mustVMSSH(t, v, `for f in /etc/ssh/ssh_host_*_key.pub; do ssh-keygen -lf "$f"; done`)
+			var scanned struct {
+				Items []struct {
+					Fingerprint string `json:"fingerprint"`
+				} `json:"items"`
+			}
+			ctl.must(t, "POST", "/api/v1/hosts/"+h.ID+"/hostkeys/scan", nil, &scanned)
+			approve := ""
+			for _, k := range scanned.Items {
+				if k.Fingerprint != "" && strings.Contains(onHost, k.Fingerprint) {
+					approve = k.Fingerprint
+				}
+			}
+			if approve == "" {
+				t.Fatalf("none of the offered keys is the host's own:\n%s\n%+v", onHost, scanned.Items)
+			}
+			ctl.must(t, "POST", "/api/v1/hosts/"+h.ID+"/hostkeys/approve", map[string]string{"fingerprint": approve}, nil)
+			waitFor(t, 2*time.Minute, "the host after approving its new key", func() bool { return probe(t, h.ID).OK })
 		})
 	}
 }
