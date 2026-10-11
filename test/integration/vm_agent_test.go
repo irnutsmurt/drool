@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -52,7 +53,24 @@ func testVMAgent(t *testing.T, def vmDef, h host, key releaseKey) {
 			Output string `json:"output"`
 			Error  string `json:"error"`
 		}
-		ctl.must(t, "POST", "/api/v1/hosts/"+h.ID+"/agent/install", map[string]any{"preset": "full", "release_key": key.line}, &res)
+		// Right after the host is added DROOL may still be reading its
+		// inventory: "host busy, try again" until it's done (as installAgent).
+		waitFor(t, 5*time.Minute, "the host free for the agent install", func() bool {
+			var raw json.RawMessage
+			st, err := ctl.do("POST", "/api/v1/hosts/"+h.ID+"/agent/install", map[string]any{"preset": "full", "release_key": key.line}, &raw)
+			switch {
+			case err != nil:
+				t.Fatal(err)
+			case st == 409 && strings.Contains(string(raw), `"code":"host_busy"`):
+				return false
+			case st >= 300:
+				t.Fatalf("install agent: HTTP %d %s", st, raw)
+			}
+			if err := json.Unmarshal(raw, &res); err != nil {
+				t.Fatalf("install agent: %v: %s", err, raw)
+			}
+			return true
+		})
 		if !res.OK {
 			_, diag := sh("systemctl status drool-agent --no-pager; journalctl -u drool-agent --no-pager -n 60; ls -laZ /usr/libexec/drool-agent /usr/libexec/drool-agent/versions/*; getenforce; ausearch -m avc -ts recent 2>/dev/null | tail -20")
 			t.Fatalf("install: %s\n%s\n--- diagnostics ---\n%s", res.Error, res.Output, diag)
