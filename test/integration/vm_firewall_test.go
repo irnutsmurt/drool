@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -635,7 +636,8 @@ func testVMFirewallAgent(t *testing.T, def vmDef, v *vm, h host) {
 		if jh.State != "failed" || tx.State != "rolled_back" {
 			host, _ := vmSSH(v, fmt.Sprintf("nft list table inet drool; ss -tnp | grep -F ':%d'; ip route get %s; cat /var/lib/drool/firewall/transaction.json; "+
 				"uptime; systemctl show drool-agent -p NRestarts -p ExecMainStartTimestamp -p ExecMainStatus; journalctl -u drool-agent --no-pager -n 40 -o short-precise", ctl.agentListenPort(), agentGateway))
-			t.Fatalf("%v %+v\n%s\n--- the host ---\n%s", jh, tx, tx.timeline(), host)
+			console, _ := exec.Command("docker", "logs", "--tail", "60", v.c.Name).CombinedOutput() // the VM's serial console: panics, reboots
+			t.Fatalf("%v %+v\n%s\n--- the host ---\n%s\n--- the VM's console ---\n%s", jh, tx, tx.timeline(), host, console)
 		}
 		ctl.must(t, "DELETE", "/api/v1/firewall/policies/"+pid, nil, nil)
 		deleted = true
