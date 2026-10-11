@@ -1,6 +1,6 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.13**
+**Design Document v0.3.14**
 Status: Draft · 2026-10-10 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
@@ -13,6 +13,18 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.13 → v0.3.14 (M17: supported platforms, packaging and 1.0 release engineering)
+
+The design didn't change: M17 made what M1–M16 built installable, upgradable, recoverable, supportable, reproducible and releasable as DROOL 1.0 for Linux. As built (`ARCHITECTURE-ALPHA.md` §34, `RELEASING.md`):
+
+| # | As built | Section |
+|---|---|---|
+| 1 | **Distribution:** native `.deb`/`.rpm` packages (systemd, the `drool` account; removing or purging never deletes the data, the master key or the backups), a release archive with the static binary, and a multi-platform OCI image with a Compose file and a Podman Quadlet unit; `linux/amd64` and `linux/arm64`; no package repository, no hosted update service, and the controller still doesn't update itself | §30, §22.9 |
+| 2 | **Supported platforms, backed by tests:** managed hosts Debian 12, 13; Ubuntu 22.04, 24.04, 26.04; Rocky Linux and AlmaLinux 9, 10; Fedora 44 (RHEL expected to work); the controller on the same distributions as packages, and as a container on Docker (also rootless) and rootless Podman; amd64 and arm64 | §22.9 |
+| 3 | **Releases:** semantic versions with stable, prerelease and development channels; every artifact built once, by one pipeline, from one commit, reproducibly; checksums, SBOMs (SPDX), third-party notices; `SHA256SUMS` signed offline with a release key that is never in CI or on a controller — a different trust domain from the operators' Shepherd release keys | §22.9 |
+| 4 | **Compatibility promise:** a 1.x controller works with every protocol-1 Shepherd, older or newer, by capability negotiation; upgrades back the database up before migrating and are reversible by restoring that backup with the older version | §28, §22.9 |
+| 5 | **Secure your installation:** a checklist of problems, recommendations and options on the System settings — guidance, never a prerequisite | §2.5 |
 
 ### v0.3.12 → v0.3.13 (M16: core security, recovery and platform hardening)
 
@@ -1397,6 +1409,14 @@ Integrity (see §4.2 limitation):
 
 The Overview shows an event stream where every event links to its object: alerts opened, critical or escalated, acknowledged and recovered; maintenance started and ended; a notification destination failing and recovering; desired-state drift detected, conflicts appearing, automatic restore paused (§14.12, aggregated). Routine activity (each delivery attempt, each sample, each unchanged check) never appears there.
 
+### 22.9 Releases, platforms and upgrades (1.0)
+
+- **What a release is.** A set of files built by one pipeline from one source commit, reproducibly: archives, native packages, a multi-platform container image, SBOMs, third-party notices, a manifest and checksums. Versions follow semantic versioning; only builds from a release tag are *stable* or *prerelease*, everything else says it is a *development* build, and a build from modified source can't look like a release. The product version, the database schema and the Shepherd protocol are numbered separately.
+- **Trust in downloads** comes from a signature of the checksums with a release key kept offline — never in CI, never on a controller — verifiable with standard tools. It is not the operator's Shepherd release key: operators keep deciding which Shepherd binaries their hosts run.
+- **Supported platforms** are the ones the release tests cover; others are named as expected to work or unsupported, never implied.
+- **Installing** stays a few commands to a browser setup, for a container or a native package alike; the security checklist recommends hardening afterwards and blocks nothing (§2.5).
+- **Upgrading** is replacing the package, binary or image; the controller never updates itself. A schema change is preceded by an automatic backup, and going back means restoring it with the older version; there is no in-place downgrade. Removing DROOL never removes its data.
+
 ---
 
 ## 23. Dependency Awareness
@@ -1485,6 +1505,8 @@ Agent self-update ships with the agent in Alpha 2.
 - **Safe install.** The new version is staged next to the current one, and the previous one is kept. The switch is atomic and followed by a restart. The update counts only after a local health check and a controller-visible one (the new agent completed a session). Otherwise it reverts automatically, and the rollback doesn't depend on the new binary. A power loss leaves the old or the new version complete. Unsupported downgrades are refused; automatic rollback to the kept previous version is allowed.
 - **Rollout.** Controller-managed: manual or automatic (a channel or a desired version), canary first and then bounded batches, pausing on failures. One host's failure never becomes a fleet-wide failure. Offline hosts catch up when they return.
 - **Compatibility.** The agent protocol is versioned independently of the product, negotiated per session, and has a documented compatibility range. Incompatible agents are shown as such and use SSH where it is configured.
+- **The 1.x promise.** A 1.x controller works with every agent that speaks protocol 1, older or newer: capabilities are announced and checked (never inferred from a version), nothing is sent to an agent that can't do it, and the agent's status says what it lacks. Upgrade the controller first; agents already updated keep working with a controller that was rolled back. Pre-1.0 agents are supported as far as they are tested (M15 and M16 builds).
+- **Official binaries, operator's signature.** Each DROOL release ships agent binaries, verifiable through the release's signed checksums; an operator signs the ones their hosts may update to with their own release key.
 
 ---
 
@@ -1510,6 +1532,8 @@ Agent self-update ships with the agent in Alpha 2.
 | Plugins | Separate processes over gRPC |
 
 Using Go on both sides shares models and protocol code and gives easy static deployments.
+
+Packaging (1.0): static binaries for `linux/amd64` and `linux/arm64`; `.deb` and `.rpm` packages that run the controller as a sandboxed systemd service; a distroless, non-root, read-only-capable OCI image for both architectures. One reproducible pipeline builds them all from one commit (`RELEASING.md`).
 
 ---
 
