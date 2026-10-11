@@ -168,7 +168,7 @@ docker load -i ~/drool.oci.tar`, 20*time.Minute)
 	// The README's commands, as they stand.
 	mustVMAs(t, v, "alice", dock+"docker compose up -d", 10*time.Minute)
 	c := runtimeController(t, v, r, func() string {
-		out, _ := vmAs(v, "alice", dock+"docker compose logs drool", nil, time.Minute)
+		out, _ := vmAs(v, "alice", dock+"docker compose logs --no-log-prefix drool", nil, time.Minute)
 		return out
 	})
 	insp := mustVMAs(t, v, "alice", dock+`docker inspect -f '{{.Config.User}} {{.HostConfig.ReadonlyRootfs}} {{.HostConfig.CapDrop}} {{.HostConfig.Privileged}}' $(docker compose ps -q drool)`, time.Minute)
