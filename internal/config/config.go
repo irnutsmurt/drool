@@ -109,7 +109,8 @@ type Agent struct {
 	// TokenTTL is the default lifetime of enrollment tokens.
 	TokenTTL time.Duration `yaml:"token_ttl"`
 	// BinariesDir holds drool-agent-linux-<arch> binaries served to new
-	// hosts. Empty: next to the drool binary.
+	// hosts. Empty: next to the drool binary, or ../lib/drool from it
+	// (the native packages install them in /usr/lib/drool).
 	BinariesDir string `yaml:"binaries_dir"`
 }
 

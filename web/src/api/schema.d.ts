@@ -4433,11 +4433,30 @@ export interface components {
             env_var: string;
         };
         SystemInfo: {
+            /** @description Product version: v-prefixed SemVer for releases (v1.0.0, v1.0.0-rc.1), git describe output for development builds. */
             version: string;
+            /**
+             * @description stable and prerelease only for builds from the release pipeline at a release tag; everything else, including any build from modified source, is development.
+             * @enum {string}
+             */
+            channel: "stable" | "prerelease" | "development";
+            /** @description Source revision the binary was built from. */
             commit: string;
+            /** @description Built from a tree with uncommitted changes (never a release). */
+            modified: boolean;
             build_date: string;
             go_version: string;
+            /** @description os/arch of the controller binary, e.g. linux/arm64. */
+            platform: string;
+            /** @description Database schema version (independent of the product version). */
             schema_version: number;
+            /** @description Agent (Shepherd) protocol range this controller speaks (independent of the product version). */
+            agent_protocol: {
+                min: number;
+                max: number;
+            };
+            /** @description Optional Shepherd capabilities this controller uses. */
+            agent_features: string[];
             /** @enum {string} */
             tls_mode: "self_signed" | "provided" | "off";
             insecure_plaintext: boolean;

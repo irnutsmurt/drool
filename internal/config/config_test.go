@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -155,5 +156,31 @@ func TestSetupSecretRedactedAndValidated(t *testing.T) {
 	}
 	if _, err := Load("", false, []string{"DROOL_SETUP_SECRET=a", "DROOL_SETUP_SECRET_FILE=" + p}); err == nil {
 		t.Fatal("both secret and secret_file accepted")
+	}
+}
+
+// The example shipped with the release (packaging/config.example.yaml) must
+// load, and every value it sets must be the default it claims to be.
+func TestShippedExampleIsTheDefaults(t *testing.T) {
+	l, err := Load("../../packaging/config.example.yaml", true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Defaults()
+	// An empty list in the file and no list at all are the same setting.
+	if len(l.Server.TrustedProxies) == 0 {
+		l.Server.TrustedProxies = want.Server.TrustedProxies
+	}
+	if !reflect.DeepEqual(l.Config, want) {
+		t.Errorf("the example differs from the defaults:\n got %+v\nwant %+v", l.Config, want)
+	}
+	set := 0
+	for _, s := range l.Sources {
+		if s == SourceFile {
+			set++
+		}
+	}
+	if set < 20 {
+		t.Errorf("the example sets only %d values", set)
 	}
 }

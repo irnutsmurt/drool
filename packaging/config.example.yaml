@@ -1,0 +1,62 @@
+# DROOL controller configuration: an example.
+#
+# DROOL runs without a config file. To change something, copy the lines you
+# need to /etc/drool/config.yaml (native installations; readable by the drool
+# user: sudo install -m 0640 -g drool ...) or set the matching environment
+# variable: the key path in upper snake case, e.g. server.web_port →
+# DROOL_SERVER_WEB_PORT (containers). Settings → System in the web UI shows
+# every effective value and where it came from. The values below are the
+# defaults unless a comment says otherwise.
+
+server:
+  bind: 0.0.0.0             # listen address for the web UI and API
+  web_port: 8080
+  tls:
+    mode: self_signed       # self_signed | provided | off
+    # Your own certificate (mode: provided), readable by the drool user:
+    # cert_file: /etc/drool/tls/fullchain.pem
+    # key_file: /etc/drool/tls/privkey.pem
+    # mode: off is only accepted with a loopback bind (a reverse proxy on
+    # this machine terminates TLS).
+  trusted_proxies: []       # reverse proxies whose X-Forwarded-For is believed
+
+agent:                      # the Shepherd (DROOL agent) endpoint
+  enabled: true
+  port: 9443
+  # The address Shepherds connect to, put into enrollment tokens. Empty: the
+  # host name you use for the web UI. Containers need it set.
+  # advertise: [drool.example.net:9443]
+
+# data_dir: /var/lib/drool  # containers: /data
+
+secrets:
+  # The key that encrypts stored credentials. Default: <data_dir>/master.key,
+  # created on first start. Keep a copy somewhere safe and separate from
+  # your backups. It can live outside the data directory; the controller
+  # needs to write there on first start and for `drool secrets rotate-key`.
+  # master_key_file: /var/lib/drool-keys/master.key
+
+backup:
+  before_upgrade: true      # back the database up before a newer DROOL migrates it
+
+ssh_ca:                     # short-lived SSH certificates (hosts in certificate mode)
+  cert_ttl: 10m
+  clock_skew: 5m
+
+auth:
+  session_idle_timeout: 12h
+  session_absolute_timeout: 168h
+  reauth_window: 5m         # how long confirming your password lasts for high-impact actions
+
+poller:
+  status_interval: 5m
+  updates_interval: 6h
+
+retention:
+  jobs_days: 30
+
+logging:
+  level: info               # debug | info | warn | error
+  format: json              # json | text
+  output: file              # file (<data_dir>/logs) | stdout (containers)
+  rotation: { max_size_mb: 25, retain_files: 10, compress: true, retain_days: 30 }

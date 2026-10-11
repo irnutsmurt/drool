@@ -56,18 +56,42 @@ func cmdRelease(args []string) error {
 	case "sign":
 		fs := flag.NewFlagSet("release sign", flag.ContinueOnError)
 		keyFile := fs.String("key", "", "release-signing private key (NAME.key)")
-		ver := fs.String("version", "", "agent version the binary reports (drool-agent version)")
+		ver := fs.String("version", "", "agent version (default: the one stamped into the binary, which it must match)")
 		channel := fs.String("channel", "stable", "release channel")
-		goos := fs.String("os", "linux", "")
-		arch := fs.String("arch", "amd64", "")
+		goos := fs.String("os", "", "default: the binary's")
+		arch := fs.String("arch", "", "default: the binary's")
 		pmin := fs.Uint("protocol-min", 1, "lowest agent protocol the binary speaks")
 		pmax := fs.Uint("protocol-max", 1, "highest agent protocol the binary speaks")
 		minFrom := fs.String("min-upgrade-from", "", "oldest version that may upgrade straight to this one")
+		allowModified := fs.Bool("allow-modified", false, "sign a build made from source with uncommitted changes")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		if fs.NArg() != 1 || *keyFile == "" || *ver == "" {
-			return errors.New("usage: drool release sign --key NAME.key --version vX.Y.Z [--arch amd64] BINARY")
+		if fs.NArg() != 1 || *keyFile == "" {
+			return errors.New("usage: drool release sign --key NAME.key [--version vX.Y.Z] BINARY")
+		}
+		// What the binary says about itself decides: an agent runs the new
+		// binary's "version" before switching and refuses any other answer.
+		info, err := release.Inspect(fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		m := release.Manifest{Version: *ver, Channel: *channel, OS: *goos, Arch: *arch,
+			ProtocolMin: uint32(*pmin), ProtocolMax: uint32(*pmax), MinFrom: *minFrom}
+		if err := release.CheckAgentBinary(info, m); err != nil {
+			return fmt.Errorf("refusing to sign %s: %w", fs.Arg(0), err)
+		}
+		if info.Modified && !*allowModified {
+			return fmt.Errorf("refusing to sign %s: it was built from source with uncommitted changes (commit %.12s); official releases are clean builds. --allow-modified signs it anyway", fs.Arg(0), info.Revision)
+		}
+		if m.Version == "" {
+			m.Version = info.Version
+		}
+		if m.OS == "" {
+			m.OS = info.OS
+		}
+		if m.Arch == "" {
+			m.Arch = info.Arch
 		}
 		kb, err := os.ReadFile(*keyFile)
 		if err != nil {
@@ -82,8 +106,7 @@ func cmdRelease(args []string) error {
 			return err
 		}
 		defer f.Close()
-		s, err := release.Sign(key, release.Manifest{Version: *ver, Channel: *channel, OS: *goos, Arch: *arch,
-			ProtocolMin: uint32(*pmin), ProtocolMax: uint32(*pmax), MinFrom: *minFrom}, f)
+		s, err := release.Sign(key, m, f)
 		if err != nil {
 			return err
 		}
@@ -92,7 +115,7 @@ func cmdRelease(args []string) error {
 		if err := os.WriteFile(out, b, 0o644); err != nil {
 			return err
 		}
-		fmt.Printf("Signed %s %s (%s/%s) with key %s → %s\n", fs.Arg(0), *ver, *goos, *arch, s.KeyID, out)
+		fmt.Printf("Signed %s %s (%s/%s) with key %s → %s\n", fs.Arg(0), m.Version, m.OS, m.Arch, s.KeyID, out)
 		return nil
 	case "verify":
 		fs := flag.NewFlagSet("release verify", flag.ContinueOnError)

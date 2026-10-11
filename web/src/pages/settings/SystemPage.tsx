@@ -9,6 +9,11 @@ import type { Schemas } from "@/api/client";
 
 type ConfigValue = Schemas["ConfigValue"];
 const sourceTone = { default: "neutral", file: "accent", env: "warn" } as const;
+const channels = {
+  stable: { label: "Stable release", tone: "ok" },
+  prerelease: { label: "Pre-release", tone: "accent" },
+  development: { label: "Development build", tone: "warn" },
+} as const;
 
 export function SystemPage() {
   const info = useSystemInfo();
@@ -18,13 +23,26 @@ export function SystemPage() {
     <div className="grid gap-4">
       <Card title="Controller">
         <dl className="grid grid-cols-[7rem_1fr] sm:grid-cols-[10rem_1fr] gap-y-2 text-sm">
-          <dt className="text-muted">Version</dt><dd>{d?.version} ({d?.commit})</dd>
+          <dt className="text-muted">Version</dt>
+          <dd className="flex flex-wrap items-center gap-2">{d?.version}{d && <Badge tone={channels[d.channel].tone}>{channels[d.channel].label}</Badge>}</dd>
+          <dt className="text-muted">Commit</dt>
+          <dd className="flex flex-wrap items-center gap-2">
+            <code className="break-all font-mono text-xs">{d?.commit}</code>
+            {d?.modified && <Badge tone="warn">modified source</Badge>}
+          </dd>
           <dt className="text-muted">Built</dt><dd>{d?.build_date}</dd>
-          <dt className="text-muted">Go</dt><dd>{d?.go_version}</dd>
-          <dt className="text-muted">Schema version</dt><dd>{d?.schema_version}</dd>
+          <dt className="text-muted">Platform</dt><dd>{d && `${d.platform} · ${d.go_version}`}</dd>
+          <dt className="text-muted">Database schema</dt><dd>{d?.schema_version}</dd>
+          <dt className="text-muted">Shepherd protocol</dt>
+          <dd>{d && (d.agent_protocol.min === d.agent_protocol.max ? d.agent_protocol.min : `${d.agent_protocol.min}–${d.agent_protocol.max}`)}</dd>
           <dt className="text-muted">TLS mode</dt><dd>{d?.tls_mode}</dd>
           {d?.config_file !== undefined && (<><dt className="text-muted">Config file</dt><dd>{d.config_file || "none"}</dd></>)}
         </dl>
+        <p className="mt-3 text-xs text-muted">
+          DROOL's version, its database schema and the Shepherd protocol are numbered separately: a Shepherd of another
+          version works with this controller as long as it speaks the same protocol, and DROOL says what it can't do.
+          {d?.channel === "development" && " A development build isn't a release: it may differ from every published version."}
+        </p>
       </Card>
       <RestoreReconciliationCard />
       <Card title="Backup and restore">

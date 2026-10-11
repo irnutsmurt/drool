@@ -389,6 +389,12 @@ func TestPermissions(t *testing.T) {
 	if r.status != 200 || info.Config != nil || info.SchemaVersion == 0 {
 		t.Fatalf("viewer system info: %d %s", r.status, r.body)
 	}
+	// What a support request needs: the build, separately the schema and the
+	// Shepherd protocol (M17). A test binary is a development build.
+	if info.Channel != "development" || info.Commit == "" || info.Platform == "" || info.AgentProtocol.Min == 0 ||
+		info.AgentProtocol.Max < info.AgentProtocol.Min || len(info.AgentFeatures) == 0 {
+		t.Fatalf("viewer system info lacks build details: %s", r.body)
+	}
 
 	a := h.login("auditor")
 	r = a.do("GET", "/api/v1/system/info", nil)

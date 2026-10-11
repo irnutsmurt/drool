@@ -23,6 +23,7 @@ import (
 
 	"drool/internal/agent"
 	"drool/internal/agentcaps"
+	"drool/internal/agentrpc"
 	"drool/internal/monitor/agentmon"
 	"drool/internal/release"
 	"drool/internal/version"
@@ -39,7 +40,7 @@ Usage:
   drool-agent run                       run the agent (the service does this)
   drool-agent status                    identity, certificate, trust, endpoints, capabilities
   drool-agent trust-release-key FILE    trust an additional release-signing key (security-sensitive)
-  drool-agent version                   print the version
+  drool-agent version [--json]          print the version (--json: commit, channel, protocol, features)
 
 Paths can be redirected for testing with --root DIR (everything under DIR).
 `
@@ -53,7 +54,7 @@ func main() {
 	var err error
 	switch cmd {
 	case "version":
-		fmt.Println(version.Version)
+		err = cmdVersion(args)
 	case "run":
 		err = cmdRun(args)
 	case "enroll":
@@ -542,6 +543,33 @@ func cmdTrustKey(args []string) error {
 	return trustKey(paths(*root), fs.Arg(0))
 }
 
+// cmdVersion prints exactly the version and nothing else: an agent that
+// updates runs the new binary's "version" before switching to it and
+// requires its signed version back (agent.ApplyUpdate's preflight), in
+// every Shepherd release so far. Details are behind --json.
+func cmdVersion(args []string) error {
+	fs := flag.NewFlagSet("version", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "print build details as JSON")
+	fs.Parse(args)
+	if !*asJSON {
+		fmt.Println(version.Version)
+		return nil
+	}
+	r := agentrpc.Local()
+	out := struct {
+		version.Build
+		Protocol struct {
+			Min uint32 `json:"min"`
+			Max uint32 `json:"max"`
+		} `json:"protocol"`
+		Features []string `json:"features"`
+	}{Build: version.Get(), Features: agent.Features}
+	out.Protocol.Min, out.Protocol.Max = r.Min, r.Max
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
+}
+
 func cmdStatus(args []string) error {
 	fs := flag.NewFlagSet("status", flag.ExitOnError)
 	root := pathsFlag(fs)
@@ -551,7 +579,8 @@ func cmdStatus(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("drool-agent %s\n", version.Version)
+	b := version.Get()
+	fmt.Printf("drool-agent %s (%s, commit %s, protocol %s–%s)\n", b.Version, b.Channel, b.ShortCommit(), agentrpc.ProtocolMin, agentrpc.ProtocolMax)
 	id, err := st.Identity()
 	if err != nil {
 		fmt.Println("Not enrolled.")

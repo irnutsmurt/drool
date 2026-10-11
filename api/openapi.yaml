@@ -4104,13 +4104,24 @@ components:
 
     SystemInfo:
       type: object
-      required: [version, commit, build_date, go_version, schema_version, tls_mode, insecure_plaintext]
+      required: [version, channel, commit, modified, build_date, go_version, platform, schema_version, agent_protocol, agent_features, tls_mode, insecure_plaintext]
       properties:
-        version: { type: string }
-        commit: { type: string }
+        version: { type: string, description: 'Product version: v-prefixed SemVer for releases (v1.0.0, v1.0.0-rc.1), git describe output for development builds.' }
+        channel: { type: string, enum: [stable, prerelease, development], description: 'stable and prerelease only for builds from the release pipeline at a release tag; everything else, including any build from modified source, is development.' }
+        commit: { type: string, description: Source revision the binary was built from. }
+        modified: { type: boolean, description: 'Built from a tree with uncommitted changes (never a release).' }
         build_date: { type: string }
         go_version: { type: string }
-        schema_version: { type: integer }
+        platform: { type: string, description: 'os/arch of the controller binary, e.g. linux/arm64.' }
+        schema_version: { type: integer, description: Database schema version (independent of the product version). }
+        agent_protocol:
+          type: object
+          required: [min, max]
+          description: Agent (Shepherd) protocol range this controller speaks (independent of the product version).
+          properties:
+            min: { type: integer }
+            max: { type: integer }
+        agent_features: { type: array, items: { type: string }, description: Optional Shepherd capabilities this controller uses. }
         tls_mode: { type: string, enum: [self_signed, provided, 'off'] }
         insecure_plaintext: { type: boolean }
         config_file: { type: string }

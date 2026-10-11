@@ -6,11 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
+	"drool/internal/agentrpc"
+	"drool/internal/agentsvc"
 	"drool/internal/audit"
 	"drool/internal/auth"
 	"drool/internal/config"
@@ -199,15 +200,28 @@ func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {
 // ---- System info ----
 
 type systemInfo struct {
-	Version           string         `json:"version"`
-	Commit            string         `json:"commit"`
-	BuildDate         string         `json:"build_date"`
-	GoVersion         string         `json:"go_version"`
+	Version   string `json:"version"`
+	Channel   string `json:"channel"`
+	Commit    string `json:"commit"`
+	Modified  bool   `json:"modified"`
+	BuildDate string `json:"build_date"`
+	GoVersion string `json:"go_version"`
+	Platform  string `json:"platform"`
+	// SchemaVersion is the database's schema (the binary's newest after
+	// migrations); the product version, schema and agent protocol are
+	// versioned separately.
 	SchemaVersion     int            `json:"schema_version"`
+	AgentProtocol     protocolRange  `json:"agent_protocol"`
+	AgentFeatures     []string       `json:"agent_features"`
 	TLSMode           string         `json:"tls_mode"`
 	InsecurePlaintext bool           `json:"insecure_plaintext"`
 	ConfigFile        string         `json:"config_file,omitempty"`
 	Config            []config.Value `json:"config,omitempty"`
+}
+
+type protocolRange struct {
+	Min uint32 `json:"min"`
+	Max uint32 `json:"max"`
 }
 
 func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
@@ -216,10 +230,16 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, errInternal)
 		return
 	}
+	b := version.Get()
+	pr := agentrpc.Local()
 	info := systemInfo{
-		Version: version.Version, Commit: version.Commit, BuildDate: version.Date,
-		GoVersion: runtime.Version(), SchemaVersion: sv,
+		Version: b.Version, Channel: b.Channel, Commit: b.Commit, Modified: b.Modified, BuildDate: b.BuildDate,
+		GoVersion: b.GoVersion, Platform: b.Platform, SchemaVersion: sv,
+		AgentProtocol: protocolRange{Min: pr.Min, Max: pr.Max}, AgentFeatures: []string{},
 		TLSMode: s.d.Config.Server.TLS.Mode, InsecurePlaintext: s.d.Config.IsInsecurePlaintext(),
+	}
+	for _, f := range agentsvc.KnownFeatures {
+		info.AgentFeatures = append(info.AgentFeatures, f.Name)
 	}
 	if principalFrom(r.Context()).Can(auth.PermSettingsRead) {
 		info.ConfigFile = s.d.Config.FilePath

@@ -38,6 +38,10 @@ var binCache sync.Map // path → Binary (keyed with mtime)
 // SetBinariesDir points at the agent binaries (tests).
 func (s *Service) SetBinariesDir(dir string) { s.cfg.BinariesDir = dir }
 
+// binariesDir is where the Shepherd binaries handed to new hosts are:
+// agent.binaries_dir when set; otherwise next to the drool binary (a
+// release archive, the container image) or in ../lib/drool from it (the
+// native packages: /usr/bin/drool → /usr/lib/drool).
 func (s *Service) binariesDir() string {
 	if s.cfg.BinariesDir != "" {
 		return s.cfg.BinariesDir
@@ -47,7 +51,19 @@ func (s *Service) binariesDir() string {
 		return "."
 	}
 	exe, _ = filepath.EvalSymlinks(exe)
-	return filepath.Dir(exe)
+	dirs := binaryDirs(filepath.Dir(exe))
+	for _, d := range dirs {
+		for _, a := range []string{"amd64", "arm64"} {
+			if _, err := os.Stat(filepath.Join(d, "drool-agent-linux-"+a)); err == nil {
+				return d
+			}
+		}
+	}
+	return dirs[0]
+}
+
+func binaryDirs(exeDir string) []string {
+	return []string{exeDir, filepath.Join(filepath.Dir(exeDir), "lib", "drool")}
 }
 
 // AgentBinary returns the agent binary for linux/arch.

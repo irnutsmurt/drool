@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -84,7 +85,7 @@ Commands:
   release keygen        Create an agent release-signing key pair (keep the private key offline)
   release sign          Sign an agent binary: writes BINARY.release.json
   release verify        Check a signed release against a public key
-  version               Print version information
+  version [--json]      Print version information (release channel, commit, schema, agent protocol)
 
 Configuration is read from built-in defaults, then the config file
 (default ` + config.DefaultPath + ` if present), then DROOL_* environment variables.
@@ -116,8 +117,7 @@ func run(args []string) error {
 
 	switch rest[0] {
 	case "version":
-		fmt.Printf("drool %s (commit %s, built %s)\n", version.Version, version.Commit, version.Date)
-		return nil
+		return cmdVersion(rest[1:])
 	case "serve":
 		return cmdServe(*cfgPath, explicit)
 	case "healthcheck":
@@ -158,10 +158,37 @@ func loadConfig(path string, explicit bool) (*config.Loaded, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := checkDataDirOwner(cfg.DataDir, os.Geteuid()); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(cfg.DataDir, 0o750); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
 	return cfg, nil
+}
+
+// checkDataDirOwner refuses root on a data directory that belongs to
+// another user (the drool service account): files root writes there — a
+// backup, a restored database, a rotated key — would be unreadable to the
+// service afterwards.
+func checkDataDirOwner(dir string, euid int) error {
+	if euid != 0 {
+		return nil
+	}
+	fi, err := os.Stat(dir)
+	if err != nil {
+		return nil
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok || st.Uid == 0 {
+		return nil
+	}
+	name := strconv.Itoa(int(st.Uid))
+	if u, err := user.LookupId(name); err == nil {
+		name = u.Username
+	}
+	return fmt.Errorf("%s belongs to the user %s; run DROOL's commands as that user, so the files they write stay readable to the service, e.g.:\n  sudo -u %s drool %s",
+		dir, name, name, strings.Join(os.Args[1:], " "))
 }
 
 func openStore(ctx context.Context, cfg *config.Loaded) (*store.Store, []string, error) {
