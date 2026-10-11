@@ -1,7 +1,7 @@
 # Integration test host: sshd in the foreground, no systemd, runs unprivileged.
 ARG BASE=rockylinux:9
 FROM $BASE
-RUN dnf -y install openssh-server sudo iproute procps-ng \
+RUN dnf -y install openssh-server sudo iproute procps-ng passwd \
  && (getent passwd 1000 | cut -d: -f1 | xargs -r userdel -r 2>/dev/null || true) \
  && useradd -m -u 1000 -s /bin/bash deploy && passwd -d deploy \
  && echo 'deploy ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/deploy \

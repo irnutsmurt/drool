@@ -188,7 +188,7 @@ docker load -i ~/drool.oci.tar`, 20*time.Minute)
 }
 
 func testRootlessPodman(t *testing.T, v *vm, r *releaseUnderTest) {
-	install := "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq podman >/dev/null"
+	install := "sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq podman >/dev/null"
 	if v.def.Family == "dnf" {
 		install = "sudo dnf install -y -q podman >/dev/null"
 	}
