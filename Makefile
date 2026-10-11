@@ -41,8 +41,10 @@ test: test-go test-web
 test-go:
 	$(GO) test ./...
 
+# The race detector slows internal/api to about ten minutes on a busy
+# machine: Go's default per-package limit (10m) would call that a hang.
 test-race:
-	$(GO) test -race -count=1 ./...
+	$(GO) test -race -count=1 -timeout 30m ./...
 
 # Container image for this machine's platform, tagged drool:local (what
 # compose.yaml uses by default). Development builds; releases: make release.
