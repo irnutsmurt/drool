@@ -112,19 +112,26 @@ func TestVMContainerRuntimes(t *testing.T) {
 }
 
 // runtimeController checks a controller in a container on the VM through
-// the forwarded port: setup with the code from the logs, its version.
-func runtimeController(t *testing.T, v *vm, r *releaseUnderTest, logs func() string) *controller {
+// the forwarded port: setup with the code from the logs, its version. diag
+// tells what the runtime knows when the code doesn't show up.
+func runtimeController(t *testing.T, v *vm, r *releaseUnderTest, logs, diag func() string) *controller {
 	t.Helper()
 	var code string
-	waitFor(t, 5*time.Minute, "the setup code in the logs", func() bool {
+	deadline := time.Now().Add(5 * time.Minute)
+	for code == "" {
 		lines := strings.Split(logs(), "\n")
 		for i, l := range lines {
 			if strings.TrimSpace(l) == "Setup code:" && i+1 < len(lines) {
 				code = strings.TrimSpace(lines[i+1])
 			}
 		}
-		return code != ""
-	})
+		if code == "" && time.Now().After(deadline) {
+			t.Fatalf("no setup code in the logs after 5 minutes; the logs:\n%s\n--- the runtime ---\n%s", tail(logs(), 40), diag())
+		}
+		if code == "" {
+			time.Sleep(5 * time.Second)
+		}
+	}
 	c := &controller{port: v.fwd[8080], setupKey: code, client: insecureClient()}
 	waitFor(t, 3*time.Minute, "the controller through the VM's port", func() bool {
 		resp, err := c.client.Get(c.base() + "/health")
@@ -170,6 +177,9 @@ docker load -i ~/drool.oci.tar`, 20*time.Minute)
 	c := runtimeController(t, v, r, func() string {
 		out, _ := vmAs(v, "alice", dock+"docker compose logs --no-log-prefix drool", nil, time.Minute)
 		return out
+	}, func() string {
+		out, _ := vmAs(v, "alice", dock+"docker compose ps -a; docker images; docker compose logs --no-log-prefix drool 2>&1 | tail -20", nil, time.Minute)
+		return out
 	})
 	insp := mustVMAs(t, v, "alice", dock+`docker inspect -f '{{.Config.User}} {{.HostConfig.ReadonlyRootfs}} {{.HostConfig.CapDrop}} {{.HostConfig.Privileged}}' $(docker compose ps -q drool)`, time.Minute)
 	expect(t, insp == "nonroot true [ALL] false", "rootless Docker container settings: %s", insp)
@@ -198,6 +208,10 @@ func testRootlessPodman(t *testing.T, v *vm, r *releaseUnderTest) {
 	defer vmAs(v, "alice", pod+"systemctl --user stop drool; podman volume rm -f drool-data", nil, 5*time.Minute)
 	c := runtimeController(t, v, r, func() string {
 		out, _ := vmAs(v, "alice", pod+"journalctl --user -u drool --no-pager -o cat", nil, time.Minute)
+		return out
+	}, func() string {
+		out, _ := vmAs(v, "alice", pod+"systemctl --user status drool --no-pager -l 2>&1 | head -30; podman ps -a; podman images; podman logs --tail 20 drool 2>&1; "+
+			"journalctl --user --no-pager -n 30 2>&1; ls -ld /var/log/journal 2>&1; ss -ltnp 2>/dev/null | grep -E ':(8080|9443) '", nil, 2*time.Minute)
 		return out
 	})
 	insp := mustVMAs(t, v, "alice", pod+`podman inspect -f '{{.Config.User}} {{.HostConfig.ReadonlyRootfs}} {{.HostConfig.CapDrop}} {{.HostConfig.Privileged}}' drool`, time.Minute)
