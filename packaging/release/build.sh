@@ -111,6 +111,18 @@ arg() { sed -n "s/^ARG $1=//p" "$src/Dockerfile" | head -n1; }
 go_image=$(arg GO_IMAGE) node_image=$(arg NODE_IMAGE) base_image=$(arg BASE_IMAGE)
 [[ -n $go_image && -n $node_image && -n $base_image ]] || die "Dockerfile lacks pinned GO_IMAGE/NODE_IMAGE/BASE_IMAGE"
 
+# The image index carries the metadata each platform's image has as labels:
+# registries such as GitHub's read a multi-platform image's from its index.
+label() { sed -n "s/.*org\.opencontainers\.image\.$1=\"\([^\"]*\)\".*/\1/p" "$src/Dockerfile" | head -n1; }
+annotations=()
+for key in source description; do
+  val=$(label "$key")
+  [[ -n $val ]] || die "Dockerfile lacks the org.opencontainers.image.$key label"
+  annotations+=(--annotation "index:org.opencontainers.image.$key=$val")
+done
+annotations+=(--annotation "index:org.opencontainers.image.version=$v" --annotation "index:org.opencontainers.image.revision=$commit"
+  --annotation "index:org.opencontainers.image.created=$date")
+
 # BuildKit: the docker buildx plugin, or a pinned standalone buildx.
 buildx=("$repo/packaging/release/buildx")
 bargs=(--platform "$PLATFORMS" --build-arg "VERSION=$v" --build-arg "COMMIT=$commit" --build-arg "DATE=$date"
@@ -123,7 +135,7 @@ note "binaries for $PLATFORMS"
 mkdir -p "$out"
 image=$out/drool_${pkgver}_image.oci.tar
 note "container image ($image_name:$pkgver)"
-"${buildx[@]}" build --progress=plain "${bargs[@]}" --provenance=false --sbom=false \
+"${buildx[@]}" build --progress=plain "${bargs[@]}" --provenance=false --sbom=false "${annotations[@]}" \
   --output "type=oci,dest=$image,name=$image_name:$pkgver,rewrite-timestamp=true" "$src" \
   >"$work/build-image.log" 2>&1 || { tail -n 40 "$work/build-image.log" >&2; die "image build failed"; }
 

@@ -6,6 +6,10 @@ on:
   push:
   pull_request:
 
+# Read-only; only the image job may write (packages).
+permissions:
+  contents: read
+
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -66,3 +70,54 @@ jobs:
         with:
           name: drool-${{ github.sha }}
           path: dist/release/
+
+  # main's development image on GitHub Container Registry: the image the
+  # release job built and qualified, pushed byte for byte (the index digest
+  # in release.json) as ghcr.io/<owner>/drool:sha-<commit> and, while the
+  # commit is still the newest on main, :main. Never a version tag or latest;
+  # release images are published by hand (RELEASING.md).
+  image:
+    needs: release
+    if: github.server_url == 'https://github.com' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: drool-${{ github.sha }}
+          path: dist/release
+      - name: The artifacts are this commit's, built from a clean tree
+        working-directory: dist/release
+        run: |
+          set -euo pipefail
+          sha256sum --check --quiet SHA256SUMS
+          jq -e --arg c "$GITHUB_SHA" '.commit == $c' release.json
+          v=$(jq -r .version release.json)
+          tar -xzf "drool_${v#v}_linux_amd64.tar.gz" -C "$RUNNER_TEMP"
+          "$RUNNER_TEMP/drool_${v#v}_linux_amd64/drool" version --json | tee "$RUNNER_TEMP/version.json"
+          jq -e --arg c "$GITHUB_SHA" '.commit == $c and .modified == false' "$RUNNER_TEMP/version.json"
+      - name: Push to ghcr.io
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          export REGISTRY_AUTH_FILE=$RUNNER_TEMP/auth.json
+          image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/drool
+          rel=dist/release/release.json
+          v=$(jq -r .version "$rel") digest=$(jq -r .image.index_digest "$rel") tag=sha-${GITHUB_SHA::7}
+          printf '%s' "$GH_TOKEN" | skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          skopeo copy --all --preserve-digests "oci-archive:dist/release/drool_${v#v}_image.oci.tar" "docker://$image:$tag"
+          pushed=sha256:$(skopeo inspect --raw "docker://$image:$tag" | sha256sum | cut -d' ' -f1)
+          [[ $pushed == "$digest" ]] || { echo "::error::$image:$tag is $pushed; the release built $digest"; exit 1; }
+          tags=$tag
+          if [[ $(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha) == "$GITHUB_SHA" ]]; then
+            skopeo copy --all --preserve-digests "docker://$image@$digest" "docker://$image:main"
+            tags+=", main"
+          else
+            echo "::notice::main has moved on since $GITHUB_SHA; $image:main stays where it is"
+          fi
+          platforms=$(skopeo inspect --raw "docker://$image@$digest" | jq -r '[.manifests[].platform | "\(.os)/\(.architecture)"] | join(", ")')
+          printf '### %s\n\n%s (%s), %s\n\nTags: %s. Platforms: %s.\n' "$image" "$v" "$(jq -r .channel "$rel")" \
+            "\`$digest\`" "$tags" "$platforms" | tee -a "$GITHUB_STEP_SUMMARY"

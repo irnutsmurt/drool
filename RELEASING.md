@@ -125,8 +125,11 @@ devices is touched. They download cloud images once into the `drool-vm-images` D
 Ubuntu VMs run with one vCPU: Ubuntu's 7.0 kernel can oops while booting with two vCPUs under
 multi-threaded TCG (an emulator race, not something a real machine does).
 
-`.github/workflows/ci.yml` runs the fast layers and builds the release on every push;
-`.github/workflows/release.yml` runs the container and package layers on the release's artifacts.
+`.github/workflows/ci.yml` runs the fast layers and builds the release on every push, and on `main`
+publishes that build's image, once it has passed, as a development image:
+`ghcr.io/irnutsmurt/drool:sha-<commit>` and `:main` (never a version tag or `latest`; the job's
+token may write packages and only read the repository). `.github/workflows/release.yml` runs the container and package
+layers on the release's artifacts.
 The VM layers need hours and run on a machine you control before a release is published.
 
 ## Signing
@@ -168,7 +171,7 @@ official release.
 
 ## Publishing
 
-Nothing is published automatically. For a release:
+No release is published automatically (only `main`'s development image, above). For a release:
 
 1. Upload every file of `dist/<version>/` and `SHA256SUMS.sig` to the release page.
 2. If the image goes to a registry, copy the OCI archive without rebuilding it, so its digest stays

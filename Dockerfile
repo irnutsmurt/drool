@@ -70,6 +70,7 @@ ARG COMMIT=unknown
 ARG DATE=unknown
 LABEL org.opencontainers.image.title="DROOL" \
       org.opencontainers.image.description="DROOL controller: manage, automate and monitor Linux hosts over SSH or the DROOL agent" \
+      org.opencontainers.image.source="https://github.com/irnutsmurt/drool" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}" \
       org.opencontainers.image.created="${DATE}"
