@@ -65,14 +65,19 @@ export function SystemPage() {
             <code className="block font-mono text-xs">docker compose exec -T drool drool backup -o - &gt; drool-backup.tar.gz</code>
           </div>
           <div>
+            <div className="text-xs font-medium uppercase text-muted">Podman</div>
+            <code className="block font-mono text-xs">podman exec drool drool backup -o - &gt; drool-backup.tar.gz</code>
+          </div>
+          <div>
             <div className="text-xs font-medium uppercase text-muted">Native</div>
             <code className="block font-mono text-xs">sudo -u drool drool backup</code>
           </div>
           <p className="text-muted">
             Stored credentials are encrypted with the master key, which is not in the backup unless you add
             <code className="mx-1 font-mono text-xs">--include-master-key</code>. Without it, keep a copy of the master key file
-            somewhere safe and separate, or the credentials can't be restored. Restoring needs DROOL stopped:
-            <code className="mx-1 font-mono text-xs">drool restore FILE</code> (see the README).
+            somewhere safe and separate from the backups (see Secure your installation above), or the credentials can't be
+            restored. Restoring needs DROOL stopped: <code className="mx-1 font-mono text-xs">drool restore FILE</code> (the README
+            has the commands for each kind of installation).
           </p>
           <p className="text-muted">
             <code className="mr-1 font-mono text-xs">drool backup verify FILE</code> checks that a backup can be restored without restoring it.
