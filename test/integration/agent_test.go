@@ -206,7 +206,7 @@ func testAgentOnDistro(t *testing.T, d distro) {
 		}
 		var p netFlowsT
 		waitFor(t, 2*time.Minute, "the agent's own connection", func() bool {
-			ctl.must(t, "GET", fmt.Sprintf("/api/v1/network/flows?host=%s&direction=out&port=%d", h.ID, agentPort), nil, &p)
+			ctl.must(t, "GET", fmt.Sprintf("/api/v1/network/flows?host=%s&direction=out&port=%d", h.ID, ctl.agentListenPort()), nil, &p)
 			return len(p.Items) > 0
 		})
 		if f := p.Items[0]; f.Process != "drool-agent" || f.Source != "sockets" || f.Policy.Status != "management" {

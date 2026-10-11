@@ -432,6 +432,18 @@ type controller struct {
 	setupKey string
 }
 
+// agentListenPort is the port this controller's Shepherd endpoint listens
+// on: the shared controller's agentPort, or the one freshController chose.
+func (c *controller) agentListenPort() int {
+	port := 0
+	for _, kv := range c.extraEnv {
+		if v, ok := strings.CutPrefix(kv, "DROOL_AGENT_PORT="); ok {
+			fmt.Sscan(v, &port)
+		}
+	}
+	return port
+}
+
 func freePort() int {
 	l, _ := net.Listen("tcp", "127.0.0.1:0")
 	defer l.Close()

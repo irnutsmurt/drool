@@ -336,13 +336,13 @@ func testVMFirewallSSH(t *testing.T, def vmDef, v *vm, h host) {
 		if tx.State != "committed" {
 			t.Fatalf("%+v\n%s", tx, tx.timeline())
 		}
-		probeOut := fmt.Sprintf("timeout 5 bash -c 'echo > /dev/tcp/%s/%d' && echo open || echo blocked", agentGateway, agentPort)
+		probeOut := fmt.Sprintf("timeout 5 bash -c 'echo > /dev/tcp/%s/%d' && echo open || echo blocked", agentGateway, ctl.agentListenPort())
 		if out := mustVMSSH(t, v, probeOut); out != "blocked" {
 			t.Errorf("outbound to the controller's agent port: %s (expected blocked)", out)
 		}
 		var svc struct{}
 		ctl.must(t, "POST", "/api/v1/firewall/services", map[string]any{"name": "agentport-" + strings.ReplaceAll(def.Name, ".", ""),
-			"entries": []any{map[string]any{"protocol": "tcp", "ports": fmt.Sprint(agentPort)}}}, &svc)
+			"entries": []any{map[string]any{"protocol": "tcp", "ports": fmt.Sprint(ctl.agentListenPort())}}}, &svc)
 		pid := fwPolicy(t, map[string]any{"name": "to-ctl-" + def.Name, "from": []any{map[string]any{"kind": "host", "id": h.ID}},
 			"to": []any{map[string]any{"kind": "cidr", "cidr": agentGateway + "/32"}}, "services": []string{"agentport-" + strings.ReplaceAll(def.Name, ".", "")}})
 		if _, tx = fwApply(t, h.ID, nil); tx.State != "committed" {
@@ -576,7 +576,7 @@ func testVMFirewallAgent(t *testing.T, def vmDef, v *vm, h host) {
 		}
 		count := func() int64 {
 			var p page
-			ctl.must(t, "GET", fmt.Sprintf("/api/v1/network/flows?host=%s&direction=out&peer=%s&port=%d", h.ID, agentGateway, agentPort), nil, &p)
+			ctl.must(t, "GET", fmt.Sprintf("/api/v1/network/flows?host=%s&direction=out&peer=%s&port=%d", h.ID, agentGateway, ctl.agentListenPort()), nil, &p)
 			var n int64
 			for _, f := range p.Items {
 				n += f.Count
@@ -585,7 +585,7 @@ func testVMFirewallAgent(t *testing.T, def vmDef, v *vm, h host) {
 		}
 		before := count()
 		// Six TCP connections that open and close within a second.
-		mustVMSSH(t, v, fmt.Sprintf("for i in 1 2 3 4 5 6; do timeout 3 bash -c 'exec 3<>/dev/tcp/%s/%d' 2>/dev/null; sleep 0.3; done; true", agentGateway, agentPort))
+		mustVMSSH(t, v, fmt.Sprintf("for i in 1 2 3 4 5 6; do timeout 3 bash -c 'exec 3<>/dev/tcp/%s/%d' 2>/dev/null; sleep 0.3; done; true", agentGateway, ctl.agentListenPort()))
 		waitFor(t, 3*time.Minute, "short-lived connections counted", func() bool { return count() >= before+6 })
 		// Inbound SSH is attributed to the listening sshd.
 		var p page
@@ -614,7 +614,7 @@ func testVMFirewallAgent(t *testing.T, def vmDef, v *vm, h host) {
 		}()
 		jh, tx := fwApply(t, h.ID, map[string]any{"override_mgmt": true, "reason": "VM test: block the agent path"})
 		if jh.State != "failed" || tx.State != "rolled_back" {
-			host, _ := vmSSH(v, fmt.Sprintf("nft list table inet drool; ss -tnp | grep -F ':%d'; ip route get %s; cat /var/lib/drool/firewall/transaction.json", agentPort, agentGateway))
+			host, _ := vmSSH(v, fmt.Sprintf("nft list table inet drool; ss -tnp | grep -F ':%d'; ip route get %s; cat /var/lib/drool/firewall/transaction.json", ctl.agentListenPort(), agentGateway))
 			t.Fatalf("%v %+v\n%s\n--- the host ---\n%s", jh, tx, tx.timeline(), host)
 		}
 		ctl.must(t, "DELETE", "/api/v1/firewall/policies/"+pid, nil, nil)
