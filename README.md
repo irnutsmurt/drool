@@ -187,7 +187,7 @@ as something supported, but not tested — tell us if it doesn't. Anything else 
 | Container image (`linux/amd64`, `linux/arm64`) | Docker Engine, also rootless; rootless Podman (with the Quadlet unit) | rootful Podman, other OCI runtimes with the same settings |
 | `.deb` package | Debian 12, 13; Ubuntu 22.04, 24.04, 26.04 | other Debian-based distributions with systemd |
 | `.rpm` package | Rocky Linux 9, 10; AlmaLinux 9, 10; Fedora 44 | RHEL 9, 10 and other RHEL rebuilds |
-| Release archive (static binary) | — | any Linux with systemd on amd64 or arm64 |
+| Release archive (static binary) | the distributions above, amd64 and arm64 (the packages' binary; its `INSTALL.md` is tested under systemd on Debian 12, Rocky Linux 9 and arm64) | any Linux with systemd on amd64 or arm64 |
 
 The controller needs no root, no capabilities and no access to the machine's own firewall or
 devices: it is one unprivileged process and a data directory. Kubernetes, Windows, macOS and BSD
@@ -226,8 +226,9 @@ What a host needs:
 | Shepherd | Supported | Supported | Not built: manage those hosts over SSH |
 | Hosts managed over SSH | Supported | Supported | Expected to work (DROOL only runs standard tools on them) |
 
-arm64 is tested on emulated arm64 machines (Debian 12): the controller package and container image,
-and a Shepherd installed by the controller.
+arm64 is tested on an emulated arm64 machine (Debian 12): the controller package and the archive under
+systemd, the container image under rootless Docker, and a Shepherd installed by the controller with
+the same platform suite as amd64 (services, reboots, updates, SSH certificates, the firewall).
 
 ### Shepherd versions
 
@@ -1969,7 +1970,8 @@ plain HTTP to the network by accident.
   numbers as the ones it got after the backup, with a new controller epoch, and keeps both.
 - **Master key rotation** needs DROOL stopped (it re-seals everything while nothing else writes).
 - **Containers:** tested with Docker (also rootless) and rootless Podman with the Quadlet unit,
-  read-only and without capabilities. Rootful Podman and other OCI runtimes aren't tested, and
+  read-only and without capabilities. The Quadlet unit needs Podman 4.4 or newer (Debian 12 ships
+  4.3: use Docker or the package there). Rootful Podman and other OCI runtimes aren't tested, and
   there are no Kubernetes manifests.
 - **No package repository:** packages are downloaded with each release; `apt upgrade` or
   `dnf upgrade` don't update DROOL (install the new package file).
