@@ -91,7 +91,7 @@ export function SecurityChecklist() {
     items.push(pki.data.root_key_online
       ? { id: "root-key", level: "recommended", title: "Agent Root CA key offline",
           body: <>The key Shepherds trust is still on this controller. Export it to offline storage and remove it{can("agents.pki")
-            ? <> (<Link className={plainLink} to="/agents?tab=trust">Shepherds → Trust</Link>)</> : null}. You need it again only to replace the intermediate CA.</> }
+            ? <> (<Link className={plainLink} to="/agents?tab=trust">Shepherds → Trust (PKI)</Link>)</> : null}. You need it again only to replace the intermediate CA.</> }
       : { id: "root-key", level: "done", title: "Agent Root CA key offline", body: "The Agent Root CA's private key isn't on this controller." });
   }
   items.push({ id: "master-key", level: "manual", title: "A copy of the master key, kept apart from your backups",
@@ -100,8 +100,9 @@ export function SecurityChecklist() {
         Stored credentials are encrypted with <code className={code}>{f.master_key.path}</code>. A backup without it can't give them back, and
         DROOL can't see whether you keep a copy. Copy it once (and after every rotation) to somewhere safe that isn't where your backups are:{" "}
         {container
-          ? <code className={code}>docker compose cp drool:{f.master_key.path} ./master.key</code>
-          : <code className={code}>sudo cp {f.master_key.path} /somewhere/safe/</code>}.
+          ? <><code className={code}>docker compose cp drool:{f.master_key.path} ./master.key</code> (Podman:{" "}
+              <code className={code}>podman cp drool:{f.master_key.path} ./master.key</code>)</>
+          : <code className={code}>sudo install -m 0600 -o "$USER" {f.master_key.path} ./master.key</code>}.
         {f.master_key.previous_files.length > 0 && (
           <> Older key files from a rotation are still next to it ({f.master_key.previous_files.join(", ")}): backups made before the rotation
             need them, so move them offline together with those backups.</>
