@@ -517,6 +517,25 @@ func TestAgentUpdates(t *testing.T) {
 			t.Errorf("version changed to %s", got)
 		}
 	})
+
+	t.Run("updates.policy: deny on the host keeps its version", func(t *testing.T) {
+		cb.exec(t, "printf 'updates:\\n  policy: deny\\n' >> /etc/drool/agent.yaml")
+		stopAgent(t, cb)
+		startSupervisor(t, cb)
+		waitAgent(t, b.ID, 2*time.Minute, "b back with updates denied", func(x hostAgent) bool { return x.Identity != nil && x.Identity.Connected })
+		before := getHostAgent(t, b.ID).Identity.AgentVersion
+		var ro rolloutT
+		ctl.must(t, "POST", "/api/v1/agents/rollouts", map[string]any{"version": agentBroken, "host_ids": []string{b.ID}}, &ro)
+		waitFor(t, 2*time.Minute, "the host's refusal", func() bool {
+			r := getRollout(t, ro.ID)
+			return len(r.Hosts) == 1 && r.Hosts[0].State == "failed"
+		})
+		r := getRollout(t, ro.ID)
+		expect(t, strings.Contains(r.Hosts[0].Detail, "updates.policy: deny"), "refusal detail: %+v", r.Hosts[0])
+		expect(t, getHostAgent(t, b.ID).Identity.AgentVersion == before, "the version changed")
+		expect(t, cb.exec(t, "readlink /usr/libexec/drool-agent/current") == "versions/"+before, "the installed version changed")
+		ctl.must(t, "POST", "/api/v1/agents/rollouts/"+ro.ID+"/cancel", nil, nil)
+	})
 }
 
 var _ = fmt.Sprint
