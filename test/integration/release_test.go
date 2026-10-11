@@ -1,0 +1,329 @@
+//go:build integration
+
+package integration
+
+import (
+	"archive/tar"
+	"bufio"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strings"
+	"testing"
+)
+
+// releaseUnderTest is a release directory made by packaging/release/build.sh
+// (-release): what the qualification tests install, run and upgrade to.
+type releaseUnderTest struct {
+	Dir     string
+	Version string `json:"version"` // v1.0.0
+	Channel string `json:"channel"`
+	Commit  string `json:"commit"`
+	License string `json:"license"`
+	Schema  int    `json:"schema_version"`
+	Image   struct {
+		IndexDigest string `json:"index_digest"`
+		Name        string `json:"name"`
+		Platforms   []struct {
+			Platform     string `json:"platform"`
+			ConfigDigest string `json:"config_digest"`
+		} `json:"platforms"`
+	} `json:"image"`
+	Files []struct {
+		Name   string `json:"name"`
+		SHA256 string `json:"sha256"`
+		Kind   string `json:"kind"`
+	} `json:"files"`
+	pkgver string
+	drool  string // the controller binary for this machine, extracted
+	binDir string // with the Shepherd binaries next to it
+}
+
+var rel *releaseUnderTest
+
+// openRelease checks a release directory against its SHA256SUMS and
+// release.json and extracts this machine's controller archive.
+func openRelease(dir, extract string) (*releaseUnderTest, error) {
+	r := &releaseUnderTest{Dir: dir}
+	b, err := os.ReadFile(filepath.Join(dir, "release.json"))
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(b, r); err != nil {
+		return nil, fmt.Errorf("release.json: %w", err)
+	}
+	r.pkgver = strings.TrimPrefix(r.Version, "v")
+	sums, err := readSums(filepath.Join(dir, "SHA256SUMS"))
+	if err != nil {
+		return nil, err
+	}
+	if len(sums) != len(r.Files)+1 {
+		return nil, fmt.Errorf("SHA256SUMS lists %d files, release.json %d (+ itself)", len(sums), len(r.Files))
+	}
+	for name, want := range sums {
+		if got, err := fileSHA256(filepath.Join(dir, name)); err != nil || got != want {
+			return nil, fmt.Errorf("%s doesn't match SHA256SUMS (%v)", name, err)
+		}
+	}
+	for _, f := range r.Files {
+		if sums[f.Name] != f.SHA256 {
+			return nil, fmt.Errorf("release.json and SHA256SUMS disagree about %s", f.Name)
+		}
+	}
+	name := fmt.Sprintf("drool_%s_linux_%s", r.pkgver, runtime.GOARCH)
+	if err := untar(filepath.Join(dir, name+".tar.gz"), extract); err != nil {
+		return nil, err
+	}
+	r.binDir = filepath.Join(extract, name)
+	r.drool = filepath.Join(r.binDir, "drool")
+	return r, nil
+}
+
+// artifact returns a release file by kind and, for per-architecture files,
+// architecture ("" for the others); it skips the test without -release.
+func (r *releaseUnderTest) artifact(t *testing.T, kind, arch string) string {
+	t.Helper()
+	for _, f := range r.Files {
+		if f.Kind != kind {
+			continue
+		}
+		if arch == "" || strings.Contains(f.Name, "_"+arch+".") || strings.Contains(f.Name, "_linux_"+arch+".") ||
+			strings.Contains(f.Name, "."+rpmArch(arch)+".") {
+			return filepath.Join(r.Dir, f.Name)
+		}
+	}
+	t.Fatalf("the release has no %s artifact for %q", kind, arch)
+	return ""
+}
+
+func rpmArch(arch string) string {
+	return map[string]string{"amd64": "x86_64", "arm64": "aarch64"}[arch]
+}
+
+func needRelease(t *testing.T) *releaseUnderTest {
+	t.Helper()
+	if rel == nil {
+		t.Skip("qualifies release artifacts: run with -release dist/<version> (make release)")
+	}
+	return rel
+}
+
+func readSums(path string) (map[string]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	out := map[string]string{}
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		sum, name, ok := strings.Cut(sc.Text(), "  ")
+		if !ok || len(sum) != 64 {
+			return nil, fmt.Errorf("SHA256SUMS: bad line %q", sc.Text())
+		}
+		out[name] = sum
+	}
+	return out, sc.Err()
+}
+
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func untar(archive, dest string) error {
+	f, err := os.Open(archive)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	tr := tar.NewReader(gz)
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		p := filepath.Join(dest, filepath.Clean("/"+h.Name))
+		switch h.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(p, 0o755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				return err
+			}
+			out, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(h.Mode)&0o777)
+			if err != nil {
+				return err
+			}
+			_, err = io.Copy(out, tr)
+			out.Close()
+			if err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("%s: unexpected entry %s", archive, h.Name)
+		}
+	}
+}
+
+// tarList lists an archive's entries as "name mode uid/gid".
+func tarList(t *testing.T, archive string) []string {
+	t.Helper()
+	f, err := os.Open(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := tar.NewReader(gz)
+	var out []string
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, fmt.Sprintf("%s %o %d/%d", h.Name, h.Mode, h.Uid, h.Gid))
+	}
+	return out
+}
+
+// TestReleaseArtifacts checks what a release consists of, before anything
+// installs it: every artifact is listed and checksummed, the binaries say
+// which release and commit they are, the archives hold exactly what the
+// documentation says, the SBOMs are SPDX and name what was built, and the
+// controller hands out the Shepherd binaries of the same release.
+func TestReleaseArtifacts(t *testing.T) {
+	r := needRelease(t)
+	kinds := map[string]int{}
+	for _, f := range r.Files {
+		kinds[f.Kind]++
+	}
+	want := map[string]int{"controller-archive": 2, "shepherd-archive": 2, "deb": 2, "rpm": 2, "container-image": 1,
+		"sbom": 4, "notices": 1, "compose": 1}
+	for k, n := range want {
+		expect(t, kinds[k] == n, "the release has %d %s artifacts, want %d (%v)", kinds[k], k, n, kinds)
+	}
+	// The binaries describe themselves as this release.
+	out, err := exec.Command(r.drool, "version", "--json").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		Version, Channel, Commit string
+		Modified                 bool
+		Schema                   int `json:"schema_version"`
+	}
+	json.Unmarshal(out, &v)
+	expect(t, v.Version == r.Version && v.Channel == r.Channel && v.Commit == r.Commit && !v.Modified && v.Schema == r.Schema,
+		"drool version --json %+v; release.json says %s %s %s schema %d", v, r.Version, r.Channel, r.Commit, r.Schema)
+	agentOut, err := exec.Command(filepath.Join(r.binDir, "drool-agent-linux-"+runtime.GOARCH), "version").Output()
+	expect(t, err == nil && strings.TrimSpace(string(agentOut)) == r.Version, "drool-agent version: %q %v", agentOut, err)
+
+	for _, arch := range []string{"amd64", "arm64"} {
+		name := fmt.Sprintf("drool_%s_linux_%s/", r.pkgver, arch)
+		got := tarList(t, r.artifact(t, "controller-archive", arch))
+		sort.Strings(got)
+		wantEntries := []string{name + " 755 0/0", name + "INSTALL.md 644 0/0", name + "README.md 644 0/0",
+			name + "THIRD_PARTY_NOTICES.txt 644 0/0", name + "config.example.yaml 644 0/0", name + "drool 755 0/0",
+			name + "drool-agent-linux-amd64 755 0/0", name + "drool-agent-linux-arm64 755 0/0", name + "drool.service 644 0/0"}
+		if r.License != "NOASSERTION" {
+			wantEntries = append(wantEntries, name+"LICENSE 644 0/0")
+		}
+		sort.Strings(wantEntries)
+		expect(t, strings.Join(got, ",") == strings.Join(wantEntries, ","), "controller archive %s:\n%v\nwant\n%v", arch, got, wantEntries)
+		agent := tarList(t, r.artifact(t, "shepherd-archive", arch))
+		expect(t, len(agent) >= 4 && strings.Contains(strings.Join(agent, ","), "/drool-agent 755 0/0"), "Shepherd archive %s: %v", arch, agent)
+	}
+	unit, _ := os.ReadFile(filepath.Join(r.binDir, "drool.service"))
+	expect(t, strings.Contains(string(unit), "ExecStart=/usr/local/bin/drool serve") && strings.Contains(string(unit), "User=drool"),
+		"the archive's unit:\n%s", unit)
+
+	// SBOMs: SPDX 2.3, describing this version and the Go modules and npm
+	// packages that went into it, with license information.
+	for _, f := range r.Files {
+		if f.Kind != "sbom" {
+			continue
+		}
+		var doc struct {
+			SPDXVersion string `json:"spdxVersion"`
+			Name        string `json:"name"`
+			Packages    []struct {
+				Name             string `json:"name"`
+				Version          string `json:"versionInfo"`
+				LicenseConcluded string `json:"licenseConcluded"`
+				LicenseDeclared  string `json:"licenseDeclared"`
+			} `json:"packages"`
+		}
+		b, _ := os.ReadFile(filepath.Join(r.Dir, f.Name))
+		if err := json.Unmarshal(b, &doc); err != nil {
+			t.Fatalf("%s: %v", f.Name, err)
+		}
+		found := map[string]string{}
+		for _, p := range doc.Packages {
+			lic := p.LicenseDeclared
+			if lic == "NOASSERTION" {
+				lic = p.LicenseConcluded
+			}
+			found[p.Name] = lic
+		}
+		expect(t, doc.SPDXVersion == "SPDX-2.3", "%s is %s", f.Name, doc.SPDXVersion)
+		expect(t, found["golang.org/x/crypto"] == "BSD-3-Clause" && found["google.golang.org/grpc"] != "" &&
+			found["google.golang.org/grpc"] != "NOASSERTION", "%s: Go module licenses %q %q", f.Name, found["golang.org/x/crypto"], found["google.golang.org/grpc"])
+		if strings.Contains(f.Name, "_image_") {
+			expect(t, found["base-files"] != "" && found["ca-certificates"] != "", "%s lacks the base image's packages", f.Name)
+		} else {
+			expect(t, found["react"] == "MIT" && found["vite"] == "", "%s: the web UI's npm packages (react %q; development-only vite %q)",
+				f.Name, found["react"], found["vite"])
+		}
+	}
+	notices, _ := os.ReadFile(r.artifact(t, "notices", ""))
+	for _, w := range []string{"Go standard library and runtime", "golang.org/x/crypto", "modernc.org/sqlite", "react 19", "@xyflow/react"} {
+		expect(t, strings.Contains(string(notices), w), "THIRD_PARTY_NOTICES.txt lacks %s", w)
+	}
+	compose, _ := os.ReadFile(r.artifact(t, "compose", ""))
+	expect(t, strings.Contains(string(compose), "image: ${DROOL_IMAGE:-drool:"+r.pkgver+"}"), "compose.yaml doesn't pin %s:\n%s", r.pkgver, compose)
+
+	// The controller hands new hosts the release's own Shepherds.
+	c := freshController(t)
+	resp, err := c.client.Get(c.base() + "/agent/install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	for _, arch := range []string{"amd64", "arm64"} {
+		sum, _ := fileSHA256(filepath.Join(r.binDir, "drool-agent-linux-"+arch))
+		expect(t, strings.Contains(string(script), sum), "install.sh doesn't offer the release's %s Shepherd (%s)", arch, sum[:12])
+	}
+}

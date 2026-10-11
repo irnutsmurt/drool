@@ -33,6 +33,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"drool/internal/release"
 )
 
 // distro is one entry of the matrix (ARCHITECTURE-ALPHA §18).
@@ -58,13 +60,20 @@ var allDistros = []distro{
 var (
 	flagDistros = flag.String("distros", "", "comma-separated subset of the matrix (default: all)")
 	flagKeep    = flag.Bool("keep", false, "keep containers, network and data directory after the run")
+	// flagRelease qualifies a release: the controller and the Shepherds it
+	// hands out are the release's own binaries, and the release tests
+	// (packages, image, upgrade, mixed versions) use its artifacts.
+	flagRelease = flag.String("release", "", "a release directory made by make release (dist/<version>): test its artifacts instead of this tree's builds")
 )
 
 const sudoPassword = "drool-it-sudo-pw" // set in images/*/Dockerfile
 
-// Agent versions built for the tests.
+// agentV1 is the Shepherd the controller hands out: this tree's build, or
+// the release's under -release.
+var agentV1 = "v1.0.0"
+
+// Newer Shepherd versions built for the update tests.
 const (
-	agentV1     = "v1.0.0"
 	agentV2     = "v1.1.0"
 	agentBroken = "v1.2.0"
 	// agentRunaway carries a deliberately runaway collector (-tags droolrunaway).
@@ -108,21 +117,39 @@ func setup(m *testing.M) (int, error) {
 		return 0, err
 	}
 	binPath = filepath.Join(work, "drool")
-	build := exec.Command("go", "build", "-o", binPath, "./cmd/drool")
-	build.Dir, build.Stdout, build.Stderr = root, os.Stderr, os.Stderr
-	if err := build.Run(); err != nil {
-		return 0, fmt.Errorf("build drool: %w", err)
-	}
-	// Agent builds: the one the controller hands out, a newer one for
-	// update tests, and a deliberately broken newer one for rollback tests.
 	agentDir = filepath.Join(work, "agent-dist")
 	releaseDir = filepath.Join(work, "agent-releases")
-	for _, b := range []struct{ out, version, tags string }{
-		{filepath.Join(agentDir, "drool-agent-linux-amd64"), agentV1, ""},
+	if *flagRelease != "" {
+		// The release's controller and Shepherd binaries, as shipped.
+		r, err := openRelease(*flagRelease, filepath.Join(work, "release"))
+		if err != nil {
+			return 0, fmt.Errorf("-release: %w", err)
+		}
+		rel = r
+		binPath, agentDir, agentV1 = r.drool, r.binDir, r.Version
+		if release.CompareVersions(agentV1, agentV2) >= 0 {
+			return 0, fmt.Errorf("-release: the update tests' Shepherd versions (%s…) must be newer than the release (%s)", agentV2, agentV1)
+		}
+		fmt.Fprintf(os.Stderr, "qualifying release %s (%s, commit %s)\n", r.Version, r.Channel, r.Commit)
+	} else {
+		build := exec.Command("go", "build", "-o", binPath, "./cmd/drool")
+		build.Dir, build.Stdout, build.Stderr = root, os.Stderr, os.Stderr
+		if err := build.Run(); err != nil {
+			return 0, fmt.Errorf("build drool: %w", err)
+		}
+	}
+	// Agent builds: the one the controller hands out (unless the release's),
+	// a newer one for update tests, and a deliberately broken newer one for
+	// rollback tests.
+	builds := []struct{ out, version, tags string }{
 		{filepath.Join(releaseDir, "drool-agent-"+agentV2), agentV2, ""},
 		{filepath.Join(releaseDir, "drool-agent-"+agentBroken), agentBroken, "droolbroken"},
 		{filepath.Join(releaseDir, "drool-agent-"+agentRunaway), agentRunaway, "droolrunaway"},
-	} {
+	}
+	if rel == nil {
+		builds = append(builds, struct{ out, version, tags string }{filepath.Join(agentDir, "drool-agent-linux-amd64"), agentV1, ""})
+	}
+	for _, b := range builds {
 		args := []string{"build", "-trimpath", "-ldflags", "-X drool/internal/version.Version=" + b.version, "-o", b.out}
 		if b.tags != "" {
 			args = append(args, "-tags", b.tags)
@@ -160,7 +187,23 @@ func setup(m *testing.M) (int, error) {
 		return 0, err
 	}
 	agentGateway, agentPort = strings.TrimSpace(gw), freePort()
-	ctl = &controller{dataDir: filepath.Join(work, "data"), extraEnv: []string{
+	netflowsFile = filepath.Join(work, "netflows.json")
+	fwControlFile = filepath.Join(work, "fw-control")
+	ctl = &controller{dataDir: filepath.Join(work, "data"), extraEnv: controllerEnv(agentPort)}
+	if err := ctl.start(); err != nil {
+		return 0, err
+	}
+	defer ctl.stop()
+	if err := ctl.claim(); err != nil {
+		return 0, err
+	}
+	return m.Run(), nil
+}
+
+// controllerEnv is how the test controllers run: the agent endpoint on the
+// test network's gateway only, and the test-mode timings and fixtures.
+func controllerEnv(agentPort int) []string {
+	return []string{
 		// Small enough to exercise the cap without huge outputs.
 		"DROOL_ENGINE_OUTPUT_CAP_BYTES=1048576",
 		"DROOL_AGENT_BIND=" + agentGateway,
@@ -168,9 +211,9 @@ func setup(m *testing.M) (int, error) {
 		fmt.Sprintf("DROOL_AGENT_ADVERTISE=%s:%d", agentGateway, agentPort),
 		"DROOL_AGENT_BINARIES_DIR=" + agentDir,
 		// Per-host firewall test control (delay or skip commits; M8 tests).
-		"DROOL_TEST_FW_CONTROL=" + filepath.Join(work, "fw-control"),
+		"DROOL_TEST_FW_CONTROL=" + fwControlFile,
 		// Synthetic network observations for the browser tests (M10).
-		"DROOL_TEST_NETFLOWS_FILE=" + filepath.Join(work, "netflows.json"),
+		"DROOL_TEST_NETFLOWS_FILE=" + netflowsFile,
 		// Synthetic monitoring data for hosts that only TestBrowser creates
 		// (nas-01, pi-sd, gpu-01, edge-usb, old-vm).
 		"DROOL_TEST_MONITOR_FILE=" + filepath.Join(root, "test", "integration", "testdata", "monitor.json"),
@@ -181,17 +224,38 @@ func setup(m *testing.M) (int, error) {
 		"DROOL_TEST_DESIRED_TIMING=fast",
 		// Re-authentication lapses after 3 s (M16 browser tests).
 		"DROOL_TEST_AUTH_TIMING=fast",
-	}}
-	netflowsFile = filepath.Join(work, "netflows.json")
-	fwControlFile = filepath.Join(work, "fw-control")
-	if err := ctl.start(); err != nil {
-		return 0, err
 	}
-	defer ctl.stop()
-	if err := ctl.claim(); err != nil {
-		return 0, err
+}
+
+// freshController runs a controller of its own for the rest of t — claimed,
+// signed in, with nothing any other test made — and points the domain
+// helpers (ctl) at it, so the test neither sees nor leaves state for others
+// (M17: release suites run alone or together alike). Only for tests that
+// aren't parallel at the top level. extraEnv adds to controllerEnv.
+func freshController(t *testing.T, extraEnv ...string) *controller {
+	t.Helper()
+	dir := t.TempDir()
+	c := &controller{dataDir: filepath.Join(dir, "data"), extraEnv: append(controllerEnv(freePort()), extraEnv...)}
+	if err := c.start(); err != nil {
+		t.Fatal(err)
 	}
-	return m.Run(), nil
+	if err := c.claim(); err != nil {
+		c.stop()
+		t.Fatal(err)
+	}
+	shared := ctl
+	ctl = c
+	t.Cleanup(func() {
+		ctl = shared
+		c.stop()
+		if t.Failed() {
+			if b, err := os.ReadFile(filepath.Join(dir, "serve.log")); err == nil {
+				lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+				t.Logf("its controller's last log lines:\n%s", strings.Join(lines[max(0, len(lines)-30):], "\n"))
+			}
+		}
+	})
+	return c
 }
 
 func selected() []distro {
@@ -346,6 +410,7 @@ func waitFor(t *testing.T, d time.Duration, what string, ok func() bool) {
 // --- controller ---
 
 type controller struct {
+	bin      string // the drool binary to run; default binPath (this tree's or the release's)
 	dataDir  string
 	extraEnv []string
 	port     int
@@ -371,7 +436,11 @@ func (c *controller) start() error {
 		c.port = freePort()
 		c.setupKey = "it-setup-" + randHex(8)
 	}
-	c.cmd = exec.Command(binPath, "serve")
+	exe := binPath
+	if c.bin != "" {
+		exe = c.bin
+	}
+	c.cmd = exec.Command(exe, "serve")
 	c.cmd.Env = append(os.Environ(),
 		"DROOL_DATA_DIR="+c.dataDir,
 		"DROOL_SERVER_BIND=127.0.0.1",
@@ -755,6 +824,20 @@ func (c *controller) raw(ctx context.Context, method, path string, body io.Reade
 }
 
 func execCommand(name string, args ...string) *exec.Cmd { return exec.Command(name, args...) }
+
+// insecureClient talks to a test controller's self-signed HTTPS with a
+// session cookie jar.
+func insecureClient() *http.Client {
+	jar, _ := cookiejar.New(nil)
+	return &http.Client{Jar: jar, Timeout: time.Minute, Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+}
+
+func readAll(r *http.Response) string {
+	defer r.Body.Close()
+	b, _ := io.ReadAll(r.Body)
+	return string(b)
+}
 
 // newRawRequest builds an authenticated request for a non-JSON body.
 func newRawRequest(method, path string, body io.Reader) (*http.Request, error) {
