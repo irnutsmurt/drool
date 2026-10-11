@@ -56,9 +56,10 @@ release:
 	packaging/release/build.sh $(RELEASE_ARGS)
 
 # Real distributions in unprivileged containers (needs Docker and network
-# access; ~15-30 min). DISTROS=debian-12,fedora-44 limits the matrix.
+# access; ~30-45 min). DISTROS=debian-12,fedora-44 limits the matrix;
+# RELEASE=dist/<version> qualifies that release's artifacts (RELEASING.md).
 test-integration:
-	go test -tags integration -timeout 90m -count=1 ./test/integration/ -v $(if $(DISTROS),-distros $(DISTROS))
+	go test -tags integration -timeout 120m -count=1 ./test/integration/ -v $(if $(DISTROS),-distros $(DISTROS)) $(if $(RELEASE),-release $(RELEASE))
 
 test-web:
 	cd web && npm run typecheck && npm test

@@ -245,7 +245,7 @@ func TestChecksumsAndManifest(t *testing.T) {
 	if err := json.Unmarshal(b, &m); err != nil {
 		t.Fatal(err)
 	}
-	if len(m.Files) != 3 || m.SchemaVersion == 0 || m.AgentProtocol["min"] == 0 || m.License != "NOASSERTION" || m.Signed {
+	if len(m.Files) != 3 || m.SchemaVersion == 0 || m.AgentProtocol["min"] == 0 || m.License != "NOASSERTION" || !strings.Contains(m.Signing, "SHA256SUMS.sig") {
 		t.Errorf("manifest %+v", m)
 	}
 	if err := cmdChecksums([]string{"-dir", dir}); err != nil {

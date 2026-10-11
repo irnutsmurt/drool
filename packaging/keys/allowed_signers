@@ -1,0 +1,6 @@
+# The DROOL release key: who may sign a release's SHA256SUMS (namespace
+# drool-release). Verify a download with
+#   ssh-keygen -Y verify -f allowed_signers -I release@drool -n drool-release -s SHA256SUMS.sig < SHA256SUMS
+# One line per key, added when the key is created (RELEASING.md, "The release
+# key"), never with its private half. Until a key is listed here, nothing
+# verifies: no build is an official release yet.

@@ -352,12 +352,17 @@ func dockerStdin(container, stdin string, args ...string) (string, error) {
 // uploadRelease signs and uploads an agent build.
 func uploadRelease(t *testing.T, key releaseKey, binFile, version string) (int, string) {
 	t.Helper()
+	return uploadReleaseFor(t, key, binFile, version, "amd64")
+}
+
+func uploadReleaseFor(t *testing.T, key releaseKey, binFile, version, arch string) (int, string) {
+	t.Helper()
 	priv, _ := release.ParsePrivateKey(key.priv)
 	b, err := os.ReadFile(binFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := release.Sign(priv, release.Manifest{Version: version, OS: "linux", Arch: "amd64", ProtocolMin: 1, ProtocolMax: 1}, bytes.NewReader(b))
+	s, err := release.Sign(priv, release.Manifest{Version: version, OS: "linux", Arch: arch, ProtocolMin: 1, ProtocolMax: 1}, bytes.NewReader(b))
 	if err != nil {
 		t.Fatal(err)
 	}

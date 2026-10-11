@@ -1,14 +1,18 @@
-# Runs on GitHub Actions and Gitea/Forgejo Actions.
+# Runs on GitHub Actions and Gitea/Forgejo Actions. RELEASING.md lists what
+# each layer covers; the VM layers (hours of software emulation) run on a
+# machine you control before a release.
 name: ci
 on:
   push:
   pull_request:
 
 jobs:
-  build:
+  checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags: the version of a development build
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -26,8 +30,39 @@ jobs:
       - name: gofmt
         run: make fmt-check
       - name: go vet
-        run: make vet
-      - name: Tests
-        run: make test
-      - name: Build
-        run: make build
+        run: make vet && go vet -tags integration ./test/integration/
+      - name: Web build (embedded in the binary)
+        run: make web
+      - name: Go tests with the race detector
+        run: make test-race
+      - name: Web typecheck and unit tests
+        run: make test-web
+
+  # Every release artifact from this commit, and the release tests that need
+  # only Docker: what the artifacts contain, the container image with its
+  # compose.yaml, the packages on every supported distribution, upgrades
+  # from older versions and back, older Shepherds.
+  release:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags, and the older versions the upgrade tests build
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Docker with the containerd image store (multi-platform images)
+        uses: docker/setup-docker-action@v4
+        with:
+          daemon-config: '{"features": {"containerd-snapshotter": true}}'
+      - name: Build the release
+        run: packaging/release/build.sh --out dist/release
+      - name: Qualify the release artifacts
+        run: >-
+          go test -tags integration -count=1 -timeout 90m ./test/integration/ -release dist/release -v
+          -run 'TestReleaseArtifacts|TestReleaseSigning|TestContainerImage|TestReleasePackages|TestReleaseUpgrade|TestMixedVersionShepherds'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: drool-${{ github.sha }}
+          path: dist/release/

@@ -230,7 +230,7 @@ func TestReleaseArtifacts(t *testing.T) {
 		kinds[f.Kind]++
 	}
 	want := map[string]int{"controller-archive": 2, "shepherd-archive": 2, "deb": 2, "rpm": 2, "container-image": 1,
-		"sbom": 4, "notices": 1, "compose": 1}
+		"sbom": 4, "notices": 1, "compose": 1, "podman-quadlet": 1}
 	for k, n := range want {
 		expect(t, kinds[k] == n, "the release has %d %s artifacts, want %d (%v)", kinds[k], k, n, kinds)
 	}
@@ -326,4 +326,94 @@ func TestReleaseArtifacts(t *testing.T) {
 		sum, _ := fileSHA256(filepath.Join(r.binDir, "drool-agent-linux-"+arch))
 		expect(t, strings.Contains(string(script), sum), "install.sh doesn't offer the release's %s Shepherd (%s)", arch, sum[:12])
 	}
+}
+
+// TestReleaseSigning runs the offline signing workflow (RELEASING.md) on a
+// copy of the release with a throwaway key — never a real one: sign.sh
+// refuses while no key is listed and when a file doesn't match SHA256SUMS,
+// then signs; the README's verification commands accept the result and
+// reject a changed SHA256SUMS or another key's signature.
+func TestReleaseSigning(t *testing.T) {
+	r := needRelease(t)
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("needs OpenSSH's ssh-keygen")
+	}
+	dir := t.TempDir()
+	for _, n := range append([]string{"SHA256SUMS", "release.json"}, func() (names []string) {
+		for _, f := range r.Files {
+			names = append(names, f.Name)
+		}
+		return
+	}()...) {
+		b, err := os.ReadFile(filepath.Join(r.Dir, n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.WriteFile(filepath.Join(dir, n), b, 0o644)
+	}
+	keys := t.TempDir()
+	keygen := func(name string) string {
+		if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "release@drool", "-f", filepath.Join(keys, name)).CombinedOutput(); err != nil {
+			t.Fatalf("ssh-keygen: %v\n%s", err, out)
+		}
+		pub, _ := os.ReadFile(filepath.Join(keys, name+".pub"))
+		return strings.Join(strings.Fields(string(pub))[:2], " ")
+	}
+	pub := keygen("release")
+	keygen("other")
+	allowed := filepath.Join(keys, "allowed_signers")
+	os.WriteFile(allowed, []byte(`release@drool namespaces="drool-release" `+pub+"\n"), 0o644)
+	sign := func(allowedFile, key string) (string, error) {
+		cmd := exec.Command(filepath.Join(root, "packaging", "release", "sign.sh"), dir, filepath.Join(keys, key))
+		cmd.Env = append(os.Environ(), "ALLOWED_SIGNERS="+allowedFile)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	verify := func() (string, error) {
+		cmd := exec.Command("sh", "-c", "sha256sum --check --ignore-missing --quiet SHA256SUMS && "+
+			"ssh-keygen -Y verify -f "+shq(allowed)+" -I release@drool -n drool-release -s SHA256SUMS.sig < SHA256SUMS")
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+
+	out, err := sign(filepath.Join(root, "packaging", "keys", "allowed_signers"), "release")
+	if strings.Contains(mustRead(t, filepath.Join(root, "packaging", "keys", "allowed_signers")), "ssh-ed25519") {
+		expect(t, err != nil, "signed with a key that isn't the listed release key:\n%s", out)
+	} else {
+		expect(t, err != nil && strings.Contains(out, "lists no key"), "signing without a listed key: %v\n%s", err, out)
+	}
+	compose := filepath.Join(dir, "compose.yaml")
+	orig := mustRead(t, compose)
+	os.WriteFile(compose, []byte(orig+"# changed\n"), 0o644)
+	out, err = sign(allowed, "release")
+	expect(t, err != nil && strings.Contains(out, "don't match SHA256SUMS"), "signing a changed release: %v\n%s", err, out)
+	os.WriteFile(compose, []byte(orig), 0o644)
+	out, err = sign(allowed, "other")
+	expect(t, err != nil && strings.Contains(out, "doesn't verify"), "signing with another key: %v\n%s", err, out)
+	_, statErr := os.Stat(filepath.Join(dir, "SHA256SUMS.sig"))
+	expect(t, os.IsNotExist(statErr), "a signature from the wrong key was left behind")
+	if out, err := sign(allowed, "release"); err != nil {
+		t.Fatalf("sign: %v\n%s", err, out)
+	}
+	if out, err := verify(); err != nil || !strings.Contains(out, `Good "drool-release" signature for release@drool`) {
+		t.Fatalf("the README's verification: %v\n%s", err, out)
+	}
+	// The signature covers SHA256SUMS: change one hash in it (as someone
+	// replacing a file would) and the signature no longer verifies.
+	sums := mustRead(t, filepath.Join(dir, "SHA256SUMS"))
+	os.WriteFile(filepath.Join(dir, "SHA256SUMS"), []byte(strings.Replace(sums, sums[:8], "00000000", 1)), 0o644)
+	sig := exec.Command("sh", "-c", "ssh-keygen -Y verify -f "+shq(allowed)+" -I release@drool -n drool-release -s SHA256SUMS.sig < SHA256SUMS")
+	sig.Dir = dir
+	out2, err := sig.CombinedOutput()
+	expect(t, err != nil, "a changed SHA256SUMS verified:\n%s", out2)
+}
+
+func mustRead(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

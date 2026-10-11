@@ -153,6 +153,8 @@ func kindOf(name string) string {
 		return "shepherd-binary"
 	case name == "compose.yaml":
 		return "compose"
+	case name == "drool.container":
+		return "podman-quadlet"
 	case name == "release.json":
 		return "release-manifest"
 	case strings.HasPrefix(name, "THIRD_PARTY_NOTICES"):
@@ -172,9 +174,9 @@ type manifest struct {
 	Commit   string `json:"commit"`
 	SourceAt string `json:"source_date"`
 	License  string `json:"license"`
-	// Signed: SHA256SUMS.sig is added offline by the release manager
-	// (RELEASING.md); a build never has it.
-	Signed        bool              `json:"signed"`
+	// Signing says how a release is signed: a build is never signed; the
+	// release manager adds SHA256SUMS.sig offline (RELEASING.md).
+	Signing       string            `json:"signing"`
 	SchemaVersion int               `json:"schema_version"`
 	AgentProtocol map[string]uint32 `json:"agent_protocol"`
 	AgentFeatures []string          `json:"agent_features"`
@@ -188,7 +190,9 @@ func cmdManifest(args []string) error {
 	fs := flag.NewFlagSet("manifest", flag.ContinueOnError)
 	dir := fs.String("dir", "", "release directory")
 	image := fs.String("image", "", "the OCI image archive in it")
-	m := manifest{Format: "drool-release-v1", Product: "drool", AgentProtocol: map[string]uint32{}, Toolchain: map[string]string{}}
+	m := manifest{Format: "drool-release-v1", Product: "drool", AgentProtocol: map[string]uint32{}, Toolchain: map[string]string{},
+		Signing: "SHA256SUMS.sig, added offline by the release manager: ssh-keygen -Y verify -f allowed_signers -I release@drool -n drool-release " +
+			"-s SHA256SUMS.sig < SHA256SUMS; without a valid one this is not an official release"}
 	fs.StringVar(&m.Version, "version", "", "")
 	fs.StringVar(&m.Channel, "channel", "", "")
 	fs.StringVar(&m.Commit, "commit", "", "")

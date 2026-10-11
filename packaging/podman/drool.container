@@ -1,0 +1,39 @@
+# DROOL with rootless Podman, run by systemd (Quadlet; Podman 4.4 or newer).
+# A release ships this file with its version filled in.
+#
+#   podman load -i drool_<version>_image.oci.tar
+#   mkdir -p ~/.config/containers/systemd
+#   cp drool.container ~/.config/containers/systemd/
+#   systemctl --user daemon-reload
+#   systemctl --user start drool
+#   journalctl --user -u drool -n 30      # the address and the one-time setup code
+#   loginctl enable-linger "$USER"        # keep it running after you log out, and start it at boot
+#
+# The same restrictions as compose.yaml: read-only, no capabilities,
+# no-new-privileges, a tmpfs /tmp, data in the drool-data volume.
+[Unit]
+Description=DROOL controller (Podman)
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+ContainerName=drool
+Image=docker.io/library/drool:local
+PublishPort=8080:8080
+PublishPort=9443:9443
+Volume=drool-data:/data
+ReadOnly=true
+Tmpfs=/tmp
+DropCapability=ALL
+NoNewPrivileges=true
+HealthCmd=/usr/local/bin/drool healthcheck
+HealthInterval=30s
+HealthStartPeriod=60s
+# Shepherds need an address they can reach (this machine's name or IP):
+#Environment=DROOL_AGENT_ADVERTISE=drool.example.net:9443
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

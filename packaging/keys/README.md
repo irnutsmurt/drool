@@ -1,0 +1,20 @@
+# Release keys
+
+`allowed_signers` holds the public half of the **DROOL release key**, in OpenSSH's
+allowed-signers format. It says which key may sign a release's `SHA256SUMS`, so that people who
+download DROOL can tell an official release from anything else:
+
+```sh
+ssh-keygen -Y verify -f allowed_signers -I release@drool -n drool-release -s SHA256SUMS.sig < SHA256SUMS
+```
+
+The private half never enters this repository, CI or a DROOL controller. It lives offline with the
+release manager, who signs each release by hand ([`RELEASING.md`](../../RELEASING.md)).
+
+This key is not any of DROOL's runtime keys, and it doesn't replace them:
+
+- **Shepherd release-signing keys** (`drool release keygen`) are yours: each DROOL operator decides,
+  with their own key, which Shepherd binaries their hosts may update to. The DROOL release key only
+  says that a download is what the DROOL project built.
+- The **Agent Root CA**, the **SSH user CA** and the **master key** are created by each controller
+  and never leave it except into your own offline storage.

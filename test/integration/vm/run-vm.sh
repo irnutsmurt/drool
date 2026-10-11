@@ -2,6 +2,8 @@
 # Usage: run-vm.sh IMAGE_URL
 # /images: cache volume for downloaded cloud images
 # /seed:   cloud-init user-data and meta-data
+# VM_ARCH: x86_64 (default) or aarch64. VM_FWD: extra guest TCP ports
+# forwarded to the same port of this container (e.g. "8080 9443").
 set -eu
 url=$1
 base=/images/$(basename "$url")
@@ -19,11 +21,20 @@ if [ ! -f /work/disk.qcow2 ]; then
   # an SD card image can be sized as cards are.
   for d in ${VM_DISKS:-}; do qemu-img create -q -f raw "/work/${d%%:*}" "${d##*:}"; done
 fi
+fwd=hostfwd=tcp::22-:22
+for p in ${VM_FWD:-}; do fwd="$fwd,hostfwd=tcp::$p-:$p"; done
 # The root disk boots first (SeaBIOS tries only the first hard disk, which
 # could be one of the blank extra disks).
 # The guest's sshd is forwarded to this container's port 22. Reboots restart
 # the guest inside the same qemu process, so the port stays up.
+if [ "${VM_ARCH:-x86_64}" = aarch64 ]; then
+  exec qemu-system-aarch64 -machine virt -accel tcg,thread=multi,tb-size=256 -cpu "${VM_CPU:-max,pauth-impdef=on}" \
+    -smp "${VM_CPUS:-2}" -m "${VM_MEM:-1536}" -bios /usr/share/qemu-efi-aarch64/QEMU_EFI.fd \
+    -drive file=/work/disk.qcow2,if=none,id=root,cache=unsafe -device virtio-blk-pci,drive=root,bootindex=0 -drive file=/work/seed.iso,if=virtio,media=cdrom \
+    -netdev user,id=n0,$fwd -device virtio-net-pci,netdev=n0 \
+    ${VM_EXTRA:-} -nographic -serial mon:stdio
+fi
 exec qemu-system-x86_64 -machine q35 -accel tcg,thread=multi,tb-size=256 -cpu "${VM_CPU:-max,la57=off}" -smp "${VM_CPUS:-2}" -m "${VM_MEM:-1536}" \
   -drive file=/work/disk.qcow2,if=none,id=root,cache=unsafe -device virtio-blk-pci,drive=root,bootindex=0 -drive file=/work/seed.iso,if=virtio,media=cdrom \
-  -netdev user,id=n0,hostfwd=tcp::22-:22 -device virtio-net-pci,netdev=n0 \
+  -netdev user,id=n0,$fwd -device virtio-net-pci,netdev=n0 \
   ${VM_EXTRA:-} -nographic -serial mon:stdio

@@ -18,7 +18,8 @@
 #   drool_<v>-1_<arch>.deb, drool-<v>-1.<arch>.rpm   native packages (systemd)
 #   drool_<v>_image.oci.tar                container image (linux/amd64 + linux/arm64)
 #   *.spdx.json                            SBOMs (SPDX 2.3)
-#   THIRD_PARTY_NOTICES.txt, compose.yaml, release.json, SHA256SUMS
+#   THIRD_PARTY_NOTICES.txt, compose.yaml, drool.container (Podman),
+#   release.json, SHA256SUMS
 # Signing SHA256SUMS is a separate, offline step (packaging/release/sign.sh):
 # no signing key is ever needed here.
 set -euo pipefail
@@ -195,6 +196,10 @@ cp "$work/bin/linux_amd64/THIRD_PARTY_NOTICES.txt" "$out/"
 [[ -f $src/LICENSE ]] && cp "$src/LICENSE" "$out/"
 sed "s#^\(  *image: \).*#\1\${DROOL_IMAGE:-$image_name:$pkgver}#" "$src/compose.yaml" >"$out/compose.yaml"
 grep -q "image: \${DROOL_IMAGE:-$image_name:$pkgver}" "$out/compose.yaml" || die "compose.yaml has no image line to pin"
+qualified=$image_name
+[[ $qualified == */* ]] || qualified=docker.io/library/$qualified
+sed "s#^Image=.*#Image=$qualified:$pkgver#" "$src/packaging/podman/drool.container" >"$out/drool.container"
+grep -q "^Image=$qualified:$pkgver\$" "$out/drool.container" || die "drool.container has no Image= line to pin"
 
 note "SBOMs"
 godocker go mod download

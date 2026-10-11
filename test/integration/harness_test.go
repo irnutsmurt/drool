@@ -50,10 +50,13 @@ type distro struct {
 var allDistros = []distro{
 	{"debian-12", "apt", "debian:12", "debian", "debian", "apt", "vim", "vim-runtime"},
 	{"debian-13", "apt", "debian:13", "debian", "debian", "apt", "vim", "vim-runtime"},
+	{"ubuntu-22.04", "apt", "ubuntu:22.04", "debian", "ubuntu", "apt", "vim", "vim-runtime"},
 	{"ubuntu-24.04", "apt", "ubuntu:24.04", "debian", "ubuntu", "apt", "vim", "vim-runtime"},
 	{"ubuntu-26.04", "apt", "ubuntu:26.04", "debian", "ubuntu", "apt", "vim", "vim-runtime"},
 	{"rockylinux-9", "dnf", "rockylinux:9", "redhat", "rocky", "dnf", "vim-enhanced", "vim-common"},
 	{"rockylinux-10", "dnf", "rockylinux/rockylinux:10", "redhat", "rocky", "dnf", "vim-enhanced", "vim-common"},
+	{"almalinux-9", "dnf", "almalinux:9", "redhat", "almalinux", "dnf", "vim-enhanced", "vim-common"},
+	{"almalinux-10", "dnf", "almalinux:10", "redhat", "almalinux", "dnf", "vim-enhanced", "vim-common"},
 	{"fedora-44", "dnf", "fedora:44", "redhat", "fedora", "dnf", "vim-enhanced", "vim-common"},
 }
 
@@ -141,14 +144,20 @@ func setup(m *testing.M) (int, error) {
 	// Agent builds: the one the controller hands out (unless the release's),
 	// a newer one for update tests, and a deliberately broken newer one for
 	// rollback tests.
-	builds := []struct{ out, version, tags string }{
-		{filepath.Join(releaseDir, "drool-agent-"+agentV2), agentV2, ""},
-		{filepath.Join(releaseDir, "drool-agent-"+agentBroken), agentBroken, "droolbroken"},
-		{filepath.Join(releaseDir, "drool-agent-"+agentRunaway), agentRunaway, "droolrunaway"},
+	// arm64 builds of the update releases and of the handed-out Shepherd go
+	// to arm64 VMs (-vm debian-12-arm64): "<name>-arm64".
+	type agentBuild struct{ out, version, tags, arch string }
+	var builds []agentBuild
+	for _, arch := range []string{"amd64", "arm64"} {
+		sfx := map[string]string{"amd64": "", "arm64": "-arm64"}[arch]
+		builds = append(builds,
+			agentBuild{filepath.Join(releaseDir, "drool-agent-"+agentV2+sfx), agentV2, "", arch},
+			agentBuild{filepath.Join(releaseDir, "drool-agent-"+agentBroken+sfx), agentBroken, "droolbroken", arch})
+		if rel == nil {
+			builds = append(builds, agentBuild{filepath.Join(agentDir, "drool-agent-linux-"+arch), agentV1, "", arch})
+		}
 	}
-	if rel == nil {
-		builds = append(builds, struct{ out, version, tags string }{filepath.Join(agentDir, "drool-agent-linux-amd64"), agentV1, ""})
-	}
+	builds = append(builds, agentBuild{filepath.Join(releaseDir, "drool-agent-"+agentRunaway), agentRunaway, "droolrunaway", "amd64"})
 	for _, b := range builds {
 		args := []string{"build", "-trimpath", "-ldflags", "-X drool/internal/version.Version=" + b.version, "-o", b.out}
 		if b.tags != "" {
@@ -156,9 +165,9 @@ func setup(m *testing.M) (int, error) {
 		}
 		cmd := exec.Command("go", append(args, "./cmd/drool-agent")...)
 		cmd.Dir, cmd.Stdout, cmd.Stderr = root, os.Stderr, os.Stderr
-		cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64")
+		cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+b.arch)
 		if err := cmd.Run(); err != nil {
-			return 0, fmt.Errorf("build drool-agent %s: %w", b.version, err)
+			return 0, fmt.Errorf("build drool-agent %s for %s: %w", b.version, b.arch, err)
 		}
 	}
 	netOuter, netInner = "drool-it-"+runID+"-outer", "drool-it-"+runID+"-inner"

@@ -26,22 +26,56 @@ import (
 // no --privileged, no /dev/kvm. They are slow (minutes per boot) and opt-in:
 //
 //	go test -tags integration ./test/integration -run TestVM -vm debian-12,ubuntu-24.04 -v -timeout 4h
-var flagVMs = flag.String("vm", "", "comma-separated VMs to test (debian-12, ubuntu-24.04, rockylinux-9); empty skips TestVM")
+var flagVMs = flag.String("vm", "", "comma-separated VMs to test (see vmDefs: debian-12, ubuntu-24.04, rockylinux-9, …, debian-12-arm64); empty skips TestVM")
 
 type vmDef struct {
 	Name, URL, Family string
 	// CPU model for qemu's software emulation. Newer kernels (e.g. a
-	// backports or HWE kernel) crash on TCG's cmpxchg16b, so Debian/Ubuntu
-	// guests run without it; RHEL 9 needs x86-64-v2 and keeps it.
+	// backports or HWE kernel) crash on TCG's cmpxchg16b, so Debian, Ubuntu
+	// and Fedora guests run without it; RHEL 9 needs x86-64-v2 and RHEL 10
+	// x86-64-v3, so those keep it.
 	CPU               string
 	SSHUnit, CronUnit string
 	BigPkg            string // slow to install: used to cancel a live transaction
+	Arch              string // "arm64": an emulated aarch64 guest; default amd64
 }
 
+// The VM matrix: every Linux distribution the managed-host support matrix
+// names (README "Supported platforms"), plus an arm64 guest.
 var vmDefs = []vmDef{
-	{"debian-12", "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2", "apt", "max,la57=off,cx16=off", "ssh", "cron", "default-jre-headless"},
-	{"ubuntu-24.04", "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img", "apt", "max,la57=off,cx16=off", "ssh", "cron", "default-jre-headless"},
-	{"rockylinux-9", "https://dl.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base.latest.x86_64.qcow2", "dnf", "max,la57=off", "sshd", "crond", "java-17-openjdk-headless"},
+	{"debian-12", "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2", "apt", "max,la57=off,cx16=off", "ssh", "cron", "default-jre-headless", ""},
+	{"debian-13", "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-amd64.qcow2", "apt", "max,la57=off,cx16=off", "ssh", "cron", "default-jre-headless", ""},
+	{"ubuntu-22.04", "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img", "apt", "max,la57=off,cx16=off", "ssh", "cron", "default-jre-headless", ""},
+	{"ubuntu-24.04", "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img", "apt", "max,la57=off,cx16=off", "ssh", "cron", "default-jre-headless", ""},
+	{"ubuntu-26.04", "https://cloud-images.ubuntu.com/resolute/current/resolute-server-cloudimg-amd64.img", "apt", "max,la57=off,cx16=off", "ssh", "cron", "default-jre-headless", ""},
+	{"rockylinux-9", "https://dl.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base.latest.x86_64.qcow2", "dnf", "max,la57=off", "sshd", "crond", "java-17-openjdk-headless", ""},
+	{"rockylinux-10", "https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud-Base.latest.x86_64.qcow2", "dnf", "max,la57=off", "sshd", "crond", "java-21-openjdk-headless", ""},
+	{"almalinux-9", "https://repo.almalinux.org/almalinux/9/cloud/x86_64/images/AlmaLinux-9-GenericCloud-latest.x86_64.qcow2", "dnf", "max,la57=off", "sshd", "crond", "java-17-openjdk-headless", ""},
+	{"almalinux-10", "https://repo.almalinux.org/almalinux/10/cloud/x86_64/images/AlmaLinux-10-GenericCloud-latest.x86_64.qcow2", "dnf", "max,la57=off", "sshd", "crond", "java-21-openjdk-headless", ""},
+	{"fedora-44", "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2", "dnf", "max,la57=off,cx16=off", "sshd", "crond", "java-25-openjdk-headless", ""},
+	{"debian-12-arm64", "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-arm64.qcow2", "apt", "max,pauth-impdef=on", "ssh", "cron", "default-jre-headless", "arm64"},
+}
+
+func vmDefNamed(t *testing.T, name string) vmDef {
+	t.Helper()
+	for _, d := range vmDefs {
+		if d.Name == name {
+			return d
+		}
+	}
+	t.Fatalf("no VM %q", name)
+	return vmDef{}
+}
+
+// wantedVMs is the -vm selection.
+func wantedVMs() map[string]bool {
+	want := map[string]bool{}
+	for _, n := range strings.Split(*flagVMs, ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			want[n] = true
+		}
+	}
+	return want
 }
 
 var vmImageOnce sync.Once
@@ -50,6 +84,9 @@ type vm struct {
 	def         vmDef
 	c           *container
 	fingerprint string
+	// fwd maps guest ports forwarded with VM_FWD to their port on
+	// 127.0.0.1 of this machine.
+	fwd map[int]int
 }
 
 func startVM(t *testing.T, def vmDef, env ...string) *vm {
@@ -97,8 +134,20 @@ chpasswd:
 	c := &container{Name: "drool-it-" + runID + "-vm-" + def.Name, Port: freePort()}
 	args := []string{"run", "-d", "--name", c.Name, "--network", netOuter, "-p", fmt.Sprintf("127.0.0.1:%d:22", c.Port),
 		"--cpus", "2", "--memory", "3g", "-e", "VM_CPU=" + def.CPU, "-v", "drool-vm-images:/images", "-v", seed + ":/seed:ro"}
+	if def.Arch == "arm64" {
+		args = append(args, "-e", "VM_ARCH=aarch64")
+	}
+	fwd := map[int]int{}
 	for _, e := range env {
 		args = append(args, "-e", e)
+		if ports, ok := strings.CutPrefix(e, "VM_FWD="); ok {
+			for _, p := range strings.Fields(ports) {
+				var guest int
+				fmt.Sscan(p, &guest)
+				fwd[guest] = freePort()
+				args = append(args, "-p", fmt.Sprintf("127.0.0.1:%d:%d", fwd[guest], guest))
+			}
+		}
 	}
 	mustDocker(t, append(args, "drool-it-vmrunner", def.URL)...)
 	t.Cleanup(func() {
@@ -106,7 +155,7 @@ chpasswd:
 			docker("rm", "-f", c.Name)
 		}
 	})
-	v := &vm{def: def, c: c, fingerprint: ssh.FingerprintSHA256(sshPub)}
+	v := &vm{def: def, c: c, fingerprint: ssh.FingerprintSHA256(sshPub), fwd: fwd}
 	t.Logf("%s: booting under TCG (this takes a few minutes)", def.Name)
 	booted := false
 	defer func() {
@@ -115,7 +164,11 @@ chpasswd:
 			t.Logf("%s console (last lines):\n%s", def.Name, out)
 		}
 	}()
-	waitFor(t, 20*time.Minute, def.Name+" sshd", func() bool { return sshBanner(c.Port) })
+	boot := 20 * time.Minute
+	if def.Arch == "arm64" {
+		boot = 40 * time.Minute // a whole other architecture, emulated
+	}
+	waitFor(t, boot, def.Name+" sshd", func() bool { return sshBanner(c.Port) })
 	booted = true
 	return v
 }
@@ -168,10 +221,7 @@ func TestVM(t *testing.T) {
 	if *flagVMs == "" {
 		t.Skip("set -vm to run the VM tests")
 	}
-	want := map[string]bool{}
-	for _, n := range strings.Split(*flagVMs, ",") {
-		want[strings.TrimSpace(n)] = true
-	}
+	want := wantedVMs()
 	var jump *container
 	var jumpHost host
 	jumpOnce := func(t *testing.T) (*container, host) {
@@ -366,13 +416,28 @@ systemctl mask drool-masked.service
 		}
 		// Install a newer kernel than the running one, as a kernel update does.
 		var step map[string]any
-		switch def.Name {
-		case "debian-12":
-			step = cmd("echo 'deb http://deb.debian.org/debian bookworm-backports main' > /etc/apt/sources.list.d/drool-bp.list && "+
-				"apt-get -q update >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get -y -q -t bookworm-backports install linux-image-cloud-amd64", true)
+		switch {
+		case strings.HasPrefix(def.Name, "debian-"):
+			// Plain Debian keeps no reboot-required file: DROOL compares the
+			// newest installed kernel with the running one, so a newer one
+			// comes from backports.
+			suite := map[string]string{"debian-13": "trixie"}[def.Name]
+			if suite == "" {
+				suite = "bookworm"
+			}
+			arch := "amd64"
+			if def.Arch == "arm64" {
+				arch = "arm64"
+			}
+			step = cmd(fmt.Sprintf("echo 'deb http://deb.debian.org/debian %[1]s-backports main' > /etc/apt/sources.list.d/drool-bp.list && "+
+				"apt-get -q update >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get -y -q -t %[1]s-backports install linux-image-cloud-%[2]s", suite, arch), true)
 			step["timeout_s"] = 3600 // initramfs generation is slow under emulation
-		case "ubuntu-24.04":
+		case def.Name == "ubuntu-24.04":
 			step = map[string]any{"type": "package", "action": "install", "names": []string{"linux-image-generic-hwe-24.04"}}
+		case def.Family == "apt":
+			// Ubuntu marks a reboot as required whenever a kernel is installed.
+			step = cmd("DEBIAN_FRONTEND=noninteractive apt-get -y -q install --reinstall linux-image-$(uname -r)", true)
+			step["timeout_s"] = 3600
 		default:
 			// needs-restarting counts any core package installed after boot.
 			step = cmd("dnf -y -q reinstall kernel-core", true)
