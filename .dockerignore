@@ -1,6 +1,9 @@
-.git
+# .git stays in the context: Go records the source revision in the binaries.
 bin
 data
+dist
+.cache
+scratchpad
 web/node_modules
 web/dist
 *.db

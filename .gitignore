@@ -9,3 +9,5 @@ web/dist/*
 !web/dist/.gitkeep
 web/*.tsbuildinfo
 /drool
+/dist/
+/.cache/

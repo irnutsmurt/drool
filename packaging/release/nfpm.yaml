@@ -1,0 +1,62 @@
+# DROOL's native packages (.deb and .rpm), made by packaging/release/build.sh
+# with nfpm from the release binaries, run in a staging directory holding
+# drool, drool-agent-linux-{amd64,arm64}, drool.service, share/, doc/ and
+# scripts/.
+#
+# What the package owns: /usr/bin/drool, /usr/lib/drool (the Shepherd
+# binaries the controller hands to new hosts), the systemd unit,
+# /usr/share/drool (third-party notices, the example config) and
+# /usr/share/doc/drool. What it never owns, creates over or removes:
+# /var/lib/drool (database, master key, backups, logs) and /etc/drool
+# (configuration) — see scripts/.
+name: drool
+arch: ${ARCH}
+platform: linux
+version: ${PKG_VERSION}
+version_schema: semver
+release: "1"
+section: admin
+priority: optional
+maintainer: ${MAINTAINER}
+vendor: DROOL
+license: ${LICENSE_ID}
+description: |-
+  DROOL controller: manage, automate and monitor Linux hosts
+  DROOL manages Linux hosts over SSH or its optional agent (the Shepherd):
+  runs, updates, files, services, monitoring, alerts, schedules, desired
+  state and firewall policy, from a web UI. This package runs the controller
+  as a systemd service (drool.service, user drool, data in /var/lib/drool).
+contents:
+  # Listed so that rpm, too, owns the directory and removes it with the
+  # package (the trees below come with theirs).
+  - dst: /usr/lib/drool
+    type: dir
+    file_info: { mode: 0755 }
+  - src: drool
+    dst: /usr/bin/drool
+    file_info: { mode: 0755 }
+  - src: drool-agent-linux-amd64
+    dst: /usr/lib/drool/drool-agent-linux-amd64
+    file_info: { mode: 0755 }
+  - src: drool-agent-linux-arm64
+    dst: /usr/lib/drool/drool-agent-linux-arm64
+    file_info: { mode: 0755 }
+  - src: drool.service
+    dst: /usr/lib/systemd/system/drool.service
+    file_info: { mode: 0644 }
+  # Third-party notices, the example config (and DROOL's license) outside
+  # /usr/share/doc, which minimal systems (Ubuntu's container images) skip.
+  - src: share/
+    dst: /usr/share/drool/
+    type: tree
+  - src: doc/
+    dst: /usr/share/doc/drool/
+    type: tree
+scripts:
+  preinstall: scripts/preinstall.sh
+  postinstall: scripts/postinstall.sh
+  preremove: scripts/preremove.sh
+  postremove: scripts/postremove.sh
+overrides:
+  rpm:
+    depends: [shadow-utils]

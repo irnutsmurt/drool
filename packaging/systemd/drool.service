@@ -1,5 +1,5 @@
 [Unit]
-Description=DROOL (Distributed Remote Operations & Observability Layer)
+Description=DROOL controller
 After=network-online.target
 Wants=network-online.target
 
@@ -7,30 +7,49 @@ Wants=network-online.target
 Type=simple
 User=drool
 Group=drool
-ExecStart=/usr/local/bin/drool serve
+# The .deb/.rpm packages install /usr/bin/drool; the release archive's copy
+# of this file says /usr/local/bin/drool.
+ExecStart=/usr/bin/drool serve
 Restart=on-failure
 RestartSec=5s
 
-# Data, logs, TLS material and the credential master key live here.
+# Data — database, master key, TLS material, logs, backups — lives in
+# /var/lib/drool (owner-only); the optional config file is
+# /etc/drool/config.yaml, which the service only reads.
 StateDirectory=drool
 StateDirectoryMode=0750
 ConfigurationDirectory=drool
 Environment=DROOL_DATA_DIR=/var/lib/drool
 UMask=0077
 
-# The controller needs no local privileges.
+# The controller needs no local privileges: it listens on unprivileged ports
+# and manages hosts (and their firewalls) over SSH or their Shepherd, never
+# this machine.
 NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
+ProtectKernelLogs=yes
 ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectClock=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
 RestrictSUIDSGID=yes
+RemoveIPC=yes
 LockPersonality=yes
-CapabilityBoundingSet=
-AmbientCapabilities=
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# AF_NETLINK: listing this machine's addresses for the setup message.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 
 [Install]
 WantedBy=multi-user.target

@@ -1,14 +1,16 @@
-# DROOL build. Requires Go 1.27+ and Node 22+.
+# DROOL build. Requires Go 1.27+ and Node 22+; images and releases need
+# Docker (BuildKit: the buildx plugin, or packaging/release/buildx fetches a
+# pinned standalone buildx). Release artifacts: make release (RELEASING.md).
 GO      ?= go
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --always --dirty 2>/dev/null || echo v0.0.0-dev)
+COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w \
 	-X drool/internal/version.Version=$(VERSION) \
 	-X drool/internal/version.Commit=$(COMMIT) \
 	-X drool/internal/version.Date=$(DATE)
 
-.PHONY: all build image web web-deps go agent proto test test-go test-web test-integration vet fmt-check generate check-generated run dev clean
+.PHONY: all build image release web web-deps go agent proto test test-go test-race test-web test-integration vet fmt-check generate check-generated run dev clean
 
 all: build
 
@@ -39,10 +41,19 @@ test: test-go test-web
 test-go:
 	$(GO) test ./...
 
-# Container image tagged with the version (drool:<version> and drool:local).
+test-race:
+	$(GO) test -race -count=1 ./...
+
+# Container image for this machine's platform, tagged drool:local (what
+# compose.yaml uses by default). Development builds; releases: make release.
 image:
-	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) \
-		-t drool:$(VERSION) -t drool:local .
+	packaging/release/buildx build --load --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) \
+		--build-arg DATE=$(DATE) -t drool:local .
+
+# Every release artifact for linux/amd64 and linux/arm64 from a clean clone of
+# HEAD (or RELEASE_ARGS='--commit REV --version vX.Y.Z-rc.N ...'): dist/<version>/.
+release:
+	packaging/release/build.sh $(RELEASE_ARGS)
 
 # Real distributions in unprivileged containers (needs Docker and network
 # access; ~15-30 min). DISTROS=debian-12,fedora-44 limits the matrix.
@@ -56,7 +67,7 @@ vet:
 	$(GO) vet ./...
 
 fmt-check:
-	@out=$$(gofmt -l cmd internal web/embed.go); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
+	@out=$$(gofmt -l cmd internal packaging test web/embed.go); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 
 # Regenerate sqlc queries and TypeScript API types.
 generate:
@@ -77,4 +88,4 @@ dev:
 	cd web && npm run dev
 
 clean:
-	rm -rf bin web/dist/assets web/dist/index.html
+	rm -rf bin web/dist/assets web/dist/index.html dist

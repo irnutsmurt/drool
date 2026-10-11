@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Runs buildx: the docker buildx plugin when Docker has it, otherwise a
+# standalone buildx binary taken from a pinned image into .cache/release/tools
+# (it drives this Docker daemon's own BuildKit; nothing is installed).
+#   packaging/release/buildx build ...
+set -euo pipefail
+BUILDX_IMAGE=docker/buildx-bin@sha256:abcf2315937f37bdb52615d1698a4696e3952e88c440a07e7552cbefbc72b1b6 # v0.38.0
+if docker buildx version >/dev/null 2>&1; then
+  exec docker buildx "$@"
+fi
+repo=$(cd "$(dirname "$0")/../.." && pwd)
+bx=$repo/.cache/release/tools/docker-buildx-${BUILDX_IMAGE##*:}
+if [[ ! -x $bx ]]; then
+  echo "==> fetching buildx ($BUILDX_IMAGE)" >&2
+  mkdir -p "${bx%/*}"
+  cid=$(docker create "$BUILDX_IMAGE" /buildx)
+  docker cp "$cid:/buildx" "$bx.tmp" >/dev/null
+  docker rm "$cid" >/dev/null
+  chmod 0755 "$bx.tmp"
+  mv "$bx.tmp" "$bx"
+fi
+exec "$bx" "$@"
