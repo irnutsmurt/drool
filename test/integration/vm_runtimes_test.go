@@ -197,6 +197,11 @@ func testRootlessPodman(t *testing.T, v *vm, r *releaseUnderTest) {
 	ver := mustVMAs(t, v, "alice", pod+"podman version --format '{{.Version}}'; podman info --format '{{.Host.Security.Rootless}}'", 2*time.Minute)
 	expect(t, strings.HasSuffix(ver, "true"), "podman isn't rootless here: %s", ver)
 	t.Logf("rootless Podman %s", strings.Fields(ver)[0])
+	var major, minor int
+	fmt.Sscanf(strings.Fields(ver)[0], "%d.%d", &major, &minor)
+	if major < 4 || major == 4 && minor < 4 {
+		t.Skipf("%s ships Podman %s, which has no Quadlet (the README's Podman setup needs 4.4 or newer)", v.def.Name, strings.Fields(ver)[0])
+	}
 	mustVMAs(t, v, "alice", pod+"podman load -i ~/drool.oci.tar", 20*time.Minute)
 	// The README's Quadlet steps.
 	mustVMAs(t, v, "alice", pod+"mkdir -p ~/.config/containers/systemd && cp ~/drool.container ~/.config/containers/systemd/ && systemctl --user daemon-reload && systemctl --user start drool", 10*time.Minute)
