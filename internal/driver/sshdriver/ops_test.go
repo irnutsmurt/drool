@@ -202,6 +202,19 @@ func (r *rebootHost) exec(cmd string, _ []byte) (string, string, int) {
 	return "", "unexpected: " + cmd, 127
 }
 
+// afterNextCommand runs f once the server has received a command after the
+// ones it has seen so far. DROOL's reboot trigger (systemd-run
+// --on-active=2) returns before the host goes down, so a test host goes
+// down only once DROOL has the trigger's result and asks for something else;
+// restarting the server right away races the trigger's exit status.
+func afterNextCommand(srv *sshtest.Server, f func()) {
+	n, deadline := len(srv.Commands()), time.Now().Add(10*time.Second)
+	for len(srv.Commands()) == n && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	f()
+}
+
 func rebootOp(timeout int) model.Operation {
 	op := model.Operation{Type: model.OpReboot, Reboot: &model.RebootOp{TimeoutS: timeout}}
 	_ = op.Normalize()
@@ -213,11 +226,12 @@ func TestRebootWaitsForNewBootID(t *testing.T) {
 	rh := &rebootHost{bootID: "11111111-1111-1111-1111-111111111111"}
 	x, tg, srv := setup(t, rh.exec)
 	rh.trigger = func() {
-		time.Sleep(300 * time.Millisecond)
-		srv.Restart(700*time.Millisecond, func() {
-			rh.mu.Lock()
-			rh.bootID = "22222222-2222-2222-2222-222222222222"
-			rh.mu.Unlock()
+		afterNextCommand(srv, func() {
+			srv.Restart(700*time.Millisecond, func() {
+				rh.mu.Lock()
+				rh.bootID = "22222222-2222-2222-2222-222222222222"
+				rh.mu.Unlock()
+			})
 		})
 	}
 	s := &sink{}
@@ -256,7 +270,9 @@ func TestRebootComesBackWithDifferentKey(t *testing.T) {
 	rh := &rebootHost{bootID: "11111111-1111-1111-1111-111111111111"}
 	x, tg, srv := setup(t, rh.exec)
 	rh.trigger = func() {
-		srv.Restart(300*time.Millisecond, func() { srv.SetHostKeys(sshtest.NewEd25519Signer(t)) })
+		afterNextCommand(srv, func() {
+			srv.Restart(300*time.Millisecond, func() { srv.SetHostKeys(sshtest.NewEd25519Signer(t)) })
+		})
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
