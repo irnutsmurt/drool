@@ -1,0 +1,63 @@
+# Ports and files
+
+What DROOL listens on, what it connects to, and what it puts where.
+
+## Network connections
+
+| From | To | Port | What for |
+|---|---|---|---|
+| Your browser | The controller | **TCP 8080** (HTTPS) | The web interface and the API (`server.web_port`) |
+| Shepherds | The controller | **TCP 9443** (mutual TLS) | Shepherd connections; only if you use Shepherds (`agent.port`) |
+| The controller | Managed hosts (or the jump host) | **TCP 22** (SSH), or the port set on the host | Managing hosts over SSH |
+| The jump host | Hosts behind it | Their SSH port | Connections forwarded through the jump host |
+| The controller | Notification destinations | Their ports (SMTP 587/465/25, HTTPS 443, …) | Alerts ([Notification Routing](Notification-Routing.md)) |
+| The controller | Your audit receiver | HTTPS | The [remote audit copy](Remote-Audit-Copy.md) |
+
+The controller makes no other connections: no telemetry, no update checks, no online GeoIP lookups.
+
+## On the controller
+
+| Path (native) | In containers | What |
+|---|---|---|
+| `/var/lib/drool/` | `/data/` (the `drool-data` volume) | The data directory |
+| `…/drool.db` | | The database |
+| `…/master.key` | | The [master key](Master-Key.md) |
+| `…/tls/` | | The self-signed certificate |
+| `…/artifacts/` | | Stored files: deployments, previous versions for rollback, Desired State contents |
+| `…/backups/` | | Backups made with `drool backup` (and before upgrades) |
+| `…/logs/` | (logs go to stdout) | DROOL's logs |
+| `…/geoip/` | | [GeoIP and ASN](GeoIP-and-ASN.md) databases, if you add them |
+| `…/pre-restore-<time>/` | | Your previous files after a restore |
+| `/etc/drool/config.yaml` | (environment variables) | The [configuration file](Configuration.md), if any |
+| `/usr/bin/drool` | | The program |
+| `/usr/lib/drool/` | | The Shepherd binaries DROOL installs on hosts |
+| `/usr/share/drool/` | | Licence notices and the example configuration |
+
+## On managed hosts
+
+DROOL installs nothing on an SSH host to manage it. What appears there depends on what you use:
+
+| What | Where |
+|---|---|
+| DROOL's SSH key (you put it there) | `~drooladmin/.ssh/authorized_keys` |
+| Trust in DROOL's [SSH certificate authority](Short-Lived-SSH-Certificates.md) | `/etc/ssh/drool_user_ca.pub`, `/etc/ssh/sshd_config.d/40-drool-user-ca.conf` |
+| DROOL's [firewall](What-DROOLs-Firewall-Does.md) (enforced hosts) | The nftables table `inet drool`, `/var/lib/drool/firewall/`, `/usr/libexec/drool-firewall/`, `drool-firewall.service` |
+| Previous versions of [deployed files](Rolling-Back-a-File.md) | Kept by DROOL on the controller, not on the host |
+| The optional storage write/read probe | A small test file on the filesystems you choose ([Storage Health](Storage-Health.md)) |
+
+### A Shepherd
+
+| What | Where |
+|---|---|
+| The service | `drool-agent.service` (`/etc/systemd/system/drool-agent.service`) |
+| The program, and staged updates | `/usr/libexec/drool-agent/` |
+| What DROOL may do on this host (the capability ceiling) | `/etc/drool/agent.yaml` ([Shepherd Capability Presets](Shepherd-Capability-Presets.md)) |
+| Release-signing keys the host trusts | `/etc/drool/release-keys.d/` |
+| Identity and state | `/var/lib/drool-agent/` |
+| Every operation it received (no command text, file contents or secrets) | `/var/log/drool-agent/operations.log` |
+
+`drool-agent status` on the host shows its identity, certificate, trust, endpoints and capabilities.
+
+## Related
+
+[Configuration](Configuration.md) · [Backup and Recovery](Backup-and-Recovery.md) · [SSH vs Shepherds](SSH-vs-Shepherds.md)

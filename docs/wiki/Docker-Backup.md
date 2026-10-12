@@ -1,0 +1,49 @@
+# Backing up DROOL in Docker
+
+For DROOL running with Docker Compose (the release's `compose.yaml`). All data lives in the `drool-data`
+volume.
+
+## Before you start
+
+- Run the commands in the directory with your `compose.yaml`.
+- Backups are safe to make while DROOL runs.
+
+## Make a backup
+
+```sh
+docker compose exec -T drool drool backup -o - > drool-backup-$(date +%Y%m%d-%H%M%S).tar.gz
+```
+
+- `-o -` writes the backup to standard output, and `>` saves it on the Docker host, outside the
+  container. DROOL's messages appear on the screen, not in the file.
+- `-T` matters: without it, Docker adds terminal control characters and the file is damaged.
+- `$(date +%Y%m%d-%H%M%S)` puts the date and time in the name, for example
+  `drool-backup-20261012-101500.tar.gz`.
+
+Then copy the file to another machine, like any other file.
+
+## Every night, automatically
+
+A cron line on the Docker host (`crontab -e`), with `/srv/drool` standing for the directory with your
+`compose.yaml` and `/srv/backups/drool` for where backups go:
+
+```text
+15 3 * * * cd /srv/drool && docker compose exec -T drool drool backup -o - > /srv/backups/drool/drool-backup-$(date +\%Y\%m\%d).tar.gz
+```
+
+In a crontab, `%` must be written `\%`.
+
+## Don't forget the master key
+
+The backup doesn't contain the [master key](Master-Key.md). Copy it out once, and after every rotation:
+
+```sh
+docker compose cp drool:/data/master.key ./master.key
+```
+
+and store it apart from the backups.
+
+## Related
+
+[Verifying a Backup](Verifying-a-Backup.md) · [Restoring a Controller](Restoring-a-Controller.md) ·
+[Podman Backup](Podman-Backup.md) · [Backup and Recovery](Backup-and-Recovery.md)

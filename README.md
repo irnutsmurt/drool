@@ -21,6 +21,8 @@ Linux is the platform DROOL implements today. A Windows agent is a deferred futu
 the controller's typed operations are intentionally kept platform-neutral so Windows-native
 implementations can be added later.
 
+- **User guide:** [the DROOL wiki](https://github.com/irnutsmurt/drool/wiki) (task-oriented help for
+  everyday use and troubleshooting; its source is [`docs/wiki/`](docs/wiki/Home.md))
 - **Design:** [`DESIGN.md`](DESIGN.md) (product and trust architecture, including future plans)
 - **Implementation:** [`ARCHITECTURE-ALPHA.md`](ARCHITECTURE-ALPHA.md) (what DROOL actually does,
   and why: the implementation record from the Technical Alpha to 1.0; it keeps its historical name)
@@ -979,7 +981,7 @@ helper once per host. DROOL never uninstalls helpers and never installs GPU driv
 
 ### Moving SSH hosts to the agent
 
-On the fleet page, select hosts and choose **Convert to agent**. The preview counts compatible,
+On **Monitoring** (the fleet page), select hosts and choose **Convert to Shepherd**. The preview counts compatible,
 already-converted, unsupported and unreachable hosts; the conversion then runs as a staged rollout
 (a canary host first, then batches) and pauses on a failure. Each host gets the agent build that
 matches your DROOL version, verified, with a single-use token; a host where anything fails stays

@@ -1,0 +1,97 @@
+# Updating DROOL
+
+DROOL doesn't update itself: there is no "update now" button and no package repository that
+`apt upgrade` would pick it up from. You replace the program, package or image yourself, the same
+way you installed it. This page shows how, what DROOL does on the first start of a new version, and
+how to go back if you need to.
+
+Updating the **controller** and updating **Shepherds** (the agents on your hosts) are separate.
+Update the controller first; see [Updating Shepherds](Updating-Shepherds.md) for the second part.
+
+## Before you start
+
+- **Read the release notes** of the new version: they list breaking changes and what Shepherds need.
+- **Make a backup** and make sure you have a copy of the **master key** ([Backup and Recovery](Backup-and-Recovery.md),
+  [The Master Key](Master-Key.md)). DROOL makes its own backup before changing the database (see
+  below), but that copy stays on the same disk.
+- **Check nothing important is running**: an update restarts DROOL, and runs in progress at that
+  moment end as *interrupted* with an unknown outcome on the hosts they were running on
+  ([why](Failed-Interrupted-and-Unknown-Outcomes.md)).
+
+## Update
+
+| Installation | How |
+|---|---|
+| Docker Compose, release image | `docker load -i drool_1.0.1_image.oci.tar`, put the new release's `compose.yaml` in **the same folder** as before (the data volume is named after the folder), then `docker compose up -d` |
+| Docker Compose, development image | In the same folder: `docker compose pull && docker compose up -d` — this gets the newest `main` |
+| Rootless Podman | `podman load -i drool_1.0.1_image.oci.tar`, copy the new `drool.container` to `~/.config/containers/systemd/`, then `systemctl --user daemon-reload && systemctl --user restart drool` |
+| Native package | `sudo apt install ./drool_1.0.1-1_amd64.deb` or `sudo dnf install ./drool-1.0.1-1.x86_64.rpm` — a running DROOL restarts with the new version |
+| Release archive | `sudo systemctl stop drool`, install the new `drool` and Shepherd programs as in the archive's `INSTALL.md`, then `sudo systemctl start drool` |
+
+(`1.0.1` stands for whichever version you're installing.)
+
+Afterwards, **Settings → System** shows the version that's running.
+
+## What happens on the first start of a new version
+
+- **Database upgrades run by themselves**, each one complete or not at all: an interrupted upgrade
+  changes nothing.
+- **Before changing the database, DROOL backs it up**, without the master key, to
+  `backups/drool-pre-upgrade-<time>-schema<N>.tar.gz` in its data folder, where `<N>` is the
+  database version it upgraded *from* (for example `drool-pre-upgrade-20261012-031500-schema20.tar.gz`). If it can't (a full disk,
+  for example), it doesn't start, and nothing has been changed. Not every version changes the
+  database; when nothing changes, no such backup is made.
+- **DROOL keeps the newest three** pre-upgrade backups. Each is a full copy of the database (about
+  the size of a normal backup), so on a small disk delete old ones once an upgrade has proved good.
+- **Older Shepherds keep working.** A newer controller works with Shepherds that speak the same
+  protocol, and tells you what an older one can't do. See [Shepherd Incompatible](Shepherd-Incompatible.md).
+
+## If something went wrong: going back
+
+DROOL never downgrades its database in place. An older version refuses a database that a newer one
+upgraded, says which version upgraded it, and leaves it alone. So going back depends on whether the
+update changed the database:
+
+- **The update made a `drool-pre-upgrade-…` backup** (it changed the database): stop DROOL, install
+  the older version, restore that backup with the older version, start it. Anything done after the
+  update (new hosts, runs, settings) is not in that backup and is lost.
+
+  For a native installation:
+
+  ```sh
+  sudo systemctl stop drool
+  sudo apt install --allow-downgrades ./drool_1.0.0-1_amd64.deb
+  sudo -u drool drool restore /var/lib/drool/backups/drool-pre-upgrade-20261012-031500-schema20.tar.gz
+  sudo systemctl start drool
+  ```
+
+  On Rocky, AlmaLinux, RHEL or Fedora, use `sudo dnf downgrade ./drool-1.0.0-1.x86_64.rpm` for the
+  second line. The backup's file name is an example: use the newest `drool-pre-upgrade-…` file in
+  `/var/lib/drool/backups/`. In a container, run the older image's `restore` on the same volume, as
+  shown in [Restoring a Controller](Restoring-a-Controller.md); the backup is in the volume's
+  `backups/` folder.
+- **No pre-upgrade backup was made** (the database didn't change): install or start the older
+  version again. Nothing else is needed.
+
+Shepherds that were already updated stay on their newer version (Shepherds never downgrade) and
+keep working with the older controller.
+
+## Moving from a manual installation to the package
+
+If you once installed DROOL by hand (`/usr/local/bin/drool` with `/etc/systemd/system/drool.service`),
+that old unit would keep running the old program after you install the package, and the package
+warns about it. Remove the old files first; your data in `/var/lib/drool` stays as it is:
+
+```sh
+sudo systemctl stop drool
+sudo rm /etc/systemd/system/drool.service /usr/local/bin/drool /usr/local/bin/drool-agent-linux-*
+sudo apt install ./drool_1.0.0-1_amd64.deb
+sudo systemctl daemon-reload && sudo systemctl enable --now drool
+```
+
+(Use `dnf install` with the `.rpm` on RHEL-family systems.)
+
+## Related
+
+[Updating Shepherds](Updating-Shepherds.md) · [Backup and Recovery](Backup-and-Recovery.md) ·
+[Restoring a Controller](Restoring-a-Controller.md)
