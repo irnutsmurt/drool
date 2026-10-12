@@ -284,6 +284,22 @@ docker compose up -d                 # with the release's compose.yaml in this d
 docker compose logs drool            # the address and the one-time setup code
 ```
 
+**Development image from GitHub Container Registry.** Every commit to `main` that passes CI is
+published as `ghcr.io/irnutsmurt/drool:main` (amd64 and arm64), and as `:sha-<commit>` for that
+commit alone: the image CI built and tested, byte for byte. It is a development build of the newest
+code, not a release — `drool version` reports the *development* channel and its commit, no release
+key signs it, and there is no `latest` or version tag. Use it to try DROOL or follow development;
+use the release files above for anything you depend on. With the repository's `compose.yaml` (the
+one a release ships, without a version in it):
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/irnutsmurt/drool/main/compose.yaml
+echo 'DROOL_IMAGE=ghcr.io/irnutsmurt/drool:main' > .env    # compose.yaml takes the image from it
+docker compose pull                  # docker pull ghcr.io/irnutsmurt/drool:main
+docker compose up -d
+docker compose logs drool            # the address and the one-time setup code
+```
+
 All data lives in the `drool-data` volume (`/data` in the container). The container runs as an
 unprivileged user and needs no special permissions. Precisely:
 
@@ -1797,6 +1813,7 @@ disk.
 | Native package | `sudo apt install ./drool_<new>-1_amd64.deb` or `sudo dnf install ./drool-<new>-1.x86_64.rpm`: a running controller restarts with the new version |
 | Release archive | `sudo systemctl stop drool`, install the new `drool` and Shepherd binaries as in `INSTALL.md`, `sudo systemctl start drool` |
 | Docker Compose | `docker load -i drool_<new>_image.oci.tar`, put the new release's `compose.yaml` in **the same directory** (the volume is named after it: `<directory>_drool-data`), `docker compose up -d` |
+| Docker Compose, development image | `docker compose pull && docker compose up -d` in the same directory: the newest `main` |
 | Podman | `podman load -i drool_<new>_image.oci.tar`, copy the new `drool.container` to `~/.config/containers/systemd/`, `systemctl --user daemon-reload && systemctl --user restart drool` |
 
 Then update the Shepherds: sign the new release's Shepherd binaries and roll them out under
