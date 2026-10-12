@@ -1,0 +1,56 @@
+# Publishes docs/wiki (the user guide's source) to the repository's GitHub
+# wiki. The wiki is generated: edits made there are overwritten by the next
+# sync. Links in docs/wiki are written as "Page.md" so they also work when
+# browsing the repository; the wiki wants "Page", so they are rewritten here.
+name: wiki
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/wiki/**
+      - .github/workflows/wiki.yml
+  workflow_dispatch:
+
+# Only this job writes, and only to the wiki (a separate repository).
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # GitHub only: the Gitea/Forgejo mirror has no GitHub wiki.
+    if: github.server_url == 'https://github.com'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: repo
+          sparse-checkout: docs/wiki
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+      - name: Sync docs/wiki into the wiki
+        run: |
+          set -euo pipefail
+          src=repo/docs/wiki
+          test -f "$src/Home.md"
+          # Replace the wiki's files with docs/wiki, so removed pages disappear too.
+          find wiki -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R "$src"/. wiki/
+          # ](Page.md) and ](Page.md#anchor) → ](Page) and ](Page#anchor); other links untouched.
+          find wiki -name '*.md' -print0 | xargs -0 sed -i -E 's/\]\(([A-Za-z0-9_-]+)\.md(#[^)]*)?\)/](\1\2)/g'
+          cd wiki
+          git add -A
+          if git diff --cached --quiet; then
+            echo "The wiki is up to date."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Sync from ${GITHUB_REPOSITORY}@${GITHUB_SHA::7}"
+          git push
+          echo "Published $(git ls-files '*.md' | wc -l) pages from ${GITHUB_SHA::7}." >> "$GITHUB_STEP_SUMMARY"
