@@ -77,6 +77,7 @@ if [[ $commit == "$(git -C "$repo" rev-parse HEAD)" && -n $(git -C "$repo" statu
 fi
 
 out=${out:-$repo/dist/$pkgver}
+[[ $out == /* ]] || out=$PWD/$out # it is mounted into containers (docker run -v)
 [[ -e $out ]] && die "$out exists; remove it first"
 cache=$repo/.cache/release
 mkdir -p "$cache/go"

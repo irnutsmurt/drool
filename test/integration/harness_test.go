@@ -123,7 +123,12 @@ func setup(m *testing.M) (int, error) {
 	agentDir = filepath.Join(work, "agent-dist")
 	releaseDir = filepath.Join(work, "agent-releases")
 	if *flagRelease != "" {
-		// The release's controller and Shepherd binaries, as shipped.
+		// The release's controller and Shepherd binaries, as shipped. A
+		// relative directory is the repository's (dist/<version>): go test
+		// runs in this package's directory, not where it was started.
+		if !filepath.IsAbs(*flagRelease) {
+			*flagRelease = filepath.Join(root, *flagRelease)
+		}
 		r, err := openRelease(*flagRelease, filepath.Join(work, "release"))
 		if err != nil {
 			return 0, fmt.Errorf("-release: %w", err)
