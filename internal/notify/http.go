@@ -258,7 +258,7 @@ func tlsReason(err error) string {
 // --- bodies ---
 
 // WebhookPayload is the generic webhook's JSON body (schema
-// "drool.notification.v1", documented in the README).
+// "drool.notification.v1", documented in docs/wiki/Webhook-Reference.md).
 type WebhookPayload struct {
 	Schema     string        `json:"schema"`
 	EventID    string        `json:"event_id"`

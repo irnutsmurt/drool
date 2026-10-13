@@ -14,7 +14,7 @@ import (
 )
 
 // TestVMReleasePackage runs the release's native package on a VM with real
-// systemd, following the README (M17): an installation made by hand with an
+// systemd, following the documentation (M17): an installation made by hand with an
 // older version (M16, the way its README said) moved to the package, the
 // hardened unit, the documented native backup, restore and key rotation,
 // the package's upgrade path under systemd, removal keeping the data; then,
@@ -74,7 +74,7 @@ func (p *vmPackage) install(file string) string {
 }
 
 // controller is DROOL on the VM, through the forwarded port, set up with
-// the code from the journal (README: Native packages).
+// the code from the journal (docs/wiki/Install-From-a-Package.md).
 func (p *vmPackage) controller(t *testing.T, fresh bool) *controller {
 	t.Helper()
 	c := &controller{port: p.v.fwd[8080], client: insecureClient()}
@@ -188,8 +188,10 @@ sudo systemctl daemon-reload && sudo systemctl enable --now drool`)
 		t.Errorf("no exposure level: %s", sec)
 	}
 
-	// Backup and restore, the README's native commands: the same machine
-	// (the installed key opens it), then with the key file kept elsewhere.
+	// Backup and restore, the user guide's native commands
+	// (docs/wiki/Restoring-a-Controller.md): the same machine (the installed
+	// key opens it), then with the key file kept elsewhere, piped in ahead of
+	// the backup.
 	before := createSecretOn(t, c, "before-backup")
 	out = p.sh(t, "sudo -u drool drool backup 2>&1")
 	m := regexp.MustCompile(`/var/lib/drool/backups/drool-backup-[0-9-]+\.tar\.gz`).FindString(out)
@@ -218,9 +220,7 @@ sudo systemctl start drool`)
 	restored("restore on the same machine")
 	createSecretOn(t, c, "after-backup-2")
 	out = p.sh(t, `sudo systemctl stop drool
-sudo install -m 0600 -o drool -g drool master.key /var/lib/drool/restore.key
-sudo -u drool drool restore --master-key /var/lib/drool/restore.key - < drool-backup.tar.gz
-sudo rm /var/lib/drool/restore.key
+cat master.key drool-backup.tar.gz | sudo -u drool drool restore --master-key - -
 sudo systemctl start drool`)
 	expect(t, strings.Contains(out, "Restored backup"), "restore with the key file:\n%s", out)
 	restored("restore with the key file")

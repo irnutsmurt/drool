@@ -174,7 +174,7 @@ func (p *composeProject) controller(setupCode string) *controller {
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}}
 }
 
-// TestContainerImage runs the container image as the README says, with the
+// TestContainerImage runs the container image as the user guide says, with the
 // compose.yaml that ships with it: docker compose up -d, the setup code
 // from the logs, the browser setup (here: its API), restarts, the health
 // check, and the documented backup, master key copy and restore commands.
@@ -254,7 +254,7 @@ func TestContainerImage(t *testing.T) {
 	expect(t, strings.Count(script.String(), "SUM='")-strings.Count(script.String(), "SUM=''") == 2,
 		"the image doesn't serve both Shepherd binaries:\n%s", script.String())
 
-	// Something to back up, and the backup as the README does it.
+	// Something to back up, and the backup as the user guide does it (docs/wiki/Docker-Backup.md).
 	before := createSecretOn(t, c, "before-backup")
 	p.mustSh("docker compose exec -T drool drool backup -o - > drool-backup.tar.gz")
 	p.mustSh("docker compose cp drool:/data/master.key ./master.key")
@@ -275,7 +275,7 @@ func TestContainerImage(t *testing.T) {
 		t.Errorf("setup claimed again after a restart: %d", st)
 	}
 
-	// The README's restore, command for command.
+	// The user guide's restore (docs/wiki/Restoring-a-Controller.md), command for command.
 	// The key reaches the container's unprivileged user on standard input:
 	// the operator's copy stays readable only by them, and nothing is mounted.
 	restore := strings.Join([]string{
@@ -319,7 +319,7 @@ func createSecretOn(t *testing.T, c *controller, name string) string {
 
 // TestContainerImageUpgrade upgrades a Docker Compose installation of the
 // tagged Technical Alpha — its own image, built from this repository's
-// history — to the image under test the way the README says (the new
+// history — to the image under test the way the user guide says (the new
 // compose.yaml in the same directory, so the same volume), and goes back the
 // documented way: the older image restores the pre-upgrade backup on the same
 // volume. What only containers add is checked here: the volume and its

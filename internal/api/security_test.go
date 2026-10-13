@@ -519,7 +519,7 @@ func TestAuditSinkAPI(t *testing.T) {
 	}
 }
 
-// receiverHash is the README's verification recipe, written without the
+// receiverHash is the user guide's verification recipe (docs/wiki/Remote-Audit-Copy-Reference.md), written without the
 // audit package.
 func receiverHash(rec map[string]any) string {
 	var b strings.Builder

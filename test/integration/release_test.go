@@ -373,7 +373,7 @@ func TestReleaseArtifacts(t *testing.T) {
 // TestReleaseSigning runs the offline signing workflow (RELEASING.md) on a
 // copy of the release with a throwaway key — never a real one: sign.sh
 // refuses while no key is listed and when a file doesn't match SHA256SUMS,
-// then signs; the README's verification commands accept the result and
+// then signs; the user guide's verification commands (docs/wiki/Installing-DROOL.md) accept the result and
 // reject a changed SHA256SUMS or another key's signature.
 func TestReleaseSigning(t *testing.T) {
 	r := needRelease(t)
@@ -439,7 +439,7 @@ func TestReleaseSigning(t *testing.T) {
 		t.Fatalf("sign: %v\n%s", err, out)
 	}
 	if out, err := verify(); err != nil || !strings.Contains(out, `Good "drool-release" signature for release@drool`) {
-		t.Fatalf("the README's verification: %v\n%s", err, out)
+		t.Fatalf("the documented verification: %v\n%s", err, out)
 	}
 	// The signature covers SHA256SUMS: change one hash in it (as someone
 	// replacing a file would) and the signature no longer verifies.

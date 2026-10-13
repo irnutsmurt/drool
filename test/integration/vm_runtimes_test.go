@@ -79,7 +79,7 @@ loginctl enable-linger alice`)
 // TestVMContainerRuntimes qualifies the container image beyond ordinary
 // Docker (M17): rootless Podman with the release's Quadlet unit, and on
 // Debian/Ubuntu rootless Docker with the release's compose.yaml, each as an
-// ordinary user without sudo, following the README — first-run setup, the
+// ordinary user without sudo, following the documentation — first-run setup, the
 // restrictions it runs with, a restart, the documented backup, master key
 // copy and restore. Needs -release and -vm (e.g. ubuntu-24.04).
 func TestVMContainerRuntimes(t *testing.T) {
@@ -167,7 +167,7 @@ docker version --format '{{.Server.Version}}'; docker info --format '{{.Security
 	mustVMAs(t, v, "alice", `mkdir -p ~/dc && mv ~/compose.yaml ~/dc/ && export XDG_RUNTIME_DIR=/run/user/$(id -u) DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock
 docker load -i ~/drool.oci.tar`, 20*time.Minute)
 	defer vmAs(v, "alice", dock+"docker compose down -v", nil, 5*time.Minute)
-	// The README's commands, as they stand.
+	// The documented commands, as they stand.
 	mustVMAs(t, v, "alice", dock+"docker compose up -d", 10*time.Minute)
 	c := runtimeController(t, v, r, func() string {
 		out, _ := vmAs(v, "alice", dock+"docker compose logs --no-log-prefix drool", nil, time.Minute)
@@ -200,10 +200,10 @@ func testRootlessPodman(t *testing.T, v *vm, r *releaseUnderTest) {
 	var major, minor int
 	fmt.Sscanf(strings.Fields(ver)[0], "%d.%d", &major, &minor)
 	if major < 4 || major == 4 && minor < 4 {
-		t.Skipf("%s ships Podman %s, which has no Quadlet (the README's Podman setup needs 4.4 or newer)", v.def.Name, strings.Fields(ver)[0])
+		t.Skipf("%s ships Podman %s, which has no Quadlet (the documented Podman setup needs 4.4 or newer)", v.def.Name, strings.Fields(ver)[0])
 	}
 	mustVMAs(t, v, "alice", pod+"podman load -i ~/drool.oci.tar", 20*time.Minute)
-	// The README's Quadlet steps.
+	// The documented Quadlet steps for a release (docs/wiki/Install-With-Podman.md).
 	mustVMAs(t, v, "alice", pod+"mkdir -p ~/.config/containers/systemd && cp ~/drool.container ~/.config/containers/systemd/ && systemctl --user daemon-reload && systemctl --user start drool", 10*time.Minute)
 	defer vmAs(v, "alice", pod+"systemctl --user stop drool; podman volume rm -f drool-data", nil, 5*time.Minute)
 	c := runtimeController(t, v, r, func() string {

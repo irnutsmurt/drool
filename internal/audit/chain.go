@@ -61,7 +61,7 @@ func netstring(b *bytes.Buffer, s string) {
 // name, the previous hash in lowercase hex, and every field in this order:
 // seq, id, ts, actor_type, actor_id, actor_name, action, target_type,
 // target_id, result, source_ip, request_id, details. Numbers are decimal.
-// The encoding is documented in the README so receivers of the remote copy
+// The encoding is documented in the user guide (docs/wiki/Remote-Audit-Copy-Reference.md) so receivers of the remote copy
 // can verify it without DROOL.
 func (l *Link) Canonical() []byte {
 	var b bytes.Buffer
