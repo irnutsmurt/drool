@@ -43,6 +43,10 @@ stays in force. To take DROOL's rules off the host, click **Remove DROOL policy*
 card. Removal is a transaction too, protected the same way as an apply, and it works even if another
 firewall manager appeared on the host since.
 
+## Next
+
+**[Firewall Policy](Firewall-Policy.md)**: write the rules your hosts need. In Monitor mode, the host's firewall page shows what they would do.
+
 ## Related
 
 [Before Enabling Enforcement](Before-Enabling-Enforcement.md) · [Applying the Firewall Policy](Applying-the-Firewall-Policy.md) ·

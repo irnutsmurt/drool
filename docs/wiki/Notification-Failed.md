@@ -31,7 +31,7 @@ shows the error and **Attempts** for each try. Then:
 | *rate limited by the receiver (HTTP 429)* | Too many messages at once | Nothing: DROOL waits as long as asked |
 
 Per destination: [Email](Email-Notifications.md#if-the-test-fails) · [Discord](Discord-Notifications.md#if-the-test-fails) ·
-[Slack](Slack-Notifications.md#if-the-test-fails) · [Webhooks](Webhooks.md#how-drool-treats-the-receivers-answer).
+[Slack](Slack-Notifications.md#if-the-test-fails) · [Webhook Reference](Webhook-Reference.md#how-drool-treats-the-receivers-answer).
 
 ## After fixing it
 
@@ -46,7 +46,7 @@ Per destination: [Email](Email-Notifications.md#if-the-test-fails) · [Discord](
 *may have arrived twice* on a delivery means DROOL can't know whether the receiver got it: the request
 was sent, but the answer was lost (a timeout, a restart at the wrong moment). DROOL sends it again rather
 than risk losing it. Webhook receivers can drop duplicates by the `delivery_id`
-([Webhooks](Webhooks.md#how-drool-treats-the-receivers-answer)).
+([Webhook Reference](Webhook-Reference.md#how-drool-treats-the-receivers-answer)).
 
 ## Related
 

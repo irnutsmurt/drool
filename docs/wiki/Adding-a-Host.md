@@ -92,6 +92,10 @@ There's no bulk import in the interface. For each host, the steps are the same: 
 on the host (the same commands everywhere), install DROOL's key, add it in DROOL, trust its key.
 The key-install command is identical for every host that uses the same SSH user.
 
+## Next
+
+**[Running a Command](Running-a-Command.md)**: try something harmless on the new host, such as `df -h`.
+
 ## Related
 
 [Your First Host](Your-First-Host.md) · [Host Details](Host-Details.md) · [Removing a Host](Removing-a-Host.md) ·

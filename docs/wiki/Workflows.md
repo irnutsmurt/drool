@@ -88,6 +88,10 @@ someone chooses the newer one. See [Workflow Revisions](Workflow-Revisions.md).
 **Archive** retires a workflow: schedules using it keep running their revision; new schedules can't
 choose it. **Show archived** on the Workflows page lists archived workflows.
 
+## Next
+
+**[Schedules](Schedules.md)**: run the workflow at set times, for example every Sunday at 03:00.
+
 ## Related
 
 [Schedules](Schedules.md) · [Workflow Revisions](Workflow-Revisions.md) · [Canary Hosts](Canary-Hosts.md) ·

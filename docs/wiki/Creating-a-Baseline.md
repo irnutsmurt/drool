@@ -63,6 +63,10 @@ checked. **Show archived baselines** on the Baselines page lists them.
 - DROOL never follows or replaces a symbolic link where a managed file should be: such a host shows
   the reason instead of being changed.
 
+## Next
+
+**[Applying a Baseline](Applying-a-Baseline.md)**: attach the baseline to hosts or Packs, and see whether they match it.
+
 ## Related
 
 [Applying a Baseline](Applying-a-Baseline.md) · [Drift](Drift.md) · [Restore Managed State](Restore-Managed-State.md) ·

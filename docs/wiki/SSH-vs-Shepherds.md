@@ -82,6 +82,10 @@ such as package updates, aren't limited by that budget.
 
 ## Next
 
-- [Installing a Shepherd](Installing-a-Shepherd.md)
-- [Shepherd Capability Presets](Shepherd-Capability-Presets.md)
-- [Monitoring Through SSH vs Shepherd](Monitoring-Through-SSH-vs-Shepherd.md)
+**[Installing a Shepherd](Installing-a-Shepherd.md)**, on a host where one of the reasons above
+applies. Otherwise there's nothing to do: SSH hosts need nothing more.
+
+## Related
+
+[Shepherd Capability Presets](Shepherd-Capability-Presets.md) ·
+[Monitoring Through SSH vs Shepherd](Monitoring-Through-SSH-vs-Shepherd.md)

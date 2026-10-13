@@ -30,36 +30,20 @@ what was already sent away.
 
 ![The Remote copy of the audit history dialog: Send audit records, the receiver URL https://logs.example.net/drool-audit, an optional header name and value, an extra CA certificate, Start with the whole history or only records from now on, Send a test and Save](images/audit-remote-copy.png)
 
-## What the receiver gets
+## What the receiver must do
 
-Records are sent in order, **at least once**, in JSON batches of up to 500
-(`Content-Type: application/json`):
+- **Store each batch, then answer with a `2xx` status.** Anything else is retried with growing pauses
+  (up to 10 minutes), and DROOL's header shows when the copy fails or falls behind.
+- **Keep duplicates out.** Delivery is *at least once*, so a record can arrive twice: drop repeats by
+  their `seq` and `hash`.
+- **After DROOL is restored from a backup, keep both versions.** The restored controller continues
+  from the backup's last record, so the receiver gets sequence numbers it already has, with different
+  contents and a new `controller_epoch`. That fork is the evidence of what happened after the backup.
 
-```json
-{ "format": "drool-audit-export-v1", "chain_format": "drool-audit-v1", "chain_id": "…",
-  "controller": "…", "controller_epoch": "…", "sent_at": "…",
-  "records": [ { "seq": 1, "id": "aud_…", "ts": 1760000000000, "time": "…", "actor_type": "user",
-    "actor_id": "…", "actor_name": "…", "action": "…", "target_type": "…", "target_id": "…",
-    "result": "success", "source_ip": "…", "request_id": "…", "details": { },
-    "details_json": "{…}", "prev_hash": "…", "hash": "…" } ] }
-```
-
-- Answer **2xx** once the batch is stored. Anything else is retried with growing pauses (up to 10
-  minutes), and DROOL's header shows when the copy fails or falls behind.
-- Because delivery is at least once, the receiver may get a record twice: drop duplicates by `seq`
-  and `hash`.
-- **After DROOL is restored from a backup**, its new records continue from the backup's last one, so the
-  copy receives sequence numbers it already has with different contents, under a new
-  `controller_epoch`. **Keep both**: that fork is the evidence of what happened after the backup.
-
-## Checking records without DROOL
-
-Each record's `hash` is the SHA-256 (hex) of these fields, each written as a netstring
-(`<length in bytes>:<bytes>,`), in this order: `drool-audit-v1`, `prev_hash` (hex; 64 zeros for the
-first record), `seq`, `id`, `ts` (decimal milliseconds), `actor_type`, `actor_id`, `actor_name`,
-`action`, `target_type`, `target_id`, `result`, `source_ip`, `request_id`, `details_json` (exactly as
-sent, not re-serialized). Each record's `prev_hash` is the previous record's `hash`.
+The batch format, every field, and how to check the records' hash chain yourself are in the
+[Remote Audit Copy Reference](Remote-Audit-Copy-Reference.md).
 
 ## Related
 
-[Audit Log](Audit-Log.md) · [Secure Your Installation](Secure-Your-Installation.md) · [What Happens After Restore](What-Happens-After-Restore.md)
+[Remote Audit Copy Reference](Remote-Audit-Copy-Reference.md) · [Audit Log](Audit-Log.md) ·
+[Secure Your Installation](Secure-Your-Installation.md) · [What Happens After Restore](What-Happens-After-Restore.md)

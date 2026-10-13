@@ -4,9 +4,9 @@ This page connects your first Linux machine to DROOL over SSH, from start to fin
 example of `web-01`, an Ubuntu 24.04 server at 10.10.40.21 (see [About the Examples](About-the-Examples.md)).
 Use your own machine's name and address.
 
-It takes about five minutes: you create an account on the host for DROOL, let DROOL's key log in to
+It takes about ten minutes: you create an account on the host for DROOL, let DROOL's key log in to
 it, add the host in DROOL, confirm the host is really the machine you think it is, and test the
-connection.
+connection. Then you run your first command on it and see it in Monitoring.
 
 ## Before you start
 
@@ -152,17 +152,52 @@ As soon as you trust the key, DROOL tests the connection, step by step:
 | **Operating System** | Read the distribution and kernel | Usually follows from an earlier failure |
 | **Init System** | Find systemd | Without systemd: works for commands, scripts and packages; services and reboots don't |
 
-When every check passes, DROOL says **web-01 is ready.** Click **Done**.
+When every check passes, DROOL says **web-01 is ready.** Click **Done**: DROOL opens `web-01`'s page.
+(Later, **Hosts** in the sidebar lists every host; click one to open its page.)
 
 If something failed, DROOL explains why under the check. Fix the cause on the host (or the host's
 settings with **Edit**, on its page) and click **Test again**. You don't lose anything by leaving the
 page: the host stays in DROOL, and **Test connection** on its page runs the same test.
 
-## What DROOL does next
+## Step 6: Run your first command
+
+Now ask `web-01` something harmless: how full its disks are.
+
+1. On `web-01`'s page, click **Run command**. A new run opens with `web-01` already ticked as the
+   target.
+2. Under **What to do**, keep **Command** and type:
+
+   ```sh
+   df -h
+   ```
+
+   `df -h` lists every filesystem on the host with its size, how much is used and how much is free.
+   It only reads; it changes nothing.
+3. Tick **Read-only** (this command changes nothing, so DROOL may run it alongside other work). Leave
+   **Run as root (sudo)** unticked: `df` doesn't need root.
+4. Click **Run on 1 host**, and confirm.
+
+DROOL opens the run and shows `web-01`'s output as it arrives: the same table `df -h` prints in a
+terminal. **succeeded** with exit code 0 means it worked. If it failed instead, the run says why
+([Understanding Run Results](Understanding-Run-Results.md)); [Running a Command](Running-a-Command.md)
+explains every option of the form.
+
+## Step 7: See it in Monitoring
+
+Click **Monitoring** in the sidebar. `web-01` has a row there, with *SSH · polled* under
+**Monitoring** and its CPU, memory, fullest disk and services. DROOL collects them over SSH every
+5 minutes, without installing anything.
+
+Click `web-01` to open its monitoring page: tiles for CPU, memory, storage, network and services,
+history charts, and any health issues it found ([Host Monitoring](Host-Monitoring.md)). You can also
+get there with **View monitoring** on the host's page. If it says *No monitoring data yet*, DROOL
+hasn't polled the host yet: click **Collect now** at the top, or wait up to 5 minutes.
+
+## What DROOL does from now on
 
 ![web-01's page right after adding it: Ready, the action buttons, the Health card and the Management card](images/host-page-web-01.png)
 
-Nothing is installed on the host. Within a few minutes, without you doing anything, DROOL:
+Nothing is installed on the host. Without you doing anything, DROOL:
 
 - **takes an inventory**: distribution, kernel, CPU, memory, disks and filesystems, network
   interfaces, services and listening ports (shown on the host page);
@@ -178,11 +213,14 @@ The **Management** card on the host page shows how DROOL reaches the host:
 
 ## Next
 
-- **Do something with it:** [Running a Command](Running-a-Command.md) — for example `df -h` to see
-  disk space.
-- **Add your other machines** the same way. Many hosts at once? Each needs steps 1–5; the key-install
-  command is the same for every host that uses `drooladmin`.
+**[Secure Your Installation](Secure-Your-Installation.md)**: go through DROOL's own security
+checklist, at least two-factor sign-in, before you add many more machines.
+
+Then, when you're ready:
+
+- **Add your other machines** the same way. Each needs steps 1–5; the key-install command is the
+  same for every host that uses `drooladmin`.
 - **Group them:** [Packs](Packs.md) let you target "all media servers" in one go.
-- **Decide SSH or Shepherd:** [Understanding SSH vs Shepherds](SSH-vs-Shepherds.md).
 - **Get told when something breaks:** [Email Notifications](Email-Notifications.md),
   [Discord Notifications](Discord-Notifications.md) and the other destinations.
+- **Decide SSH or Shepherd:** [Understanding SSH vs Shepherds](SSH-vs-Shepherds.md).

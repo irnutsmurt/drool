@@ -65,6 +65,10 @@ as reduced monitoring fidelity) are shown here only.
 What counts as a problem is adjustable per fleet, Pack, host or device
 ([Health Overrides](Health-Overrides.md)).
 
+## Next
+
+**[Understanding Alerts](Understanding-Alerts.md)**: be told when a host needs attention, instead of checking this page.
+
 ## Related
 
 [Host Monitoring](Host-Monitoring.md) · [What "Unknown" Means](What-Unknown-Means.md) ·

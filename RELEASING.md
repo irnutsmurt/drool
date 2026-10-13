@@ -185,6 +185,9 @@ No release is published automatically (only `main`'s development image, above). 
 - [ ] The release key's public half in `packaging/keys/allowed_signers`.
 - [ ] Docs describe this release: README (status, supported platforms, install, upgrade), DESIGN,
       ARCHITECTURE-ALPHA, the maintainer field (`DROOL_MAINTAINER` or the default in `build.sh`).
+- [ ] The user guide says which version it describes: the `docs-version` notes at the top of
+      `docs/wiki/Home.md` and `docs/wiki/_Sidebar.md` name the stable release (they say "development
+      version" until the first one), and the install pages' "no release yet" notes are gone.
 - [ ] Tag `vX.Y.Z-rc.N`, `make release`, every qualification layer above green on those artifacts.
 - [ ] Tag `vX.Y.Z` on the same commit, `make release`, the fast layers and
       `TestReleaseArtifacts|TestReleaseSigning|TestContainerImage|TestReleasePackages|TestReleaseUpgrade` on the final artifacts

@@ -121,6 +121,10 @@ failure. A host where anything fails stays exactly as it was, on SSH.
 
 See also [Shepherd Offline](Shepherd-Offline.md).
 
+## Next
+
+**[Host Monitoring](Host-Monitoring.md)**: open the host's monitoring page. It now says *Continuous: the Shepherd samples every 10 s* instead of polling over SSH every 5 minutes.
+
 ## Related
 
 [Shepherd Capability Presets](Shepherd-Capability-Presets.md) · [SSH Fallback](SSH-Fallback.md) ·

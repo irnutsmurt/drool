@@ -32,6 +32,10 @@ podman cp drool:/data/master.key ./master.key
 
 Store it apart from the backups ([The Master Key](Master-Key.md)).
 
+## Next
+
+**[Verifying a Backup](Verifying-a-Backup.md)**: check that the backup you just made can be restored.
+
 ## Related
 
 [Verifying a Backup](Verifying-a-Backup.md) · [Restoring a Controller](Restoring-a-Controller.md) ·

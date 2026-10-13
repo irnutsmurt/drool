@@ -74,6 +74,10 @@ recorded.
   jellyfin.service is managed to keep running… Stopping it will create desired-state drift*. If the
   change is intentional, use maintenance, or change the desired state.
 
+## Next
+
+**[Review Difference](Review-Difference.md)**: look at exactly what differs on a drifted host before you decide what to do.
+
 ## Related
 
 [Review Difference](Review-Difference.md) · [Restore Managed State](Restore-Managed-State.md) ·

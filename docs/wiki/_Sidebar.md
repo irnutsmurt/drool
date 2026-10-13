@@ -1,5 +1,8 @@
 **[DROOL User Guide](Home.md)**
 
+<!-- docs-version: see the note at the top of Home.md. -->
+*For the development version (`main`); no stable release yet.*
+
 **[Troubleshooting](Troubleshooting.md)** · **[Glossary](Glossary.md)**
 
 <details open>
@@ -234,5 +237,7 @@
 - [Ports and Files](Ports-and-Files.md)
 - [Configuration](Configuration.md)
 - [Command Line](Command-Line.md)
+- [Webhook Reference](Webhook-Reference.md)
+- [Remote Audit Copy Reference](Remote-Audit-Copy-Reference.md)
 
 </details>

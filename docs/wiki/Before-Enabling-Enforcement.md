@@ -45,6 +45,10 @@ You don't need rules for:
 Tick **Show base rules (replies, loopback, ICMP, DHCP)** on the **Effective policy** tab to see them.
 Note that **ping** is not among them: allow the `ping` service if you want hosts to answer pings.
 
+## Next
+
+**[Firewall Modes](Firewall-Modes.md)**: put the host in **Monitor** first, and watch what reaches it before you write rules.
+
 ## Related
 
 [Firewall Modes](Firewall-Modes.md) · [Applying the Firewall Policy](Applying-the-Firewall-Policy.md) ·

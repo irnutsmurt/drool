@@ -107,8 +107,10 @@ a public one), configure it: [Configuration](Configuration.md#your-own-tls-certi
 ### Short-lived SSH certificates instead of stored keys
 
 The checklist counts the hosts DROOL still signs in to with a stored key or password. Instead, DROOL
-can sign in with a fresh SSH certificate for each connection, valid for minutes, from its own SSH
-certificate authority. Nothing long-lived is left on the controller to steal.
+can sign in with a fresh SSH certificate for each connection, valid for minutes, signed by its own SSH
+certificate authority. Then DROOL no longer needs a long-lived login key for each host. The
+certificate authority's own private key does stay on the controller, encrypted with the
+[master key](Master-Key.md): the controller and the master key remain what to protect.
 See [Short-Lived SSH Certificates](Short-Lived-SSH-Certificates.md).
 
 ## Also worth doing
@@ -119,6 +121,10 @@ These aren't on the checklist, but belong to a well-kept installation:
   admin), rather than sharing one administrator. See [Users and Roles](Users-and-Roles.md).
 - **Keep DROOL updated** ([Updating DROOL](Updating-DROOL.md)).
 - **Look at the Audit Log now and then**, especially after someone leaves.
+
+## Next
+
+**[Backup and Recovery](Backup-and-Recovery.md)**: set up backups, and keep a copy of the master key, before you rely on DROOL.
 
 ## Related
 

@@ -142,5 +142,6 @@ Lost your authenticator app instead? See [Two-Factor Authentication](Two-Factor-
 
 ## Next
 
-1. [Secure Your Installation](Secure-Your-Installation.md) — at least turn on two-factor sign-in.
-2. [Your First Host](Your-First-Host.md) — connect your first machine.
+**[Your First Host](Your-First-Host.md)**: connect your first machine, run a command on it and see it
+in Monitoring. After that, [Secure Your Installation](Secure-Your-Installation.md) (at least turn on
+two-factor sign-in).

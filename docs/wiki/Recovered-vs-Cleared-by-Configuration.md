@@ -46,7 +46,7 @@ recovery: the rule changed, not the machine.*
   ![gpu-01's alert "CPU at 95% or more for 5 minutes": Warning, Cleared: check turned off (not a recovery), suppressed by maintenance; the timeline from "Condition first observed" to "Closing notification suppressed by maintenance", and the Details card with the current value 99% and Why](images/alert-cleared.png)
 
 - In webhooks, as `"event": "cleared"` with a `resolution` of `disabled`, `reconfigured` or `gone`
-  ([Webhooks](Webhooks.md#the-message-format)).
+  ([Webhook Reference](Webhook-Reference.md#the-message-format)).
 
 The closing message goes to the same destinations a recovery would have gone to (the ones that got
 the alert, if their route sends recoveries), unless the host is in maintenance.

@@ -1,5 +1,11 @@
 # DROOL User Guide
 
+<!-- docs-version: when a stable release is published, say which one this guide describes, here and
+at the top of _Sidebar.md (RELEASING.md lists this step). -->
+> **This guide describes DROOL's development version**: the `main` branch, which the development image
+> `ghcr.io/irnutsmurt/drool:main` runs. DROOL has no stable release yet.
+> [Development image or release?](Installing-DROOL.md#development-image-or-release)
+
 **DROOL** looks after a handful to a few dozen Linux machines from one web page: your homelab, a small
 office, a club's servers. You install it once, open it in a browser, and from there you can see how
 every machine is doing and change things on them, safely and with a record of who did what.
@@ -31,7 +37,8 @@ More: [What DROOL Does](What-DROOL-Does.md).
 1. [Installing DROOL](Installing-DROOL.md): today the quickest way is
    [Docker Compose](Install-With-Docker-Compose.md), step by step from nothing installed
 2. [First Login](First-Login.md)
-3. [Your First Host](Your-First-Host.md)
+3. [Your First Host](Your-First-Host.md): connect a machine, run your first command on it and see it
+   in Monitoring
 4. [Secure Your Installation](Secure-Your-Installation.md)
 5. [Backup and Recovery](Backup-and-Recovery.md): set up backups before you rely on DROOL
 
@@ -51,24 +58,22 @@ common ones:
 - Anything says *Unknown*: [What "Unknown" Means](What-Unknown-Means.md)
 - A firewall change was rolled back: [Firewall Apply Rolled Back](Firewall-Apply-Rolled-Back.md)
 
-## The guide
+## Find what you need
 
-| Section | Pages |
+| I want to… | Start here |
 |---|---|
-| **Getting started** | [What DROOL Does](What-DROOL-Does.md) · [Installing DROOL](Installing-DROOL.md) ([Docker Compose](Install-With-Docker-Compose.md) · [Podman](Install-With-Podman.md) · [Package](Install-From-a-Package.md) · [Release Archive](Install-From-the-Release-Archive.md)) · [First Login](First-Login.md) · [Your First Host](Your-First-Host.md) · [SSH vs Shepherds](SSH-vs-Shepherds.md) · [Secure Your Installation](Secure-Your-Installation.md) · [Updating DROOL](Updating-DROOL.md) · [About the Examples](About-the-Examples.md) |
-| **Managing hosts** | [Adding a Host](Adding-a-Host.md) · [SSH Credentials](SSH-Credentials.md) · [SSH Host Key Verification](SSH-Host-Key-Verification.md) · [Testing a Connection](Testing-a-Connection.md) · [Host Details](Host-Details.md) · [Packs](Packs.md) · [Tags](Tags.md) · [Jump Hosts](Jump-Hosts.md) · [Installing a Shepherd](Installing-a-Shepherd.md) · [Shepherd Capability Presets](Shepherd-Capability-Presets.md) · [SSH Fallback](SSH-Fallback.md) · [Updating Shepherds](Updating-Shepherds.md) · [Removing a Host](Removing-a-Host.md) |
-| **Monitoring** | [Fleet Monitoring](Fleet-Monitoring.md) · [Host Monitoring](Host-Monitoring.md) · [CPU, Memory and Load](CPU-Memory-and-Load.md) · [Filesystems and Disk Space](Filesystems-and-Disk-Space.md) · [Storage Health](Storage-Health.md) · [Temperatures](Temperatures.md) · [GPUs](GPUs.md) · [Service Monitoring](Service-Monitoring.md) · [Monitoring Settings](Monitoring-Settings.md) · [Health Overrides](Health-Overrides.md) · [SSH vs Shepherd Monitoring](Monitoring-Through-SSH-vs-Shepherd.md) · [What "Unknown" Means](What-Unknown-Means.md) |
-| **Alerts** | [Understanding Alerts](Understanding-Alerts.md) · [Acknowledging an Alert](Acknowledging-an-Alert.md) · [Maintenance Mode](Maintenance-Mode.md) · [Email](Email-Notifications.md) · [Discord](Discord-Notifications.md) · [Slack](Slack-Notifications.md) · [Webhooks](Webhooks.md) · [Notification Routing](Notification-Routing.md) · [Recovered vs Cleared by Configuration](Recovered-vs-Cleared-by-Configuration.md) |
-| **Running work** | [Running a Command](Running-a-Command.md) · [Running a Script](Running-a-Script.md) · [Installing Packages](Installing-Packages.md) · [Removing Packages](Removing-Packages.md) · [Updating Packages](Updating-Packages.md) · [System Updates](System-Updates.md) · [Rebooting Hosts](Rebooting-Hosts.md) · [Managing Services](Managing-Services.md) · [Understanding Run Results](Understanding-Run-Results.md) · [Failed, Interrupted and Unknown Outcomes](Failed-Interrupted-and-Unknown-Outcomes.md) |
-| **Files** | [Browsing Files](Browsing-Files.md) · [Uploading and Downloading](Uploading-and-Downloading.md) · [Editing Files](Editing-Files.md) · [Administrator Privileges](Administrator-Privileges.md) · [Permissions and Ownership](Permissions-and-Ownership.md) · [Deploying a File to Multiple Hosts](Deploying-a-File-to-Multiple-Hosts.md) · [Validation Before Deployment](Validation-Before-Deployment.md) · [Reloading or Restarting a Service](Reloading-or-Restarting-a-Service.md) · [Rolling Back a File](Rolling-Back-a-File.md) |
-| **Automation** | [Schedules](Schedules.md) · [Workflows](Workflows.md) · [Canary Hosts](Canary-Hosts.md) · [Batches and Failure Thresholds](Batches-and-Failure-Thresholds.md) · [Maintenance Windows](Maintenance-Windows.md) · [Missed Runs](Missed-Runs.md) · [Workflow Revisions](Workflow-Revisions.md) |
-| **Desired State** | [What Desired State Is](What-Desired-State-Is.md) · [Creating a Baseline](Creating-a-Baseline.md) · [Applying a Baseline](Applying-a-Baseline.md) · [Drift](Drift.md) · [Conflicts](Conflicts.md) · [Review Difference](Review-Difference.md) · [Accept Current State](Accept-Current-State.md) · [Restore Managed State](Restore-Managed-State.md) · [Automatic Restore](Automatic-Restore.md) |
-| **Firewall** | [What DROOL's Firewall Does](What-DROOLs-Firewall-Does.md) · [Before Enabling Enforcement](Before-Enabling-Enforcement.md) · [Firewall Modes](Firewall-Modes.md) · [Firewall Policy](Firewall-Policy.md) · [Topology View](Topology-View.md) · [Rules View](Rules-View.md) · [YAML View](YAML-View.md) · [Networks and CIDRs](Networks-and-CIDRs.md) · [Services and Ports](Services-and-Ports.md) · [Packs in Firewall Rules](Packs-in-Firewall-Rules.md) · [Applying the Firewall Policy](Applying-the-Firewall-Policy.md) · [Management Path Protection](Management-Path-Protection.md) · [Automatic Rollback Protection](Automatic-Rollback-Protection.md) · [Can A Reach B?](Can-A-Reach-B.md) · [Firewall Drift](Firewall-Drift.md) · [Emergency Override](Emergency-Override.md) · [Recovering From a Firewall Problem](Recovering-From-a-Firewall-Problem.md) |
-| **Network Activity** | [What DROOL Can See](What-DROOL-Can-See.md) · [Shepherd vs SSH Visibility](Agent-vs-SSH-Visibility.md) · [Connection Details](Connection-Details.md) · [Internal vs External](Internal-vs-External.md) · [GeoIP and ASN](GeoIP-and-ASN.md) · [Policy Classification](Policy-Classification.md) · [Creating a Policy From Observed Traffic](Creating-a-Policy-From-Observed-Traffic.md) |
-| **Security** | [Two-Factor Authentication](Two-Factor-Authentication.md) · [Re-authentication](Re-authentication.md) · [Users and Roles](Users-and-Roles.md) · [API Tokens](API-Tokens.md) · [Short-Lived SSH Certificates](Short-Lived-SSH-Certificates.md) · [Moving Hosts to SSH Certificates](Moving-Hosts-to-SSH-Certificates.md) · [SSH CA Rotation](SSH-CA-Rotation.md) · [Shepherd PKI](Shepherd-PKI.md) · [Taking the Agent Root CA Offline](Taking-the-Agent-Root-CA-Offline.md) · [Audit Log](Audit-Log.md) · [Remote Audit Copy](Remote-Audit-Copy.md) · [The Master Key](Master-Key.md) · [Key Rotation](Key-Rotation.md) |
-| **Backup and recovery** | [Backup and Recovery](Backup-and-Recovery.md) · [What a Backup Contains](What-a-Backup-Contains.md) · [What a Backup Does Not Contain](What-a-Backup-Does-Not-Contain.md) · [Docker](Docker-Backup.md) · [Native Installation](Native-Installation-Backup.md) · [Podman](Podman-Backup.md) · [Verifying a Backup](Verifying-a-Backup.md) · [Restoring a Controller](Restoring-a-Controller.md) · [What Happens After Restore](What-Happens-After-Restore.md) · [Host Reconciliation](Host-Reconciliation.md) · [Recovering Without Credentials](Recovering-Without-Credentials.md) |
-| **Troubleshooting** | [Troubleshooting](Troubleshooting.md) (start here) · [Setup Problems](Setup-Problems.md) · [Host Won't Connect](Host-Wont-Connect.md) · [SSH Host Key Changed](SSH-Host-Key-Changed.md) · [Authentication Failed](Authentication-Failed.md) · [Sudo Failed](Sudo-Failed.md) · [Shepherd Offline](Shepherd-Offline.md) · [Shepherd Incompatible](Shepherd-Incompatible.md) · [Package Manager Busy](Package-Manager-Busy.md) · [dpkg Was Interrupted](dpkg-Was-Interrupted.md) · [Service Won't Start](Service-Wont-Start.md) · [Firewall Apply Rolled Back](Firewall-Apply-Rolled-Back.md) · [Host Shows Unknown](Host-Shows-Unknown.md) · [Monitoring Is Stale](Monitoring-Is-Stale.md) · [Notification Failed](Notification-Failed.md) · [Run Outcome Unknown](Run-Outcome-Unknown.md) · [Restore Needs Attention](Restore-Needs-Attention.md) |
-| **Reference** | [Glossary](Glossary.md) · [Status Meanings](Status-Meanings.md) · [Ports and Files](Ports-and-Files.md) · [Configuration](Configuration.md) · [Command Line](Command-Line.md) |
+| Add machines, and group them | [Adding a Host](Adding-a-Host.md) · [Packs](Packs.md) |
+| See how my machines are doing | [Fleet Monitoring](Fleet-Monitoring.md) |
+| Be told when something breaks | [Understanding Alerts](Understanding-Alerts.md) · [Email Notifications](Email-Notifications.md) |
+| Run commands, install updates, reboot | [Running a Command](Running-a-Command.md) · [System Updates](System-Updates.md) |
+| Look at or change files on my machines | [Browsing Files](Browsing-Files.md) · [Deploying a File to Multiple Hosts](Deploying-a-File-to-Multiple-Hosts.md) |
+| Do routine work automatically | [Schedules](Schedules.md) · [Workflows](Workflows.md) |
+| Keep machines the way they should be | [What Desired State Is](What-Desired-State-Is.md) |
+| Control which machines may talk to each other | [What DROOL's Firewall Does](What-DROOLs-Firewall-Does.md) · [What DROOL Can See](What-DROOL-Can-See.md) |
+| Keep DROOL itself safe, backed up and up to date | [Secure Your Installation](Secure-Your-Installation.md) · [Backup and Recovery](Backup-and-Recovery.md) · [Updating DROOL](Updating-DROOL.md) |
+| Look up a word, a status or a command | [Glossary](Glossary.md) · [Status Meanings](Status-Meanings.md) · [Command Line](Command-Line.md) |
+
+Every page is listed in the sidebar, by topic.
 
 This guide describes DROOL as it is today, including its limits. For developers and the full technical
 detail, see the project's [README](https://github.com/irnutsmurt/drool#readme).

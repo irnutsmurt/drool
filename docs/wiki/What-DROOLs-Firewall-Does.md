@@ -78,6 +78,10 @@ Only its own things: its nftables table `inet drool`, its files in `/var/lib/dro
 5. [Applying the Firewall Policy](Applying-the-Firewall-Policy.md).
 6. If something goes wrong: [Recovering From a Firewall Problem](Recovering-From-a-Firewall-Problem.md).
 
+## Next
+
+**[Before Enabling Enforcement](Before-Enabling-Enforcement.md)**: the checklist to go through before DROOL changes any host's firewall.
+
 ## Related
 
 [Network Activity](What-DROOL-Can-See.md) · [Packs in Firewall Rules](Packs-in-Firewall-Rules.md) ·

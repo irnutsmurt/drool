@@ -51,6 +51,10 @@ baseline Server Defaults* or *Inherited from pack: media-servers (baseline Media
 
 ![web-01's desired state: drift detected, 1 of 3 resources compliant; Server Defaults applies via everywhere; /etc/motd is missing (drift) with Review difference, Restore managed state, Accept current state and Change baseline; telnet is installed but should be absent; openssh-server is compliant](images/host-desired.png)
 
+## Next
+
+**[Drift](Drift.md)**: check which hosts don't match their baselines, and why.
+
 ## Related
 
 [Creating a Baseline](Creating-a-Baseline.md) · [Conflicts](Conflicts.md) · [Packs](Packs.md) ·

@@ -128,6 +128,10 @@ that is supposed to be busy.
 - A host's page has an **Alerts** card with its open alerts, a **History** link, and **Start
   maintenance**.
 
+## Next
+
+**Get alerts delivered** to where you'll see them: [Email](Email-Notifications.md) · [Discord](Discord-Notifications.md) · [Slack](Slack-Notifications.md) · [Webhooks](Webhooks.md).
+
 ## Related
 
 [Acknowledging an Alert](Acknowledging-an-Alert.md) · [Maintenance Mode](Maintenance-Mode.md) ·

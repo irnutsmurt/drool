@@ -80,6 +80,10 @@ grep -r "connection refused" /var/log/nginx/
 
 For anything longer than a line, or with `if`/`for`, use a [script](Running-a-Script.md).
 
+## Next
+
+**[Understanding Run Results](Understanding-Run-Results.md)**: what each host's state, exit code and output mean.
+
 ## Related
 
 [Running a Script](Running-a-Script.md) · [Understanding Run Results](Understanding-Run-Results.md) ·

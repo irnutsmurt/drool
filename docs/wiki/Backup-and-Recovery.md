@@ -30,15 +30,13 @@ Two facts matter more than anything else on this topic:
 
 1. **Once, now:** copy `master.key` to a password manager or an encrypted USB stick
    ([how](Master-Key.md#keeping-a-copy)).
-2. **Every night:** make a backup and copy it off the controller. For example, on a native
-   installation, a root crontab line (`sudo crontab -e`):
-
-   ```text
-   15 3 * * * sudo -u drool drool backup && rsync -a /var/lib/drool/backups/ backup-host.example.net:drool-backups/
-   ```
-
-   `backup-host.example.net` stands for your backup machine. Backups are safe to make while DROOL
-   runs. Delete old ones from `/var/lib/drool/backups/` from time to time; DROOL doesn't.
+2. **Every night:** make a backup and copy it off the controller. On a native installation that's one
+   line in root's crontab, but only once root can copy to your backup machine over SSH without a
+   password and you've tested that copy by hand:
+   [Native Installation Backup](Native-Installation-Backup.md#copy-it-off-the-controller) shows all
+   three steps. With Docker or Podman: [Docker Backup](Docker-Backup.md#every-night-automatically),
+   [Podman Backup](Podman-Backup.md#every-night-automatically). Backups are safe to make while DROOL
+   runs. Delete old ones from time to time; DROOL doesn't.
 3. **Now and then:** check a backup with `drool backup verify` ([Verifying a Backup](Verifying-a-Backup.md)).
 4. **Before every update:** make a backup ([Updating DROOL](Updating-DROOL.md)).
 
@@ -55,3 +53,7 @@ folder was made.
 - **Your release-signing key** for Shepherd updates, if you use one ([Updating Shepherds](Updating-Shepherds.md)).
 
 Both should be kept offline, and separately from the backups.
+
+## Next
+
+**Make your first backup now**, the way your DROOL is installed: [Docker Backup](Docker-Backup.md) · [Native Installation Backup](Native-Installation-Backup.md) · [Podman Backup](Podman-Backup.md).

@@ -57,6 +57,10 @@ put the policy on enforced hosts, [apply it](Applying-the-Firewall-Policy.md).
   saving is refused (*Someone else saved the firewall policy since you opened it…*): copy your changes
   from the YAML view, discard, and reapply them.
 
+## Next
+
+**Check it, then apply it.** Look at the **Preview** panel, and ask [Can A Reach B?](Can-A-Reach-B.md) about the connections that matter (*can web-01 reach database-01 on TCP 5432?*). Then [apply the policy](Applying-the-Firewall-Policy.md), one host first.
+
 ## Related
 
 [Topology View](Topology-View.md) · [Rules View](Rules-View.md) · [YAML View](YAML-View.md) ·

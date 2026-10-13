@@ -2,8 +2,11 @@
 
 Normally DROOL signs in to a host with a stored SSH key ([SSH Credentials](SSH-Credentials.md)): a key
 that works until someone removes it from `authorized_keys`. With **short-lived SSH certificates**, DROOL
-instead creates a **fresh key and certificate for every connection**, valid for only a few minutes. If
-someone copied DROOL's database, there would be no long-lived key in it that opens your hosts.
+instead creates a **fresh key and certificate for every connection**, valid for only a few minutes, so
+it no longer needs a long-lived login key for each host. What stays long-lived is DROOL's SSH
+certificate authority: its private key is on the controller, encrypted with the
+[master key](Master-Key.md), and whoever had both could sign certificates your hosts accept. Protect
+the controller and the master key accordingly.
 
 ## How it works
 

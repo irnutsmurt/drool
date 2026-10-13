@@ -43,6 +43,10 @@ reach… (on this draft)**, which answers from your **unsaved** draft, before yo
   program isn't listening, a router or another firewall in between, or the program's own access list.
 - To see connections that **actually** happened, use [Network Activity](What-DROOL-Can-See.md).
 
+## Next
+
+**[Applying the Firewall Policy](Applying-the-Firewall-Policy.md)**, once the answers are what you expect.
+
 ## Related
 
 [Firewall Policy](Firewall-Policy.md) · [Applying the Firewall Policy](Applying-the-Firewall-Policy.md) ·
