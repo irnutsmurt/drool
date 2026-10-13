@@ -1,6 +1,6 @@
 # Backing up DROOL in Podman
 
-For DROOL running rootless under Podman with the release's Quadlet unit (`drool.container`). All data
+For DROOL running rootless under Podman with its Quadlet unit, `drool.container` ([Install with Podman](Install-With-Podman.md)). All data
 lives in the `drool-data` Podman volume.
 
 ## Make a backup

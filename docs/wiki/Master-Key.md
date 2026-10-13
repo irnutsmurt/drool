@@ -13,7 +13,7 @@ it. Without the key, a backup restores everything *except* those secrets. So kee
 | Installation | Where | Copy it out |
 |---|---|---|
 | Native package or archive | `/var/lib/drool/master.key` | `sudo install -m 0600 -o "$USER" /var/lib/drool/master.key ./master.key` |
-| Docker Compose | `/data/master.key` in the `drool-data` volume | `docker compose cp drool:/data/master.key ./master.key` |
+| Docker Compose | `/data/master.key` in DROOL's volume (`drool_drool-data`) | In `~/drool`: `docker compose cp drool:/data/master.key ./master.key` |
 | Podman | `/data/master.key` in the `drool-data` volume | `podman cp drool:/data/master.key ./master.key` |
 
 The copy commands put a copy, readable only by you, in the current folder.

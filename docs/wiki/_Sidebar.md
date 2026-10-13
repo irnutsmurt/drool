@@ -7,6 +7,10 @@
 
 - [What DROOL Does](What-DROOL-Does.md)
 - [Installing DROOL](Installing-DROOL.md)
+  - [Docker Compose](Install-With-Docker-Compose.md)
+  - [Podman](Install-With-Podman.md)
+  - [Package (.deb, .rpm)](Install-From-a-Package.md)
+  - [Release Archive](Install-From-the-Release-Archive.md)
 - [First Login](First-Login.md)
 - [Your First Host](Your-First-Host.md)
 - [SSH vs Shepherds](SSH-vs-Shepherds.md)
@@ -203,6 +207,7 @@
 <summary><b>Troubleshooting</b></summary>
 
 - [Troubleshooting (start here)](Troubleshooting.md)
+- [Setup Problems](Setup-Problems.md)
 - [Host Won't Connect](Host-Wont-Connect.md)
 - [SSH Host Key Changed](SSH-Host-Key-Changed.md)
 - [Authentication Failed](Authentication-Failed.md)

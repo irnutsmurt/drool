@@ -82,7 +82,7 @@ are (a password manager, an encrypted USB stick):
 | Installation | Command |
 |---|---|
 | Package or archive | `sudo install -m 0600 -o "$USER" /var/lib/drool/master.key ./master.key` |
-| Docker Compose | `docker compose cp drool:/data/master.key ./master.key` |
+| Docker Compose | In `~/drool`: `docker compose cp drool:/data/master.key ./master.key` |
 | Podman | `podman cp drool:/data/master.key ./master.key` |
 
 Each command puts `master.key` in your current folder; move it to its safe place from there and

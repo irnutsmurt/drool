@@ -13,7 +13,8 @@ Native installation (the file must be readable by the `drool` user):
 sudo -u drool drool backup verify /var/lib/drool/backups/drool-backup-20261012-213603.tar.gz
 ```
 
-Docker Compose (the backup is on the Docker host; `-` reads it from standard input):
+Docker Compose, in your DROOL folder (`cd ~/drool` first; the backup file is on the Docker host, and `-`
+reads it from standard input):
 
 ```sh
 docker compose exec -T drool drool backup verify - < drool-backup-20261012-213603.tar.gz

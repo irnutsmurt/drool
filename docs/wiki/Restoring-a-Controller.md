@@ -41,7 +41,7 @@ the file where it is.
 
 ## Docker Compose
 
-In the directory with `compose.yaml`; the container's user must be able to read the key file:
+In your DROOL folder (`cd ~/drool` first); the container's user must be able to read the key file:
 
 ```sh
 docker compose stop drool

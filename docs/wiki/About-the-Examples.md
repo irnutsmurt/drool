@@ -72,8 +72,8 @@ account DROOL itself uses to log in to your servers.
   `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG7x8RkV4n3fTnYp5sM2rP9QeW1bLc6jK0dZxExample drool:controller-default`.
   It is deliberately broken (it contains the word *Example*) and can't be used for anything.
   Your own installation shows its own key: always copy the one DROOL shows you.
-- The first-login setup code in the examples is `482913`. Yours is printed in DROOL's log when it
-  starts (see [First Login](First-Login.md)).
+- The first-login setup code in the examples is `482913`. Yours is in your DROOL's startup message,
+  and differs ([Where do I get the setup code?](First-Login.md#where-do-i-get-the-setup-code)).
 - Fingerprints such as `SHA256:sU3rdL7J8ULPqUqvP4ImLFCOKmPP8tXogMjm7goRYos` come from the
   disposable lab machines; your hosts have their own.
 

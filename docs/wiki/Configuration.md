@@ -11,8 +11,9 @@ certificate, where data lives, and similar.
 3. then environment variables starting with `DROOL_`, which win over everything.
 
 An environment variable's name is the setting's path in capitals with `_`, for example `server.web_port` →
-`DROOL_SERVER_WEB_PORT`. In containers, use environment variables (in `compose.yaml`, or
-`drool.container` for Podman).
+`DROOL_SERVER_WEB_PORT`. In containers, use environment variables: under `environment:` in
+`compose.yaml` ([how](Install-With-Docker-Compose.md#if-youll-use-shepherds)), or as `Environment=` lines
+in `drool.container` for Podman ([how](Install-With-Podman.md#if-youll-use-shepherds)).
 
 **Settings → System → Effective configuration** shows every setting's current value and where it came
 from. The release installs a commented example as `/usr/share/drool/config.example.yaml`.
@@ -58,6 +59,25 @@ from. The release installs a commented example as `/usr/share/drool/config.examp
 | `retention.jobs_days` | `30` | How long run history and output are kept |
 | `backup.before_upgrade` | `true` | Back up the database before a newer DROOL upgrades it |
 | `logging.level`, `logging.output` | `info`, `file` | Log detail; `file` (`<data_dir>/logs`) or `stdout` (containers) |
+| `setup.code_ttl` | `1h` | How long a generated [setup code](First-Login.md#where-do-i-get-the-setup-code) stays valid (1 minute to 24 hours) |
+| `setup.secret_file`, `setup.secret` | none | [Your own setup code](#your-own-setup-code), instead of a generated one |
+
+## Your own setup code
+
+Until the first administrator exists, DROOL normally makes a six-digit setup code each time it starts
+and prints it in its startup message ([First Login](First-Login.md#where-do-i-get-the-setup-code)). For
+automated installations you can choose the code yourself instead:
+
+- `DROOL_SETUP_SECRET_FILE` (`setup.secret_file`): a file whose content is the code. Prefer this, for
+  example with a Docker secret; `compose.yaml` has a commented-out example.
+- `DROOL_SETUP_SECRET` (`setup.secret`): the code itself. Environment variables are easier to leak
+  than a file.
+
+It must be at least 12 characters, or DROOL refuses to start (*provided setup secret must be at least
+12 characters*). It doesn't expire and doesn't change when DROOL restarts. DROOL never prints it: the
+startup message says *Setup code: the setup secret you provided*. Like every setup code, it stops
+working once the first administrator exists, and backups never contain it. A code from
+`drool setup code` works alongside it.
 
 ## Your own TLS certificate
 

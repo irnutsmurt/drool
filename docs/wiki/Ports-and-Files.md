@@ -19,7 +19,7 @@ The controller makes no other connections: no telemetry, no update checks, no on
 
 | Path (native) | In containers | What |
 |---|---|---|
-| `/var/lib/drool/` | `/data/` (the `drool-data` volume) | The data directory |
+| `/var/lib/drool/` | `/data/` (Docker: the volume `drool_drool-data`; Podman: `drool-data`) | The data directory |
 | `…/drool.db` | | The database |
 | `…/master.key` | | The [master key](Master-Key.md) |
 | `…/tls/` | | The self-signed certificate |
@@ -29,9 +29,24 @@ The controller makes no other connections: no telemetry, no update checks, no on
 | `…/geoip/` | | [GeoIP and ASN](GeoIP-and-ASN.md) databases, if you add them |
 | `…/pre-restore-<time>/` | | Your previous files after a restore |
 | `/etc/drool/config.yaml` | (environment variables) | The [configuration file](Configuration.md), if any |
-| `/usr/bin/drool` | | The program |
-| `/usr/lib/drool/` | | The Shepherd binaries DROOL installs on hosts |
+| `/usr/bin/drool` (package), `/usr/local/bin/drool` (archive) | | The program |
+| `/usr/lib/drool/` (package), `/usr/local/lib/drool/` (archive) | | The Shepherd binaries DROOL installs on hosts |
 | `/usr/share/drool/` | | Licence notices and the example configuration |
+| `/usr/lib/systemd/system/drool.service` (package), `/etc/systemd/system/drool.service` (archive) | | The `drool` service |
+
+DROOL's **startup message**, with the setup page's address and, until the first administrator
+exists, the [setup code](First-Login.md#where-do-i-get-the-setup-code), goes to the system journal on
+a native installation (`sudo journalctl -u drool -n 50`), to the container's log with Docker
+(`docker compose logs drool`, in `~/drool`), and to your user's journal with Podman
+(`journalctl --user -u drool -n 50`).
+
+### Container installations
+
+| File | What |
+|---|---|
+| `~/drool/compose.yaml` | Docker Compose: how to run DROOL ([Install with Docker Compose](Install-With-Docker-Compose.md)). Run `docker compose` commands in this folder |
+| `~/drool/.env` | Docker Compose: which image to run (`DROOL_IMAGE=…`) |
+| `~/.config/containers/systemd/drool.container` | Podman: DROOL's Quadlet unit ([Install with Podman](Install-With-Podman.md)) |
 
 ## On managed hosts
 

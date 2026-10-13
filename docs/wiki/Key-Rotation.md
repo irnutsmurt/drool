@@ -31,7 +31,7 @@ Native installation:
 sudo systemctl stop drool && sudo -u drool drool secrets rotate-key && sudo systemctl start drool
 ```
 
-Docker Compose (in the directory with `compose.yaml`):
+Docker Compose (in your DROOL folder: `cd ~/drool` first):
 
 ```sh
 docker compose stop drool && docker compose run --rm drool secrets rotate-key && docker compose start drool

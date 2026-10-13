@@ -21,7 +21,8 @@ host and the host key was right, but the host didn't accept DROOL's login.
    others, `~/.ssh` mode `700`, `authorized_keys` mode `600`, owned by the user.
 4. Check that sshd allows key logins for that user (`PubkeyAuthentication yes`; no `AllowUsers`/
    `DenyUsers` rule that excludes it). The host's SSH log says why it refused:
-   `journalctl -u ssh -n 30` (Debian/Ubuntu) or `journalctl -u sshd -n 30` (RHEL family).
+   `sudo journalctl -u ssh -n 30` (Debian/Ubuntu) or `sudo journalctl -u sshd -n 30` (RHEL family), on
+   the host.
 5. **Test connection** on the host's page.
 
 ## Steps for a password credential

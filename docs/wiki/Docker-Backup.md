@@ -1,11 +1,11 @@
 # Backing up DROOL in Docker
 
-For DROOL running with Docker Compose (the release's `compose.yaml`). All data lives in the `drool-data`
-volume.
+For DROOL running with Docker Compose ([Install with Docker Compose](Install-With-Docker-Compose.md)). All
+data lives in DROOL's Docker volume (`drool_drool-data` for the folder `~/drool`).
 
 ## Before you start
 
-- Run the commands in the directory with your `compose.yaml`.
+- Run the commands in your DROOL folder, the one with `compose.yaml` and `.env`: `cd ~/drool` first.
 - Backups are safe to make while DROOL runs.
 
 ## Make a backup
@@ -24,11 +24,12 @@ Then copy the file to another machine, like any other file.
 
 ## Every night, automatically
 
-A cron line on the Docker host (`crontab -e`), with `/srv/drool` standing for the directory with your
-`compose.yaml` and `/srv/backups/drool` for where backups go:
+A cron line on the Docker host (`crontab -e`, as the user who runs `docker compose`), with `$HOME/drool`
+as the DROOL folder and `$HOME/backups/drool` for where backups go (create it first:
+`mkdir -p ~/backups/drool`):
 
 ```text
-15 3 * * * cd /srv/drool && docker compose exec -T drool drool backup -o - > /srv/backups/drool/drool-backup-$(date +\%Y\%m\%d).tar.gz
+15 3 * * * cd $HOME/drool && docker compose exec -T drool drool backup -o - > $HOME/backups/drool/drool-backup-$(date +\%Y\%m\%d).tar.gz
 ```
 
 In a crontab, `%` must be written `\%`.

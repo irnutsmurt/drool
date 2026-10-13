@@ -7,8 +7,8 @@ restores, recovering access, and keeping keys offline.
 
 | Installation | Run commands as |
 |---|---|
-| Native package or archive | `sudo -u drool drool <command>`. DROOL refuses to run as root on a data directory that belongs to the `drool` user, so files it writes stay readable to the service |
-| Docker Compose | `docker compose exec drool drool <command>` (add `-T` when piping a file in or out), in the directory with `compose.yaml` |
+| Native package or archive | `sudo -u drool drool <command>`. DROOL refuses to run as root on a data directory that belongs to the `drool` user, so files it writes stay readable to the service. Installed from the release archive and `sudo` says `drool: command not found`? Use the full path: `sudo -u drool /usr/local/bin/drool <command>` |
+| Docker Compose | `docker compose exec drool drool <command>` (add `-T` when piping a file in or out), in your DROOL folder: `cd ~/drool` first ([why](Install-With-Docker-Compose.md#step-1-make-a-folder-for-drool)) |
 | Podman | `podman exec drool drool <command>` (add `-i` when piping a file in) |
 
 Commands that need DROOL **stopped** (restore, master key rotation) run in a one-off container instead:
@@ -22,7 +22,7 @@ see [Restoring a Controller](Restoring-a-Controller.md) and [Key Rotation](Key-R
 | `drool backup verify FILE` | Check a backup can be restored, without restoring it. Exit status 0, 2 or 1 | [Verifying a Backup](Verifying-a-Backup.md) |
 | `drool restore FILE` | Restore a backup (DROOL stopped). `-` reads standard input; `--master-key FILE`; `--discard-credentials` | [Restoring a Controller](Restoring-a-Controller.md) |
 | `drool restore --recover` | Put the previous installation back after an interrupted restore | [Restore Needs Attention](Restore-Needs-Attention.md#drool-wont-start) |
-| `drool setup code` | Issue a new one-time setup code for creating the first administrator | [First Login](First-Login.md) |
+| `drool setup code` | Issue a new one-time setup code for creating the first administrator (the previous code stops working; refused once an administrator exists) | [Where do I get the setup code?](First-Login.md#where-do-i-get-the-setup-code) |
 | `drool user create --username NAME [--role admin]` | Create a user (asks for the password): the way back in if every administrator is locked out | [Users and Roles](Users-and-Roles.md) |
 | `drool user mfa-reset --username NAME` | Turn off a user's two-factor authentication | [Two-Factor Authentication](Two-Factor-Authentication.md#if-you-lose-your-authenticator) |
 | `drool secrets rotate-key` | Replace the master key (DROOL stopped) | [Key Rotation](Key-Rotation.md) |
@@ -45,7 +45,7 @@ see [Restoring a Controller](Restoring-a-Controller.md) and [Key Rotation](Key-R
 |---|---|
 | `sudo drool-agent status` | Identity, certificate, trust, endpoints and capabilities |
 | `sudo drool-agent trust-release-key FILE` | Trust a release-signing key for Shepherd updates ([Updating Shepherds](Updating-Shepherds.md)) |
-| `journalctl -u drool-agent` | The Shepherd's log |
+| `sudo journalctl -u drool-agent -n 50` | The Shepherd's log (the newest 50 lines) |
 
 ## Related
 

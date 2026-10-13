@@ -22,7 +22,7 @@ From the host's console or over SSH:
 ```sh
 systemctl status drool-agent          # is it running?
 sudo drool-agent status               # identity, certificate, trust, and the controller address it uses
-journalctl -u drool-agent -n 50       # what it says about connecting
+sudo journalctl -u drool-agent -n 50  # what it says about connecting
 ```
 
 Then, depending on what you find:
@@ -38,7 +38,8 @@ Then, depending on what you find:
 ## In Docker
 
 The controller must publish port 9443 and advertise an address Shepherds can reach: set
-`DROOL_AGENT_ADVERTISE` in `compose.yaml` (for example `drool.example.net:9443`). An advertised address
+`DROOL_AGENT_ADVERTISE` in `compose.yaml` (for example `drool.example.net:9443`;
+[how](Install-With-Docker-Compose.md#if-youll-use-shepherds)). An advertised address
 like `localhost` or a container-internal name doesn't work for other machines.
 
 ## Related

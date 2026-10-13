@@ -14,8 +14,8 @@ DROOL refuses to start rather than run in a state that could lose data. The mess
 | *… DROOL doesn't start on a half-restored data directory. Run drool restore --recover to put the previous installation back …* | A restore was interrupted. Run `drool restore --recover` (native: `sudo -u drool drool restore --recover`), then restore again if you still want to |
 | *… belongs to the user drool; run DROOL's commands as that user …* | You ran a `drool` command as root on a native installation. Use `sudo -u drool drool …` |
 
-DROOL's log has the full message: `journalctl -u drool -n 50` (native), `docker compose logs drool`
-(Docker).
+DROOL's log has the full message: `sudo journalctl -u drool -n 50` (package or archive),
+`docker compose logs drool` in `~/drool` (Docker), or `journalctl --user -u drool -n 50` (Podman).
 
 ## Hosts waiting after a controller restore
 

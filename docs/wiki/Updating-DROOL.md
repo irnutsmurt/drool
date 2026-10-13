@@ -22,11 +22,12 @@ Update the controller first; see [Updating Shepherds](Updating-Shepherds.md) for
 
 | Installation | How |
 |---|---|
-| Docker Compose, release image | `docker load -i drool_1.0.1_image.oci.tar`, put the new release's `compose.yaml` in **the same folder** as before (the data volume is named after the folder), then `docker compose up -d` |
-| Docker Compose, development image | In the same folder: `docker compose pull && docker compose up -d` — this gets the newest `main` |
-| Rootless Podman | `podman load -i drool_1.0.1_image.oci.tar`, copy the new `drool.container` to `~/.config/containers/systemd/`, then `systemctl --user daemon-reload && systemctl --user restart drool` |
+| Docker Compose, release image | `docker load -i drool_1.0.1_image.oci.tar`, put the new release's `compose.yaml` in **the same folder** as before, `~/drool` (the data volume is named after the folder), then, in that folder, `docker compose up -d` |
+| Docker Compose, development image | In your DROOL folder: `cd ~/drool`, then `docker compose pull && docker compose up -d`. This gets the newest `main` |
+| Rootless Podman, release image | `podman load -i drool_1.0.1_image.oci.tar`, copy the new `drool.container` to `~/.config/containers/systemd/`, then `systemctl --user daemon-reload && systemctl --user restart drool` |
+| Rootless Podman, development image | `podman pull ghcr.io/irnutsmurt/drool:main && systemctl --user restart drool` |
 | Native package | `sudo apt install ./drool_1.0.1-1_amd64.deb` or `sudo dnf install ./drool-1.0.1-1.x86_64.rpm` — a running DROOL restarts with the new version |
-| Release archive | `sudo systemctl stop drool`, install the new `drool` and Shepherd programs as in the archive's `INSTALL.md`, then `sudo systemctl start drool` |
+| Release archive | `sudo systemctl stop drool`, install the new `drool` and Shepherd programs as in the archive's `INSTALL.md` (step 3 of [Install From the Release Archive](Install-From-the-Release-Archive.md#step-3-install-it), without the `useradd` line), then `sudo systemctl start drool` |
 
 (`1.0.1` stands for whichever version you're installing.)
 
@@ -84,7 +85,8 @@ warns about it. Remove the old files first; your data in `/var/lib/drool` stays 
 
 ```sh
 sudo systemctl stop drool
-sudo rm /etc/systemd/system/drool.service /usr/local/bin/drool /usr/local/bin/drool-agent-linux-*
+sudo rm -f /etc/systemd/system/drool.service /usr/local/bin/drool /usr/local/bin/drool-agent-linux-*
+sudo rm -rf /usr/local/lib/drool
 sudo apt install ./drool_1.0.0-1_amd64.deb
 sudo systemctl daemon-reload && sudo systemctl enable --now drool
 ```

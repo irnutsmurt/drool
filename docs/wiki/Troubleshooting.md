@@ -3,6 +3,18 @@
 Find what you're seeing, then follow the link. Each page explains what the message means in plain
 words, the usual causes, and what to do, starting with the most likely.
 
+## Installing and first login
+
+| You see | Go to |
+|---|---|
+| No setup code in DROOL's startup message or log | [I don't see a setup code](Setup-Problems.md#i-dont-see-a-setup-code) |
+| *invalid or expired setup code*, *No valid setup code*, *too many failed setup attempts* | [My setup code expired](Setup-Problems.md#my-setup-code-expired) |
+| *setup is already complete*, or `/setup` shows **Sign in to DROOL** | [DROOL says setup is already complete](Setup-Problems.md#drool-says-setup-is-already-complete) |
+| `<this-host's-address>`, or you don't know what to open | [I don't know what address to open](Setup-Problems.md#i-dont-know-what-address-to-open) |
+| The browser can't reach DROOL | [The browser can't connect](Setup-Problems.md#the-browser-cant-connect) |
+| *no configuration file provided: not found* | [docker compose can't find a compose file](Setup-Problems.md#docker-compose-says-it-cant-find-a-compose-file) |
+| Other Docker or Podman messages while installing | [Setup Problems](Setup-Problems.md#other-docker-messages) |
+
 ## Hosts and connections
 
 | You see | Go to |
@@ -58,7 +70,6 @@ words, the usual causes, and what to do, starting with the most likely.
 |---|---|
 | After restoring a backup: hosts **Ahead of DROOL**, **Blocked for safety**, … | [Restore Needs Attention](Restore-Needs-Attention.md) |
 | DROOL won't start: missing or wrong master key, an interrupted restore | [Restore Needs Attention](Restore-Needs-Attention.md#drool-wont-start) |
-| The setup code expired or got lost | [First Login](First-Login.md) |
 | The browser warns about DROOL's certificate | [First Login](First-Login.md) · [Configuration](Configuration.md#your-own-tls-certificate) |
 | Lost your authenticator app | [Two-Factor Authentication](Two-Factor-Authentication.md#if-you-lose-your-authenticator) |
 | A **security issue** in the header | [Secure Your Installation](Secure-Your-Installation.md) |
@@ -68,5 +79,6 @@ words, the usual causes, and what to do, starting with the most likely.
 
 - The run's output, the host's **Test connection**, and the [audit log](Audit-Log.md) usually say what
   happened.
-- DROOL's own log: `journalctl -u drool` (native), `docker compose logs drool` (Docker), or
-  `journalctl --user -u drool` (Podman).
+- DROOL's own log: `sudo journalctl -u drool -n 50` and the files in `/var/lib/drool/logs/` (package or
+  archive), `docker compose logs drool` in `~/drool` (Docker), or `journalctl --user -u drool -n 50`
+  (Podman).

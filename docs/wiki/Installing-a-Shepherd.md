@@ -18,7 +18,8 @@ There are three ways to install one:
   on port **9443**. In the examples that's `drool.example.net:9443`. On the host,
   `nc -vz drool.example.net 9443` must succeed.
   - In a container installation, DROOL can't know that address by itself: set
-    `DROOL_AGENT_ADVERTISE` first ([Installing DROOL](Installing-DROOL.md#docker-compose)).
+    `DROOL_AGENT_ADVERTISE` first ([Docker Compose](Install-With-Docker-Compose.md#if-youll-use-shepherds),
+    [Podman](Install-With-Podman.md#if-youll-use-shepherds)).
   - If the controller's machine has a firewall, port 9443 must be open there.
 - **The host is Linux on amd64 or arm64.** (Other architectures stay on SSH.)
 - **You're an administrator** (installing needs **agents.enroll**).

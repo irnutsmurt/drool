@@ -52,8 +52,10 @@ account and add it again with a new initial password (reassign any schedules the
 ```sh
 # Native installation (prompts for the password)
 sudo -u drool drool user create --username alex2 --role admin
-# Docker Compose
+# Docker Compose (run cd ~/drool first)
 docker compose exec drool drool user create --username alex2 --role admin
+# Podman
+podman exec -it drool drool user create --username alex2 --role admin
 ```
 
 ## Good to know

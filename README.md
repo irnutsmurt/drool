@@ -249,6 +249,11 @@ Within DROOL 1.x:
 
 ## Installing
 
+**Step by step:** the user guide's [Installing DROOL](https://github.com/irnutsmurt/drool/wiki/Installing-DROOL)
+walks through each method from nothing installed to DROOL's setup screen, including where to find
+the setup code. Until there is a release, [Docker Compose](https://github.com/irnutsmurt/drool/wiki/Install-With-Docker-Compose)
+with the development image is the quickest way to try DROOL.
+
 Pick one. Each takes a few commands and ends with the same thing: an address and a one-time
 **setup code**. Open the address, enter the code, create the administrator account — you're signed
 in. The browser warns about DROOL's self-signed certificate on the first visit; that's expected, and

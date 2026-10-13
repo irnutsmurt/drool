@@ -43,7 +43,7 @@ Try these in order:
    ```sh
    # Native installation
    sudo -u drool drool user mfa-reset --username alex
-   # Docker Compose (in the directory with compose.yaml)
+   # Docker Compose (run cd ~/drool first)
    docker compose exec drool drool user mfa-reset --username alex
    # Podman
    podman exec drool drool user mfa-reset --username alex
