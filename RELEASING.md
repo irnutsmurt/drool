@@ -1,8 +1,14 @@
 # Releasing DROOL
 
-How DROOL is versioned, what a release consists of, how it is built, qualified, signed and
-published. The operator-facing side (installing, verifying, upgrading) is in the
-[README](README.md); the design reasons are in [`ARCHITECTURE-ALPHA.md`](ARCHITECTURE-ALPHA.md) §34.
+How DROOL is versioned, what a release consists of, and how it is built, qualified, signed and
+published: the maintainer's side of a release. Everything else has its own place:
+
+- [README](README.md): the project's front door. What DROOL is, its development and release status,
+  a quick start, supported platforms, major limitations, and links.
+- [The user guide](docs/wiki/Home.md), published as the GitHub wiki: the operator's side. Installing,
+  checking a release's files, upgrading, everyday use and troubleshooting.
+- [`ARCHITECTURE-ALPHA.md`](ARCHITECTURE-ALPHA.md): the implementation record and its technical
+  decisions (§34 for releases).
 
 ## Versions and channels
 

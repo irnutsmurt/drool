@@ -64,9 +64,10 @@ policy), checks the result, and records who did what in its audit log.
 ## Current status
 
 <!-- release-status: see the note at the top. -->
-**DROOL is in development (pre-1.0) and preparing for its first stable release, 1.0.** Everything below
-exists and is covered by DROOL's automated tests, but expect changes before 1.0: run it where a mistake
-is recoverable, and keep backups (and the master key apart from them).
+**DROOL is in development (pre-1.0) and preparing for its first stable release, 1.0.** The features
+described below exist, and DROOL's automated tests cover its supported platforms and core workflows,
+but expect changes before 1.0: run it where a mistake is recoverable, and keep backups (and the master
+key apart from them).
 
 - **Linux is what DROOL manages today.** A Windows agent is a future goal; the controller's operations
   are kept platform-neutral so that it can be added later.
