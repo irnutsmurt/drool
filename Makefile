@@ -91,4 +91,4 @@ dev:
 	cd web && npm run dev
 
 clean:
-	rm -rf bin web/dist/assets web/dist/index.html dist
+	rm -rf bin web/dist/assets web/dist/index.html web/dist/theme-init.js web/dist/favicon.png dist
