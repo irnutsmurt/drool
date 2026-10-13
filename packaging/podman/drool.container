@@ -25,8 +25,15 @@ After=network-online.target
 [Container]
 ContainerName=drool
 Image=ghcr.io/irnutsmurt/drool:main
+# The web interface and the Shepherd endpoint: the first number is the port
+# on this machine, the second the one DROOL listens on inside the container.
 PublishPort=8080:8080
 PublishPort=9443:9443
+# Publishing one as another port here, for example PublishPort=2043:9443?
+# Then tell DROOL that port too, so it gives Shepherds the right one (and its
+# startup message shows the right web port):
+#Environment=DROOL_AGENT_PUBLIC_PORT=2043
+#Environment=DROOL_SERVER_PUBLIC_PORT=8443
 Volume=drool-data:/data
 ReadOnly=true
 Tmpfs=/tmp
@@ -35,8 +42,10 @@ NoNewPrivileges=true
 HealthCmd=/usr/local/bin/drool healthcheck
 HealthInterval=30s
 HealthStartPeriod=60s
-# Shepherds need an address they can reach (this machine's name or IP):
-#Environment=DROOL_AGENT_ADVERTISE=drool.example.net:9443
+# Shepherds connect to the address you open DROOL with in your browser. If
+# your hosts reach this machine by another name or address, name it (the
+# Shepherd port is added):
+#Environment=DROOL_AGENT_ADVERTISE=drool.example.net
 
 [Service]
 Restart=always

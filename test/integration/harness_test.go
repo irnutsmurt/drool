@@ -28,6 +28,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -435,6 +436,9 @@ type controller struct {
 	mu       sync.Mutex
 	pubKey   string
 	setupKey string
+	// host is where this controller's web port is reached (default
+	// 127.0.0.1): the address an administrator's browser would use.
+	host string
 }
 
 // agentListenPort is the port this controller's Shepherd endpoint listens
@@ -455,7 +459,13 @@ func freePort() int {
 	return l.Addr().(*net.TCPAddr).Port
 }
 
-func (c *controller) base() string { return fmt.Sprintf("https://127.0.0.1:%d", c.port) }
+func (c *controller) base() string {
+	h := c.host
+	if h == "" {
+		h = "127.0.0.1"
+	}
+	return "https://" + net.JoinHostPort(h, strconv.Itoa(c.port))
+}
 
 func (c *controller) start() error {
 	if c.port == 0 {

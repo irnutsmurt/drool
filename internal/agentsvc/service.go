@@ -407,7 +407,7 @@ func (s *Service) Enroll(ctx context.Context, req *pb.EnrollRequest) (*pb.Enroll
 	s.hostChanged(hostID)
 	sm, _ := s.pki.Manifest()
 	return &pb.EnrollResponse{IdentityId: identityID, HostId: hostID, HostName: hostName, CertChain: chain,
-		Manifest: &pb.SignedManifest{Payload: sm.Payload, Signature: sm.Signature}, Endpoints: s.cfg.Advertise, ControllerEpoch: s.epoch}, nil
+		Manifest: &pb.SignedManifest{Payload: sm.Payload, Signature: sm.Signature}, Endpoints: s.advertised(), ControllerEpoch: s.epoch}, nil
 }
 
 func nonEmpty(b []byte) []byte {

@@ -2091,7 +2091,7 @@ export interface paths {
         };
         get: operations["listEndpointMigrations"];
         put?: never;
-        /** @description Propose a new agent endpoint (host:port). Agents store and test it; nothing changes until commit, and only for agents that confirmed it. */
+        /** @description Propose a new agent endpoint (host:port, or a host alone, which gets advertised_port as agent.advertise entries do). Agents store and test it; nothing changes until commit, and only for agents that confirmed it. */
         post: operations["proposeEndpoint"];
         delete?: never;
         options?: never;
@@ -4020,7 +4020,17 @@ export interface components {
             revoked_intermediates: string[] | null;
         };
         AgentPKI: components["schemas"]["AgentPKIStatus"] & {
+            /** @description The port the agent endpoint listens on (agent.port; inside the container for a containerized controller). */
             endpoint_port: string;
+            /** @description Where Shepherds enrolled now connect (host:port), as this request's web address resolves them: the same resolver as enrollment tokens and installation over SSH. agent.advertise entries win; otherwise the host name the web UI was opened with. An address without a port gets agent.public_port, else agent.port. */
+            advertised_endpoints: string[];
+            /**
+             * @description advertise: agent.advertise is configured; web_address: the web UI's host name.
+             * @enum {string}
+             */
+            advertised_from: "advertise" | "web_address";
+            /** @description The port an address without one gets (agent.public_port, else agent.port): in advertised endpoints and in a proposed controller address. */
+            advertised_port: number;
             controller_epoch: string;
             /** @description The newest trust manifest version a Shepherd reported. Newer than manifest_version after a restore from a backup older than an intermediate rotation: rotate the intermediate (the next manifest is numbered to supersede it). */
             newest_agent_manifest: number;

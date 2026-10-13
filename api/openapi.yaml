@@ -2180,7 +2180,7 @@ paths:
     post:
       operationId: proposeEndpoint
       tags: [agents]
-      description: Propose a new agent endpoint (host:port). Agents store and test it; nothing changes until commit, and only for agents that confirmed it.
+      description: Propose a new agent endpoint (host:port, or a host alone, which gets advertised_port as agent.advertise entries do). Agents store and test it; nothing changes until commit, and only for agents that confirmed it.
       requestBody:
         required: true
         content: { application/json: { schema: { type: object, required: [endpoint], properties: { endpoint: { type: string } } } } }
@@ -3677,9 +3677,18 @@ components:
       allOf:
         - $ref: '#/components/schemas/AgentPKIStatus'
         - type: object
-          required: [endpoint_port, controller_epoch, newest_agent_manifest]
+          required: [endpoint_port, advertised_endpoints, advertised_from, advertised_port, controller_epoch, newest_agent_manifest]
           properties:
-            endpoint_port: { type: string }
+            endpoint_port: { type: string, description: 'The port the agent endpoint listens on (agent.port; inside the container for a containerized controller).' }
+            advertised_endpoints:
+              type: array
+              items: { type: string }
+              description: >-
+                Where Shepherds enrolled now connect (host:port), as this request's web address resolves them: the same
+                resolver as enrollment tokens and installation over SSH. agent.advertise entries win; otherwise the host name
+                the web UI was opened with. An address without a port gets agent.public_port, else agent.port.
+            advertised_from: { type: string, enum: [advertise, web_address], description: 'advertise: agent.advertise is configured; web_address: the web UI''s host name.' }
+            advertised_port: { type: integer, description: 'The port an address without one gets (agent.public_port, else agent.port): in advertised endpoints and in a proposed controller address.' }
             controller_epoch: { type: string }
             newest_agent_manifest: { type: integer, description: 'The newest trust manifest version a Shepherd reported. Newer than manifest_version after a restore from a backup older than an intermediate rotation: rotate the intermediate (the next manifest is numbered to supersede it).' }
     EnrollmentToken:

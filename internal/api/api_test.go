@@ -106,6 +106,8 @@ type harnessOpts struct {
 	// before and after a restore).
 	fwSSH  *hostfw.Paths
 	fwFake string
+	// env adds configuration (DROOL_* variables).
+	env []string
 }
 
 func newHarnessWith(t *testing.T, o harnessOpts) *harness {
@@ -121,7 +123,7 @@ func newHarnessWith(t *testing.T, o harnessOpts) *harness {
 	if _, err := st.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.Load("", false, []string{"DROOL_DATA_DIR=" + t.TempDir()})
+	cfg, err := config.Load("", false, append([]string{"DROOL_DATA_DIR=" + t.TempDir()}, o.env...))
 	if err != nil {
 		t.Fatal(err)
 	}

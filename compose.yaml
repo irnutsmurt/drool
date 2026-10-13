@@ -11,17 +11,42 @@
 # next to its image file: `docker load -i drool_<version>_image.oci.tar`
 # instead of the pull. DROOL_IMAGE runs another image, for example
 # DROOL_IMAGE=drool:local after `make image` in a source checkout.
+#
+# Ports. Inside its container DROOL always listens on 8080 (the web interface
+# and API) and 9443 (where Shepherds, DROOL's agents, connect). The two
+# numbers below are the ports on THIS machine (or NAS) that other computers
+# use; Docker maps them onto 8080 and 9443. To use other ports here, change a
+# number below, and only there: the Shepherd port also tells DROOL which port
+# to give Shepherds, because DROOL can't see Docker's mapping from inside.
+# Without changes: 8080 and 9443. (The Shepherd port can also be set with
+# DROOL_AGENT_PUBLIC_PORT, for example in a .env file next to this one.)
+x-drool-ports:
+  web: &web-port 8080
+  shepherds: &shepherd-port ${DROOL_AGENT_PUBLIC_PORT:-9443}
+
 services:
   drool:
     image: ${DROOL_IMAGE:-ghcr.io/irnutsmurt/drool:main}
     restart: unless-stopped
     ports:
-      - "8080:8080"   # web UI and API
-      - "9443:9443"   # Shepherd endpoint (Shepherds connect to it)
-    # Shepherds need an address they can reach; inside a container DROOL can't
-    # know it. Set it to this machine's name or IP (port 9443):
-    # environment:
-    #   DROOL_AGENT_ADVERTISE: drool.example.net:9443
+      - target: 8080               # the web interface, inside the container
+        published: *web-port       # ...on this machine: the web port above
+      - target: 9443               # the Shepherd endpoint, inside the container
+        published: *shepherd-port  # ...on this machine: the Shepherd port above
+    environment:
+      # The ports above, as other computers see them: DROOL gives Shepherds
+      # the Shepherd port and prints the web port in its startup message.
+      # Change the ports above, not these lines.
+      DROOL_AGENT_PUBLIC_PORT: *shepherd-port
+      DROOL_SERVER_PUBLIC_PORT: *web-port
+      # Shepherds connect to the address you open DROOL with in your browser.
+      # If your managed hosts reach this machine by another name or address
+      # (DNS, NAT, a VPN), name it here; the Shepherd port above is added
+      # unless you write one:
+      # DROOL_AGENT_ADVERTISE: drool.example.net
+      # Optional, for automated deployments: your own setup code instead of
+      # reading the generated one from the logs (see secrets: below).
+      # DROOL_SETUP_SECRET_FILE: /run/secrets/drool_setup
     volumes:
       - drool-data:/data
     # DROOL needs no privileges, capabilities or host access: it listens on
@@ -40,10 +65,7 @@ services:
       timeout: 10s
       start_period: 60s
       retries: 3
-    # Optional: provide your own setup code for automated deployments
-    # instead of reading the generated one from the logs.
-    # environment:
-    #   DROOL_SETUP_SECRET_FILE: /run/secrets/drool_setup
+    # With DROOL_SETUP_SECRET_FILE above:
     # secrets:
     #   - drool_setup
 

@@ -139,6 +139,7 @@ type AgentRollout struct {
 	UpdatedAt     int64
 	Kind          string
 	Preset        string
+	WebHost       string
 }
 
 type AgentRolloutHost struct {

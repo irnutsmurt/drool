@@ -387,7 +387,8 @@ function TrustTab() {
           <dt className="text-muted">Intermediate</dt><dd className="break-all font-mono text-xs">{s.intermediate_fingerprint} <span className="text-muted">(until {formatDateTime(s.intermediate_not_after)})</span></dd>
           <dt className="text-muted">Trust manifest</dt><dd>version {s.manifest_version}: {(s.trusted_intermediates ?? []).length} trusted, {(s.revoked_intermediates ?? []).length} revoked intermediate(s)
             {s.newest_agent_manifest > s.manifest_version && <span className="text-warn"> — a Shepherd has version {s.newest_agent_manifest}</span>}</dd>
-          <dt className="text-muted">Agent endpoint</dt><dd>port {s.endpoint_port} (separate from the web UI and its certificate)</dd>
+          <dt className="text-muted">Agent endpoint</dt><dd><span className="font-mono">{s.advertised_endpoints.join(", ")}</span>
+            <span className="text-muted"> — where Shepherds connect{s.advertised_from === "advertise" ? " (agent.advertise)" : " (this page's address)"}; DROOL listens on port {s.endpoint_port}, separate from the web UI and its certificate</span></dd>
           <dt className="text-muted">Controller epoch</dt><dd className="font-mono text-xs">{s.controller_epoch}</dd>
         </dl>
         <div className="mt-3"><a className="text-sm text-accent" href="/api/v1/agents/pki/root.crt">Download the root certificate (public)</a></div>
@@ -458,6 +459,7 @@ function EndpointsTab() {
   const { can } = useAuth();
   const qc = useQueryClient();
   const m = useEndpointMigrations();
+  const port = usePKI().data?.advertised_port;
   const [ep, setEp] = useState("");
   const propose = useMutation({ mutationFn: () => unwrap(api.POST("/agents/endpoints", { body: { endpoint: ep.trim() } })), onSuccess: () => { setEp(""); void qc.invalidateQueries({ queryKey: ak.endpoints }); } });
   const commit = useMutation({ mutationFn: (id: string) => unwrap(api.POST("/agents/endpoints/{id}/commit", { params: { path: { id } } })), onSuccess: () => void qc.invalidateQueries({ queryKey: ak.endpoints }) });
@@ -465,10 +467,10 @@ function EndpointsTab() {
     <Card title="Controller address for Shepherds">
       <p className="mb-3 text-sm text-muted">Moving the controller or its name: propose the new address first. Every agent stores it as a candidate and tests
         it (a full mutual-TLS connection); commit makes it primary only on agents that confirmed it, and they keep the old address as a fallback.
-        A wrong address can't strand an agent.</p>
+        A wrong address can't strand an agent.{port ? ` Without a port, an address gets port ${port}, the one Shepherds are told now.` : ""}</p>
       {can("agents.manage") && (
         <div className="mb-4 flex gap-2">
-          <Input className="max-w-sm font-mono" placeholder="drool.example.net:9443" value={ep} onChange={(e) => setEp(e.target.value)} />
+          <Input className="max-w-sm font-mono" placeholder="drool.example.net" aria-label="New controller address" value={ep} onChange={(e) => setEp(e.target.value)} />
           <Button disabled={!ep.trim() || propose.isPending} onClick={() => propose.mutate()}>Propose</Button>
         </div>
       )}

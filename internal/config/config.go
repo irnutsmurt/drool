@@ -89,17 +89,32 @@ func (c *Config) GeoIPDir() string {
 	return filepath.Join(c.DataDir, "geoip")
 }
 
+// AdvertisedPort is the port Shepherds are told to connect to:
+// public_port when it is set, else the listen port.
+func (a Agent) AdvertisedPort() int {
+	if a.PublicPort > 0 {
+		return a.PublicPort
+	}
+	return a.Port
+}
+
 // Agent configures the agent endpoint (ARCHITECTURE-ALPHA §23).
 type Agent struct {
 	// Enabled starts the gRPC agent endpoint.
 	Enabled bool `yaml:"enabled"`
-	// Port is the agent endpoint's listen port (DESIGN §22.2: 9443).
+	// Port is the agent endpoint's listen port (DESIGN §22.2: 9443): what
+	// the controller binds, inside its container if it runs in one.
 	Port int `yaml:"port"`
+	// PublicPort is the port managed hosts use to reach the agent endpoint
+	// when it isn't Port: a container whose 9443 is published as host port
+	// 2043 sets 2043. It never changes what the controller binds. 0: Port.
+	PublicPort int `yaml:"public_port"`
 	// Bind is the agent endpoint's listen address; empty: server.bind.
 	Bind string `yaml:"bind"`
 	// Advertise is the address agents connect to (host or host:port),
-	// put into enrollment tokens. Empty: the host name the administrator
-	// uses for the web UI, with Port.
+	// put into enrollment tokens. An entry without a port gets
+	// AdvertisedPort. Empty: the host name the administrator uses for the
+	// web UI, with AdvertisedPort.
 	Advertise []string `yaml:"advertise"`
 	// CertLifetime of agent operational certificates (DESIGN §6.4: 30 days).
 	CertLifetime time.Duration `yaml:"cert_lifetime"`
@@ -120,6 +135,10 @@ type Server struct {
 	TLS                    TLS      `yaml:"tls"`
 	TrustedProxies         []string `yaml:"trusted_proxies"`
 	AllowInsecurePlaintext bool     `yaml:"allow_insecure_plaintext"`
+	// PublicPort is the port browsers use to reach the web interface when
+	// it isn't WebPort (a container publishing 8080 as another host port).
+	// It only changes the address DROOL prints when it starts. 0: WebPort.
+	PublicPort int `yaml:"public_port"`
 }
 
 type TLS struct {
@@ -502,11 +521,17 @@ func (c Config) Validate() error {
 	if c.Agent.Port < 1 || c.Agent.Port > 65535 || c.Agent.Port == c.Server.WebPort {
 		errs = append(errs, fmt.Errorf("agent.port must be 1-65535 and differ from server.web_port: %d", c.Agent.Port))
 	}
+	if c.Agent.PublicPort < 0 || c.Agent.PublicPort > 65535 {
+		errs = append(errs, fmt.Errorf("agent.public_port must be 1-65535, or 0 for agent.port: %d", c.Agent.PublicPort))
+	}
 	if c.Agent.CertLifetime < time.Hour || c.Agent.RecoveryGrace < 0 || c.Agent.TokenTTL < time.Minute {
 		errs = append(errs, fmt.Errorf("agent.cert_lifetime must be at least 1h, agent.recovery_grace not negative, agent.token_ttl at least 1m"))
 	}
 	if c.Server.WebPort < 1 || c.Server.WebPort > 65535 {
 		errs = append(errs, fmt.Errorf("server.web_port out of range: %d", c.Server.WebPort))
+	}
+	if c.Server.PublicPort < 0 || c.Server.PublicPort > 65535 {
+		errs = append(errs, fmt.Errorf("server.public_port must be 1-65535, or 0 for server.web_port: %d", c.Server.PublicPort))
 	}
 	for _, p := range c.Server.TrustedProxies {
 		if _, _, err := net.ParseCIDR(p); err != nil && net.ParseIP(p) == nil {

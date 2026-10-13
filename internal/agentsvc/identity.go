@@ -16,6 +16,7 @@ import (
 	"drool/internal/agentrpc"
 	"drool/internal/agentrpc/pb"
 	"drool/internal/audit"
+	"drool/internal/config"
 	"drool/internal/ids"
 	"drool/internal/store/db"
 )
@@ -43,17 +44,18 @@ type NewToken struct {
 	Endpoints []string  `json:"endpoints"`
 }
 
-// Endpoints returns the agent endpoints put into tokens.
+// Endpoints is where Shepherds connect to this controller (host:port),
+// for an administrator who reached the web UI at webHost. It is the one
+// place DROOL decides that: enrollment tokens, installation over SSH,
+// the endpoint shown before an installation and the enrollment answer
+// all come from here. Configured agent.advertise entries win; without
+// them, the host name the web UI was opened with. An address without a
+// port of its own gets agent.public_port, else agent.port: the port
+// hosts reach, which in a container is the published one, not the one
+// the controller listens on inside it.
 func (s *Service) Endpoints(webHost string) []string {
-	if len(s.cfg.Advertise) > 0 {
-		out := make([]string, 0, len(s.cfg.Advertise))
-		for _, a := range s.cfg.Advertise {
-			if _, _, err := net.SplitHostPort(a); err != nil {
-				a = net.JoinHostPort(a, strconv.Itoa(s.cfg.Port))
-			}
-			out = append(out, a)
-		}
-		return out
+	if eps := s.advertised(); eps != nil {
+		return eps
 	}
 	h := webHost
 	if hh, _, err := net.SplitHostPort(webHost); err == nil {
@@ -63,7 +65,60 @@ func (s *Service) Endpoints(webHost string) []string {
 	if h == "" {
 		h = "localhost"
 	}
-	return []string{net.JoinHostPort(h, strconv.Itoa(s.cfg.Port))}
+	return []string{net.JoinHostPort(h, strconv.Itoa(s.agentCfg().AdvertisedPort()))}
+}
+
+// EndpointsConfigured reports whether agent.advertise names the endpoints
+// (otherwise they follow the web UI's host name).
+func (s *Service) EndpointsConfigured() bool { return len(s.agentCfg().Advertise) > 0 }
+
+// ListenPort and AdvertisedPort: where the endpoint listens, and the port
+// Shepherds are told to use when an address doesn't name one.
+func (s *Service) ListenPort() int     { return s.agentCfg().Port }
+func (s *Service) AdvertisedPort() int { return s.agentCfg().AdvertisedPort() }
+
+func (s *Service) agentCfg() config.Agent {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := s.cfg
+	c.Advertise = append([]string(nil), s.cfg.Advertise...)
+	return c
+}
+
+// advertised is agent.advertise with each entry's port filled in; nil
+// when it isn't configured.
+func (s *Service) advertised() []string {
+	c := s.agentCfg()
+	if len(c.Advertise) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(c.Advertise))
+	for _, a := range c.Advertise {
+		out = append(out, withPort(a, c.AdvertisedPort()))
+	}
+	return out
+}
+
+// withPort is addr, with port added when addr doesn't name one.
+func withPort(addr string, port int) string {
+	if _, _, err := net.SplitHostPort(addr); err == nil {
+		return addr
+	}
+	return net.JoinHostPort(strings.Trim(addr, "[]"), strconv.Itoa(port))
+}
+
+// Endpoint is an address an administrator gives for Shepherds (a new
+// controller address), as host:port by the agent.advertise rule: one
+// without a port of its own gets AdvertisedPort.
+func (s *Service) Endpoint(addr string) (string, error) {
+	addr = strings.TrimSpace(addr)
+	ep := withPort(addr, s.AdvertisedPort())
+	h, p, err := net.SplitHostPort(ep)
+	n, perr := strconv.Atoi(p)
+	if addr == "" || strings.ContainsAny(addr, " \t/") || err != nil || h == "" || strings.ContainsAny(h, "[]") || perr != nil || n < 1 || n > 65535 {
+		return "", fmt.Errorf("give the new address as a host name or IP address, with :port only if Shepherds must use another port than %d (e.g. drool.example.net)", s.AdvertisedPort())
+	}
+	return ep, nil
 }
 
 // CreateToken creates a single-use enrollment token.

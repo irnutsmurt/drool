@@ -1422,6 +1422,9 @@ Meaningful choices made during implementation, newest last.
 | After M17 | Credentials typed for the setup are stored as `secrets.temporary` and deleted in the switch transaction through `secrets.DeleteTx`, which refuses while any host (jump hosts included) references them: those are kept and reported | A credential shared by another host can't disappear under it; stored credentials the administrator chose are never deleted by the setup |
 | After M17 | DROOL recognizes an account as its own only by a root-only record written before the account (`/var/lib/drool/ssh-accounts/<user>`: `controller-default`'s fingerprint and the account's user ID) | The name proves nothing: an existing `drool` account (the controller package creates one) must never be taken over |
 | After M17 | `compose.yaml` and the Podman unit name DROOL's development image on GitHub Container Registry by default (`${DROOL_IMAGE:-ghcr.io/irnutsmurt/drool:main}`, `Image=ghcr.io/irnutsmurt/drool:main`); a release still pins its own version in both, and a source build runs its own with `DROOL_IMAGE=drool:local` | They used to default to `drool:local`, an image only a source build has: downloaded on their own they couldn't run (Compose: *pull access denied for drool*), and the guide needed a hidden `.env` file (Podman: a `sed` edit) to point them at GitHub |
+| After M17 | Shepherds are told `agent.public_port` when it is set, else `agent.port`, which is only where the endpoint listens. One resolver, `agentsvc.Service.Endpoints(webHost)`, feeds enrollment tokens, installation over SSH (one host and bulk conversion), the endpoint shown before an installation and on Trust (PKI), and the startup log; the enrollment answer uses the same port rule. `agent.advertise` entries win; an entry, or a proposed controller address, without a port gets the same port (§37) | Dogfooding on a Synology NAS: Compose published the endpoint as `2043:9443`, the controller advertised `<host>:9443`, and the installation failed with *connection refused* (rolling back as designed). A controller in a container can't see Docker's port mapping, so the published port has to be configuration |
+| After M17 | `compose.yaml` declares the two public ports once, in `x-drool-ports` (YAML anchors): `web` (8080) is published and given to DROOL as `DROOL_SERVER_PUBLIC_PORT`; `shepherds: ${DROOL_AGENT_PUBLIC_PORT:-9443}` is published onto the container's 9443 and given to DROOL as `DROOL_AGENT_PUBLIC_PORT`. The container ports stay 8080 and 9443 | One number to change, in the file, in the environment or in an optional `.env`, and no way to publish one port while advertising another. It works in Synology's Container Manager, where the YAML is edited in the browser (rendered with Compose v2.9.0, v2.20.1 and 5.5.1) |
+| After M17 | A bulk conversion stores the web UI's host name with its rollout (`agent_rollouts.web_host`, migration 0022), and each host's installation resolves its endpoint from it | Conversions run after the request that started them; without it every converted host was told `localhost` unless `agent.advertise` was set |
 
 ---
 
@@ -2539,6 +2542,7 @@ away in the documentation; none is started. Size and risk are estimates from the
 | 7 | Three UI hints still say *see the README* (the remote audit copy's format, *Configuration* on the security checklist, the restore commands on Settings → System) although those details moved to the user guide | Small: three strings; the README links each place, so nothing is unreachable meanwhile. The wiki's `system-backup-commands.png` shows one of them and needs capturing again with the change | Fix with the next UI change |
 | 8 | Adding a host required preparing an account on it by hand (`useradd`, a sudoers file, pasting DROOL's key), and the administrator's own password or key otherwise stayed in DROOL | Done: DROOL's own SSH account (§36) | Done (after M17) |
 | 9 | `internal/sshx` TestPoolCertificateJumpPaths fails now and then under `-race -count=10`: its clock is real time plus an offset, and the test leaves the jump certificate one second of validity, so a slow run (1.03 s observed) sees it expire and the path re-dialled | A timing margin in the test, not a product fault; it passes on its own and in the normal suite. Fix by freezing the test clock rather than by sleeps or a looser assertion | Fix before final 1.0 qualification |
+| 10 | With Compose publishing the Shepherd endpoint under another port (`2043:9443` on a Synology NAS), Shepherds were told the port inside the container, and installation failed with *connection refused* | Done: a public port separate from the listen port, set once in `compose.yaml` (§37) | Done (after M17) |
 
 ---
 
@@ -2641,3 +2645,76 @@ reported as unknown, resuming, a concurrent edit winning, no secret in output, r
 `visudo` on Debian 12 and Rocky Linux 9 in unprivileged containers: a refused fresh sign-in, then
 the setup again; a stored credential kept; an existing `drool` refused and untouched; a refusing
 sudo creating nothing; a host behind a jump host), and the browser test `web/e2e/addhost.test.mjs`.
+
+---
+
+## 37. Shepherd endpoint behind a published port (after M17)
+
+A dogfooding fix after M17 (§35 #10), not a milestone. On a Synology NAS the Compose file published
+the Shepherd endpoint as `2043:9443`. DROOL kept listening on 9443 inside its container, as it should,
+but also told Shepherds to connect to `<NAS address>:9443`:
+`Installing and enrolling as root (agent endpoint 192.168.1.83:9443)...`, then
+`dial tcp 192.168.1.83:9443: connect: connection refused`. The installation rolled back correctly:
+the Shepherd service was stopped and the host stayed managed over SSH. The cause: the resolver for
+the advertised endpoint appended `agent.port`, the listen port, to the web UI's host name. Inside a
+container that is the container's port, which other machines can't reach when the published port
+differs. Implementation: `agent.public_port` and `server.public_port` (`internal/config`), the
+resolver in `internal/agentsvc/identity.go`, `compose.yaml`'s `x-drool-ports`, migration 0022.
+
+### 37.1 Invariants
+
+1. **The listen port and the advertised Shepherd port are separate.** `agent.port` is only where the
+   endpoint listens (and binds); `agent.public_port` is only what Shepherds are told. Neither changes
+   the other, and a published port never changes `agent.port`.
+2. **Container publishing doesn't leak internal topology into enrollment.** No token, installation,
+   enrollment answer or displayed endpoint carries the container's listen port unless it is also the
+   public one.
+3. **An explicit advertised endpoint overrides.** `agent.advertise` (`DROOL_AGENT_ADVERTISE`) wins
+   over the web UI's host name; an entry with a port is used as written.
+4. **In Compose, one public-port setting drives both publishing and advertisement.** The
+   `shepherds:` value in `x-drool-ports` (or `DROOL_AGENT_PUBLIC_PORT`) is the published port and the
+   advertised port; the web port works the same way for the startup message.
+5. **Installation shows and uses the externally reachable endpoint.** Both install dialogs say
+   *Shepherds will connect to: …* before anything changes, from the same resolver the installation
+   uses; so does the installer's output (`agent endpoint …`).
+6. **A failed installation still rolls back to SSH.** The rollback is unchanged: the service is
+   stopped and disabled, an identity that never connected and its token are revoked, and the host
+   stays managed over SSH.
+
+### 37.2 Resolution
+
+For each address: `agent.advertise` entries if configured, else the host name the web UI was opened
+with (`localhost` without one). An address without a port gets `agent.public_port` when it is set,
+else `agent.port`. In order:
+
+| Configured | Shepherds are told |
+|---|---|
+| `agent.advertise: [drool.example.net:7000]` | `drool.example.net:7000` |
+| `agent.advertise: [nas.example.net]`, `agent.public_port: 2043` | `nas.example.net:2043` |
+| nothing, `agent.public_port: 2043`, UI opened at `192.168.1.83:8080` | `192.168.1.83:2043` |
+| nothing (the default) | `<web UI host>:9443` |
+
+Every path takes it from `Endpoints(webHost)`, or the same rule: `CreateToken` (`POST /agents/tokens`,
+the one-line installer, **Manual install…**), `InstallViaSSH` (one host, and bulk conversion, which
+keeps the web UI's host name in `agent_rollouts.web_host` because it runs after the request), the
+enrollment answer (`advertised()`: the configured entries with their ports completed), `GET
+/agents/pki` (`advertised_endpoints`, `advertised_from`, `advertised_port`, and `endpoint_port`, the
+listen port), the install dialogs and Trust (PKI), the startup log (`shepherds_connect_to` next to
+`listen`), and a proposed controller address (`POST /agents/endpoints`: a host without a port gets
+`advertised_port`). Endpoint migration otherwise works as before: explicit addresses, tested by each
+Shepherd before commit. Recovery (an expired certificate within the grace period) uses the endpoints
+the Shepherd already has; re-enrollment uses a new token.
+
+### 37.3 Tests
+
+`internal/config` (`public_port` validation; the listener stays `agent.port`), `internal/agentsvc`
+(the resolver table, IPv6, the enrollment answer, completing a controller address), `cmd/drool` (the
+startup message's web port), `internal/api` (published port: the PKI answer, the token, installation
+over SSH through a forwarder standing in for Docker, and the Shepherd connecting through it; the same
+for a bulk conversion; precedence; a refused endpoint rolling back as before; controller addresses),
+integration `TestComposeFilePorts` (the shipped `compose.yaml` rendered by Docker Compose: defaults,
+`DROOL_AGENT_PUBLIC_PORT`, `.env`, and the one line edited the way a Synology user edits it) and
+`TestShepherdThroughPublishedPort` (this tree's image from the shipped `compose.yaml` with the
+Shepherd port published as 2043, unprivileged containers on a test network: the startup log, the PKI
+answer, the browser test `web/e2e/shepherd-endpoint.test.mjs`, a Shepherd installed over SSH that
+connects through 2043, and the endpoint stored on the host).

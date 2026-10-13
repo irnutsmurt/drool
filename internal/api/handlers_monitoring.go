@@ -634,7 +634,7 @@ func (s *Server) handleStartConversion(w http.ResponseWriter, r *http.Request) {
 		in.Preset = "managed"
 	}
 	id, p, err := s.d.Agents.StartConversion(r.Context(), agentsvc.ConversionOptions{HostIDs: in.HostIDs, Preset: in.Preset, Canary: in.Canary,
-		BatchSize: in.BatchSize, MaxFailures: in.MaxFailures, UserID: principalFrom(r.Context()).UserID})
+		BatchSize: in.BatchSize, MaxFailures: in.MaxFailures, UserID: principalFrom(r.Context()).UserID, WebHost: r.Host})
 	if err != nil {
 		writeProblem(w, r, errValidation(err.Error()))
 		return

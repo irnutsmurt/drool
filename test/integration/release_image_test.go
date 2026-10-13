@@ -55,6 +55,7 @@ type composeProject struct {
 	name    string
 	image   string
 	webPort int
+	env     []string // more environment for docker compose (a .env file's settings)
 }
 
 func newComposeProject(t *testing.T, image, composeFile, suffix string) *composeProject {
@@ -83,7 +84,7 @@ func (p *composeProject) run(args ...string) (string, error) {
 func (p *composeProject) runIn(stdin *os.File, args ...string) (string, error) {
 	cmd := exec.Command("docker", append([]string{"compose", "-p", p.name}, args...)...)
 	cmd.Dir = p.dir
-	cmd.Env = append(os.Environ(), "DROOL_IMAGE="+p.image)
+	cmd.Env = append(append(os.Environ(), "DROOL_IMAGE="+p.image), p.env...)
 	if stdin != nil {
 		cmd.Stdin = stdin
 	}
@@ -105,7 +106,7 @@ func (p *composeProject) must(args ...string) string {
 func (p *composeProject) sh(script string) (string, error) {
 	cmd := exec.Command("sh", "-c", script)
 	cmd.Dir = p.dir
-	cmd.Env = append(os.Environ(), "DROOL_IMAGE="+p.image, "COMPOSE_PROJECT_NAME="+p.name)
+	cmd.Env = append(append(os.Environ(), "DROOL_IMAGE="+p.image, "COMPOSE_PROJECT_NAME="+p.name), p.env...)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

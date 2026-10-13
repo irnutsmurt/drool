@@ -11,6 +11,9 @@
 server:
   bind: 0.0.0.0             # listen address for the web UI and API
   web_port: 8080
+  # The port browsers use, when a container publishes web_port under another
+  # one (only changes the address DROOL prints when it starts):
+  # public_port: 8443
   tls:
     mode: self_signed       # self_signed | provided | off
     # Your own certificate (mode: provided), readable by the drool user:
@@ -22,10 +25,15 @@ server:
 
 agent:                      # the Shepherd (DROOL agent) endpoint
   enabled: true
-  port: 9443
-  # The address Shepherds connect to, put into enrollment tokens. Empty: the
-  # host name you use for the web UI. Containers need it set.
-  # advertise: [drool.example.net:9443]
+  port: 9443                # where DROOL listens (inside its container, in one)
+  # The port Shepherds use to reach DROOL, when it isn't port: a container
+  # publishing 9443 as host port 2043 sets 2043. DROOL still listens on port.
+  # public_port: 2043
+  # The address Shepherds connect to, put into enrollment tokens: host, or
+  # host:port (without a port: public_port, else port). Empty: the host name
+  # you use for the web UI. Set it when hosts reach DROOL by another name or
+  # address (DNS, NAT, a VPN).
+  # advertise: [drool.example.net]
 
 # data_dir: /var/lib/drool  # containers: /data
 

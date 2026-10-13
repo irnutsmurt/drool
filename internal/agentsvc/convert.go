@@ -104,6 +104,10 @@ type ConversionOptions struct {
 	BatchSize   int // default 5
 	MaxFailures int // default 1: stop at the first failure
 	UserID      string
+	// WebHost is the host name the administrator uses for the web UI: each
+	// host is given the endpoint the controller resolves for it, as when
+	// installing one host from its page (TokenOptions.WebHost).
+	WebHost string
 }
 
 // StartConversion starts a conversion rollout over the compatible hosts.
@@ -145,6 +149,9 @@ func (s *Service) StartConversion(ctx context.Context, o ConversionOptions) (str
 			return err
 		}
 		if err := q.SetRolloutKind(ctx, db.SetRolloutKindParams{Kind: "install", Preset: o.Preset, ID: id}); err != nil {
+			return err
+		}
+		if err := q.SetRolloutWebHost(ctx, db.SetRolloutWebHostParams{WebHost: o.WebHost, ID: id}); err != nil {
 			return err
 		}
 		for i, h := range targets {
@@ -223,7 +230,7 @@ func (s *Service) convertHost(ctx context.Context, r db.AgentRollout, hostID str
 		ictx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 		defer cancel()
 		var out strings.Builder
-		err := s.InstallViaSSH(ictx, InstallOptions{HostID: hostID, Preset: r.Preset, UserID: r.CreatedBy.String}, &out)
+		err := s.InstallViaSSH(ictx, InstallOptions{HostID: hostID, Preset: r.Preset, UserID: r.CreatedBy.String, WebHost: r.WebHost}, &out)
 		if err != nil {
 			s.setHostState(context.Background(), r.ID, hostID, "failed", trunc(err.Error(), 400))
 			s.audit.Record(context.Background(), audit.Event{Action: "agent.install", TargetType: "host", TargetID: hostID, Result: audit.Failure,

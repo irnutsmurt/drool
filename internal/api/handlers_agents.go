@@ -71,7 +71,19 @@ func (s *Server) management(ctx context.Context, h db.Host) *managementJSON {
 
 type pkiJSON struct {
 	agentsvc.Status
-	Endpoint        string `json:"endpoint_port"`
+	// Endpoint is the port the agent endpoint listens on (inside the
+	// container, for a containerized controller).
+	Endpoint string `json:"endpoint_port"`
+	// AdvertisedEndpoints are where Shepherds enrolled now connect, as
+	// this request's web address resolves them (the same resolver as
+	// enrollment tokens and installation over SSH); AdvertisedFrom says
+	// why: "advertise" (agent.advertise) or "web_address" (the web UI's
+	// host name with agent.public_port, else agent.port).
+	AdvertisedEndpoints []string `json:"advertised_endpoints"`
+	AdvertisedFrom      string   `json:"advertised_from"`
+	// AdvertisedPort is the port an address without one gets
+	// (agent.public_port, else agent.port).
+	AdvertisedPort  int    `json:"advertised_port"`
 	ControllerEpoch string `json:"controller_epoch"`
 	// The newest trust manifest a Shepherd reported (newer than this
 	// controller's after a restore from a backup older than a rotation).
@@ -82,7 +94,12 @@ func (s *Server) handleAgentPKI(w http.ResponseWriter, r *http.Request) {
 	if !s.agentsEnabled(w, r) {
 		return
 	}
-	writeJSON(w, http.StatusOK, pkiJSON{Status: s.d.Agents.PKI().Status(), Endpoint: fmt.Sprint(s.d.Config.Agent.Port),
+	from := "web_address"
+	if s.d.Agents.EndpointsConfigured() {
+		from = "advertise"
+	}
+	writeJSON(w, http.StatusOK, pkiJSON{Status: s.d.Agents.PKI().Status(), Endpoint: fmt.Sprint(s.d.Agents.ListenPort()),
+		AdvertisedEndpoints: s.d.Agents.Endpoints(r.Host), AdvertisedFrom: from, AdvertisedPort: s.d.Agents.AdvertisedPort(),
 		ControllerEpoch: s.d.Agents.Epoch(), NewestAgentManifest: s.d.Agents.PKI().NewestAgentManifest(r.Context())})
 }
 
@@ -1122,16 +1139,17 @@ func (s *Server) handleProposeEndpoint(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, p)
 		return
 	}
-	if !strings.Contains(req.Endpoint, ":") || strings.ContainsAny(req.Endpoint, " /") {
-		writeProblem(w, r, errValidation("give the new agent endpoint as host:port, e.g. drool.example.net:9443"))
+	ep, err := s.d.Agents.Endpoint(req.Endpoint)
+	if err != nil {
+		writeProblem(w, r, errValidation(err.Error()))
 		return
 	}
-	id, err := s.d.Agents.ProposeEndpoint(r.Context(), req.Endpoint, principalFrom(r.Context()).UserID)
+	id, err := s.d.Agents.ProposeEndpoint(r.Context(), ep, principalFrom(r.Context()).UserID)
 	if err != nil {
 		writeProblem(w, r, errInternal)
 		return
 	}
-	s.d.Audit.Record(r.Context(), audit.Event{Action: "agent.endpoint.propose", TargetType: "agent_endpoint", TargetID: id, Details: map[string]any{"endpoint": req.Endpoint}})
+	s.d.Audit.Record(r.Context(), audit.Event{Action: "agent.endpoint.propose", TargetType: "agent_endpoint", TargetID: id, Details: map[string]any{"endpoint": ep}})
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
 }
 

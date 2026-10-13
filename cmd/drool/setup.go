@@ -99,9 +99,14 @@ func printBanner(w io.Writer, cfg *config.Loaded, scheme, fingerprint string, st
 	fmt.Fprintln(w, line)
 }
 
-// displayURLs lists addresses a user can reach the UI at.
+// displayURLs lists addresses a user can reach the UI at, with the port
+// browsers use (server.public_port when a container publishes the web port
+// under another one).
 func displayURLs(cfg *config.Loaded, scheme string) []string {
 	port := strconv.Itoa(cfg.Server.WebPort)
+	if cfg.Server.PublicPort > 0 {
+		port = strconv.Itoa(cfg.Server.PublicPort)
+	}
 	mk := func(host string) string { return scheme + "://" + net.JoinHostPort(host, port) }
 	bind := net.ParseIP(cfg.Server.Bind)
 	if bind == nil || !bind.IsUnspecified() {

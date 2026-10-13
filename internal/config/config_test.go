@@ -184,3 +184,31 @@ func TestShippedExampleIsTheDefaults(t *testing.T) {
 		t.Errorf("the example sets only %d values", set)
 	}
 }
+
+// agent.port is the listener; agent.public_port only what Shepherds are
+// told (a container's published port). server.public_port likewise for
+// the printed web address.
+func TestPublicPorts(t *testing.T) {
+	l, err := Load("", false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.Agent.Port != 9443 || l.Agent.PublicPort != 0 || l.Agent.AdvertisedPort() != 9443 || l.Server.PublicPort != 0 {
+		t.Fatalf("defaults: %+v %+v", l.Agent, l.Server)
+	}
+	l, err = Load("", false, []string{"DROOL_AGENT_PUBLIC_PORT=2043", "DROOL_SERVER_PUBLIC_PORT=8443"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.Agent.Port != 9443 || l.Agent.PublicPort != 2043 || l.Agent.AdvertisedPort() != 2043 || l.Server.WebPort != 8080 || l.Server.PublicPort != 8443 {
+		t.Fatalf("published ports: agent %+v, server %+v", l.Agent, l.Server)
+	}
+	if l.Sources["agent.public_port"] != SourceEnv {
+		t.Fatalf("source %q", l.Sources["agent.public_port"])
+	}
+	for _, env := range []string{"DROOL_AGENT_PUBLIC_PORT=70000", "DROOL_AGENT_PUBLIC_PORT=-1", "DROOL_SERVER_PUBLIC_PORT=65536", "DROOL_AGENT_PUBLIC_PORT=x"} {
+		if _, err := Load("", false, []string{env}); err == nil {
+			t.Errorf("%s accepted", env)
+		}
+	}
+}

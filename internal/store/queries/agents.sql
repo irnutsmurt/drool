@@ -255,3 +255,6 @@ SELECT * FROM hosts WHERE name = ?;
 
 -- name: SetRolloutKind :exec
 UPDATE agent_rollouts SET kind = ?, preset = ? WHERE id = ?;
+
+-- name: SetRolloutWebHost :exec
+UPDATE agent_rollouts SET web_host = ? WHERE id = ?;

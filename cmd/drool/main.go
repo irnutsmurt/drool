@@ -620,7 +620,13 @@ func cmdServe(path string, explicit bool) error {
 		}
 		defer agents.Stop()
 		go agents.RunRollouts(ctx)
-		log.Info("agent endpoint listening", "listen", agentAddr, "root_ca", pki.RootFingerprint())
+		// Where Shepherds are told to connect: not the listener's port when
+		// a container publishes it under another one (agent.public_port).
+		connect := fmt.Sprintf("<the host name the web UI is opened with>:%d", agents.AdvertisedPort())
+		if agents.EndpointsConfigured() {
+			connect = strings.Join(agents.Endpoints(""), ", ")
+		}
+		log.Info("agent endpoint listening", "listen", agentAddr, "shepherds_connect_to", connect, "root_ca", pki.RootFingerprint())
 	}
 	go poll.Run(ctx)
 	go fw.Run(ctx)

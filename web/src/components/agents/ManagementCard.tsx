@@ -15,7 +15,7 @@ import { errorMessage, formatAgo, formatDateTime } from "@/lib/format";
 import { CapsList } from "./CapsList";
 import { ManagementBadge, stateLabels } from "./ManagementBadge";
 import { PresetPicker } from "./PresetPicker";
-import { ak, useHostAgent, type AgentCaps } from "./queries";
+import { ak, useHostAgent, usePKI, type AgentCaps } from "./queries";
 
 const updateLabels: Record<string, string> = {
   offered: "update offered", staged: "update staged", updating: "updating", healthy: "updated (healthy)",
@@ -207,6 +207,21 @@ export function ManagementCard({ host, children }: { host: Host; children?: Reac
 
 type Preset = "monitor" | "managed" | "full";
 
+/** Where Shepherds will connect, as the controller resolves it for this
+ * page's address (the same resolver as the enrollment token): shown before
+ * anything changes on a host, so a wrong address or port is caught first. */
+export function ShepherdEndpointLine() {
+  const pki = usePKI();
+  const eps = pki.data?.advertised_endpoints ?? [];
+  if (eps.length === 0) return null;
+  return (
+    <p className="text-sm" data-testid="shepherd-endpoint">
+      Shepherds will connect to: <span className="font-mono">{eps.join(", ")}</span>
+      <span className="text-muted"> (the host must be able to reach it)</span>
+    </p>
+  );
+}
+
 function InstallDialog({ host, onClose }: { host: Host; onClose: () => void }) {
   const [preset, setPreset] = useState<Preset>("managed");
   const [key, setKey] = useState("");
@@ -219,6 +234,7 @@ function InstallDialog({ host, onClose }: { host: Host; onClose: () => void }) {
         <p className="text-sm">DROOL copies the agent over this host's pinned SSH connection, writes its capability ceiling
           (/etc/drool/agent.yaml), enrolls it with a single-use token, and starts the drool-agent service. The host then uses the
           agent, with SSH as fallback.</p>
+        <ShepherdEndpointLine />
         <div>
           <div className="mb-2 text-sm font-medium">What may DROOL do through the agent? <span className="font-normal text-muted">(an existing agent.yaml on the host is kept)</span></div>
           <PresetPicker value={preset} onChange={(p) => setPreset(p as Preset)} />
@@ -260,6 +276,7 @@ export function ManualInstallDialog({ host, onClose, groupId }: { host?: Host; o
             <p className="text-sm">Creates a single-use enrollment token (valid for one hour) and a one-line installer to run as root on the host.
               The installer checks the download against the controller's pinned key and enrolls the agent by the DROOL Agent Root CA in the token,
               so it doesn't depend on browser certificate trust.</p>
+            <ShepherdEndpointLine />
             <PresetPicker value={preset} onChange={(p) => setPreset(p as Preset)} />
             {token.error && <Alert>{errorMessage(token.error)}</Alert>}
             <div className="flex justify-end gap-2">
