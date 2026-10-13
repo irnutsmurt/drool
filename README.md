@@ -53,8 +53,9 @@ DROOL is one program, the **controller**, that runs on one Linux machine (a smal
 plenty) with its own database. You use it from its web interface, or its REST API. It reaches the
 machines it manages, the **hosts**, in one of two ways, chosen per host:
 
-- **Over SSH**, the way you log in yourself. Nothing is installed on the host: DROOL logs in as an
-  account you choose and uses `sudo` when something needs root.
+- **Over SSH**, the way you log in yourself. No software is installed on the host: with an account you
+  already have there, DROOL creates its own (passwordless `sudo`, so root-equivalent), proves it works,
+  switches to it and forgets what you typed. Or it keeps using an account you choose.
 - **Through a Shepherd**, DROOL's small agent. It connects out to the controller over mutually
   authenticated TLS, and does only what the host's own settings allow.
 
@@ -79,9 +80,10 @@ key apart from them).
 
 ## What DROOL does
 
-- **Fleet management.** Add Linux hosts over SSH in a few minutes, and DROOL inventories each one: OS,
-  hardware, disks, network, services and listening ports. It never connects to a host whose SSH key you
-  haven't approved. **Packs** group hosts, so "all media servers" is one click.
+- **Fleet management.** Add Linux hosts over SSH in a few minutes, with nothing prepared on them
+  beforehand, and DROOL inventories each one: OS, hardware, disks, network, services and listening
+  ports. It never connects to a host whose SSH key you haven't approved. **Packs** group hosts, so
+  "all media servers" is one click.
   ([Your First Host](https://github.com/irnutsmurt/drool/wiki/Your-First-Host))
 - **Monitoring without building dashboards.** CPU, memory, disks and their health, temperatures, GPUs,
   services and network, with history and plain-English health issues, out of the box: no Grafana, no

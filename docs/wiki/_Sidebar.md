@@ -27,6 +27,7 @@
 <summary><b>Managing hosts</b></summary>
 
 - [Adding a Host](Adding-a-Host.md)
+- [DROOL's Own SSH Account](Dedicated-SSH-Account.md)
 - [SSH Credentials](SSH-Credentials.md)
 - [SSH Host Key Verification](SSH-Host-Key-Verification.md)
 - [Testing a Connection](Testing-a-Connection.md)

@@ -10,7 +10,8 @@ can add a Shepherd to any of them later (or remove it again).
 ## The short answer
 
 - **Start with SSH.** It works on any reachable Linux machine, installs nothing, and is how you add
-  a host in the first place.
+  a host in the first place: with an account you already have there, which DROOL uses to create its
+  own account ([DROOL's Own SSH Account](Dedicated-SSH-Account.md)).
 - **Add a Shepherd** to a host when any of these matters:
   - DROOL **can't reach the host** (it's behind NAT, in another network, on a laptop that moves):
     a Shepherd connects *out* to DROOL, so the host needs no open port.
@@ -26,7 +27,7 @@ In the examples, `media-01` has a Shepherd; `media-02`, `database-01` and `web-0
 
 | | SSH | Shepherd |
 |---|---|---|
-| **What's on the host** | Nothing but an account (`drooladmin`) and DROOL's key or password | The `drool-agent` program and service, plus its settings in `/etc/drool/agent.yaml` |
+| **What's on the host** | Nothing but DROOL's account (`drooladmin`, which DROOL creates itself: [DROOL's Own SSH Account](Dedicated-SSH-Account.md)) and DROOL's key | The `drool-agent` program and service, plus its settings in `/etc/drool/agent.yaml` |
 | **Who connects to whom** | DROOL connects *to* the host's SSH port (directly or through one [jump host](Jump-Hosts.md)) | The Shepherd connects *out* to DROOL on port **9443**; the host needs no open port |
 | **How trust works** | You approve the host's SSH key once; DROOL refuses to connect if it changes ([details](SSH-Host-Key-Verification.md)) | Both sides prove themselves with certificates DROOL issues at enrollment; the Shepherd's private key never leaves the host ([details](Shepherd-PKI.md)) |
 | **What DROOL may do** | Whatever the SSH account may do (with sudo: everything) | At most what the host's own `/etc/drool/agent.yaml` allows ([presets](Shepherd-Capability-Presets.md)) |
@@ -66,6 +67,10 @@ purpose:
 
 Keep in mind that SSH, when configured, is limited only by the SSH account's rights. If the
 Shepherd's limits must be absolute, turn the fallback off. See [SSH Fallback](SSH-Fallback.md).
+
+DROOL's own SSH account (passwordless sudo, so root-equivalent) can be a Shepherd host's SSH path or
+fallback like any other account. The Shepherd itself doesn't use or need it: a Shepherd-only host
+needs no SSH account at all.
 
 ## What installing a Shepherd changes on a host
 

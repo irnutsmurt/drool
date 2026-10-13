@@ -4,9 +4,11 @@ This page connects your first Linux machine to DROOL over SSH, from start to fin
 example of `web-01`, an Ubuntu 24.04 server at 10.10.40.21 (see [About the Examples](About-the-Examples.md)).
 Use your own machine's name and address.
 
-It takes about ten minutes: you create an account on the host for DROOL, let DROOL's key log in to
-it, add the host in DROOL, confirm the host is really the machine you think it is, and test the
-connection. Then you run your first command on it and see it in Monitoring.
+It takes about ten minutes, and you don't prepare anything on the host first. You add the host in
+DROOL with an account you already have on it, confirm the host is really the machine you think it
+is, and test the connection. Then DROOL creates its own account on the host, checks that it works,
+switches to it, and forgets the password you typed. Then you run your first command on the host and
+see it in Monitoring.
 
 ## Before you start
 
@@ -23,96 +25,53 @@ connection. Then you run your first command on it and see it in Monitoring.
   the port is reachable; a timeout doesn't.) If DROOL
   can't reach the host directly, you need a [jump host](Jump-Hosts.md) or a
   [Shepherd](Installing-a-Shepherd.md) instead.
-- **You can log in to the host yourself and use `sudo`**, to create DROOL's account.
+- **You have an account on the host that can sign in over SSH and use `sudo`** (or `root`), with a
+  password or an SSH key. In the examples it's Alex's own account, `alex`, which signs in with a
+  password; sudo asks for the same password. DROOL uses it only to set itself up.
+- **`sudo` is installed** on the host (it is on almost every server install), because DROOL's own
+  account uses it.
 - **systemd** runs on the host (it does on every normal server install). Without it, commands,
   scripts and packages still work, but service management and reboots don't.
 
-## Step 1: Create an account on the host for DROOL
+## Step 1: Add the host in DROOL
 
-DROOL logs in as an ordinary Linux user and uses `sudo` when something needs root (installing
-packages, managing services, rebooting, editing system files). A dedicated account keeps DROOL's
-actions easy to tell apart from yours in the host's logs. The examples call it `drooladmin`.
+Open **Hosts → Add host**. The page has four steps: **1. Connection**, **2. Host key**, **3. Test**
+and **4. DROOL account**.
 
-On the host, logged in as yourself:
-
-```sh
-sudo useradd --create-home --shell /bin/bash drooladmin
-echo 'drooladmin ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/drooladmin
-sudo chmod 0440 /etc/sudoers.d/drooladmin
-sudo visudo -cf /etc/sudoers.d/drooladmin
-```
-
-- The first line creates the account with a home folder (DROOL's key goes there).
-- The second and third give it **passwordless sudo**, in a file of its own. The single quotes keep
-  the shell from touching the text inside them; type them as shown.
-- The last line checks the sudoers file; it should print `parsed OK`.
-
-**What this means:** anyone who controls DROOL can run anything as root on this host. That's what
-DROOL needs to manage it. If you'd rather have sudo ask for a password, leave out the second and
-third lines, give the account a password (`sudo passwd drooladmin`), allow it to use sudo the way
-your distribution does it (the `sudo` group on Debian and Ubuntu, `wheel` on Rocky, AlmaLinux and
-Fedora), and store that password in DROOL as a *Sudo password* credential
-([SSH Credentials](SSH-Credentials.md)). DROOL then sends it to sudo on standard input, never on
-the command line, and removes it from any output.
-
-## Step 2: Let DROOL's key log in
-
-DROOL created its own SSH key pair when it was installed. The private half never leaves the
-controller; the public half has to go into `drooladmin`'s `~/.ssh/authorized_keys` on the host.
-
-1. In DROOL, open **Credentials**. The card **DROOL's SSH key** shows a one-line command.
-
-   ![The "DROOL's SSH key" card on the Credentials page, with the one-line command and its Copy button](images/credentials-drool-key.png)
-
-2. Click **Copy** next to the command. It looks like this (your key is different):
-
-   ```sh
-   mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG7x8RkV4n3fTnYp5sM2rP9QeW1bLc6jK0dZxExample drool:controller-default' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
-   ```
-
-3. On the host, become `drooladmin` and paste the command:
-
-   ```sh
-   sudo -iu drooladmin
-   ```
-
-   Then paste what you copied, press Enter, and type `exit` to become yourself again.
-
-The command must run **as `drooladmin`**, because `~` means the home folder of whoever runs it.
-Paste it exactly as copied, including the single quotes around the key.
-
-Prefer your own key, or a password? Both work; see [SSH Credentials](SSH-Credentials.md). For keys
-that expire on their own, see [Short-Lived SSH Certificates](Short-Lived-SSH-Certificates.md).
-
-## Step 3: Add the host in DROOL
-
-Open **Hosts → Add host**. The page has three steps: **1. Connection**, **2. Host key**, **3. Test**.
-
-![Step 1 of Add host, filled in for web-01: name, address 10.10.40.21, SSH user drooladmin, port 22, the controller-default key, sudo without a password, tags and a description](images/add-host-connection.png)
+![Step 1 of Add host, filled in for web-01: name, address 10.10.40.21, port 22, "Create a dedicated DROOL SSH account" chosen, the existing account alex with its password and sudo password, DROOL's account name drooladmin, the root-equivalent warning, tags and a description](images/add-host-connection.png)
 
 | Field | Example | What it means |
 |---|---|---|
 | **Name** | `web-01` | How the host appears everywhere in DROOL. Letters, digits, `.`, `_` and `-` only, up to 63 characters. It doesn't have to match the machine's own hostname. |
 | **Address** | `10.10.40.21` | Where the controller connects: an IP address or a DNS name that resolves *on the controller*. |
-| **SSH user** | `drooladmin` | The account from step 1. |
 | **SSH port** | `22` | Change it if the host's SSH server listens elsewhere. |
-| **Credential** | `controller-default (SSH key)` | How DROOL proves who it is. `controller-default` is DROOL's own key from step 2. Other keys and passwords appear here once you've added them under Credentials. |
 | **Connect through** | `Direct connection` | Choose a [jump host](Jump-Hosts.md) if the controller can't reach this host directly. |
-| **Privilege escalation** | `sudo` | How DROOL becomes root. Choose `none (connect as root)` only if the SSH user *is* root. |
-| **Sudo password** | `Not needed (passwordless sudo)` | Pick a stored *Sudo password* credential if sudo asks for one. |
+| **How DROOL signs in to this host from now on** | **Create a dedicated DROOL SSH account** (Recommended) | DROOL uses the account you enter only to set itself up, then signs in with an account of its own. The other choice, **Use this SSH account**, keeps the account you enter for good ([below](#prefer-to-keep-using-your-own-account)). |
+| **Existing SSH account** | `alex` | An account you already have on the host, which can use `sudo` (or is `root`). Used only for the setup. |
+| **DROOL's account name** | `drooladmin` | The account DROOL creates on the host. DROOL suggests `drool`; the examples use `drooladmin`. |
+| **For the setup, sign in with** | **The account's password** | Or **A private key** (paste it, with its passphrase if it has one), or **A stored credential or DROOL's key** (one you added under [Credentials](SSH-Credentials.md)). |
+| **Password** | (Alex's password) | The existing account's password. |
+| **Sudo password** | (Alex's password) | What sudo asks this account for. Leave it empty if sudo doesn't ask (or the account is `root`). |
 | **Tags** | `web, ubuntu` | Optional labels, separated by commas, used for filtering and targeting. See [Tags](Tags.md). |
 | **Description** | `nginx reverse proxy and web apps` | Optional, free text. |
 
-Under **Advanced** are two checkboxes most hosts don't need: **Jump host only** (DROOL uses this
-host only to reach others and doesn't manage it) and **Requires a terminal for sudo** (for hosts
-whose sudo configuration contains `requiretty`).
+**What it means for the host:** the box under the form says it plainly: *Full management gives this
+DROOL account passwordless sudo and therefore root-equivalent administrative capability.* Anyone who
+controls DROOL can run anything as root on this host. That's what DROOL needs to manage it, and it's
+the same with any account DROOL uses for full management.
 
-The form also shows the same key-install command as the Credentials page, already set for the SSH
-user you typed. Handy if you skipped step 2.
+**What happens to what you type:** the password, key and sudo password are stored encrypted, as
+*setup* credentials. DROOL uses them only until its own account works, then forgets them (unless you
+use the same stored credential for another host, which keeps it). DROOL never deletes or changes the
+account you use for the setup: `alex` keeps its password and everything else.
+
+Under **Advanced** are two checkboxes most hosts don't need: **Jump host only** (DROOL uses this
+host only to reach others and doesn't manage it, so it keeps signing in with the account you enter)
+and **Requires a terminal for sudo** (for hosts whose sudo configuration contains `requiretty`).
 
 Click **Continue**. DROOL saves the host now, and then asks the host for its SSH keys.
 
-## Step 4: Trust the host's key
+## Step 2: Trust the host's key
 
 Every SSH server has a *host key* that identifies it. DROOL connects to a host only after you have
 trusted its key, and from then on refuses to connect if the key ever changes. That protects you
@@ -137,29 +96,73 @@ check the address, and find out why before going on.
 If no keys appear, DROOL couldn't reach the host's SSH port. Check the address and port, then click
 **Scan again**. [Host Won't Connect](Host-Wont-Connect.md) goes through the usual causes.
 
-## Step 5: Test the connection
+## Step 3: Test the connection
 
-As soon as you trust the key, DROOL tests the connection, step by step:
+As soon as you trust the key, DROOL tests the connection with the account you entered, step by
+step:
 
-![Step 3 of Add host: "web-01 is ready." with six checks passed: Reachable, Host Key, Authentication as drooladmin, Privilege Escalation with passwordless sudo, Operating System, Init System systemd](images/add-host-test.png)
+![Step 3 of Add host: "DROOL can sign in to web-01 as alex and become root: ready to set up its own account." with six checks passed: Reachable, Host Key, Authentication as alex, Privilege Escalation with sudo with password, Operating System, Init System systemd](images/add-host-test-setup.png)
 
 | Check | What DROOL tried | If it fails |
 |---|---|---|
 | **Reachable** | Open a network connection to the SSH port | [Host Won't Connect](Host-Wont-Connect.md) |
 | **Host Key** | The host presented the key you trusted | [SSH Host Key Changed](SSH-Host-Key-Changed.md) |
-| **Authentication** | Log in as the SSH user with the credential | [Authentication Failed](Authentication-Failed.md) |
+| **Authentication** | Log in as the existing account with what you entered | [Authentication Failed](Authentication-Failed.md) |
 | **Privilege Escalation** | Run a harmless command through sudo | [Sudo Failed](Sudo-Failed.md) |
 | **Operating System** | Read the distribution and kernel | Usually follows from an earlier failure |
 | **Init System** | Find systemd | Without systemd: works for commands, scripts and packages; services and reboots don't |
 
-When every check passes, DROOL says **web-01 is ready.** Click **Done**: DROOL opens `web-01`'s page.
-(Later, **Hosts** in the sidebar lists every host; click one to open its page.)
+When the checks pass, DROOL says it's **ready to set up its own account**. Click **Continue**.
 
 If something failed, DROOL explains why under the check. Fix the cause on the host (or the host's
 settings with **Edit**, on its page) and click **Test again**. You don't lose anything by leaving the
-page: the host stays in DROOL, and **Test connection** on its page runs the same test.
+page: the host stays in DROOL, and its page offers the next step.
 
-## Step 6: Run your first command
+## Step 4: Let DROOL create its own account
+
+Before anything changes on the host, DROOL asks the host what's there (read-only, as root through
+`alex`) and shows you exactly what it will do:
+
+![Step 4 of Add host: what DROOL will do on web-01 (create drooladmin, authorize DROOL's key, the sudo rule in /etc/sudoers.d/drool-account-drooladmin, a record in /var/lib/drool/ssh-accounts, sign in on a brand-new connection before switching), that it forgets setup-web-01-login and setup-web-01-sudo, that it won't change alex, the root-equivalent warning, and the "Create drooladmin and switch" button](images/add-host-account.png)
+
+Click **Create drooladmin and switch**, and confirm your DROOL password if DROOL asks for it (it does
+for every high-impact change). DROOL then:
+
+1. creates the account `drooladmin` on the host: a system account with a home folder and a shell,
+   and **no password**, so nobody can sign in as it with one;
+2. lets DROOL's own SSH key sign in as it (`~drooladmin/.ssh/authorized_keys`, only DROOL's key);
+3. gives it passwordless sudo in a file of its own, `/etc/sudoers.d/drool-account-drooladmin`, which
+   `visudo` checks before sudo ever reads it;
+4. records that DROOL created the account, in `/var/lib/drool/ssh-accounts/drooladmin` (readable by
+   root only), so it never mistakes someone else's account for its own;
+5. **opens a brand-new connection** (checking the host's key again), signs in as `drooladmin` with
+   DROOL's key, and runs sudo without a password;
+6. **only if that worked**, switches `web-01` to `drooladmin`, and in the same step forgets the
+   password and sudo password you typed.
+
+![Step 4 done: "web-01 now signs in as drooladmin with DROOL's key." DROOL's account drooladmin (created now), fresh sign-in worked and so did sudo without a password, switched, and setup-web-01-login and setup-web-01-sudo forgotten](images/add-host-account-done.png)
+
+Click **Done**: DROOL opens `web-01`'s page. (Later, **Hosts** in the sidebar lists every host;
+click one to open its page.)
+
+**If something goes wrong,** nothing is switched: `web-01` keeps signing in as `alex`, with the
+password you typed. DROOL says which step failed and why. If it had already created `drooladmin`,
+the account stays on the host, and **Try again** (or **Set up a dedicated DROOL SSH account** on the
+host's page) continues with it once you've fixed the cause.
+[DROOL's Own SSH Account](Dedicated-SSH-Account.md#when-the-setup-stops) lists the usual causes.
+
+**Not now?** Click **Not now**. DROOL keeps signing in as `alex` with what you typed, and the
+host's page offers **Set up a dedicated DROOL SSH account** whenever you're ready.
+
+### Prefer to keep using your own account?
+
+Choose **Use this SSH account** in step 1 instead. DROOL then signs in with the account and
+credential you enter, for good, and the wizard ends after the test: there's no step 4. The account
+needs to accept DROOL's key (or a stored password) and, for full management, passwordless sudo or a
+stored sudo password. [SSH Credentials](SSH-Credentials.md#using-an-account-you-set-up-yourself)
+shows how to prepare one by hand.
+
+## Step 5: Run your first command
 
 Now ask `web-01` something harmless: how full its disks are.
 
@@ -182,7 +185,7 @@ terminal. **succeeded** with exit code 0 means it worked. If it failed instead, 
 ([Understanding Run Results](Understanding-Run-Results.md)); [Running a Command](Running-a-Command.md)
 explains every option of the form.
 
-## Step 7: See it in Monitoring
+## Step 6: See it in Monitoring
 
 Click **Monitoring** in the sidebar. `web-01` has a row there, with *SSH · polled* under
 **Monitoring** and its CPU, memory, fullest disk and services. DROOL collects them over SSH every
@@ -197,7 +200,7 @@ hasn't polled the host yet: click **Collect now** at the top, or wait up to 5 mi
 
 ![web-01's page right after adding it: Ready, the action buttons, the Health card and the Management card](images/host-page-web-01.png)
 
-Nothing is installed on the host. Without you doing anything, DROOL:
+Apart from its own account, DROOL installs nothing on the host. Without you doing anything, DROOL:
 
 - **takes an inventory**: distribution, kernel, CPU, memory, disks and filesystems, network
   interfaces, services and listening ports (shown on the host page);
@@ -207,7 +210,8 @@ Nothing is installed on the host. Without you doing anything, DROOL:
 - **polls monitoring every 5 minutes** over SSH: CPU, memory, disks, network, services
   ([Monitoring Through SSH vs Shepherd](Monitoring-Through-SSH-vs-Shepherd.md)).
 
-The **Management** card on the host page shows how DROOL reaches the host:
+The **Management** card on the host page shows how DROOL reaches the host, now as its own account
+`drooladmin` with its own key:
 
 ![The Management card for web-01: managed via SSH as drooladmin@10.10.40.21:22 with controller-default, passwordless sudo, direct connection, the trusted host key, and the Install Shepherd (DROOL agent) button](images/host-management-ssh.png)
 
@@ -218,8 +222,9 @@ checklist, at least two-factor sign-in, before you add many more machines.
 
 Then, when you're ready:
 
-- **Add your other machines** the same way. Each needs steps 1–5; the key-install command is the
-  same for every host that uses `drooladmin`.
+- **Add your other machines** the same way, steps 1–4 for each. DROOL creates its account on every
+  one; you only need an account of yours there for the setup. Hosts you already added another way
+  can switch too: [DROOL's Own SSH Account](Dedicated-SSH-Account.md#hosts-you-already-added).
 - **Group them:** [Packs](Packs.md) let you target "all media servers" in one go.
 - **Get told when something breaks:** [Email Notifications](Email-Notifications.md),
   [Discord Notifications](Discord-Notifications.md) and the other destinations.

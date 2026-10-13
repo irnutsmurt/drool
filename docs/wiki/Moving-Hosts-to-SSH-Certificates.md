@@ -10,6 +10,9 @@ before relying on it, so a host is never stranded. In the examples, Alex moves `
   [confirm it's you](Re-authentication.md).
 - The host must be reachable with its current credential, and sudo must work (the trust step changes
   sshd's configuration).
+- If DROOL should sign in with [its own SSH account](Dedicated-SSH-Account.md), set that up first:
+  the certificates then name that account. A host already in certificate mode goes back to its
+  credential for the account's setup, then switches to certificates again.
 
 ## 1. Set up trust
 

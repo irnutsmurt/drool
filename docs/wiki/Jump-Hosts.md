@@ -37,6 +37,9 @@ machine called `bastion-01` (10.10.1.10) were reachable from the controller and 
   jump host* is DROOL's protected management path. See [Management Path Protection](Management-Path-Protection.md).
 - **Short-lived SSH certificates work through jump hosts** too: each hop signs in the way its own
   host is set up (a stored credential, or a certificate).
+- **DROOL's own account works through them.** Setting up [DROOL's own SSH account](Dedicated-SSH-Account.md)
+  on the target goes through the jump host, and so does the brand-new connection that proves it;
+  the jump host's own account and credentials don't change. A *jump host only* gets no DROOL account.
 
 ## Removing a jump host
 

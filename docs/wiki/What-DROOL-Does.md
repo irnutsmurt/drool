@@ -13,8 +13,9 @@ that.
 Every Linux machine DROOL looks after is called a **host**. DROOL can reach a host in two ways, and
 you choose per host:
 
-- **Over SSH**, the same way you log in yourself. Nothing is installed on the host. DROOL logs in as
-  an account you choose (in this wiki's examples, `drooladmin`) and runs ordinary commands.
+- **Over SSH**, the same way you log in yourself. No software is installed on the host. DROOL logs
+  in as its own account, which it creates with an account you already have there (in this wiki's
+  examples, `drooladmin`), and runs ordinary commands.
 - **Through a Shepherd**, DROOL's optional agent. A small program on the host connects *out* to
   DROOL, so the host needs no open port, and it can report monitoring data continuously. The host
   itself decides what a Shepherd is allowed to do.

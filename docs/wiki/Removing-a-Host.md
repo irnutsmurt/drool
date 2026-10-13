@@ -29,6 +29,8 @@ Nothing on the host changes. In particular:
 - **DROOL's SSH key or certificate trust** stays in `drooladmin`'s `~/.ssh/authorized_keys` (and, if
   you used SSH certificates, in `/etc/ssh/drool_user_ca.pub`). Remove them if DROOL should no longer
   be able to log in.
+- **DROOL's own account**, if DROOL created it, stays too, with its passwordless sudo: remove it as
+  shown in [DROOL's Own SSH Account](Dedicated-SSH-Account.md#removing-the-account).
 - **A Shepherd keeps running.** It will keep trying to connect to DROOL, which no longer knows it.
   Remove it first (below).
 - **A firewall DROOL enforced keeps enforcing**, and keeps loading at boot. If DROOL enforces the

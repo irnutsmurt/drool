@@ -16,8 +16,10 @@ always need root, and so do commands with **Run as root (sudo)**.
 
 ## Passwordless sudo for DROOL's user
 
-The simplest setup: let the user DROOL logs in as use sudo without a password (the same commands as in
-[Your First Host](Your-First-Host.md#step-1-create-an-account-on-the-host-for-drool)). On the host, logged
+The simplest setup is [DROOL's own SSH account](Dedicated-SSH-Account.md): DROOL creates it with
+passwordless sudo itself (on an existing host: **Set up a dedicated DROOL SSH account** on its page).
+For an account you set up yourself, let it use sudo without a password (the same commands as in
+[SSH Credentials](SSH-Credentials.md#using-an-account-you-set-up-yourself)). On the host, logged
 in as yourself:
 
 ```sh

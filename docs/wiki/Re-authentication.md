@@ -13,6 +13,7 @@ a browser where you're signed in.
 - Turning two-factor authentication on or off, or resetting it for someone
 - Creating, rotating or retiring DROOL's SSH certificate authority, and switching a host between a
   credential and certificates
+- Setting up [DROOL's own SSH account](Dedicated-SSH-Account.md) on a host and switching to it
 - The Shepherd certificate authorities (exporting or removing the root key, rotating), revoking a
   Shepherd, release-signing keys, and changing DROOL's address for Shepherds
 - Audit settings (the remote copy), acknowledging an audit history break, and restore decisions

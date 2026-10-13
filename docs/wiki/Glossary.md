@@ -17,6 +17,7 @@ The words DROOL uses, in plain English.
 | **Destination** | Where notifications go: email, Discord, Slack, a webhook ([Notification Routing](Notification-Routing.md)) |
 | **Development image** | The container image `ghcr.io/irnutsmurt/drool:main`, built automatically from the newest DROOL code that passed its tests. Not a release ([Installing DROOL](Installing-DROOL.md#development-image-or-release)) |
 | **Drift** | A host no longer matches its baselines ([Drift](Drift.md)), or DROOL's firewall rules were changed outside DROOL ([Firewall Drift](Firewall-Drift.md)) |
+| **DROOL's own SSH account** | The account DROOL creates on a host (named `drool` unless you choose another name; `drooladmin` in the examples), signing in with DROOL's key and using passwordless sudo, so root-equivalent ([DROOL's Own SSH Account](Dedicated-SSH-Account.md)) |
 | **Flow** | One kind of connection in Network Activity: a host, direction, protocol, local address, service port and remote address ([What DROOL Can See](What-DROOL-Can-See.md)) |
 | **Health issue** | A problem monitoring found: Info, Warning or Critical ([Host Monitoring](Host-Monitoring.md)) |
 | **Host** | A Linux machine DROOL manages |
@@ -38,6 +39,7 @@ The words DROOL uses, in plain English.
 | **Run** | Anything DROOL does on hosts: a command, script, package operation, update, reboot, file deployment… Called a *job* in the API ([Running a Command](Running-a-Command.md)) |
 | **Schedule** | A run, workflow or maintenance window that happens at set times ([Schedules](Schedules.md)) |
 | **Setup code** | The one-time six-digit code DROOL prints when it starts, until the first administrator exists. You enter it once, to create that administrator ([Where do I get the setup code?](First-Login.md#where-do-i-get-the-setup-code)) |
+| **Setup credential** | A password, key or sudo password typed in Add host only so DROOL can create its own account; marked *for setup only* and deleted once DROOL signs in with that account, unless another host uses it ([SSH Credentials](SSH-Credentials.md#credentials-for-the-setup-only)) |
 | **Shepherd** | The DROOL agent (`drool-agent`), installed on a host for continuous monitoring and management ([SSH vs Shepherds](SSH-vs-Shepherds.md)). Called an *agent* in the API (`/api/v1/agents`) and on the host |
 | **SSH fallback** | Using SSH when a host's Shepherd isn't available ([SSH Fallback](SSH-Fallback.md)) |
 | **Startup message** | The short message DROOL prints each time it starts, between two rows of `=`: the address to open and, until setup is done, the setup code ([Where do I get the setup code?](First-Login.md#where-do-i-get-the-setup-code)) |

@@ -50,11 +50,12 @@ a native installation (`sudo journalctl -u drool -n 50`), to the container's log
 
 ## On managed hosts
 
-DROOL installs nothing on an SSH host to manage it. What appears there depends on what you use:
+DROOL installs no software on an SSH host to manage it. What appears there depends on what you use:
 
 | What | Where |
 |---|---|
-| DROOL's SSH key (you put it there) | `~drooladmin/.ssh/authorized_keys` |
+| [DROOL's own account](Dedicated-SSH-Account.md) (when DROOL created it), in the examples `drooladmin` | The account itself, `/etc/sudoers.d/drool-account-drooladmin` (its passwordless sudo), `/var/lib/drool/ssh-accounts/drooladmin` (DROOL's record, root only) |
+| DROOL's SSH key (DROOL puts it there for its own account; you, for an account of yours) | `~drooladmin/.ssh/authorized_keys` |
 | Trust in DROOL's [SSH certificate authority](Short-Lived-SSH-Certificates.md) | `/etc/ssh/drool_user_ca.pub`, `/etc/ssh/sshd_config.d/40-drool-user-ca.conf` |
 | DROOL's [firewall](What-DROOLs-Firewall-Does.md) (enforced hosts) | The nftables table `inet drool`, `/var/lib/drool/firewall/`, `/usr/libexec/drool-firewall/`, `drool-firewall.service` |
 | Previous versions of [deployed files](Rolling-Back-a-File.md) | Kept by DROOL on the controller, not on the host |

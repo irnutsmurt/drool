@@ -61,10 +61,13 @@ Pack names can't contain spaces, which is why the examples write `media-servers`
 | `alex` | DROOL | The administrator who installed DROOL |
 | `sam` | DROOL | An operator: runs jobs and handles alerts, but can't change security settings |
 | `jordan` | DROOL | A viewer: can look, can't change anything |
-| `drooladmin` | Each managed Linux host | The Linux account DROOL signs in as over SSH. It may use `sudo` without a password. |
+| `alex` | Each managed Linux host, too | Alex's own Linux account: a password, and sudo asks for it. Alex used it once per host to let DROOL set itself up. |
+| `drooladmin` | Each managed Linux host | DROOL's own account, which DROOL created on each host when Alex added it ([DROOL's Own SSH Account](Dedicated-SSH-Account.md)). DROOL signs in as it over SSH, with its own key; it may use `sudo` without a password. |
 
-Don't confuse the two kinds of account: `alex` signs in to the DROOL website; `drooladmin` is the
-account DROOL itself uses to log in to your servers.
+Don't confuse the kinds of account: `alex` signs in to the DROOL website (and Alex's own Linux
+account on the hosts happens to have the same name); `drooladmin` is the account DROOL itself uses
+to log in to your servers. DROOL suggests the name `drool` for its account; the examples chose
+`drooladmin`.
 
 ## Example values you'll see
 
@@ -80,7 +83,8 @@ account DROOL itself uses to log in to your servers.
 ## The story the examples follow
 
 1. Alex installs DROOL on `drool.example.net` and signs in for the first time.
-2. Alex adds `web-01` as the first host, then `media-01`, `media-02` and `database-01`.
+2. Alex adds `web-01` as the first host, then `media-01`, `media-02` and `database-01`, each with
+   Alex's own account `alex`; on each, DROOL creates its own account `drooladmin` and switches to it.
 3. `media-01` gets a Shepherd, so it is monitored continuously and can be reached even if SSH
    isn't available; the others stay on SSH.
 4. Alex groups the media servers into the `media-servers` pack and the web server into
