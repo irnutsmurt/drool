@@ -24,7 +24,7 @@ Three other numbers are versioned on their own and never inferred from DROOL's v
 - the **database schema** (`schema_version`): only increases; an upgrade migrates it forward, an
   older DROOL refuses a newer one;
 - the **Shepherd protocol** (`agent_protocol`, now 1): negotiated at every connection; within it,
-  capabilities are announced and checked ([README: Shepherd versions](README.md#shepherd-versions));
+  capabilities are announced and checked ([user guide: Shepherd versions](docs/wiki/Supported-Platforms.md#shepherd-versions));
 - the **backup format** (`format_version` in a backup's manifest, now 1).
 
 What changes the version:
@@ -145,7 +145,7 @@ packaging/release/sign.sh dist/<version> /path/to/drool-release-key    # writes 
 It checks every file against `SHA256SUMS` first, signs with namespace `drool-release`, and verifies
 the signature the way users will, against [`packaging/keys/allowed_signers`](packaging/keys/allowed_signers).
 Users check a download with `sha256sum --check` and `ssh-keygen -Y verify`
-([README: Download and verify](README.md#download-and-verify)).
+([user guide: Checking a release's files](docs/wiki/Installing-DROOL.md#checking-a-releases-files)).
 
 **The release key** is created once, offline:
 
@@ -183,11 +183,15 @@ No release is published automatically (only `main`'s development image, above). 
 
 - [ ] `LICENSE` present and `packaging/release/license` holds its SPDX id (a stable build refuses otherwise).
 - [ ] The release key's public half in `packaging/keys/allowed_signers`.
-- [ ] Docs describe this release: README (status, supported platforms, install, upgrade), DESIGN,
-      ARCHITECTURE-ALPHA, the maintainer field (`DROOL_MAINTAINER` or the default in `build.sh`).
-- [ ] The user guide says which version it describes: the `docs-version` notes at the top of
-      `docs/wiki/Home.md` and `docs/wiki/_Sidebar.md` name the stable release (they say "development
-      version" until the first one), and the install pages' "no release yet" notes are gone.
+- [ ] Docs describe this release: README (status, quick start, supported platforms, limitations), the
+      user guide (installing, updating, supported platforms), DESIGN, ARCHITECTURE-ALPHA, the
+      maintainer field (`DROOL_MAINTAINER` or the default in `build.sh`).
+- [ ] The docs say which release they describe: the README's `release-status` notes (the line under
+      the logo and *Current status*) and the user guide's `docs-version` notes at the top of
+      `docs/wiki/Home.md` and `docs/wiki/_Sidebar.md` name the stable release (until the first one they
+      say "pre-1.0" and "development version"), and the install pages' "no release yet" notes are gone.
+- [ ] The pre-1.0 items in `ARCHITECTURE-ALPHA.md` §35 are settled: the Compose data volume's name is
+      decided (#5), and the `internal/recovery` TestHostDecisions race is fixed (#6), not skipped.
 - [ ] Tag `vX.Y.Z-rc.N`, `make release`, every qualification layer above green on those artifacts.
 - [ ] Tag `vX.Y.Z` on the same commit, `make release`, the fast layers and
       `TestReleaseArtifacts|TestReleaseSigning|TestContainerImage|TestReleasePackages|TestReleaseUpgrade` on the final artifacts

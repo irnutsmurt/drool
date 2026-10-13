@@ -59,7 +59,8 @@ Going back: <with a schema change: stop DROOL, install the older version, restor
 
 ## Supported platforms
 
-<!-- Copy the README's Supported platforms, and say what changed since the last release. -->
+<!-- From the user guide's Supported Platforms page (docs/wiki/Supported-Platforms.md), and say what
+changed since the last release. -->
 
 - Controller: container image (linux/amd64, linux/arm64) on Docker (also rootless) and rootless
   Podman; `.deb` for Debian 12, 13 and Ubuntu 22.04, 24.04, 26.04; `.rpm` for Rocky Linux and
@@ -70,8 +71,8 @@ Going back: <with a schema change: stop DROOL, install the older version, restor
 
 ## Known limitations
 
-<!-- The README's Known limitations that matter for this release, and anything
-found during qualification. -->
+<!-- The README's Major limitations and the user guide's limits that matter for this release, and
+anything found during qualification. -->
 
 -
 

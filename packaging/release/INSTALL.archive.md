@@ -28,4 +28,5 @@ Open the address, enter the setup code and create the administrator account.
 - **Removing:** `sudo systemctl disable --now drool`, then delete the files above. Your data
   in `/var/lib/drool` stays until you delete it.
 
-The full documentation is `README.md`. Third-party licenses: `THIRD_PARTY_NOTICES.txt`.
+`README.md` introduces DROOL; the user guide has everything else, step by step:
+https://github.com/irnutsmurt/drool/wiki. Third-party licenses: `THIRD_PARTY_NOTICES.txt`.
