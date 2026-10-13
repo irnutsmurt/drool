@@ -17,6 +17,7 @@ import (
 	"drool/internal/netmon/netsvc"
 	"drool/internal/recovery"
 	"drool/internal/sched"
+	"drool/internal/sshaccount"
 	"drool/internal/sshca"
 	"io/fs"
 	"log/slog"
@@ -73,6 +74,9 @@ type Deps struct {
 	SSHCA     *sshca.Service    // SSH user certificate authority (M16); nil disables its routes
 	AuditSink *audit.Sink       // remote audit copy (M16); nil disables its routes
 	Recovery  *recovery.Service // restore reconciliation (M16); nil disables its routes
+	// SSHAccount sets up DROOL's own SSH account on hosts (After M17); nil
+	// disables its routes.
+	SSHAccount *sshaccount.Service
 	// StaleAfter is how old a status check may be before it is shown as stale.
 	StaleAfter time.Duration
 }
@@ -174,6 +178,8 @@ func (s *Server) routes() []route {
 		{method: "POST", path: APIPrefix + "/ssh-ca/{id}/retire", auth: authed, perm: auth.PermCredentialsManage, reauth: true, h: s.handleRetireSSHCA},
 		{method: "GET", path: APIPrefix + "/hosts/{id}/ssh-auth", auth: authed, perm: auth.PermHostsRead, h: s.handleGetHostSSHAuth},
 		{method: "PUT", path: APIPrefix + "/hosts/{id}/ssh-auth", auth: authed, perm: auth.PermCredentialsManage, reauth: true, h: s.handleSetHostSSHAuth},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/ssh-account/plan", auth: authed, perm: auth.PermCredentialsManage, h: s.handlePlanSSHAccount},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/ssh-account", auth: authed, perm: auth.PermCredentialsManage, reauth: true, h: s.handleSetUpSSHAccount},
 		{method: "GET", path: APIPrefix + "/secrets/{id}", auth: authed, perm: auth.PermCredentialsUse, h: s.handleGetSecret},
 		{method: "PATCH", path: APIPrefix + "/secrets/{id}", auth: authed, perm: auth.PermCredentialsManage, h: s.handleUpdateSecret},
 		{method: "DELETE", path: APIPrefix + "/secrets/{id}", auth: authed, perm: auth.PermCredentialsManage, h: s.handleDeleteSecret},

@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { qk, type Host, type ProbeResult } from "@/api/queries";
-import { HostForm, type HostRequest } from "@/components/hosts/HostForm";
+import { DedicatedAccountSetup } from "@/components/hosts/DedicatedAccount";
+import { HostForm, type AccountChoice, type HostRequest } from "@/components/hosts/HostForm";
 import { HostKeyPanel } from "@/components/hosts/HostKeyPanel";
 import { ProbeSteps } from "@/components/hosts/ProbeSteps";
 import { Alert } from "@/components/ui/Alert";
@@ -13,7 +14,6 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { cx } from "@/components/ui/cx";
 import { errorMessage } from "@/lib/format";
 
-const steps = ["Connection", "Host key", "Test"] as const;
 
 /** True when the only failed check is the init system (usable without systemd). */
 function onlyNoSystemd(p: ProbeResult): boolean {
@@ -21,13 +21,18 @@ function onlyNoSystemd(p: ProbeResult): boolean {
   return failed.length > 0 && failed.every((s) => s.name === "init system");
 }
 
-/** Add a host: connection details → trust its host key → connection test. */
+/** Add a host: connection details → trust its host key → connection test,
+ * then, for DROOL's own account, the setup that switches to it. */
 export function AddHostPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [host, setHost] = useState<Host>();
   const [probe, setProbe] = useState<ProbeResult>();
+  const [account, setAccount] = useState<AccountChoice>({ dedicated: true, user: "drool" });
+  const steps = account.dedicated ? ["Connection", "Host key", "Test", "DROOL account"] : ["Connection", "Host key", "Test"];
+  const usable = !!probe && (probe.ok || onlyNoSystemd(probe));
+  const choose = useCallback((dedicated: boolean) => setAccount((a) => (a.dedicated === dedicated ? a : dedicated ? { dedicated, user: "drool" } : { dedicated })), []);
 
   const create = useMutation({
     mutationFn: (body: HostRequest) => unwrap(api.POST("/hosts", { body })),
@@ -63,8 +68,8 @@ export function AddHostPage() {
         {step === 0 && (
           <div className="space-y-4">
             {create.error && <Alert>{errorMessage(create.error)}</Alert>}
-            <HostForm submitLabel="Continue" busy={create.isPending} onSubmit={(b) => create.mutate(b)}
-              onCancel={() => navigate("/hosts")} />
+            <HostForm submitLabel="Continue" busy={create.isPending} onSubmit={(b, a) => { setAccount(a); create.mutate(b); }}
+              onChoice={choose} onCancel={() => navigate("/hosts")} />
           </div>
         )}
         {step === 1 && host && (
@@ -86,20 +91,27 @@ export function AddHostPage() {
             {probe && (
               <>
                 {probe.ok
-                  ? <Alert tone="ok">{host.name} is ready.</Alert>
+                  ? <Alert tone="ok">{account.dedicated ? `DROOL can sign in to ${host.name} as ${host.user} and become root: ready to set up its own account.` : `${host.name} is ready.`}</Alert>
                   : onlyNoSystemd(probe)
                     ? <Alert tone="warn">Connected. {host.name} has no systemd, so service management and reboots won't work; commands, scripts and package operations will.</Alert>
-                    : <Alert tone="warn">Some checks failed. Fix the issue on the host or adjust the settings, then test again.</Alert>}
+                    : <Alert tone="warn">
+                        Some checks failed. Fix the issue on the host or adjust the settings, then test again.
+                        {account.dedicated && ` DROOL needs to sign in as ${host.user} and become root to set up its own account.`}
+                      </Alert>}
                 <ProbeSteps result={probe} />
               </>
             )}
             <div className="flex gap-2">
-              <Button variant="primary" onClick={() => navigate(`/hosts/${host.id}`)}>
-                {probe?.ok || (probe && onlyNoSystemd(probe)) ? "Done" : "Go to host"}
-              </Button>
+              {account.dedicated && usable
+                ? <Button variant="primary" onClick={() => setStep(3)}>Continue</Button>
+                : <Button variant="primary" onClick={() => navigate(`/hosts/${host.id}`)}>{usable ? "Done" : "Go to host"}</Button>}
               <Button onClick={() => test.mutate(host.id)} disabled={test.isPending}>Test again</Button>
             </div>
           </div>
+        )}
+        {step === 3 && host && account.dedicated && (
+          <DedicatedAccountSetup host={host} initialUser={account.user} cancelLabel="Not now"
+            onFinished={() => navigate(`/hosts/${host.id}`)} onCancel={() => navigate(`/hosts/${host.id}`)} />
         )}
       </Card>
     </>

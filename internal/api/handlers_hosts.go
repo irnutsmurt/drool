@@ -8,6 +8,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"drool/internal/audit"
+	"drool/internal/auth"
 	"drool/internal/driver"
 	"drool/internal/inventory"
 	"drool/internal/model"
@@ -55,8 +56,11 @@ type hostJSON struct {
 	// "certificate" (short-lived certificates from its CA, M16).
 	SSHAuth      string `json:"ssh_auth"`
 	SSHPrincipal string `json:"ssh_principal"`
-	CreatedAt    string `json:"created_at"`
-	UpdatedAt    string `json:"updated_at"`
+	// SSHAccountAt: when the host switched to DROOL's own SSH account
+	// (After M17); null once its sign-in was edited.
+	SSHAccountAt *string `json:"ssh_account_at"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 }
 
 func strPtr(s string) *string {
@@ -73,7 +77,7 @@ func (s *Server) toHostJSON(v inventory.HostView) hostJSON {
 		BecomeCredentialID: strPtr(v.BecomeCredentialID.String), NeedsPTY: v.SshNeedsPty != 0,
 		JumpOnly: v.JumpOnly != 0, ViaHostID: strPtr(v.ViaHostID), Status: v.Status, StatusDetail: v.StatusDetail,
 		LastProbeAt: nullMsTime(v.LastProbeAt), Tags: v.Tags, GroupIDs: v.GroupIDs,
-		SSHAuth: v.SshAuth, SSHPrincipal: v.SshPrincipal,
+		SSHAuth: v.SshAuth, SSHPrincipal: v.SshPrincipal, SSHAccountAt: nullMsTime(v.SshAccountAt),
 		CreatedAt: msTime(v.CreatedAt), UpdatedAt: msTime(v.UpdatedAt),
 	}
 	if out.Tags == nil {
@@ -164,6 +168,9 @@ type hostRequest struct {
 	// authority. Existing hosts switch with PUT /hosts/{id}/ssh-auth.
 	SSHAuth      *string `json:"ssh_auth"`
 	SSHPrincipal *string `json:"ssh_principal"`
+	// Creation only: credentials entered just to set up DROOL's own SSH
+	// account on the host, stored as temporary credentials.
+	SetupCredentials *setupCredentials `json:"setup_credentials"`
 }
 
 func (req hostRequest) apply(in *inventory.HostInput) {
@@ -209,6 +216,17 @@ func (s *Server) handleCreateHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+	setup := req.SetupCredentials
+	if setup != nil {
+		if !principalFrom(ctx).Can(auth.PermCredentialsManage) {
+			writeProblem(w, r, errForbidden("storing credentials for the setup requires credentials.manage"))
+			return
+		}
+		if p := setup.validate(req); p != nil {
+			writeProblem(w, r, p)
+			return
+		}
+	}
 	var in inventory.HostInput
 	req.apply(&in)
 	if in.CredentialID == "" && in.SSHAuth != "certificate" {
@@ -220,16 +238,30 @@ func (s *Server) handleCreateHost(w http.ResponseWriter, r *http.Request) {
 	}
 	var view *inventory.HostView
 	err := s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
+		var stored []map[string]any
+		if setup != nil {
+			var err error
+			if stored, err = s.storeSetupCredentials(ctx, q, setup, in.Name, &in.CredentialID, &in.BecomeCredentialID); err != nil {
+				return audit.Event{}, err
+			}
+		}
 		h, err := s.d.Inventory.CreateHostTx(ctx, q, in)
 		if err != nil {
 			return audit.Event{}, err
 		}
 		view, err = s.d.Inventory.HostViewTx(ctx, q, h.ID)
-		return audit.Event{Action: "host.create", TargetType: "host", TargetID: h.ID,
-			Details: map[string]any{"name": h.Name, "address": h.ConnectAddress, "port": h.SshPort,
-				"user": h.SshUser, "via_host_id": in.ViaHostID}}, err
+		details := map[string]any{"name": h.Name, "address": h.ConnectAddress, "port": h.SshPort,
+			"user": h.SshUser, "via_host_id": in.ViaHostID}
+		if stored != nil {
+			details["setup_credentials"] = stored // names and kinds; never values
+		}
+		return audit.Event{Action: "host.create", TargetType: "host", TargetID: h.ID, Details: details}, err
 	})
 	if err != nil {
+		if isSecretInputError(err) {
+			writeProblem(w, r, s.secretError(err))
+			return
+		}
 		writeProblem(w, r, s.inventoryError(err))
 		return
 	}
@@ -246,6 +278,10 @@ func (s *Server) handleUpdateHost(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if req.SSHAuth != nil || req.SSHPrincipal != nil {
 		writeProblem(w, r, errValidation("change how DROOL signs in with PUT /hosts/{id}/ssh-auth (it is verified first)"))
+		return
+	}
+	if req.SetupCredentials != nil {
+		writeProblem(w, r, errValidation("setup_credentials only apply when adding a host; to use other credentials, store them under Credentials and choose them here"))
 		return
 	}
 	// Removing the credential of a host that signs in with certificates

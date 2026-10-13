@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
-import { qk, type Host } from "@/api/queries";
+import { qk, useCredentials, type Host } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
@@ -11,6 +11,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
 import { plainLink } from "@/components/ui/links";
 import { errorMessage, formatAgo } from "@/lib/format";
+import { DedicatedAccountSetup } from "./DedicatedAccount";
 
 export const sshAuthKey = (id: string) => ["hosts", id, "ssh-auth"] as const;
 export const sshcaKey = ["ssh-ca"] as const;
@@ -28,7 +29,9 @@ export function SSHSignIn({ host }: { host: Host }) {
   const navigate = useNavigate();
   const auth = useQuery({ queryKey: sshAuthKey(host.id), queryFn: () => unwrap(api.GET("/hosts/{id}/ssh-auth", { params: { path: { id: host.id } } })) });
   const ca = useSSHCA(can("credentials.use"));
+  const creds = useCredentials(can("credentials.use"));
   const [switching, setSwitching] = useState(false);
+  const [settingUp, setSettingUp] = useState(false);
   const trustRun = useMutation({
     mutationFn: () => unwrap(api.POST("/jobs", {
       body: { name: `Trust DROOL's SSH certificate authority: ${host.name}`, steps: [{ type: "ssh_ca_trust" }], targets: { hosts: [host.id] } },
@@ -47,6 +50,11 @@ export function SSHSignIn({ host }: { host: Host }) {
   const active = ca.data?.authorities.find((c) => c.state === "active");
   const trust = a.trust.find((t) => t.ca_id === active?.id);
   const certMode = a.mode === "certificate";
+  // Credentials entered only to set up DROOL's own account, still in use.
+  const temporary = (creds.data?.items ?? []).filter((c) => c.temporary && (c.id === host.credential_id || c.id === host.become_credential_id));
+  // Signs in as DROOL's own account already: nothing to set up.
+  const ownAccount = !!host.ssh_account_at;
+  const canSetUp = can("credentials.manage") && can("hosts.write") && !certMode && !host.jump_only && !ownAccount;
   return (
     <div className="mt-3 space-y-2 border-t border-line pt-3 text-sm" data-testid="ssh-sign-in">
       <div className="grid grid-cols-[minmax(7rem,9rem)_1fr] gap-y-1.5">
@@ -67,6 +75,20 @@ export function SSHSignIn({ host }: { host: Host }) {
           </>
         )}
       </div>
+      {temporary.length > 0 && (
+        <Alert tone="warn">
+          DROOL still signs in to {host.name} as {host.user} with details entered only to set up its own account
+          ({temporary.map((c) => c.name).join(", ")}). Set up DROOL's account to finish: DROOL then forgets them.
+        </Alert>
+      )}
+      {canSetUp && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant={temporary.length > 0 ? "primary" : undefined} onClick={() => setSettingUp(true)}>
+            Set up a dedicated DROOL SSH account…
+          </Button>
+          <span className="text-xs text-muted">DROOL creates its own account with sudo, proves it, then switches to it.</span>
+        </div>
+      )}
       {certMode && !a.credential_assigned && (
         <Alert tone="warn">
           DROOL's SSH certificate authority is the only way DROOL can sign in to this host. If the controller's master key were
@@ -90,6 +112,16 @@ export function SSHSignIn({ host }: { host: Host }) {
       )}
       {(back.error ?? trustRun.error) && <Alert>{errorMessage(back.error ?? trustRun.error)}</Alert>}
       {switching && <SwitchDialog host={host} principal={a.principal} onClose={() => setSwitching(false)} />}
+      {settingUp && (
+        <Dialog title={`A dedicated DROOL SSH account on ${host.name}`} onClose={() => setSettingUp(false)} wide>
+          <DedicatedAccountSetup host={host} onCancel={() => setSettingUp(false)}
+            onFinished={() => {
+              setSettingUp(false);
+              void qc.invalidateQueries({ queryKey: qk.host(host.id) });
+              void qc.invalidateQueries({ queryKey: sshAuthKey(host.id) });
+            }} />
+        </Dialog>
+      )}
     </div>
   );
 }

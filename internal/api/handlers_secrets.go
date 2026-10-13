@@ -21,6 +21,9 @@ type secretJSON struct {
 	UsedBy      []hostRef `json:"used_by"`
 	CreatedAt   string    `json:"created_at"`
 	UpdatedAt   string    `json:"updated_at"`
+	// Temporary: entered only to set up DROOL's own SSH account on a host,
+	// and forgotten once that works (unless another host uses it).
+	Temporary bool `json:"temporary"`
 }
 
 type hostRef struct {
@@ -30,7 +33,7 @@ type hostRef struct {
 
 func (s *Server) toSecretJSON(ctx context.Context, q *db.Queries, r db.Secret) secretJSON {
 	out := secretJSON{ID: r.ID, Name: r.Name, Kind: r.Kind, Description: r.Description, PublicKey: r.PublicPart,
-		CreatedAt: msTime(r.CreatedAt), UpdatedAt: msTime(r.UpdatedAt), UsedBy: []hostRef{}}
+		CreatedAt: msTime(r.CreatedAt), UpdatedAt: msTime(r.UpdatedAt), UsedBy: []hostRef{}, Temporary: r.Temporary != 0}
 	if users, err := q.ListHostsUsingSecret(ctx, r.ID); err == nil {
 		for _, u := range users {
 			out.UsedBy = append(out.UsedBy, hostRef{ID: u.ID, Name: u.Name})

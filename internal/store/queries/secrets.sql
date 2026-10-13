@@ -1,6 +1,6 @@
 -- name: InsertSecret :exec
-INSERT INTO secrets (id, name, kind, ciphertext, nonce, key_version, public_part, description, created_by, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO secrets (id, name, kind, ciphertext, nonce, key_version, public_part, description, created_by, created_at, updated_at, temporary)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetSecret :one
 SELECT * FROM secrets WHERE id = ?;

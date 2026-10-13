@@ -256,7 +256,7 @@ func (q *Queries) GetEnrollmentTokenByHash(ctx context.Context, tokenHash []byte
 }
 
 const getHostByName = `-- name: GetHostByName :one
-SELECT id, name, description, connect_address, management_method, ssh_port, ssh_user, ssh_credential_id, become_method, become_credential_id, ssh_needs_pty, jump_only, status, status_detail, last_probe_at, created_at, updated_at, management_fallback, ssh_configured, requested_caps_json, ssh_auth, ssh_principal FROM hosts WHERE name = ?
+SELECT id, name, description, connect_address, management_method, ssh_port, ssh_user, ssh_credential_id, become_method, become_credential_id, ssh_needs_pty, jump_only, status, status_detail, last_probe_at, created_at, updated_at, management_fallback, ssh_configured, requested_caps_json, ssh_auth, ssh_principal, ssh_account_at FROM hosts WHERE name = ?
 `
 
 func (q *Queries) GetHostByName(ctx context.Context, name string) (Host, error) {
@@ -285,6 +285,7 @@ func (q *Queries) GetHostByName(ctx context.Context, name string) (Host, error) 
 		&i.RequestedCapsJson,
 		&i.SshAuth,
 		&i.SshPrincipal,
+		&i.SshAccountAt,
 	)
 	return i, err
 }

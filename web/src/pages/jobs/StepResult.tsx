@@ -2,6 +2,7 @@ import type { Schemas } from "@/api/client";
 import { Badge } from "@/components/ui/Badge";
 import { cx } from "@/components/ui/cx";
 import { FileDeployResult, type DeployResult } from "@/components/files/FileDeployResult";
+import { AccountSetupResult } from "@/components/hosts/DedicatedAccount";
 
 type Change = Schemas["PackageChange"];
 type Plan = Schemas["PackagePlan"];
@@ -55,6 +56,8 @@ export function describeStep(s: Schemas["Operation"]): string {
     case "ssh_ca_trust":
       return s.action === "remove" ? "Remove trust in DROOL's SSH certificate authority"
         : "Trust DROOL's SSH certificate authority (install in sshd, then check with a certificate on a fresh connection)";
+    case "ssh_account":
+      return `Set up DROOL's own SSH account (${s.user}), and switch to it once it works on a fresh connection`;
     case "file_deploy":
       if (s.rollback_of) return s.remove ? `Roll back ${s.path} (remove it)` : `Roll back ${s.path} to its previous version`;
       return [`Deploy ${s.path}`, s.elevated ? "as root" : "", s.owner || s.group ? `owner ${s.owner ?? "keep"}:${s.group ?? "keep"}` : "",
@@ -87,6 +90,7 @@ export function StepResult({ step }: { step: Schemas["JobStep"] }) {
   const r = step.result as Record<string, unknown> | undefined;
   if (!r || Object.keys(r).length === 0) return null;
   if (step.type === "file_deploy") return <FileDeployResult r={r as unknown as DeployResult} />;
+  if (step.type === "ssh_account") return <div className="mb-3 rounded-ui border border-line p-3"><AccountSetupResult r={r} /></div>;
   const plan = r.plan as Plan | undefined;
   const changes = r.changes as Change[] | undefined;
   const before = r.before as UnitState | undefined;

@@ -20,7 +20,7 @@ func (q *Queries) DeleteSecret(ctx context.Context, id string) error {
 }
 
 const getSecret = `-- name: GetSecret :one
-SELECT id, name, kind, ciphertext, nonce, key_version, public_part, description, created_by, created_at, updated_at FROM secrets WHERE id = ?
+SELECT id, name, kind, ciphertext, nonce, key_version, public_part, description, created_by, created_at, updated_at, "temporary" FROM secrets WHERE id = ?
 `
 
 func (q *Queries) GetSecret(ctx context.Context, id string) (Secret, error) {
@@ -38,12 +38,13 @@ func (q *Queries) GetSecret(ctx context.Context, id string) (Secret, error) {
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Temporary,
 	)
 	return i, err
 }
 
 const getSecretByName = `-- name: GetSecretByName :one
-SELECT id, name, kind, ciphertext, nonce, key_version, public_part, description, created_by, created_at, updated_at FROM secrets WHERE name = ?
+SELECT id, name, kind, ciphertext, nonce, key_version, public_part, description, created_by, created_at, updated_at, "temporary" FROM secrets WHERE name = ?
 `
 
 func (q *Queries) GetSecretByName(ctx context.Context, name string) (Secret, error) {
@@ -61,13 +62,14 @@ func (q *Queries) GetSecretByName(ctx context.Context, name string) (Secret, err
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Temporary,
 	)
 	return i, err
 }
 
 const insertSecret = `-- name: InsertSecret :exec
-INSERT INTO secrets (id, name, kind, ciphertext, nonce, key_version, public_part, description, created_by, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO secrets (id, name, kind, ciphertext, nonce, key_version, public_part, description, created_by, created_at, updated_at, temporary)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertSecretParams struct {
@@ -82,6 +84,7 @@ type InsertSecretParams struct {
 	CreatedBy   sql.NullString
 	CreatedAt   int64
 	UpdatedAt   int64
+	Temporary   int64
 }
 
 func (q *Queries) InsertSecret(ctx context.Context, arg InsertSecretParams) error {
@@ -97,6 +100,7 @@ func (q *Queries) InsertSecret(ctx context.Context, arg InsertSecretParams) erro
 		arg.CreatedBy,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.Temporary,
 	)
 	return err
 }
@@ -136,7 +140,7 @@ func (q *Queries) ListHostsUsingSecret(ctx context.Context, id string) ([]ListHo
 }
 
 const listSecrets = `-- name: ListSecrets :many
-SELECT id, name, kind, ciphertext, nonce, key_version, public_part, description, created_by, created_at, updated_at FROM secrets ORDER BY name
+SELECT id, name, kind, ciphertext, nonce, key_version, public_part, description, created_by, created_at, updated_at, "temporary" FROM secrets ORDER BY name
 `
 
 func (q *Queries) ListSecrets(ctx context.Context) ([]Secret, error) {
@@ -160,6 +164,7 @@ func (q *Queries) ListSecrets(ctx context.Context) ([]Secret, error) {
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Temporary,
 		); err != nil {
 			return nil, err
 		}

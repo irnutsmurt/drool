@@ -395,6 +395,13 @@ func (s *Service) UpdateHostTx(ctx context.Context, q *db.Queries, id string, in
 	if err := s.writeRelations(ctx, q, id, in, now); err != nil {
 		return db.Host{}, err
 	}
+	if cur.SshUser != in.User || cur.SshCredentialID.String != in.CredentialID {
+		// Signing in as someone or with something else: no longer known to
+		// be DROOL's own account.
+		if err := q.ClearHostSSHAccount(ctx, id); err != nil {
+			return db.Host{}, err
+		}
+	}
 	status, detail := cur.Status, cur.StatusDetail
 	if cur.ConnectAddress != in.Address || cur.SshPort != int64(in.Port) {
 		// The endpoint changed: the pinned key no longer proves identity.

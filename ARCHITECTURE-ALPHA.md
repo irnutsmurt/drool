@@ -1417,6 +1417,10 @@ Meaningful choices made during implementation, newest last.
 | M17 | A service operation that starts or restarts a unit looks at it again 2 s after it first reads active (`hostops.StartCheck`) and reports a `ServiceError` with `systemctl status` if it isn't running then | systemd reports a `Type=simple` service started as soon as its process exists, so a unit that exits at once read as active when the check came first: on Debian 13 under emulation a unit running `/bin/false` was reported started. M4's verification depended on timing; now a unit has to stay up. Costs 2 s per start or restart |
 | After M17 | `drool restore` and `drool backup verify` take `--master-key -`: the key file comes on standard input, ahead of the backup when that is `-` too (the backup begins at gzip's magic bytes, which a key file never contains) | In a container the restore runs as the image's unprivileged user, which can't read the operator's `0600` key file; the documented workaround made the key world-readable for the restore. Piped in, it needs no permission change, no mount and no `sudo`, and works the same for Docker (rootful or rootless), Podman and native installations |
 | After M17 | The README is the project's front door (what DROOL is, its status, a development quick start, platforms, limitations, links); step-by-step documentation lives in the user guide (`docs/wiki`, published as the GitHub wiki), including the commands the release tests run (§34.10 describes the M17 README) | The 2,000-line README had become a second manual next to the wiki; one place per explanation keeps them from contradicting each other |
+| After M17 | Adding a host sets up DROOL's own SSH account by default: an account the administrator already has is used only to create a dedicated one, which signs in with `controller-default` and has passwordless sudo; the host switches to it only after a brand-new connection proved it (§36) | Every first host used to start with `useradd`, a sudoers file and a key paste by hand, and the administrator's own password or key stayed in DROOL for good. The setup account is never changed; what was typed for the setup is forgotten |
+| After M17 | The setup is a typed, internal job step (`ssh_account`): exclusive host lock, never retried automatically, submitted only by `POST /hosts/{id}/ssh-account` (credentials.manage, hosts.write, re-authentication), refused by `POST /jobs`, workflows, schedules and re-runs | It changes how DROOL signs in, so it gets the strongest permissions and a recent sign-in; as a job it has the host lock, output, a result and a place in the run history, without a second execution path |
+| After M17 | Credentials typed for the setup are stored as `secrets.temporary` and deleted in the switch transaction through `secrets.DeleteTx`, which refuses while any host (jump hosts included) references them: those are kept and reported | A credential shared by another host can't disappear under it; stored credentials the administrator chose are never deleted by the setup |
+| After M17 | DROOL recognizes an account as its own only by a root-only record written before the account (`/var/lib/drool/ssh-accounts/<user>`: `controller-default`'s fingerprint and the account's user ID) | The name proves nothing: an existing `drool` account (the controller package creates one) must never be taken over |
 
 ---
 
@@ -2532,4 +2536,107 @@ away in the documentation; none is started. Size and risk are estimates from the
 | 5 | Docker Compose names the data volume after the project folder (`<folder>_drool-data`): renaming or copying the folder makes DROOL look new | Small change, real migration risk: `volumes: drool-data: {name: …}` makes the name stable, but existing installations use `<folder>_drool-data`, and the integration tests run several projects at once. A default that keeps the documented folder's volume (`drool_drool-data`) plus an override in `.env` avoids moving anyone's data; it changes a release artifact, so it belongs before 1.0 | Decide before 1.0 |
 | 6 | `internal/recovery` TestHostDecisions fails now and then under full-suite load: `MachineChanged` for the cloned host is called after the service has started, so the host can be reconciled before the conflict is noticed | A test-harness race, not seen in the product; it passes on its own (8 of 8). Fix the ordering in the test without skipping it, weakening the assertion or adding sleeps | Fix before final 1.0 qualification |
 | 7 | Three UI hints still say *see the README* (the remote audit copy's format, *Configuration* on the security checklist, the restore commands on Settings → System) although those details moved to the user guide | Small: three strings; the README links each place, so nothing is unreachable meanwhile. The wiki's `system-backup-commands.png` shows one of them and needs capturing again with the change | Fix with the next UI change |
+| 8 | Adding a host required preparing an account on it by hand (`useradd`, a sudoers file, pasting DROOL's key), and the administrator's own password or key otherwise stayed in DROOL | Done: DROOL's own SSH account (§36) | Done (after M17) |
+| 9 | `internal/sshx` TestPoolCertificateJumpPaths fails now and then under `-race -count=10`: its clock is real time plus an offset, and the test leaves the jump certificate one second of validity, so a slow run (1.03 s observed) sees it expire and the path re-dialled | A timing margin in the test, not a product fault; it passes on its own and in the normal suite. Fix by freezing the test clock rather than by sleeps or a looser assertion | Fix before final 1.0 qualification |
 
+---
+
+## 36. DROOL's own SSH account (after M17)
+
+A dogfooding improvement after M17 (§35 #8), not a milestone. A host used to be added with an account
+the administrator had prepared by hand. Now the account the administrator already has (their own,
+with a password or key, sudo with or without a password, or root) is used once, to bootstrap a
+dedicated account that DROOL then signs in with. Implementation: `internal/sshaccount` (plan, host
+script, fresh verification, switch), the internal job step `ssh_account`, `POST /hosts/{id}/ssh-account/plan`
+and `POST /hosts/{id}/ssh-account`, `setup_credentials` on `POST /hosts`, migration 0021
+(`secrets.temporary`, `hosts.ssh_account_at`).
+
+### 36.1 Invariants
+
+1. **Bootstrap credentials may be temporary.** Passwords and keys typed in Add host are stored
+   encrypted as `secrets.temporary` and assigned to the host; nothing else creates temporary
+   credentials.
+2. **The switch happens only after a brand-new connection with the new identity succeeded.** It is
+   dialled through every hop again (`sshx.Dialer.Dial`, never the pool and never the setup
+   connection), checks each pinned host key, authenticates as the new account with
+   `controller-default` alone, and runs `sudo -n -- id -u` (answer `0`) over that same connection.
+   A host that other hosts reach through must also forward a connection to each of them (their SSH
+   banner is read).
+3. **The original Linux account is never deleted or modified automatically.** The setup only runs
+   as it; its password, keys, groups and sudo rights stay.
+4. **A full-management account is root-equivalent through sudo, and DROOL says so.** The rule is
+   `ALL=(ALL:ALL) NOPASSWD: ALL` (plus `!requiretty` for that user): no allowlist that would pretend
+   otherwise. The plan, the form, the result and the user guide say it in the same words.
+5. **A shared credential is never deleted while anything references it.** The switch transaction
+   deletes a temporary credential only through `secrets.DeleteTx`, which checks every host (jump
+   hosts are hosts); a referenced one is retained and the result names the hosts.
+6. **Partial provisioning never replaces a known-good path with an unverified one.** Until the switch
+   transaction commits, the host's stored sign-in is untouched; any failure, and an unknown outcome
+   (a connection lost during the setup), leaves the setup account and its credentials in place. The
+   switch also refuses when the host's sign-in settings (user, credentials, sudo, address, port, jump
+   host, pinned key, PTY, mode) changed during the run: the edit wins.
+
+### 36.2 The setup on the host
+
+One `sh` script, run as root through the setup account; in *check* mode (the plan) it stops after
+reading. It needs `useradd`, `usermod`, `getent`, `visudo` and `sudo`, and an `includedir` for
+`/etc/sudoers.d`; it installs nothing.
+
+- **Ownership.** An existing account counts as DROOL's only if its record
+  `/var/lib/drool/ssh-accounts/<user>` (root, 0600, in a 0700 folder) names `controller-default`'s
+  fingerprint and the account's user ID; if the user ID wasn't recorded yet (a crash between
+  `useradd` and the record), the account's comment must carry the record's random token. Otherwise:
+  refused before any change (`exists`, `foreign`, `replaced`), as is a free name whose group exists.
+- **Creation.** The record first, then `useradd -r -m` (shell `/bin/bash`, else `/bin/sh`), then the
+  user ID. The password field becomes `*`: no password sign-in, and not `!`, which OpenSSH treats as a
+  locked account when `UsePAM` is off.
+- **Key.** `~/.ssh` (0700) and `authorized_keys` (0600), owned by the account; `controller-default`
+  added once (lines others added to DROOL's own account stay); `restorecon` where SELinux has it.
+  The same key for every host: no per-host keys.
+- **sudo.** The rule goes to a dot-named temporary file in `/etc/sudoers.d` (sudo skips names with a
+  dot), is checked with `visudo -cf`, then moved to `/etc/sudoers.d/drool-account-<user>` (0440). If
+  `visudo -c` passed before, it must still pass; whether or not, `sudo -l -U <user>` must read the
+  whole configuration and grant `NOPASSWD: ALL`. Otherwise the previous file is put back (or the new
+  one removed). Problems `visudo -c` already reported (another file's mode) are passed on as a
+  warning, not fixed.
+- **Interruptions.** The script ignores `SIGHUP` and `SIGPIPE`, so a dropped connection can't stop it
+  halfway; running it again finds DROOL's record and continues (it reports `account existing`).
+
+### 36.3 The switch and afterwards
+
+One transaction: compare the sign-in snapshot; set user, `controller-default`, sudo without a
+password and `ssh_account_at`; delete or retain the temporary credentials; audit `host.ssh_account`
+(host, account, setup account, account created or existing, verified, switched, each credential's
+name, kind and outcome; never a value) and a `credential.delete` per deleted credential, with the
+requesting user as actor. After the commit the pool drops the host's connections (and those of hosts
+that ride through it), a connection test runs as the new account, and the engine's host-changed hook
+refreshes the inventory when the job releases the host. A failed setup is audited as a failure with
+the step it reached.
+
+`ssh_account_at` is cleared when an edit changes the host's user or credential; the UI offers the
+setup again only for hosts without it (and not for jump-only hosts or hosts in certificate mode).
+
+### 36.4 Boundaries
+
+- **Certificate mode.** Refused for a host that signs in with certificates (switch back, set up,
+  switch again). The account is an ordinary account, so certificates for its name work afterwards;
+  no certificate authority is created for the setup.
+- **Jump hosts.** A host behind one is set up and proven through it; the jump host's own row and
+  credentials are untouched. A *jump host only* gets no account.
+- **Shepherds.** The account can be a Shepherd host's SSH path or fallback; the Shepherd neither uses
+  nor needs it.
+- **No automatic undo.** An account created by an attempt that failed later stays, recorded as
+  DROOL's, and the next attempt continues with it; removing it is documented (user guide, *DROOL's
+  Own SSH Account*).
+
+### 36.5 Tests
+
+`internal/sshaccount` (an in-process SSH server with per-user keys plays the host: switch only after
+a new connection, sudo checked over it, temporary credentials deleted, shared and jump-host
+credentials retained, stored ones kept, every failure leaving the host as it was, a lost connection
+reported as unknown, resuming, a concurrent edit winning, no secret in output, results or audit),
+`internal/model` (internal step, name rules), `internal/api` (permissions, re-authentication,
+`setup_credentials`, plan JSON), integration `TestDedicatedSSHAccount` (real sshd, `useradd` and
+`visudo` on Debian 12 and Rocky Linux 9 in unprivileged containers: a refused fresh sign-in, then
+the setup again; a stored credential kept; an existing `drool` refused and untouched; a refusing
+sudo creating nothing; a host behind a jump host), and the browser test `web/e2e/addhost.test.mjs`.

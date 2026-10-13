@@ -52,6 +52,7 @@ import (
 	"drool/internal/recovery"
 	"drool/internal/sched"
 	"drool/internal/secrets"
+	"drool/internal/sshaccount"
 	"drool/internal/sshca"
 	"drool/internal/sshx"
 	"drool/internal/store"
@@ -489,6 +490,10 @@ func cmdServe(path string, explicit bool) error {
 		Settings: sshca.Settings{TTL: cfg.SSHCA.CertTTL, ClockSkew: cfg.SSHCA.ClockSkew}, Log: logs.App.With("component", "ssh-ca")})
 	inv.SetCertIssuer(caSvc)
 	caSvc.SetHosts(inv, sshca.Connector{Dialer: dialer, Pool: pool})
+	// DROOL's own SSH account on hosts (After M17): set up over an account
+	// the administrator has, proven on a fresh connection, then switched to.
+	acctSvc := sshaccount.New(sshaccount.Deps{Store: st, Secrets: secretSvc, Hosts: inv, Dialer: dialer, Pool: pool, Audit: auditW,
+		Controller: installationName(), Log: logs.App.With("component", "ssh-account")})
 	arts, err := artifacts.Open(cfg.DataDir, st)
 	if err != nil {
 		return err
@@ -651,7 +656,7 @@ func cmdServe(path string, explicit bool) error {
 	// Scheduling and workflows (M13): workflow verification steps run on
 	// the controller inside a host's job; the scheduler creates ordinary
 	// jobs (and ordinary maintenance) when occurrences are due.
-	eng.SetLocal(localSteps{sshca: caSvc, verify: verify.New(verify.Deps{Store: st, Monitor: mon, Log: logs.Job,
+	eng.SetLocal(localSteps{sshca: caSvc, account: acctSvc, verify: verify.New(verify.Deps{Store: st, Monitor: mon, Log: logs.Job,
 		AgentConnected: func(ctx context.Context, h db.Host) bool { return router.Decide(ctx, h).UseAgent },
 		Probe: func(ctx context.Context, hostID string) verify.Reachability {
 			out, err := inv.Probe(ctx, hostID)
@@ -721,6 +726,7 @@ func cmdServe(path string, explicit bool) error {
 		Poller: poll, StaleAfter: pollCfg.StaleAfter(), Simulator: router, Files: router, Artifacts: arts,
 		Agents: agents, Router: router, WebPin: webPin(tlsRes), Firewall: fw, Network: network, Monitor: mon, Alerts: alertSvc,
 		Sched: scheduler, Desired: desiredSvc, Integrity: integrity, AuditSink: auditSink, SSHCA: caSvc, Recovery: recov,
+		SSHAccount: acctSvc,
 	})
 	if err != nil {
 		return err
@@ -876,16 +882,20 @@ func artifactGC(ctx context.Context, arts *artifacts.Store, log *slog.Logger) {
 	}
 }
 
-// localSteps runs the controller-side job steps: workflow checks (M13)
-// and SSH certificate trust (M16).
+// localSteps runs the controller-side job steps: workflow checks (M13),
+// SSH certificate trust (M16) and DROOL's own SSH account (After M17).
 type localSteps struct {
-	verify *verify.Executor
-	sshca  *sshca.Service
+	verify  *verify.Executor
+	sshca   *sshca.Service
+	account *sshaccount.Service
 }
 
 func (l localSteps) Execute(ctx context.Context, hostID string, op model.Operation, out driver.OutputSink) (*driver.OpResult, error) {
-	if op.Type == model.OpSSHCATrust {
+	switch op.Type {
+	case model.OpSSHCATrust:
 		return l.sshca.Execute(ctx, hostID, op, out)
+	case model.OpSSHAccount:
+		return l.account.Execute(ctx, hostID, op, out)
 	}
 	return l.verify.Execute(ctx, hostID, op, out)
 }

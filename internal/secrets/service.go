@@ -78,6 +78,9 @@ type Input struct {
 	Passphrase  string // decrypts an encrypted private key on import; not stored
 	Generate    bool   // generate a new ed25519 key (ssh_private_key only)
 	CreatedBy   string // user id, may be empty
+	// Temporary: entered only to set up DROOL's own SSH account on a host;
+	// forgotten once that account works, unless another host uses it.
+	Temporary bool
 }
 
 // Prepared is a validated, encrypted credential ready to insert.
@@ -109,6 +112,9 @@ func (s *Service) Prepare(in Input) (*Prepared, error) {
 	if in.CreatedBy != "" {
 		row.CreatedBy = sql.NullString{String: in.CreatedBy, Valid: true}
 	}
+	if in.Temporary {
+		row.Temporary = 1
+	}
 	return &Prepared{Row: row}, nil
 }
 
@@ -118,7 +124,7 @@ func (s *Service) InsertTx(ctx context.Context, q *db.Queries, p *Prepared) erro
 	err := q.InsertSecret(ctx, db.InsertSecretParams{
 		ID: r.ID, Name: r.Name, Kind: r.Kind, Ciphertext: r.Ciphertext, Nonce: r.Nonce,
 		KeyVersion: r.KeyVersion, PublicPart: r.PublicPart, Description: r.Description,
-		CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Temporary: r.Temporary,
 	})
 	if store.IsUniqueViolation(err) {
 		return ErrNameTaken

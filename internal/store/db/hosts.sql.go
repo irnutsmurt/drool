@@ -10,6 +10,16 @@ import (
 	"database/sql"
 )
 
+const clearHostSSHAccount = `-- name: ClearHostSSHAccount :exec
+UPDATE hosts SET ssh_account_at = NULL WHERE id = ?
+`
+
+// The host's sign-in was edited: it may not be DROOL's own account any more.
+func (q *Queries) ClearHostSSHAccount(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, clearHostSSHAccount, id)
+	return err
+}
+
 const countActiveSSHCA = `-- name: CountActiveSSHCA :one
 SELECT count(*) FROM ssh_user_cas WHERE state = 'active' AND key_ciphertext IS NOT NULL
 `
@@ -58,7 +68,7 @@ func (q *Queries) DeleteHostTags(ctx context.Context, hostID string) error {
 }
 
 const getHost = `-- name: GetHost :one
-SELECT id, name, description, connect_address, management_method, ssh_port, ssh_user, ssh_credential_id, become_method, become_credential_id, ssh_needs_pty, jump_only, status, status_detail, last_probe_at, created_at, updated_at, management_fallback, ssh_configured, requested_caps_json, ssh_auth, ssh_principal FROM hosts WHERE id = ?
+SELECT id, name, description, connect_address, management_method, ssh_port, ssh_user, ssh_credential_id, become_method, become_credential_id, ssh_needs_pty, jump_only, status, status_detail, last_probe_at, created_at, updated_at, management_fallback, ssh_configured, requested_caps_json, ssh_auth, ssh_principal, ssh_account_at FROM hosts WHERE id = ?
 `
 
 func (q *Queries) GetHost(ctx context.Context, id string) (Host, error) {
@@ -87,6 +97,7 @@ func (q *Queries) GetHost(ctx context.Context, id string) (Host, error) {
 		&i.RequestedCapsJson,
 		&i.SshAuth,
 		&i.SshPrincipal,
+		&i.SshAccountAt,
 	)
 	return i, err
 }
@@ -263,7 +274,7 @@ func (q *Queries) ListHostTags(ctx context.Context) ([]HostTag, error) {
 }
 
 const listHosts = `-- name: ListHosts :many
-SELECT id, name, description, connect_address, management_method, ssh_port, ssh_user, ssh_credential_id, become_method, become_credential_id, ssh_needs_pty, jump_only, status, status_detail, last_probe_at, created_at, updated_at, management_fallback, ssh_configured, requested_caps_json, ssh_auth, ssh_principal FROM hosts ORDER BY name
+SELECT id, name, description, connect_address, management_method, ssh_port, ssh_user, ssh_credential_id, become_method, become_credential_id, ssh_needs_pty, jump_only, status, status_detail, last_probe_at, created_at, updated_at, management_fallback, ssh_configured, requested_caps_json, ssh_auth, ssh_principal, ssh_account_at FROM hosts ORDER BY name
 `
 
 func (q *Queries) ListHosts(ctx context.Context) ([]Host, error) {
@@ -298,6 +309,7 @@ func (q *Queries) ListHosts(ctx context.Context) ([]Host, error) {
 			&i.RequestedCapsJson,
 			&i.SshAuth,
 			&i.SshPrincipal,
+			&i.SshAccountAt,
 		); err != nil {
 			return nil, err
 		}
@@ -369,6 +381,36 @@ func (q *Queries) ListTagsForHost(ctx context.Context, hostID string) ([]string,
 		return nil, err
 	}
 	return items, nil
+}
+
+const setHostSSHAccount = `-- name: SetHostSSHAccount :exec
+UPDATE hosts SET ssh_user = ?, ssh_credential_id = ?, become_method = 'sudo', become_credential_id = NULL,
+  status = ?, status_detail = ?, ssh_account_at = ?, updated_at = ? WHERE id = ?
+`
+
+type SetHostSSHAccountParams struct {
+	SshUser         string
+	SshCredentialID sql.NullString
+	Status          string
+	StatusDetail    string
+	SshAccountAt    sql.NullInt64
+	UpdatedAt       int64
+	ID              string
+}
+
+// The switch to DROOL's own SSH account (After M17): sign in as it with
+// DROOL's key and use its passwordless sudo.
+func (q *Queries) SetHostSSHAccount(ctx context.Context, arg SetHostSSHAccountParams) error {
+	_, err := q.db.ExecContext(ctx, setHostSSHAccount,
+		arg.SshUser,
+		arg.SshCredentialID,
+		arg.Status,
+		arg.StatusDetail,
+		arg.SshAccountAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
 }
 
 const setHostSSHAuth = `-- name: SetHostSSHAuth :exec

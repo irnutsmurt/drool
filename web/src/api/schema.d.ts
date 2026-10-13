@@ -596,7 +596,9 @@ export interface paths {
         put?: never;
         /**
          * @description New hosts start in `pending_hostkey`. Scan and approve the host key, then run a
-         *     connection test. `credential_id` defaults to the controller key.
+         *     connection test. `credential_id` defaults to the controller key. With `setup_credentials`
+         *     (requires `credentials.manage` too), the password, key or sudo password entered only to set
+         *     up DROOL's own SSH account are stored as temporary credentials: see POST /hosts/{id}/ssh-account.
          */
         post: operations["createHost"];
         delete?: never;
@@ -636,6 +638,40 @@ export interface paths {
         /** @description Switch to certificates only after a brand-new connection that offered nothing but a certificate from the active authority (with the given principal) worked just now (409 certificate_refused otherwise; nothing changes). Back to the credential only when one is assigned. Requires `credentials.manage` and recent re-authentication. */
         put: operations["setHostSSHAuth"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/ssh-account/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description What setting up DROOL's own SSH account on the host would do (After M17): the changes on the host, what becomes of the credentials it uses now, what DROOL leaves alone, and why it can't run now (`blockers`). Asks the host itself, read-only and as root over its current access, whether the name is free (or an account DROOL created earlier) and nothing it needs is missing. Changes nothing. Requires `credentials.manage`. */
+        post: operations["planSSHAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/ssh-account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Set up DROOL's own SSH account on the host and switch to it, as a job of its own (step `ssh_account`) under the host's exclusive lock. Over the host's current access, as root, DROOL creates the account (or continues with one it created earlier; never anyone else's), lets DROOL's own key sign in as it and gives it passwordless sudo (a file in /etc/sudoers.d checked with visudo): root-equivalent. Then it signs in as the account on a brand-new connection (through the jump host, if any, with the pinned host keys) and runs sudo without a password. Only then does the host switch to the account, in the same transaction that deletes the temporary setup credentials no other host uses. On any failure nothing is switched and no credential is deleted. The setup account itself is never changed. The job's step result says what happened. 409 `ssh_account_blocked` when it can't run (see the plan's blockers). Requires `credentials.manage`, `hosts.write` and recent re-authentication. */
+        post: operations["setUpSSHAccount"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4522,6 +4558,8 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+            /** @description Entered only to set up DROOL's own SSH account on a host; DROOL deletes it once the host signs in with that account, unless another host uses it. */
+            temporary?: boolean;
         };
         CreateCredentialRequest: {
             name: string;
@@ -4596,6 +4634,11 @@ export interface components {
             ssh_auth: "credential" | "certificate";
             /** @description The principal certificates name; empty means the SSH user. */
             ssh_principal: string;
+            /**
+             * Format: date-time
+             * @description When the host switched to DROOL's own SSH account (POST /hosts/{id}/ssh-account); null if it never did, or its user or credential was edited since.
+             */
+            ssh_account_at: string | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -4626,6 +4669,70 @@ export interface components {
             ssh_auth?: "credential" | "certificate";
             /** @description Create only. */
             ssh_principal?: string;
+            /** @description Create only (requires `credentials.manage`): sign-in details entered just to set up DROOL's own SSH account on the host, stored as temporary credentials and assigned to it. A password or a private key (not both, and not with `credential_id`), and a sudo password when sudo asks for one. */
+            setup_credentials?: {
+                /** Format: password */
+                ssh_password?: string;
+                /** Format: password */
+                ssh_private_key?: string;
+                /**
+                 * Format: password
+                 * @description Decrypts ssh_private_key; not stored.
+                 */
+                passphrase?: string;
+                /** Format: password */
+                sudo_password?: string;
+            };
+        };
+        SSHAccountRequest: {
+            /** @description The account's name; default drool. Lower-case letters, digits, _ and -, starting with a letter or _. */
+            user?: string;
+        };
+        SSHAccountPlan: {
+            host_id: string;
+            host: string;
+            user: string;
+            /** @description The account DROOL signs in as now */
+            setup_user: string;
+            /** @description Fingerprint of DROOL's own SSH key (controller-default) that the account will accept. */
+            key: string;
+            /** @description What DROOL will create or change on the host. Empty while blocked. */
+            changes: string[];
+            credentials: {
+                id: string;
+                name: string;
+                kind: components["schemas"]["CredentialKind"];
+                temporary: boolean;
+                /**
+                 * @description After the switch: delete (temporary, nothing else uses it), retain (temporary, but other hosts use it), keep (a stored credential).
+                 * @enum {string}
+                 */
+                outcome: "delete" | "retain" | "keep";
+                /** @description Other hosts that use it. */
+                used_by: string[];
+            }[];
+            /** @description What DROOL leaves alone */
+            notes: string[];
+            /** @description The account is root-equivalent. */
+            warning: string;
+            /** @description What the host said (null when blocked before asking it). */
+            check: null | {
+                ok: boolean;
+                /**
+                 * @description existing: DROOL created it on an earlier attempt and continues with it.
+                 * @enum {string}
+                 */
+                account?: "new" | "existing";
+                shell?: string;
+                /** @description sshd's AllowUsers/AllowGroups/DenyUsers/DenyGroups, which may refuse the account. */
+                sshd_limits?: string;
+                /** @description visudo -c already reports problems on the host (not DROOL's); the setup checks that its rule adds none and that sudo grants it. */
+                sudo_warning?: string;
+                code?: string;
+                message?: string;
+            };
+            /** @description Why it can't be set up now; empty when it can. */
+            blockers: string[];
         };
         ProbeStep: {
             name: string;
@@ -4656,7 +4763,16 @@ export interface components {
             host_ids?: string[];
         };
         /** @description One typed step. Discriminated by `type`. */
-        Operation: components["schemas"]["CommandOp"] | components["schemas"]["ScriptOp"] | components["schemas"]["PackageOp"] | components["schemas"]["SystemUpdateOp"] | components["schemas"]["ServiceOp"] | components["schemas"]["RebootOp"] | components["schemas"]["FileDeployOp"] | components["schemas"]["WaitOp"] | components["schemas"]["VerifyHostOp"] | components["schemas"]["VerifyServicesOp"] | components["schemas"]["VerifyHealthOp"] | components["schemas"]["SSHCATrustOp"];
+        Operation: components["schemas"]["CommandOp"] | components["schemas"]["ScriptOp"] | components["schemas"]["PackageOp"] | components["schemas"]["SystemUpdateOp"] | components["schemas"]["ServiceOp"] | components["schemas"]["RebootOp"] | components["schemas"]["FileDeployOp"] | components["schemas"]["WaitOp"] | components["schemas"]["VerifyHostOp"] | components["schemas"]["VerifyServicesOp"] | components["schemas"]["VerifyHealthOp"] | components["schemas"]["SSHCATrustOp"] | components["schemas"]["SSHAccountOp"];
+        /** @description Controller-side step (After M17) in the job POST /hosts/{id}/ssh-account creates: sets up DROOL's own SSH account and switches the host to it once a fresh connection proved it. Internal: POST /jobs, workflows and schedules refuse it. */
+        SSHAccountOp: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "ssh_account";
+            user: string;
+        };
         /** @description Controller-side step (M16): makes the host trust DROOL's SSH certificate authorities (every one that isn't retired) through TrustedUserCAKeys in an sshd_config.d file, checks it with sshd -t and sshd -T, reloads sshd when something changed, then proves each issuing authority with a brand-new connection that offers only a certificate. Refuses hosts that already trust another CA file. "remove" takes DROOL's files away (refused while the host signs in with certificates). Requires `credentials.manage`. */
         SSHCATrustOp: {
             /**
@@ -9066,6 +9182,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HostSSHAuth"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    planSSHAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SSHAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description The plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSHAccountPlan"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    setUpSSHAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SSHAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description The job that sets up the account. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
                 };
             };
             403: components["responses"]["Problem"];

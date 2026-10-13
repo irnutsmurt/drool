@@ -679,7 +679,9 @@ paths:
       tags: [hosts]
       description: |
         New hosts start in `pending_hostkey`. Scan and approve the host key, then run a
-        connection test. `credential_id` defaults to the controller key.
+        connection test. `credential_id` defaults to the controller key. With `setup_credentials`
+        (requires `credentials.manage` too), the password, key or sudo password entered only to set
+        up DROOL's own SSH account are stored as temporary credentials: see POST /hosts/{id}/ssh-account.
       requestBody:
         required: true
         content:
@@ -771,6 +773,61 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HostSSHAuth' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/ssh-account/plan:
+    post:
+      operationId: planSSHAccount
+      tags: [hosts]
+      description: >-
+        What setting up DROOL's own SSH account on the host would do (After M17): the changes on the host, what becomes
+        of the credentials it uses now, what DROOL leaves alone, and why it can't run now (`blockers`). Asks the host
+        itself, read-only and as root over its current access, whether the name is free (or an account DROOL created
+        earlier) and nothing it needs is missing. Changes nothing. Requires `credentials.manage`.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SSHAccountRequest' }
+      responses:
+        '200':
+          description: The plan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SSHAccountPlan' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/ssh-account:
+    post:
+      operationId: setUpSSHAccount
+      tags: [hosts]
+      description: >-
+        Set up DROOL's own SSH account on the host and switch to it, as a job of its own (step `ssh_account`) under the
+        host's exclusive lock. Over the host's current access, as root, DROOL creates the account (or continues with one it
+        created earlier; never anyone else's), lets DROOL's own key sign in as it and gives it passwordless sudo (a file in
+        /etc/sudoers.d checked with visudo): root-equivalent. Then it signs in as the account on a brand-new connection
+        (through the jump host, if any, with the pinned host keys) and runs sudo without a password. Only then does the host
+        switch to the account, in the same transaction that deletes the temporary setup credentials no other host uses.
+        On any failure nothing is switched and no credential is deleted. The setup account itself is never changed. The
+        job's step result says what happened. 409 `ssh_account_blocked` when it can't run (see the plan's blockers).
+        Requires `credentials.manage`, `hosts.write` and recent re-authentication.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SSHAccountRequest' }
+      responses:
+        '201':
+          description: The job that sets up the account.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
         '403': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
         '409': { $ref: '#/components/responses/Problem' }
@@ -4188,6 +4245,7 @@ components:
         used_by: { type: array, items: { $ref: '#/components/schemas/HostRef' } }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        temporary: { type: boolean, description: 'Entered only to set up DROOL''s own SSH account on a host; DROOL deletes it once the host signs in with that account, unless another host uses it.' }
 
     CreateCredentialRequest:
       type: object
@@ -4240,7 +4298,7 @@ components:
       type: object
       required: [id, name, description, address, port, user, credential_id, become_method, become_credential_id,
                  needs_pty, jump_only, via_host_id, status, status_detail, last_probe_at, tags, group_ids,
-                 pinned_key, facts, health, management, ssh_auth, ssh_principal, created_at, updated_at]
+                 pinned_key, facts, health, management, ssh_auth, ssh_principal, ssh_account_at, created_at, updated_at]
       properties:
         id: { type: string }
         name: { type: string }
@@ -4275,6 +4333,7 @@ components:
         management: { $ref: '#/components/schemas/Management' }
         ssh_auth: { type: string, enum: [credential, certificate], description: 'How DROOL signs in over SSH: the credential, or short-lived certificates from its SSH certificate authority (M16).' }
         ssh_principal: { type: string, description: The principal certificates name; empty means the SSH user. }
+        ssh_account_at: { type: [string, 'null'], format: date-time, description: 'When the host switched to DROOL''s own SSH account (POST /hosts/{id}/ssh-account); null if it never did, or its user or credential was edited since.' }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 
@@ -4298,6 +4357,64 @@ components:
         group_ids: { type: array, items: { type: string } }
         ssh_auth: { type: string, enum: [credential, certificate], description: 'Create only: certificate for a host that already trusts DROOL''s SSH certificate authority (then no credential is needed). Existing hosts switch with PUT /hosts/{id}/ssh-auth.' }
         ssh_principal: { type: string, description: Create only. }
+        setup_credentials:
+          type: object
+          additionalProperties: false
+          description: >-
+            Create only (requires `credentials.manage`): sign-in details entered just to set up DROOL's own SSH account on
+            the host, stored as temporary credentials and assigned to it. A password or a private key (not both, and not
+            with `credential_id`), and a sudo password when sudo asks for one.
+          properties:
+            ssh_password: { type: string, format: password }
+            ssh_private_key: { type: string, format: password }
+            passphrase: { type: string, format: password, description: Decrypts ssh_private_key; not stored. }
+            sudo_password: { type: string, format: password }
+
+    SSHAccountRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        user: { type: string, description: 'The account''s name; default drool. Lower-case letters, digits, _ and -, starting with a letter or _.' }
+
+    SSHAccountPlan:
+      type: object
+      required: [host_id, host, user, setup_user, key, changes, credentials, notes, warning, check, blockers]
+      properties:
+        host_id: { type: string }
+        host: { type: string }
+        user: { type: string }
+        setup_user: { type: string, description: The account DROOL signs in as now, used only for the setup. }
+        key: { type: string, description: Fingerprint of DROOL's own SSH key (controller-default) that the account will accept. }
+        changes: { type: array, items: { type: string }, description: What DROOL will create or change on the host. Empty while blocked. }
+        credentials:
+          type: array
+          items:
+            type: object
+            required: [id, name, kind, temporary, outcome, used_by]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              kind: { $ref: '#/components/schemas/CredentialKind' }
+              temporary: { type: boolean }
+              outcome: { type: string, enum: [delete, retain, keep], description: 'After the switch: delete (temporary, nothing else uses it), retain (temporary, but other hosts use it), keep (a stored credential).' }
+              used_by: { type: array, items: { type: string }, description: Other hosts that use it. }
+        notes: { type: array, items: { type: string }, description: What DROOL leaves alone, and how jump hosts are involved. }
+        warning: { type: string, description: The account is root-equivalent. }
+        check:
+          description: What the host said (null when blocked before asking it).
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [ok]
+              properties:
+                ok: { type: boolean }
+                account: { type: string, enum: [new, existing], description: 'existing: DROOL created it on an earlier attempt and continues with it.' }
+                shell: { type: string }
+                sshd_limits: { type: string, description: 'sshd''s AllowUsers/AllowGroups/DenyUsers/DenyGroups, which may refuse the account.' }
+                sudo_warning: { type: string, description: 'visudo -c already reports problems on the host (not DROOL''s); the setup checks that its rule adds none and that sudo grants it.' }
+                code: { type: string }
+                message: { type: string }
+        blockers: { type: array, items: { type: string }, description: Why it can't be set up now; empty when it can. }
 
     ProbeStep:
       type: object
@@ -4351,6 +4468,7 @@ components:
         - $ref: '#/components/schemas/VerifyServicesOp'
         - $ref: '#/components/schemas/VerifyHealthOp'
         - $ref: '#/components/schemas/SSHCATrustOp'
+        - $ref: '#/components/schemas/SSHAccountOp'
       discriminator:
         propertyName: type
         mapping:
@@ -4366,6 +4484,19 @@ components:
           verify_services: '#/components/schemas/VerifyServicesOp'
           verify_health: '#/components/schemas/VerifyHealthOp'
           ssh_ca_trust: '#/components/schemas/SSHCATrustOp'
+          ssh_account: '#/components/schemas/SSHAccountOp'
+
+    SSHAccountOp:
+      type: object
+      description: >-
+        Controller-side step (After M17) in the job POST /hosts/{id}/ssh-account creates: sets up DROOL's own SSH account
+        and switches the host to it once a fresh connection proved it. Internal: POST /jobs, workflows and schedules
+        refuse it.
+      required: [type, user]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [ssh_account] }
+        user: { type: string }
 
     SSHCATrustOp:
       type: object

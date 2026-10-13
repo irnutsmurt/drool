@@ -57,7 +57,7 @@ type VerifyHealthOp struct {
 // IsLocal reports whether an operation type runs on the controller.
 func IsLocal(t string) bool {
 	switch t {
-	case OpWait, OpVerifyHost, OpVerifyServices, OpVerifyHealth, OpSSHCATrust:
+	case OpWait, OpVerifyHost, OpVerifyServices, OpVerifyHealth, OpSSHCATrust, OpSSHAccount:
 		return true
 	}
 	return false

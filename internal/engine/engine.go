@@ -274,6 +274,9 @@ type SubmitOptions struct {
 	HostSteps map[string][]int
 	// MaxSteps raises the step limit (corrections); 0: model.MaxSteps.
 	MaxSteps int
+	// Internal allows operations only DROOL itself submits (setting up
+	// its own SSH account on a host). Never set for a spec a user wrote.
+	Internal bool
 }
 
 // SubmitTx validates spec, resolves its targets and stores the job and its
@@ -290,7 +293,11 @@ func (e *Engine) Submit(ctx context.Context, q *db.Queries, spec model.JobSpec, 
 	if opt.MaxSteps > 0 {
 		maxSteps = opt.MaxSteps
 	}
-	if err := spec.NormalizeLimit(maxSteps); err != nil {
+	normalize := spec.NormalizeLimit
+	if opt.Internal {
+		normalize = func(int) error { return spec.NormalizeInternal() }
+	}
+	if err := normalize(maxSteps); err != nil {
 		return nil, &ValidationError{Msg: err.Error()}
 	}
 	for h, steps := range opt.HostSteps {
@@ -787,7 +794,8 @@ func (e *Engine) jumpSlot(via string) chan struct{} {
 // runHost executes all steps on one host.
 // OnHostChanged registers fn to be called after a job with typed package,
 // service or reboot steps releases a host, so inventory can be re-checked
-// instead of showing pre-job update counts until the next poll.
+// instead of showing pre-job update counts until the next poll. Setting up
+// DROOL's own SSH account counts too: discovery continues as that account.
 func (e *Engine) OnHostChanged(fn func(hostID string)) {
 	e.mu.Lock()
 	e.hostChanged = fn
@@ -797,7 +805,7 @@ func (e *Engine) OnHostChanged(fn func(hostID string)) {
 func changesInventory(spec model.JobSpec) bool {
 	for _, op := range spec.Steps {
 		switch op.Type {
-		case model.OpPackage, model.OpSystemUpdate, model.OpService, model.OpReboot:
+		case model.OpPackage, model.OpSystemUpdate, model.OpService, model.OpReboot, model.OpSSHAccount:
 			return true
 		}
 	}

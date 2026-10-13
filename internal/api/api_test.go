@@ -3,6 +3,9 @@ package api
 import (
 	"bytes"
 	"context"
+	"drool/internal/driver"
+	"drool/internal/model"
+	"drool/internal/sshaccount"
 	"drool/internal/sshca"
 	"encoding/json"
 	"io"
@@ -147,6 +150,7 @@ func newHarnessWith(t *testing.T, o harnessOpts) *harness {
 		Now: func() time.Time { return time.Now().Add(time.Duration(clock.Load())) }})
 	inv.SetCertIssuer(caSvc)
 	caSvc.SetHosts(inv, sshca.Connector{Dialer: dialer, Pool: pool})
+	acctSvc := sshaccount.New(sshaccount.Deps{Store: st, Secrets: secretSvc, Hosts: inv, Dialer: dialer, Pool: pool, Audit: auditW, Controller: "test"})
 	arts, err := artifacts.Open(t.TempDir(), st)
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +192,7 @@ func newHarnessWith(t *testing.T, o harnessOpts) *harness {
 	if err := eng.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	eng.SetLocal(caSvc) // SSH certificate trust steps (sched tests install their own)
+	eng.SetLocal(testLocalSteps{caSvc, acctSvc}) // SSH certificate trust and account steps (sched tests install their own)
 	mon := monsvc.New(monsvc.Deps{Store: st, Agents: agents, Inventory: inv, Engine: eng, Audit: auditW, Log: logs.App})
 	agents.SetMonitorHooks(mon)
 	alertSvc := alerts.New(alerts.Deps{Store: st, Box: box, Audit: auditW, Log: logs.App, Sender: testSender,
@@ -210,7 +214,7 @@ func newHarnessWith(t *testing.T, o harnessOpts) *harness {
 		Config: cfg, Store: st, Auth: authSvc, Audit: auditW, Logs: logs,
 		Secrets: secretSvc, Inventory: inv, Pool: pool, Engine: eng, Simulator: router, Files: router, Artifacts: arts,
 		Agents: agents, Router: router, Firewall: fw, Network: network, Monitor: mon, Alerts: alertSvc, Sched: schedSvc, Desired: desiredSvc,
-		Integrity: integrity, AuditSink: auditSink, SSHCA: caSvc, Recovery: recov,
+		Integrity: integrity, AuditSink: auditSink, SSHCA: caSvc, Recovery: recov, SSHAccount: acctSvc,
 		UI: fstest.MapFS{
 			"index.html":    {Data: []byte("<!doctype html><title>ui</title>")},
 			"assets/app.js": {Data: []byte("console.log(1)")},
@@ -227,6 +231,19 @@ func newHarnessWith(t *testing.T, o harnessOpts) *harness {
 		fw: fw, fwSSH: fwSSH, fwFake: fwFake, net: network, geoDir: geoDir, mon: mon, alerts: alertSvc, box: box, sched: schedSvc,
 		desired: desiredSvc, clock: clock, sshca: caSvc, integrity: integrity, sink: auditSink, auditW: auditW, dataDir: dataDir,
 		recovery: recov, dbPath: o.dbPath}
+}
+
+// testLocalSteps runs the controller-side steps the API tests need.
+type testLocalSteps struct {
+	ca   *sshca.Service
+	acct *sshaccount.Service
+}
+
+func (l testLocalSteps) Execute(ctx context.Context, hostID string, op model.Operation, out driver.OutputSink) (*driver.OpResult, error) {
+	if op.Type == model.OpSSHAccount {
+		return l.acct.Execute(ctx, hostID, op, out)
+	}
+	return l.ca.Execute(ctx, hostID, op, out)
 }
 
 func (h *harness) mkUser(name, role string) {

@@ -46,6 +46,8 @@ type Operation struct {
 	VerifyHealth   *VerifyHealthOp
 	// Controller-side SSH certificate authority trust (M16).
 	SSHCATrust *SSHCATrustOp
+	// Controller-side setup of DROOL's own SSH account (After M17).
+	SSHAccount *SSHAccountOp
 }
 
 // CommandOp runs a single shell command line.
@@ -149,6 +151,11 @@ func (o Operation) MarshalJSON() ([]byte, error) {
 			Type string `json:"type"`
 			*SSHCATrustOp
 		}{o.Type, o.SSHCATrust}
+	case OpSSHAccount:
+		body = struct {
+			Type string `json:"type"`
+			*SSHAccountOp
+		}{o.Type, o.SSHAccount}
 	default:
 		return nil, fmt.Errorf("unknown operation type %q", o.Type)
 	}
@@ -218,6 +225,9 @@ func (o *Operation) UnmarshalJSON(data []byte) error {
 	case OpSSHCATrust:
 		o.SSHCATrust = &SSHCATrustOp{}
 		return strict(o.SSHCATrust)
+	case OpSSHAccount:
+		o.SSHAccount = &SSHAccountOp{}
+		return strict(o.SSHAccount)
 	case "":
 		return errors.New("operation type is required")
 	default:
@@ -283,6 +293,8 @@ func (o *Operation) Normalize() error {
 		return o.VerifyHealth.normalize()
 	case OpSSHCATrust:
 		return o.SSHCATrust.normalize()
+	case OpSSHAccount:
+		return o.SSHAccount.normalize()
 	}
 	return fmt.Errorf("unknown operation type %q", o.Type)
 }
@@ -352,6 +364,13 @@ func (o Operation) Meta() Meta {
 		// Writing the same trust again changes nothing; sshd is reloaded
 		// only when a file changed.
 		return Meta{Lock: LockExclusive, Idempotent: true, Become: true, TimeoutS: 300}
+	case OpSSHAccount:
+		// Never retried automatically: after a lost connection DROOL
+		// doesn't know how far the setup got; running it again (by hand)
+		// checks what is there and continues. Slow hosts (emulated ones
+		// take a minute to sign in) get room for the setup, the proof and
+		// the connection test after the switch.
+		return Meta{Lock: LockExclusive, Become: true, TimeoutS: 600}
 	}
 	return Meta{Lock: LockExclusive}
 }
@@ -428,6 +447,8 @@ func (o Operation) Summary() string {
 			return "Remove trust in DROOL's SSH certificate authority"
 		}
 		return "Trust DROOL's SSH certificate authority"
+	case OpSSHAccount:
+		return "Set up DROOL's own SSH account (" + o.SSHAccount.User + ")"
 	}
 	return o.Type
 }
@@ -486,7 +507,13 @@ const MaxCorrectiveSteps = 50
 func (j *JobSpec) Normalize() error { return j.NormalizeLimit(MaxSteps) }
 
 // NormalizeLimit is Normalize with another step limit (corrections).
-func (j *JobSpec) NormalizeLimit(maxSteps int) error {
+func (j *JobSpec) NormalizeLimit(maxSteps int) error { return j.normalize(maxSteps, false) }
+
+// NormalizeInternal is Normalize for a job DROOL itself submits: it may
+// be DROOL's own SSH account setup, alone in its job.
+func (j *JobSpec) NormalizeInternal() error { return j.normalize(MaxSteps, true) }
+
+func (j *JobSpec) normalize(maxSteps int, internal bool) error {
 	if len(j.Steps) == 0 {
 		return errors.New("a job needs at least one step")
 	}
@@ -494,8 +521,12 @@ func (j *JobSpec) NormalizeLimit(maxSteps int) error {
 		return fmt.Errorf("a job may have at most %d steps", maxSteps)
 	}
 	for i := range j.Steps {
-		if j.Steps[i].Type == OpFirewall {
-			return fmt.Errorf("step %d: %q is an internal operation", i+1, OpFirewall)
+		t := j.Steps[i].Type
+		if t == OpFirewall || t == OpSSHAccount && !internal {
+			return fmt.Errorf("step %d: %w", i+1, internalOpError(t))
+		}
+		if t == OpSSHAccount && (len(j.Steps) != 1 || len(j.Targets.Hosts) != 1 || len(j.Targets.Groups)+len(j.Targets.Tags) > 0) {
+			return errors.New("DROOL's own SSH account is set up on one host at a time, in a job of its own")
 		}
 		if err := j.Steps[i].Normalize(); err != nil {
 			return fmt.Errorf("step %d: %w", i+1, err)
@@ -532,8 +563,8 @@ func NormalizeSteps(steps []Operation) error {
 		return fmt.Errorf("at most %d steps", MaxSteps)
 	}
 	for i := range steps {
-		if steps[i].Type == OpFirewall {
-			return fmt.Errorf("step %d: %q is an internal operation", i+1, OpFirewall)
+		if internalOp(steps[i].Type) {
+			return fmt.Errorf("step %d: %w", i+1, internalOpError(steps[i].Type))
 		}
 		if err := steps[i].Normalize(); err != nil {
 			return fmt.Errorf("step %d: %w", i+1, err)

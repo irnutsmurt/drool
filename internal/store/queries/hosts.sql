@@ -64,5 +64,15 @@ SELECT * FROM host_addresses WHERE host_id = ? ORDER BY family, address;
 -- How DROOL authenticates over SSH: 'credential' or 'certificate' (M16).
 UPDATE hosts SET ssh_auth = ?, ssh_principal = ?, updated_at = ? WHERE id = ?;
 
+-- name: SetHostSSHAccount :exec
+-- The switch to DROOL's own SSH account (After M17): sign in as it with
+-- DROOL's key and use its passwordless sudo.
+UPDATE hosts SET ssh_user = ?, ssh_credential_id = ?, become_method = 'sudo', become_credential_id = NULL,
+  status = ?, status_detail = ?, ssh_account_at = ?, updated_at = ? WHERE id = ?;
+
+-- name: ClearHostSSHAccount :exec
+-- The host's sign-in was edited: it may not be DROOL's own account any more.
+UPDATE hosts SET ssh_account_at = NULL WHERE id = ?;
+
 -- name: CountActiveSSHCA :one
 SELECT count(*) FROM ssh_user_cas WHERE state = 'active' AND key_ciphertext IS NOT NULL;

@@ -4,6 +4,7 @@ import { api, unwrap } from "@/api/client";
 import { qk, useControllerKey, useCredentials, type Credential } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CodeBlock } from "@/components/ui/CodeBlock";
@@ -118,7 +119,16 @@ export function CredentialsPage() {
           rowKey={(c) => c.id}
           empty={list.isPending ? "Loading…" : "No credentials."}
           columns={[
-            { header: "Name", cell: (c) => <span className="font-medium">{c.name}</span> },
+            { header: "Name", cell: (c) => (
+              <span className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{c.name}</span>
+                {c.temporary && (
+                  <span title="Entered only to set up DROOL's own SSH account on a host. DROOL deletes it once that account works, unless another host uses it.">
+                    <Badge tone="warn">for setup only</Badge>
+                  </span>
+                )}
+              </span>
+            ) },
             { header: "Type", cell: (c) => kindLabel[c.kind] },
             { header: "Used by", cell: (c) => (c.used_by.length ? c.used_by.map((h) => h.name).join(", ") : "—") },
             { header: "Public key", cell: (c) => (c.public_key ? <CopyButton text={c.public_key} label="Copy public key" /> : "—") },

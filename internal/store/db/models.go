@@ -634,6 +634,7 @@ type Host struct {
 	RequestedCapsJson  string
 	SshAuth            string
 	SshPrincipal       string
+	SshAccountAt       sql.NullInt64
 }
 
 type HostAddress struct {
@@ -1095,6 +1096,7 @@ type Secret struct {
 	CreatedBy   sql.NullString
 	CreatedAt   int64
 	UpdatedAt   int64
+	Temporary   int64
 }
 
 type Session struct {

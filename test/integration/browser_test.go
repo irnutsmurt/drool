@@ -69,6 +69,10 @@ func TestBrowser(t *testing.T) {
 	// (testdata/monitor.json): an SD-card Pi, a NAS with a failing disk,
 	// a GPU box, an eMMC edge device with a USB SSD, a stale VM. Their
 	// addresses are unreachable, so SSH polling never overwrites them.
+	// A host the browser adds with DROOL's own SSH account (addhost): its
+	// setup account signs in with a password only, and sudo asks for it.
+	acct := startHost(t, img, "acct-browser", true, netOuter)
+	acct.exec(t, ": > /home/pwuser/.ssh/authorized_keys")
 	for i, n := range []string{"nas-01", "pi-sd", "gpu-01", "edge-usb", "old-vm"} {
 		ctl.must(t, "POST", "/api/v1/hosts", map[string]any{"name": n, "address": fmt.Sprintf("192.0.2.%d", 11+i), "port": 22, "user": "deploy", "become_method": "sudo"}, nil)
 	}
@@ -77,7 +81,7 @@ func TestBrowser(t *testing.T) {
 	if d := os.Getenv("DROOL_E2E_SHOTS"); d != "" {
 		shots = d
 	}
-	files := []string{"designer", "network", "monitoring", "alerts", "health", "automation", "desired", "navigation", "security", "theme", "contrast"}
+	files := []string{"addhost", "designer", "network", "monitoring", "alerts", "health", "automation", "desired", "navigation", "security", "theme", "contrast"}
 	if only := os.Getenv("DROOL_E2E_FILES"); only != "" {
 		files = strings.Split(only, ",") // e.g. "automation,contrast" while iterating
 	}
@@ -88,7 +92,8 @@ func TestBrowser(t *testing.T) {
 	cmd := exec.Command("node", args...)
 	cmd.Dir = filepath.Join(root, "web")
 	cmd.Env = append(os.Environ(), "DROOL_E2E_URL="+ctl.base(), "DROOL_E2E_USER="+adminUser, "DROOL_E2E_PASSWORD="+adminPassword,
-		"CHROME="+chrome, "DROOL_E2E_SHOTS="+shots)
+		"CHROME="+chrome, "DROOL_E2E_SHOTS="+shots,
+		"DROOL_E2E_ACCOUNT_HOST="+fmt.Sprintf("%d %s", acct.Port, acct.fingerprint(t)), "DROOL_E2E_ACCOUNT_PASSWORD="+sudoPassword)
 	start := time.Now()
 	out, err := cmd.CombinedOutput()
 	t.Logf("browser tests (%s):\n%s", time.Since(start).Round(time.Second), out)

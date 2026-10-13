@@ -24,13 +24,18 @@ import (
 // ExecFunc handles an exec request.
 type ExecFunc func(cmd string, stdin []byte) (stdout, stderr string, exit int)
 
+// UserExecFunc handles an exec request knowing who signed in.
+type UserExecFunc func(user, cmd string, stdin []byte) (stdout, stderr string, exit int)
+
 // Server is a minimal SSH server.
 type Server struct {
 	Addr     string
 	HostKeys []ssh.Signer
 
 	mu           sync.Mutex
-	authorized   map[string]bool // marshaled public keys
+	authorized   map[string]bool            // marshaled public keys
+	userKeys     map[string]map[string]bool // user → marshaled public keys accepted for that user only
+	userExec     UserExecFunc
 	userCAs      map[string]bool // marshaled CA keys trusted for user certificates (TrustedUserCAKeys)
 	principals   map[string][]string
 	clockSkew    time.Duration // the server's clock is this far off (certificate validity)
@@ -86,7 +91,7 @@ func Start(t testing.TB, hostKeys ...ssh.Signer) *Server {
 	}
 	s := &Server{
 		Addr: ln.Addr().String(), HostKeys: hostKeys, ln: ln,
-		authorized: map[string]bool{}, passwords: map[string]string{}, active: map[net.Conn]bool{},
+		authorized: map[string]bool{}, userKeys: map[string]map[string]bool{}, passwords: map[string]string{}, active: map[net.Conn]bool{},
 		userCAs: map[string]bool{}, principals: map[string][]string{},
 		exec: func(cmd string, _ []byte) (string, string, int) { return "", "unknown command: " + cmd, 127 },
 	}
@@ -108,6 +113,19 @@ func (s *Server) Authorize(pub ssh.PublicKey) {
 	s.mu.Unlock()
 }
 func (s *Server) SetPassword(user, pw string) { s.mu.Lock(); s.passwords[user] = pw; s.mu.Unlock() }
+
+// AuthorizeUser accepts pub for user only (that user's authorized_keys).
+func (s *Server) AuthorizeUser(user string, pub ssh.PublicKey) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.userKeys[user] == nil {
+		s.userKeys[user] = map[string]bool{}
+	}
+	s.userKeys[user][string(pub.Marshal())] = true
+}
+
+// SetUserExec handles commands knowing the signed-in user (instead of SetExec).
+func (s *Server) SetUserExec(f UserExecFunc) { s.mu.Lock(); s.userExec = f; s.mu.Unlock() }
 
 // Unauthorize removes a key from authorized_keys.
 func (s *Server) Unauthorize(pub ssh.PublicKey) {
@@ -215,7 +233,7 @@ func (s *Server) config() *ssh.ServerConfig {
 				s.lastCert = cert
 				return nil, nil
 			}
-			if s.authorized[string(key.Marshal())] {
+			if s.authorized[string(key.Marshal())] || s.userKeys[meta.User()][string(key.Marshal())] {
 				return nil, nil
 			}
 			return nil, fmt.Errorf("unauthorized key")
@@ -302,7 +320,7 @@ func (s *Server) handle(nc net.Conn) {
 			if err != nil {
 				continue
 			}
-			go s.session(ch, creqs, nc)
+			go s.session(ch, creqs, nc, conn.User())
 		case "direct-tcpip":
 			s.mu.Lock()
 			allow := s.allowForward
@@ -318,7 +336,7 @@ func (s *Server) handle(nc net.Conn) {
 	}
 }
 
-func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request, nc net.Conn) {
+func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request, nc net.Conn, user string) {
 	defer ch.Close()
 	for r := range reqs {
 		switch r.Type {
@@ -348,6 +366,9 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request, nc net.Conn) 
 			s.mu.Lock()
 			s.commands = append(s.commands, cmd)
 			f := s.exec
+			if ue := s.userExec; ue != nil {
+				f = func(cmd string, stdin []byte) (string, string, int) { return ue(user, cmd, stdin) }
+			}
 			if s.connEnv {
 				r, _ := nc.RemoteAddr().(*net.TCPAddr)
 				l, _ := nc.LocalAddr().(*net.TCPAddr)
