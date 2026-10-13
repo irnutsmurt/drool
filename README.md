@@ -140,15 +140,15 @@ Docker Compose. You need a 64-bit Linux machine (amd64 or arm64) with Docker and
 mkdir -p ~/drool
 cd ~/drool
 curl -fsSLO https://raw.githubusercontent.com/irnutsmurt/drool/main/compose.yaml
-echo 'DROOL_IMAGE=ghcr.io/irnutsmurt/drool:main' > .env
 docker compose pull
 docker compose up -d
 docker compose logs drool
 ```
 
-This makes a folder for DROOL, downloads the repository's `compose.yaml` into it, chooses the
-development image, downloads it, starts DROOL in the background and shows its log. The end of the log
-is DROOL's startup message, with two things you need:
+This makes a folder for DROOL, downloads the repository's `compose.yaml` into it, downloads the image
+that file names (DROOL's development image, `ghcr.io/irnutsmurt/drool:main`, from GitHub Container
+Registry), starts DROOL in the background and shows its log. The end of the log is DROOL's startup
+message, with two things you need:
 
 - **The address to open**, printed as `https://<this-host's-address>:8080/setup`. Put in the address of
   the machine you ran this on, for example `https://10.10.0.10:8080/setup`. Your browser warns about
@@ -230,7 +230,7 @@ uses (nothing is installed).
 make build      # web UI + static binary at bin/drool, Shepherd binaries for amd64 and arm64
 make run        # serves https://127.0.0.1:8080 and prints the setup code
 make dev        # with make run in another terminal: the web UI with hot reload, proxying /api
-make image      # container image for this machine: drool:local (what compose.yaml runs by default)
+make image      # container image for this machine: drool:local (DROOL_IMAGE=drool:local docker compose up -d runs it)
 make release    # every release artifact from a clean clone of HEAD: dist/<version>/ (RELEASING.md)
 ```
 

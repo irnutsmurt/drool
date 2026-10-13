@@ -46,8 +46,9 @@ test-go:
 test-race:
 	$(GO) test -race -count=1 -timeout 30m ./...
 
-# Container image for this machine's platform, tagged drool:local (what
-# compose.yaml uses by default). Development builds; releases: make release.
+# Container image for this machine's platform, tagged drool:local
+# (DROOL_IMAGE=drool:local docker compose up -d runs it). Development builds;
+# releases: make release.
 image:
 	packaging/release/buildx build --load --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) \
 		--build-arg DATE=$(DATE) -t drool:local .

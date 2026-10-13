@@ -45,7 +45,7 @@ a native installation (`sudo journalctl -u drool -n 50`), to the container's log
 | File | What |
 |---|---|
 | `~/drool/compose.yaml` | Docker Compose: how to run DROOL ([Install with Docker Compose](Install-With-Docker-Compose.md)). Run `docker compose` commands in this folder |
-| `~/drool/.env` | Docker Compose: which image to run (`DROOL_IMAGE=…`) |
+| `~/drool/.env` | Docker Compose, optional: another image to run than the one `compose.yaml` names (`DROOL_IMAGE=…`), for example one you built yourself |
 | `~/.config/containers/systemd/drool.container` | Podman: DROOL's Quadlet unit ([Install with Podman](Install-With-Podman.md)) |
 
 ## On managed hosts

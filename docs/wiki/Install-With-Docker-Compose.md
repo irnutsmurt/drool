@@ -65,7 +65,7 @@ cd ~/drool
 - `~` means your home folder, for example `/home/alex`, so `~/drool` is `/home/alex/drool`.
   `mkdir -p` creates the folder (and does nothing if it already exists); `cd` moves your terminal
   into it.
-- This folder will hold DROOL's two small configuration files. **Run every `docker compose` command
+- This folder will hold DROOL's configuration file, `compose.yaml`. **Run every `docker compose` command
   for DROOL from this folder**, today and later: Docker Compose looks for its files in the folder
   you're in. In a new terminal, run `cd ~/drool` first.
 - Docker names DROOL's data after this folder, so keep the folder where it is and keep its name
@@ -90,47 +90,34 @@ If you'd rather download it with your browser, use the **Download raw file** but
 *Save page as* (which saves the web page around the file), and then move it into the folder:
 `mv ~/Downloads/compose.yaml ~/drool/`.
 
-Check that the file is there and is the right one:
+Check that the file is there and that it names DROOL's image on GitHub:
 
 ```sh
 ls
-head -n 1 compose.yaml
+grep '^ *image:' compose.yaml
 ```
 
-`ls` lists `compose.yaml`, and `head` prints the file's first line:
+`ls` lists `compose.yaml`, and `grep` prints the line that says which image Docker should run:
 
 ```text
-# DROOL with Docker Compose. A release ships this file with its version filled in.
+    image: ${DROOL_IMAGE:-ghcr.io/irnutsmurt/drool:main}
 ```
 
-You don't need to change anything in it.
+That's DROOL's development image on GitHub Container Registry; the next step downloads it.
+(`DROOL_IMAGE` lets people who build DROOL themselves run their own image instead; you don't need
+it.) You don't need to change anything in the file.
 
-## Step 3: Choose the image
-
-```sh
-echo 'DROOL_IMAGE=ghcr.io/irnutsmurt/drool:main' > .env
-```
-
-This creates a file called `.env` with that one line in it. Docker Compose reads `.env` from the
-folder you're in, and `compose.yaml` takes the name of the image to run from it. Without it,
-Compose would look for an image called `drool:local` (the name used by people who build DROOL
-themselves) and fail with *pull access denied for drool*.
-
-- Type the single quotes as shown: they keep the shell from interpreting anything in between.
-- Files whose names start with a dot are hidden: `ls` doesn't show `.env`, but `ls -a` does, and
-  `cat .env` shows what's in it.
-
-## Step 4: Download DROOL
+## Step 3: Download DROOL
 
 ```sh
 docker compose pull
 ```
 
-Docker downloads DROOL's image from GitHub Container Registry and shows its progress. It ends by
-saying that `ghcr.io/irnutsmurt/drool:main` was pulled (the exact wording depends on your Docker
-version). The image exists for amd64 and arm64; Docker picks the one for your machine.
+Docker downloads the image `compose.yaml` names, DROOL's development image, from GitHub Container
+Registry and shows its progress. It ends by saying that `ghcr.io/irnutsmurt/drool:main` was pulled
+(the exact wording depends on your Docker version). The image exists for amd64 and arm64; Docker picks the one for your machine.
 
-## Step 5: Start DROOL
+## Step 4: Start DROOL
 
 ```sh
 docker compose up -d
@@ -144,7 +131,7 @@ out, and Docker starts it again after a reboot. (That needs the Docker service i
 boot; `sudo systemctl enable docker` makes sure it does.) Without `-d`, DROOL would run inside your
 terminal and stop as soon as you press Ctrl+C or close the terminal.
 
-## Step 6: Check that it's running
+## Step 5: Check that it's running
 
 ```sh
 docker compose ps
@@ -164,7 +151,7 @@ What to look for:
   stopping. The last lines of `docker compose logs drool` (next step) say why; see also
   [Setup Problems](Setup-Problems.md#i-dont-see-a-setup-code).
 
-## Step 7: Find the address and the setup code
+## Step 6: Find the address and the setup code
 
 When DROOL starts, it prints a short **startup message** with the address to open and the setup
 code. Docker keeps everything DROOL prints (its *log*), and this command shows it:
@@ -225,9 +212,9 @@ docker compose logs drool | grep -A 1 'Setup code:'
 If this shows more than one code, DROOL has been restarted, and **only the last one works**
 ([why](#when-drool-makes-a-new-code-by-itself)).
 
-## Step 8: Open the setup page
+## Step 7: Open the setup page
 
-In your browser, go to the address from step 7 with your machine's address filled in, for example
+In your browser, go to the address from step 6 with your machine's address filled in, for example
 `https://10.10.0.10:8080/setup`. Type the `https://` and the `:8080`.
 
 The browser warns that the connection isn't private. That's expected: DROOL made its own
@@ -282,8 +269,7 @@ Until someone creates the first administrator, **every start of DROOL makes a ne
 the previous one stops working**, including one from `drool setup code`. DROOL starts again when:
 
 - you run `docker compose restart`, or `docker compose down` and then `docker compose up -d`;
-- you run `docker compose up -d` after changing `compose.yaml` or `.env` (Docker replaces the
-  container);
+- you run `docker compose up -d` after changing `compose.yaml` (Docker replaces the container);
 - you update the image (`docker compose pull`, then `docker compose up -d`);
 - the machine reboots, or Docker is restarted or updated;
 - DROOL stopped unexpectedly and Docker restarted it.
@@ -403,10 +389,11 @@ are the same except where the files come from:
 
 1. In step 2, download `compose.yaml`, the image file (`drool_1.0.0_image.oci.tar`) and `SHA256SUMS`
    from the release on the [Releases page](https://github.com/irnutsmurt/drool/releases) into
-   `~/drool`. (`1.0.0` stands for the release's version; the page shows the exact file names.)
-2. Skip step 3: don't create `.env`. If you made one earlier, delete it (`rm .env`), or Compose keeps
-   using the development image.
-3. Instead of step 4, check the files and load the image into Docker:
+   `~/drool`. (`1.0.0` stands for the release's version; the page shows the exact file names.) The
+   release's `compose.yaml` names the release's own image instead of the development image. If your
+   folder has a `.env` file that sets `DROOL_IMAGE` (an earlier version of this page made one),
+   delete it (`rm .env`): it would keep Compose on the development image.
+2. Instead of step 3, check the files and load the image into Docker:
 
    ```sh
    sha256sum --check --ignore-missing SHA256SUMS
@@ -416,7 +403,7 @@ are the same except where the files come from:
    The first command must print `OK` for each file you downloaded. If it says `FAILED`, download
    that file again and don't use it until it says `OK`. (Checking the release's signature too:
    [Checking a release's files](Installing-DROOL.md#checking-a-releases-files).)
-4. Continue with step 5.
+3. Continue with step 4.
 
 A release's `compose.yaml` names its own version (for example `drool:1.0.0`), so DROOL changes only
 when you install the next release ([Updating DROOL](Updating-DROOL.md)). Already running the
@@ -433,7 +420,7 @@ docker compose down -v
 docker compose up -d
 ```
 
-DROOL then starts as if new, with a new setup code (step 7).
+DROOL then starts as if new, with a new setup code (step 6).
 
 ## Something went wrong?
 

@@ -1,13 +1,19 @@
 # DROOL with rootless Podman, run by systemd (Quadlet; Podman 4.4 or newer).
-# A release ships this file with its version filled in.
 #
-#   podman load -i drool_<version>_image.oci.tar
+#   podman pull ghcr.io/irnutsmurt/drool:main     # the image named in Image= below
 #   mkdir -p ~/.config/containers/systemd
 #   cp drool.container ~/.config/containers/systemd/
 #   systemctl --user daemon-reload
 #   systemctl --user start drool
 #   journalctl --user -u drool -n 30      # the address and the one-time setup code
 #   loginctl enable-linger "$USER"        # keep it running after you log out, and start it at boot
+#
+# The image: as published in DROOL's repository, Image= is DROOL's
+# development image from GitHub Container Registry, rebuilt from the newest
+# code that passed DROOL's tests (`podman pull` gets the newest). A release
+# ships this file with its own version filled in, next to its image file:
+# `podman load -i drool_<version>_image.oci.tar` instead of the pull. For an
+# image built from a source checkout, Image=docker.io/library/drool:local.
 #
 # The same restrictions as compose.yaml: read-only, no capabilities,
 # no-new-privileges, a tmpfs /tmp, data in the drool-data volume.
@@ -18,7 +24,7 @@ After=network-online.target
 
 [Container]
 ContainerName=drool
-Image=docker.io/library/drool:local
+Image=ghcr.io/irnutsmurt/drool:main
 PublishPort=8080:8080
 PublishPort=9443:9443
 Volume=drool-data:/data

@@ -50,35 +50,32 @@ curl -fsSLO https://raw.githubusercontent.com/irnutsmurt/drool/main/packaging/po
 `~` is your home folder. (With `wget` instead of `curl`:
 `wget https://raw.githubusercontent.com/irnutsmurt/drool/main/packaging/podman/drool.container`.)
 
-## Step 2: Point it at the development image
-
-The file's `Image=` line names the image to run. As downloaded, it names `drool:local`, which is for
-people who build DROOL themselves. Change it to the development image and check the result:
+Check that the file names DROOL's image on GitHub:
 
 ```sh
-sed -i 's|^Image=.*|Image=ghcr.io/irnutsmurt/drool:main|' drool.container
 grep '^Image=' drool.container
 ```
 
-The second command must print:
+It must print:
 
 ```text
 Image=ghcr.io/irnutsmurt/drool:main
 ```
 
-(`sed -i` edits the file in place: it replaces the whole line that starts with `Image=`. You can
-make the same change in a text editor instead, for example `nano drool.container`.)
+That's DROOL's development image on GitHub Container Registry; the next step downloads it. You don't
+need to change anything in the file.
 
-## Step 3: Download DROOL
+## Step 2: Download DROOL
 
 ```sh
 podman pull ghcr.io/irnutsmurt/drool:main
 ```
 
-Podman downloads the image and shows its progress. The image exists for amd64 and arm64; Podman picks
+Podman downloads the image `drool.container` names from GitHub Container Registry and shows its
+progress. The image exists for amd64 and arm64; Podman picks
 the one for your machine.
 
-## Step 4: Start DROOL
+## Step 3: Start DROOL
 
 ```sh
 systemctl --user daemon-reload
@@ -91,7 +88,7 @@ systemctl --user start drool
 - `start drool` starts it. You don't need `systemctl --user enable`: the file itself says to start
   DROOL whenever your user's services start.
 
-## Step 5: Keep it running when you log out
+## Step 4: Keep it running when you log out
 
 ```sh
 loginctl enable-linger "$USER"
@@ -101,7 +98,7 @@ Without this, systemd stops your user's services when you log out, and starts th
 in. With it, DROOL starts at boot and keeps running. If it says *Access denied*, run it with `sudo`
 in front.
 
-## Step 6: Check that it's running
+## Step 5: Check that it's running
 
 ```sh
 systemctl --user status drool --no-pager
@@ -118,7 +115,7 @@ CONTAINER ID  IMAGE                          COMMAND     CREATED         STATUS 
 Its STATUS starts with `Up`; within a minute it should add `(healthy)`. If `systemctl` says `failed`
 or `podman ps` lists nothing, the log in the next step says why.
 
-## Step 7: Find the address and the setup code
+## Step 6: Find the address and the setup code
 
 When DROOL starts, it prints a short **startup message** with the address to open and the setup
 code. systemd collects what its services print in the *journal*, and `journalctl` shows it:
@@ -159,7 +156,7 @@ the date and names at the start of each line, the important part looks like this
   own DROOL printed.** It works once, for 60 minutes.
 - The expiry time is in UTC, the container's clock; `(in 60 min)` is what counts.
 
-## Step 8: Open the setup page
+## Step 7: Open the setup page
 
 In your browser, go to the address with your machine's address filled in, for example
 `https://10.10.0.10:8080/setup`. The browser warns that the connection isn't private: that's expected
@@ -268,7 +265,7 @@ cp drool.container ~/.config/containers/systemd/
 
 The first command must print `OK` for each file ([checking the signature too](Installing-DROOL.md#checking-a-releases-files)).
 The release's `drool.container` already names its
-image, so skip steps 1 to 3 and continue with step 4. If you're already running the development
+image, so skip steps 1 and 2 and continue with step 3. If you're already running the development
 image, read the release notes before switching.
 
 ## Starting over

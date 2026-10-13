@@ -5,7 +5,7 @@ data lives in DROOL's Docker volume (`drool_drool-data` for the folder `~/drool`
 
 ## Before you start
 
-- Run the commands in your DROOL folder, the one with `compose.yaml` and `.env`: `cd ~/drool` first.
+- Run the commands in your DROOL folder, the one with `compose.yaml`: `cd ~/drool` first.
 - Backups are safe to make while DROOL runs.
 
 ## Make a backup

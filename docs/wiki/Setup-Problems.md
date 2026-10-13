@@ -72,7 +72,7 @@ The setup page says **invalid or expired setup code** when the code you entered:
 - or has been replaced. **Every start of DROOL, and every `drool setup code`, makes a new code, and
   the previous one stops working.** DROOL starts again when it's restarted, when the machine reboots,
   after an update, and in Docker also after `docker compose up -d` following a change to
-  `compose.yaml` or `.env`.
+  `compose.yaml`.
 
 Before you type anything, the page may already say **No valid setup code. Restart the controller or
 run `drool setup code` to get a new one.** That means every code DROOL issued has expired or been
@@ -209,7 +209,7 @@ folder you're in.
 An error that mentions **yaml** instead, such as *mapping values are not allowed in this context*,
 means the file isn't valid:
 
-- `head -n 1 compose.yaml` should print `# DROOL with Docker Compose. …`. If it shows `<!DOCTYPE html>`
+- `head -n 1 compose.yaml` should print `# DROOL with Docker Compose.`. If it shows `<!DOCTYPE html>`
   or something else, a web page was saved instead of the file: download it again with the `curl`
   command from step 2.
 - If it broke after you edited the file, check the lines you changed: the spaces at the start of each
@@ -223,7 +223,7 @@ means the file isn't valid:
 | `docker: command not found` | Docker isn't installed: same instructions |
 | *permission denied* … `docker.sock` | Your user may not use Docker. Put `sudo` in front of the command, or add yourself to the `docker` group ([how](Install-With-Docker-Compose.md#before-you-start)) |
 | *Cannot connect to the Docker daemon … Is the docker daemon running?* | Start Docker: `sudo systemctl start docker`, and `sudo systemctl enable docker` so it starts at boot |
-| *pull access denied for drool, repository does not exist or may require 'docker login'* | Compose is looking for `drool:local` because `.env` is missing, or you're in another folder. In `~/drool`, `cat .env` must print `DROOL_IMAGE=ghcr.io/irnutsmurt/drool:main` ([step 3](Install-With-Docker-Compose.md#step-3-choose-the-image)) |
+| *pull access denied for drool, repository does not exist or may require 'docker login'* | Compose is looking for an image called `drool:local`: your `compose.yaml` is from before 2026-10-13, when the file didn't name DROOL's image on GitHub yet, or a `.env` file sets `DROOL_IMAGE=drool:local`. In `~/drool`, download `compose.yaml` again ([step 2](Install-With-Docker-Compose.md#step-2-download-composeyaml)); `grep '^ *image:' compose.yaml` must show `ghcr.io/irnutsmurt/drool:main`. A `.env` file isn't needed: delete it (`rm .env`) unless you set something else in it on purpose |
 | *port is already allocated*, *address already in use* | Another program uses port 8080 or 9443 on this machine. `sudo ss -ltnp 'sport = :8080'` shows which. Stop it, or give DROOL another port (below) |
 
 **Another port for Docker:** in `compose.yaml`, change only the first number of `"8080:8080"`, for

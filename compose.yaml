@@ -1,14 +1,19 @@
-# DROOL with Docker Compose. A release ships this file with its version filled in.
+# DROOL with Docker Compose.
 #
-#   docker load -i drool_<version>_image.oci.tar     # the image from the release
+#   docker compose pull         # download the image named below
 #   docker compose up -d
-#   docker compose logs drool                         # the URL and the one-time setup code
+#   docker compose logs drool   # the URL and the one-time setup code
 #
-# From a source checkout: `make image` builds drool:local, which this file
-# uses by default. DROOL_IMAGE=other:tag docker compose up -d uses another.
+# The image: as published in DROOL's repository, this file runs DROOL's
+# development image from GitHub Container Registry, ghcr.io/irnutsmurt/drool:main,
+# rebuilt from the newest code that passed DROOL's tests (`docker compose pull`
+# gets the newest). A release ships this file with its own version filled in,
+# next to its image file: `docker load -i drool_<version>_image.oci.tar`
+# instead of the pull. DROOL_IMAGE runs another image, for example
+# DROOL_IMAGE=drool:local after `make image` in a source checkout.
 services:
   drool:
-    image: ${DROOL_IMAGE:-drool:local}
+    image: ${DROOL_IMAGE:-ghcr.io/irnutsmurt/drool:main}
     restart: unless-stopped
     ports:
       - "8080:8080"   # web UI and API
