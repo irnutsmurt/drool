@@ -41,13 +41,14 @@ Podman:
 
 ```sh
 systemctl --user stop drool
+image=$(sed -n 's/^Image=//p' ~/.config/containers/systemd/drool.container)
 podman run --rm -i --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
-  -v drool-data:/data docker.io/library/drool:v0.1.0-alpha secrets rotate-key
+  -v drool-data:/data "$image" secrets rotate-key
 systemctl --user start drool
 ```
 
-Use the image you actually run instead of `docker.io/library/drool:v0.1.0-alpha`: it's in your
-`drool.container` file (`Image=`), and `podman images` lists it.
+The second line reads the image your DROOL runs from its Quadlet unit, so the rotation runs the same
+version (`echo "$image"` shows it).
 
 ### Afterwards
 

@@ -26,49 +26,56 @@ sudo -u drool drool restore - < drool-backup-20261012-214018.tar.gz
 sudo systemctl start drool
 ```
 
-With the key file you kept (another machine, or after a key rotation):
+With the key file you kept (another machine, or after a key rotation), send the key and the backup
+in together, the key first:
 
 ```sh
 sudo systemctl stop drool
-sudo install -m 0600 -o drool -g drool master.key /var/lib/drool/restore.key
-sudo -u drool drool restore --master-key /var/lib/drool/restore.key - < drool-backup-20261012-214018.tar.gz
-sudo rm /var/lib/drool/restore.key
+cat master.key drool-backup-20261012-214018.tar.gz | sudo -u drool drool restore --master-key - -
 sudo systemctl start drool
 ```
 
-`-` reads the backup from standard input (`<`), so the `drool` user doesn't need to be able to read
-the file where it is.
+- `-` reads the backup from standard input (`<` or `|`), so the `drool` user doesn't need to be able
+  to read the file where it is.
+- `--master-key -` reads the key file from standard input too, ahead of the backup: `cat` sends both,
+  `master.key` first. Your copy of the key stays as it is (readable only by you); it's never copied
+  anywhere or made readable to anyone else.
 
 ## Docker Compose
 
-In your DROOL folder (`cd ~/drool` first); the container's user must be able to read the key file:
+In your DROOL folder (`cd ~/drool` first):
 
 ```sh
 docker compose stop drool
-chmod 644 master.key
-docker compose run --rm -T -v "$PWD/master.key:/tmp/master.key:ro" drool \
-  restore --master-key /tmp/master.key - < drool-backup-20261012-214018.tar.gz
-chmod 600 master.key
+cat master.key drool-backup-20261012-214018.tar.gz | docker compose run --rm -T drool restore --master-key - -
 docker compose start drool
 ```
 
-For a backup made with `--include-master-key`, leave out the `chmod` lines and the
-`-v … --master-key /tmp/master.key` part.
+`docker compose run --rm -T drool` runs the restore in a one-off container on DROOL's data volume, and
+passes it what `cat` sends: the key, then the backup. Nothing is mounted into the container, and your
+`master.key` keeps its permissions.
+
+For a backup made with `--include-master-key`, or on the same installation without a key rotation
+since the backup, leave out the key:
+
+```sh
+docker compose run --rm -T drool restore - < drool-backup-20261012-214018.tar.gz
+```
 
 ## Podman
 
 ```sh
 systemctl --user stop drool
-chmod 644 master.key
-podman run --rm -i --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
-  -v drool-data:/data -v "$PWD/master.key:/tmp/master.key:ro" docker.io/library/drool:v0.1.0-alpha \
-  restore --master-key /tmp/master.key - < drool-backup-20261012-214018.tar.gz
-chmod 600 master.key
+image=$(sed -n 's/^Image=//p' ~/.config/containers/systemd/drool.container)
+cat master.key drool-backup-20261012-214018.tar.gz | podman run --rm -i --read-only --tmpfs /tmp --cap-drop ALL \
+  --security-opt no-new-privileges -v drool-data:/data "$image" restore --master-key - -
 systemctl --user start drool
 ```
 
-Use the image you actually run instead of `docker.io/library/drool:v0.1.0-alpha`: it's in your
-`drool.container` file (`Image=`), and `podman images` lists it.
+The second line reads the image your DROOL runs from its Quadlet unit (`echo "$image"` shows it, for
+example `ghcr.io/irnutsmurt/drool:main`), so the restore runs the same version. Without a separate key
+file, leave out `cat master.key` and `--master-key -`, and send the backup with
+`< drool-backup-20261012-214018.tar.gz`.
 
 ## What the restore prints
 
@@ -113,8 +120,13 @@ Start DROOL again (systemctl start drool, or docker compose start drool).
 - **No key opens the backup:** the restore says so and explains your options: give the right key with
   `--master-key`, or restore without the credentials ([Recovering Without Credentials](Recovering-Without-Credentials.md)).
 - **The restore was interrupted** (power loss, a killed process): DROOL refuses to start on a
-  half-restored data directory. Run `drool restore --recover` (as the `drool` user, or in the container)
-  to put the previous installation back, then restore again.
+  half-restored data directory. Put the previous installation back, then restore again:
+
+  | Installation | Command |
+  |---|---|
+  | Package or archive | `sudo -u drool drool restore --recover` |
+  | Docker Compose (in `~/drool`) | `docker compose run --rm drool restore --recover` |
+  | Podman | `podman run --rm --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges -v drool-data:/data "$(sed -n 's/^Image=//p' ~/.config/containers/systemd/drool.container)" restore --recover` |
 
 ## Related
 

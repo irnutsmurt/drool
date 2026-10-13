@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -115,7 +117,7 @@ Keep a copy of that file somewhere safe and separate from this backup, or run
 
 func cmdRestore(path string, explicit bool, args []string) error {
 	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
-	keyFile := fs.String("master-key", "", "master key file for a backup made without --include-master-key")
+	keyFile := fs.String("master-key", "", "master key file for a backup made without --include-master-key (\"-\": read it from standard input, ahead of the backup when that is \"-\" too)")
 	discard := fs.Bool("discard-credentials", false, "if no matching master key is available, restore everything except stored credentials (they are deleted and must be added again)")
 	yes := fs.Bool("yes", false, "don't ask for confirmation")
 	recoverFlag := fs.Bool("recover", false, "deal with a restore that was interrupted (crash, power loss): put the previous installation back, or finish the restore if it had completed")
@@ -127,6 +129,12 @@ Replaces this controller's database, TLS material and (if included) master
 key with the backup. Stop the controller first. The current files are moved
 to <data_dir>/pre-restore-<time>/, and nothing is changed unless the whole
 backup checks out.
+
+With a master key file kept apart from the backup, pipe both in, the key
+first, so that only you need to be able to read the key file (in a container,
+nothing has to be mounted):
+
+  cat master.key drool-backup.tar.gz | drool restore --master-key - -
 
 Options:
 `)
@@ -161,14 +169,12 @@ Options:
 		return err
 	}
 	src := fs.Arg(0)
-	var r io.Reader = os.Stdin
-	if src != "-" {
-		f, err := os.Open(src)
-		if err != nil {
-			return err
-		}
+	key, r, err := masterKeyAndBackup("restore", *keyFile, src)
+	if err != nil {
+		return err
+	}
+	if f, ok := r.(*os.File); ok && f != os.Stdin {
 		defer f.Close()
-		r = f
 	}
 	if !*yes && src != "-" && isTerminal(os.Stdin) {
 		fmt.Fprintf(os.Stderr, "Replace the DROOL data in %s with %s? [y/N] ", cfg.DataDir, src)
@@ -179,13 +185,18 @@ Options:
 		}
 	}
 
-	res, err := backup.Restore(context.Background(), cfg, r, backup.RestoreOptions{MasterKeyFile: *keyFile, DiscardCredentials: *discard})
+	opts := backup.RestoreOptions{MasterKeyFile: *keyFile, DiscardCredentials: *discard}
+	if key != nil {
+		opts.MasterKeyFile, opts.MasterKey = "", key
+	}
+	res, err := backup.Restore(context.Background(), cfg, r, opts)
 	var ke *backup.KeyError
 	if errors.As(err, &ke) {
 		return fmt.Errorf(`%v.
 
 Nothing was changed. To restore, do one of:
   - supply the master key file it was made with:  drool restore --master-key /path/to/master.key %s
+    or pipe it in ahead of the backup:            cat master.key BACKUP | drool restore --master-key - -
   - restore without stored credentials:            drool restore --discard-credentials %s
     (users, hosts, pinned host keys, groups and history are kept; SSH keys and
     passwords are deleted, the controller generates a new SSH key, and each
@@ -270,6 +281,75 @@ func orDash(s string) string {
 	return s
 }
 
+// maxKeyFile bounds what --master-key - reads: a master key file is a few
+// short lines.
+const maxKeyFile = 64 << 10
+
+// masterKeyAndBackup opens the backup to read (src, "-" for standard input)
+// and, for --master-key -, reads the master key file from standard input
+// instead of a path. With "-" for both, standard input carries the key file
+// first and the backup after it (cat master.key backup.tar.gz | drool restore
+// --master-key - -); a backup is gzip, so it begins where gzip's magic bytes
+// do, which never occur in a key file. This is how a container's unprivileged
+// user gets the key without the operator's copy being made readable to it.
+func masterKeyAndBackup(cmd, keyFlag, src string) (key []byte, backupR io.Reader, err error) {
+	if keyFlag == "-" {
+		example := "cat master.key drool-backup.tar.gz | drool " + cmd + " --master-key - -"
+		if isTerminal(os.Stdin) {
+			return nil, nil, errors.New("--master-key -: pipe the master key file into standard input, e.g. " + example)
+		}
+		var rest io.Reader
+		if key, rest, err = splitKeyAndBackup(os.Stdin, src == "-", example); err != nil {
+			return nil, nil, err
+		}
+		if src == "-" {
+			return key, rest, nil
+		}
+	}
+	if src == "-" {
+		return key, os.Stdin, nil
+	}
+	f, err := os.Open(src)
+	if err != nil {
+		return nil, nil, err
+	}
+	return key, f, nil
+}
+
+// splitKeyAndBackup reads a master key file from in; with backupFollows, it
+// stops where the backup's gzip stream begins and returns the rest of in.
+// example is the command line shown in errors.
+func splitKeyAndBackup(in io.Reader, backupFollows bool, example string) ([]byte, io.Reader, error) {
+	hint := " (send the key file first, then the backup: " + example + ")"
+	br := bufio.NewReader(in)
+	var key bytes.Buffer
+	for {
+		if p, _ := br.Peek(2); backupFollows && len(p) == 2 && p[0] == 0x1f && p[1] == 0x8b {
+			break
+		}
+		b, err := br.ReadByte()
+		if err == io.EOF {
+			if backupFollows {
+				return nil, nil, errors.New("--master-key -: standard input ended without a backup after the master key" + hint)
+			}
+			break
+		}
+		if err != nil {
+			return nil, nil, fmt.Errorf("--master-key -: %w", err)
+		}
+		if key.WriteByte(b); key.Len() > maxKeyFile {
+			return nil, nil, errors.New("--master-key -: standard input doesn't start with a master key file" + hint)
+		}
+	}
+	if len(bytes.TrimSpace(key.Bytes())) == 0 {
+		if backupFollows {
+			return nil, nil, errors.New("--master-key -: the backup on standard input has no master key file in front of it" + hint)
+		}
+		return nil, nil, errors.New("--master-key -: standard input is empty; pipe the master key file in")
+	}
+	return key.Bytes(), br, nil
+}
+
 func isTerminal(f *os.File) bool {
 	fi, err := f.Stat()
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
@@ -281,7 +361,7 @@ var errIncomplete = errors.New("restorable, but not complete on its own")
 
 func cmdBackupVerify(args []string) error {
 	fs := flag.NewFlagSet("backup verify", flag.ContinueOnError)
-	keyFile := fs.String("master-key", "", "master key file to check the credentials with, for a backup made without --include-master-key")
+	keyFile := fs.String("master-key", "", "master key file to check the credentials with, for a backup made without --include-master-key (\"-\": read it from standard input, ahead of the backup when that is \"-\" too)")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: drool backup verify [--master-key FILE] FILE   ("-" reads from standard input)
 
@@ -292,6 +372,9 @@ credentials, and its audit history.
 
 Exit status: 0 restorable and complete; 2 restorable, but its credentials
 need a master key it doesn't include; 1 not restorable.
+
+With a master key file kept apart from the backup, pipe both in, the key
+first: cat master.key drool-backup.tar.gz | drool backup verify --master-key - -
 
 Options:
 `)
@@ -304,16 +387,18 @@ Options:
 		fs.Usage()
 		return errors.New("backup verify needs exactly one backup file")
 	}
-	var r io.Reader = os.Stdin
-	if src := fs.Arg(0); src != "-" {
-		f, err := os.Open(src)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		r = f
+	key, r, err := masterKeyAndBackup("backup verify", *keyFile, fs.Arg(0))
+	if err != nil {
+		return err
 	}
-	rep, err := backup.Verify(context.Background(), r, backup.VerifyOptions{MasterKeyFile: *keyFile})
+	if f, ok := r.(*os.File); ok && f != os.Stdin {
+		defer f.Close()
+	}
+	vopts := backup.VerifyOptions{MasterKeyFile: *keyFile}
+	if key != nil {
+		vopts.MasterKeyFile, vopts.MasterKey = "", key
+	}
+	rep, err := backup.Verify(context.Background(), r, vopts)
 	if err != nil {
 		return err
 	}

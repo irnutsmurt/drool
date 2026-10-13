@@ -179,6 +179,44 @@ func TestBackupWithoutKeyNeedsMatchingKey(t *testing.T) {
 	}
 }
 
+// The key can be handed over as content (drool restore --master-key - reads
+// it from standard input), so the restoring user never needs to be able to
+// read the operator's key file.
+func TestRestoreWithKeyContent(t *testing.T) {
+	src := controller(t)
+	archive := makeBackup(t, src, false)
+	ctx := context.Background()
+	key, err := os.ReadFile(src.MasterKeyPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Verify(ctx, bytes.NewReader(archive), VerifyOptions{MasterKey: key})
+	if err != nil || !rep.Complete() || rep.KeySource != "file" {
+		t.Fatalf("verify with the key's content: %+v %v", rep, err)
+	}
+
+	other := filepath.Join(t.TempDir(), "other.key")
+	if _, _, _, err := secrets.LoadOrCreateBox(other); err != nil {
+		t.Fatal(err)
+	}
+	otherKey, _ := os.ReadFile(other)
+	dst := fresh(t)
+	if _, _, _, err := secrets.LoadOrCreateBox(dst.MasterKeyPath()); err != nil {
+		t.Fatal(err)
+	}
+	var ke *KeyError
+	if _, err := Restore(ctx, dst, bytes.NewReader(archive), RestoreOptions{MasterKey: otherKey}); !errors.As(err, &ke) {
+		t.Fatalf("another key's content: %v", err)
+	}
+	res, err := Restore(ctx, dst, bytes.NewReader(archive), RestoreOptions{MasterKey: key, MasterKeyFile: other})
+	if err != nil || res.KeySource != "file" || res.CredentialsOK != 1 {
+		t.Fatalf("restore with the key's content: %+v %v", res, err)
+	}
+	if installed, _ := os.ReadFile(dst.MasterKeyPath()); !bytes.Equal(installed, key) {
+		t.Fatal("the key given as content was not installed")
+	}
+}
+
 func TestDiscardCredentials(t *testing.T) {
 	src := controller(t)
 	archive := makeBackup(t, src, false)

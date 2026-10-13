@@ -27,9 +27,25 @@ unreadable.
    sudo systemctl start drool
    ```
 
-   (In a container, add `--discard-credentials` to the restore command in
-   [Restoring a Controller](Restoring-a-Controller.md).) The restore lists the hosts that need a
-   credential assigned.
+   With Docker Compose (in `~/drool`):
+
+   ```sh
+   docker compose stop drool
+   docker compose run --rm -T drool restore --discard-credentials - < drool-backup-20261012-214018.tar.gz
+   docker compose start drool
+   ```
+
+   With Podman:
+
+   ```sh
+   systemctl --user stop drool
+   image=$(sed -n 's/^Image=//p' ~/.config/containers/systemd/drool.container)
+   podman run --rm -i --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
+     -v drool-data:/data "$image" restore --discard-credentials - < drool-backup-20261012-214018.tar.gz
+   systemctl --user start drool
+   ```
+
+   The restore lists the hosts that need a credential assigned.
 3. **Credentials**: create the credentials again. For an SSH key, DROOL creates a new one: put its public
    key on the hosts ([SSH Credentials](SSH-Credentials.md)), for example with your own SSH access or the
    host's console.

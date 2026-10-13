@@ -1674,7 +1674,7 @@ commands above.
 **Check a backup without restoring it:**
 
 ```sh
-drool backup verify drool-backup.tar.gz                       # add --master-key FILE for one made without its key
+drool backup verify drool-backup.tar.gz                       # add --master-key FILE (or -) for one made without its key
 ```
 
 It checks the archive and its checksums, the database's integrity, that it upgrades to this DROOL's
@@ -1740,32 +1740,27 @@ sudo systemctl start drool
 
 # Native, with the key file you kept (another machine, or after a rotation):
 sudo systemctl stop drool
-sudo install -m 0600 -o drool -g drool master.key /var/lib/drool/restore.key
-sudo -u drool drool restore --master-key /var/lib/drool/restore.key - < drool-backup.tar.gz
-sudo rm /var/lib/drool/restore.key
+cat master.key drool-backup.tar.gz | sudo -u drool drool restore --master-key - -
 sudo systemctl start drool
 
-# Docker Compose (the container's user must be able to read the key file):
+# Docker Compose, in the directory with compose.yaml:
 docker compose stop drool
-chmod 644 master.key
-docker compose run --rm -T -v "$PWD/master.key:/tmp/master.key:ro" drool \
-  restore --master-key /tmp/master.key - < drool-backup.tar.gz
-chmod 600 master.key
+cat master.key drool-backup.tar.gz | docker compose run --rm -T drool restore --master-key - -
 docker compose start drool
 
-# Podman (the same, with the image's name):
+# Podman (the image is the one your Quadlet unit runs):
 systemctl --user stop drool
-chmod 644 master.key
-podman run --rm -i --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
-  -v drool-data:/data -v "$PWD/master.key:/tmp/master.key:ro" docker.io/library/drool:<version> \
-  restore --master-key /tmp/master.key - < drool-backup.tar.gz
-chmod 600 master.key
+image=$(sed -n 's/^Image=//p' ~/.config/containers/systemd/drool.container)
+cat master.key drool-backup.tar.gz | podman run --rm -i --read-only --tmpfs /tmp --cap-drop ALL \
+  --security-opt no-new-privileges -v drool-data:/data "$image" restore --master-key - -
 systemctl --user start drool
 ```
 
-For a backup made with `--include-master-key`, leave out the key file (and the `chmod` lines). The
-previous files are kept in `pre-restore-<time>/` in the data directory. Everyone signs in again
-afterwards. If the restore itself is interrupted (power loss, a killed process), DROOL refuses to
+`--master-key -` reads the key file from standard input, ahead of the backup (`cat` sends both, the
+key first): only you need to be able to read `master.key`, and nothing is mounted into a container.
+For a backup made with `--include-master-key`, send the backup alone, without `--master-key`
+(`… restore - < drool-backup.tar.gz`). The previous files are kept in `pre-restore-<time>/` in the
+data directory. Everyone signs in again afterwards. If the restore itself is interrupted (power loss, a killed process), DROOL refuses to
 start on the half-restored data directory; `drool restore --recover` puts the previous
 installation back.
 
@@ -1786,7 +1781,8 @@ Desired State restore and Shepherd update rollouts are held until you resume the
 enrolled after the backup are refused and listed on the Shepherds page; enroll them again.
 
 If the backup has no master key and none you give opens it, restore explains your options:
-`--master-key /path/to/master.key`, or `--discard-credentials` to restore everything except the
+`--master-key` with the key file (`-` reads it from standard input, ahead of the backup), or
+`--discard-credentials` to restore everything except the
 stored credentials (hosts, keys, history and users are kept; you assign credentials again). The
 same command is the way out if you ever lose `master.key`: DROOL refuses to start with a missing or
 wrong key rather than silently making your credentials unreadable.

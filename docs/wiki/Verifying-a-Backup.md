@@ -26,8 +26,17 @@ Podman:
 podman exec -i drool drool backup verify - < drool-backup-20261012-213603.tar.gz
 ```
 
-For a backup made **without** its master key on another machine (or before a key rotation), add the key
-file you kept: `--master-key /path/to/master.key`.
+For a backup made **without** its master key on another machine (or before a key rotation), send the
+key file you kept along with the backup, the key first (`--master-key -` reads it from standard input,
+so it never has to be readable by anyone but you):
+
+```sh
+cat master.key drool-backup-20261012-213603.tar.gz | sudo -u drool drool backup verify --master-key - -     # native
+cat master.key drool-backup-20261012-213603.tar.gz | docker compose exec -T drool drool backup verify --master-key - -   # Docker, in ~/drool
+cat master.key drool-backup-20261012-213603.tar.gz | podman exec -i drool drool backup verify --master-key - -          # Podman
+```
+
+Run only the line for your installation.
 
 ## Reading the result
 

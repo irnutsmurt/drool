@@ -18,6 +18,9 @@ import (
 type VerifyOptions struct {
 	// MasterKeyFile is tried when the backup doesn't include its key.
 	MasterKeyFile string
+	// MasterKey is such a key file's content, read by the caller (from
+	// standard input); it is used instead of MasterKeyFile.
+	MasterKey []byte
 }
 
 // VerifyReport says what a backup can restore (drool backup verify, M16).
@@ -129,7 +132,10 @@ func Verify(ctx context.Context, r io.Reader, opts VerifyOptions) (*VerifyReport
 		}
 		try("backup", "the master key in the backup", data)
 	}
-	if opts.MasterKeyFile != "" {
+	switch {
+	case opts.MasterKey != nil:
+		try("file", "the master key from standard input", opts.MasterKey)
+	case opts.MasterKeyFile != "":
 		data, err := os.ReadFile(opts.MasterKeyFile)
 		if err != nil {
 			return nil, fmt.Errorf("--master-key: %w", err)

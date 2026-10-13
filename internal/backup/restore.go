@@ -60,6 +60,10 @@ func (e *KeyError) Error() string { return e.Detail }
 type RestoreOptions struct {
 	// MasterKeyFile supplies the master key for a backup made without one.
 	MasterKeyFile string
+	// MasterKey is such a key file's content, read by the caller (drool
+	// restore --master-key - takes it from standard input); it is used
+	// instead of MasterKeyFile.
+	MasterKey []byte
 	// DiscardCredentials restores without credentials when no matching
 	// master key is available (recovery after losing the key).
 	DiscardCredentials bool
@@ -392,11 +396,15 @@ func chooseKey(ctx context.Context, cfg *config.Loaded, st *staged, sdb *store.S
 		}
 		cands = append(cands, cand{"backup", "the master key in the backup", data})
 	}
-	if opts.MasterKeyFile != "" {
+	switch {
+	case opts.MasterKey != nil:
+		cands = append(cands, cand{"file", "the master key from standard input", opts.MasterKey})
+	case opts.MasterKeyFile != "":
 		data, err := os.ReadFile(opts.MasterKeyFile)
 		if errors.Is(err, os.ErrPermission) {
 			return nil, "", fmt.Errorf("--master-key: %w (the file must be readable by the user running drool restore; "+
-				"in Docker that is the container's unprivileged user, so make it readable for the restore, e.g. chmod 644)", err)
+				"in a container, don't mount it: pipe it in ahead of the backup instead, "+
+				"cat master.key drool-backup.tar.gz | ... drool restore --master-key - -)", err)
 		}
 		if err != nil {
 			return nil, "", fmt.Errorf("--master-key: %w", err)

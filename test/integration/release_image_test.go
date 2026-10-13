@@ -260,6 +260,9 @@ func TestContainerImage(t *testing.T) {
 	p.mustSh("docker compose cp drool:/data/master.key ./master.key")
 	out := p.mustSh("docker compose exec -T drool drool backup verify - < drool-backup.tar.gz || test $? -eq 2")
 	expect(t, strings.Contains(out, "Restorable"), "backup verify in the container:\n%s", out)
+	// With the key kept apart, piped in ahead of the backup: complete.
+	out = p.mustSh("chmod 600 master.key && cat master.key drool-backup.tar.gz | docker compose exec -T drool drool backup verify --master-key - -")
+	expect(t, strings.Contains(out, "Restorable and complete"), "backup verify with the key on standard input:\n%s", out)
 	after := createSecretOn(t, c, "after-backup")
 
 	// A restart keeps everything; setup stays closed.
@@ -273,15 +276,16 @@ func TestContainerImage(t *testing.T) {
 	}
 
 	// The README's restore, command for command.
+	// The key reaches the container's unprivileged user on standard input:
+	// the operator's copy stays readable only by them, and nothing is mounted.
 	restore := strings.Join([]string{
 		"docker compose stop drool",
-		"chmod 644 master.key",
-		`docker compose run --rm -T -v "$PWD/master.key:/tmp/master.key:ro" drool restore --master-key /tmp/master.key - < drool-backup.tar.gz`,
-		"chmod 600 master.key",
+		"cat master.key drool-backup.tar.gz | docker compose run --rm -T drool restore --master-key - -",
 		"docker compose start drool",
 	}, " && ")
-	out = p.mustSh(restore)
-	expect(t, strings.Contains(out, "Restored"), "restore:\n%s", out)
+	out = p.mustSh(restore + " && stat -c 'key mode %a' master.key")
+	expect(t, strings.Contains(out, "Restored") && strings.Contains(out, "the --master-key file") && strings.Contains(out, "key mode 600"),
+		"restore:\n%s", out)
 	t.Logf("the documented restore:\n%s", out)
 	p.waitHealthy()
 	if err := c.login(); err != nil {

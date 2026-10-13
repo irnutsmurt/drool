@@ -19,8 +19,8 @@ see [Restoring a Controller](Restoring-a-Controller.md) and [Key Rotation](Key-R
 | Command | What it does | More |
 |---|---|---|
 | `drool backup [-o FILE] [--include-master-key]` | Back up the controller (safe while it runs). `-o -` writes to standard output | [Backup and Recovery](Backup-and-Recovery.md) |
-| `drool backup verify FILE` | Check a backup can be restored, without restoring it. Exit status 0, 2 or 1 | [Verifying a Backup](Verifying-a-Backup.md) |
-| `drool restore FILE` | Restore a backup (DROOL stopped). `-` reads standard input; `--master-key FILE`; `--discard-credentials` | [Restoring a Controller](Restoring-a-Controller.md) |
+| `drool backup verify FILE` | Check a backup can be restored, without restoring it. Exit status 0, 2 or 1. `--master-key FILE` checks it with a key kept apart; `--master-key -` reads that key from standard input, ahead of the backup | [Verifying a Backup](Verifying-a-Backup.md) |
+| `drool restore FILE` | Restore a backup (DROOL stopped). `-` reads standard input; `--master-key FILE`, or `--master-key -` to read the key from standard input ahead of the backup (`cat master.key BACKUP \| drool restore --master-key - -`); `--discard-credentials` | [Restoring a Controller](Restoring-a-Controller.md) |
 | `drool restore --recover` | Put the previous installation back after an interrupted restore | [Restore Needs Attention](Restore-Needs-Attention.md#drool-wont-start) |
 | `drool setup code` | Issue a new one-time setup code for creating the first administrator (the previous code stops working; refused once an administrator exists) | [Where do I get the setup code?](First-Login.md#where-do-i-get-the-setup-code) |
 | `drool user create --username NAME [--role admin]` | Create a user (asks for the password): the way back in if every administrator is locked out | [Users and Roles](Users-and-Roles.md) |

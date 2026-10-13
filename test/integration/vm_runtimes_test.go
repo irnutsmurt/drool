@@ -180,7 +180,7 @@ docker load -i ~/drool.oci.tar`, 20*time.Minute)
 	expect(t, insp == "nonroot true [ALL] false", "rootless Docker container settings: %s", insp)
 	runtimeBackupRestore(t, v, c, dock, "docker compose exec -T drool drool backup -o - > drool-backup.tar.gz",
 		"docker compose cp drool:/data/master.key ./master.key",
-		`docker compose stop drool && chmod 644 master.key && docker compose run --rm -T -v "$PWD/master.key:/tmp/master.key:ro" drool restore --master-key /tmp/master.key - < drool-backup.tar.gz && chmod 600 master.key && docker compose start drool`,
+		`docker compose stop drool && cat master.key drool-backup.tar.gz | docker compose run --rm -T drool restore --master-key - - && docker compose start drool`,
 		func() bool {
 			out, _ := vmAs(v, "alice", dock+`docker inspect -f '{{.State.Health.Status}}' $(docker compose ps -q drool)`, nil, time.Minute)
 			return out == "healthy"
@@ -218,7 +218,8 @@ func testRootlessPodman(t *testing.T, v *vm, r *releaseUnderTest) {
 	expect(t, strings.HasPrefix(insp, "nonroot true") && strings.HasSuffix(insp, "false"), "rootless Podman container settings: %s", insp)
 	runtimeBackupRestore(t, v, c, pod, "podman exec drool drool backup -o - > drool-backup.tar.gz",
 		"podman cp drool:/data/master.key ./master.key",
-		`systemctl --user stop drool && chmod 644 master.key && podman run --rm -i --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges -v drool-data:/data -v "$PWD/master.key:/tmp/master.key:ro" docker.io/library/drool:`+r.pkgver+` restore --master-key /tmp/master.key - < drool-backup.tar.gz && chmod 600 master.key && systemctl --user start drool`,
+		`systemctl --user stop drool && image=$(sed -n 's/^Image=//p' ~/.config/containers/systemd/drool.container) && `+
+			`cat master.key drool-backup.tar.gz | podman run --rm -i --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges -v drool-data:/data "$image" restore --master-key - - && systemctl --user start drool`,
 		func() bool {
 			out, _ := vmAs(v, "alice", pod+"podman healthcheck run drool && echo healthy", nil, time.Minute)
 			return strings.HasSuffix(out, "healthy")
@@ -230,10 +231,13 @@ func testRootlessPodman(t *testing.T, v *vm, r *releaseUnderTest) {
 func runtimeBackupRestore(t *testing.T, v *vm, c *controller, prefix, backup, keyCopy, restore string, healthy func() bool) {
 	t.Helper()
 	before := createSecretOn(t, c, "before-backup")
-	mustVMAs(t, v, "alice", prefix+backup+" && "+keyCopy+" && ls -l drool-backup.tar.gz master.key", 10*time.Minute)
+	mustVMAs(t, v, "alice", prefix+backup+" && "+keyCopy+" && chmod 600 master.key && ls -l drool-backup.tar.gz master.key", 10*time.Minute)
 	after := createSecretOn(t, c, "after-backup")
-	out := mustVMAs(t, v, "alice", prefix+restore, 15*time.Minute)
-	expect(t, strings.Contains(out, "Restored backup"), "restore on %s:\n%s", v.def.Name, out)
+	// The key reaches the container on standard input: the operator's copy
+	// stays readable only by them.
+	out := mustVMAs(t, v, "alice", prefix+restore+" && stat -c 'key mode %a' master.key", 15*time.Minute)
+	expect(t, strings.Contains(out, "Restored backup") && strings.Contains(out, "the --master-key file") && strings.Contains(out, "key mode 600"),
+		"restore on %s:\n%s", v.def.Name, out)
 	waitFor(t, 5*time.Minute, "healthy after the restore", healthy)
 	waitFor(t, 3*time.Minute, "signing in after the restore", func() bool { return c.login() == nil })
 	var secrets struct {
