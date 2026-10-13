@@ -25,7 +25,7 @@ The controller makes no other connections: no telemetry, no update checks, no on
 | `…/tls/` | | The self-signed certificate |
 | `…/artifacts/` | | Stored files: deployments, previous versions for rollback, Desired State contents |
 | `…/backups/` | | Backups made with `drool backup` (and before upgrades) |
-| `…/logs/` | (logs go to stdout) | DROOL's logs |
+| `…/logs/` | (logs go to the container's output) | DROOL's logs, rotated: `app.log`, `audit.log`, `security.log`, `job.log` |
 | `…/geoip/` | | [GeoIP and ASN](GeoIP-and-ASN.md) databases, if you add them |
 | `…/pre-restore-<time>/` | | Your previous files after a restore |
 | `/etc/drool/config.yaml` | (environment variables) | The [configuration file](Configuration.md), if any |

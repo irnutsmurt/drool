@@ -38,7 +38,7 @@ The words DROOL uses, in plain English.
 | **Run** | Anything DROOL does on hosts: a command, script, package operation, update, reboot, file deployment… Called a *job* in the API ([Running a Command](Running-a-Command.md)) |
 | **Schedule** | A run, workflow or maintenance window that happens at set times ([Schedules](Schedules.md)) |
 | **Setup code** | The one-time six-digit code DROOL prints when it starts, until the first administrator exists. You enter it once, to create that administrator ([Where do I get the setup code?](First-Login.md#where-do-i-get-the-setup-code)) |
-| **Shepherd** | The DROOL agent (`drool-agent`), installed on a host for continuous monitoring and management ([SSH vs Shepherds](SSH-vs-Shepherds.md)) |
+| **Shepherd** | The DROOL agent (`drool-agent`), installed on a host for continuous monitoring and management ([SSH vs Shepherds](SSH-vs-Shepherds.md)). Called an *agent* in the API (`/api/v1/agents`) and on the host |
 | **SSH fallback** | Using SSH when a host's Shepherd isn't available ([SSH Fallback](SSH-Fallback.md)) |
 | **Startup message** | The short message DROOL prints each time it starts, between two rows of `=`: the address to open and, until setup is done, the setup code ([Where do I get the setup code?](First-Login.md#where-do-i-get-the-setup-code)) |
 | **Tag** | A label on a host, such as `role:web`, used to pick targets ([Tags](Tags.md)) |
@@ -48,18 +48,7 @@ The words DROOL uses, in plain English.
 
 ## Supported distributions
 
-| Hosts DROOL manages | Status |
-|---|---|
-| Debian 12, 13; Ubuntu 22.04, 24.04, 26.04; Rocky Linux 9, 10; AlmaLinux 9, 10; Fedora 44 | **Supported**: tested for every release |
-| RHEL 9, 10; other Debian- or RHEL-based distributions (Raspberry Pi OS, Linux Mint, CentOS Stream, Oracle Linux); newer Fedora | **Expected to work**, not tested |
-| Other Linux (Arch, openSUSE, Alpine, …) | **Not supported**: packages and updates need APT or DNF; commands and scripts may work |
-| Windows, macOS, BSD | Not supported |
-
-A host needs `sshd` reachable from the controller (directly or through one jump host), or a Shepherd; a
-user DROOL can log in as; root or `sudo` for anything that changes the system; and **systemd** for
-services, reboots, the firewall and the Shepherd. Shepherds run on amd64 and arm64; other architectures
-are managed over SSH.
-
-The controller runs from the container image (Docker, rootless Podman), the `.deb` package (Debian 12,
-13; Ubuntu 22.04, 24.04, 26.04), the `.rpm` package (Rocky Linux 9, 10; AlmaLinux 9, 10; Fedora 44), or
-the release archive, on amd64 or arm64 ([Installing DROOL](Installing-DROOL.md)).
+Debian 12 and 13, Ubuntu 22.04, 24.04 and 26.04, Rocky Linux 9 and 10, AlmaLinux 9 and 10, and Fedora 44
+are tested; RHEL and other Debian- or RHEL-based distributions are expected to work. The full lists —
+where the controller runs, which hosts it manages, CPU architectures and Shepherd versions — are on
+[Supported Platforms](Supported-Platforms.md).

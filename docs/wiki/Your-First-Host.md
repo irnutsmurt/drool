@@ -12,7 +12,7 @@ connection. Then you run your first command on it and see it in Monitoring.
 
 - You've [installed DROOL](Installing-DROOL.md) and [signed in](First-Login.md) as an
   **administrator** (only administrators can add hosts and trust their keys).
-- The host runs a [supported distribution](Glossary.md#supported-distributions) (Debian, Ubuntu, Rocky
+- The host runs a [supported distribution](Supported-Platforms.md#hosts-drool-manages) (Debian, Ubuntu, Rocky
   Linux, AlmaLinux, RHEL, Fedora). Others may work for commands but not for packages and updates.
 - **You know the host's address.** If you don't, run `hostname -I` on the host: it prints its IP
   addresses (the first one is usually the one you want). A name works too, if it resolves on the

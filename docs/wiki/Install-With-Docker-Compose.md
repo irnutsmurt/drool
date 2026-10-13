@@ -337,6 +337,26 @@ Everything DROOL stores (hosts, credentials, history, its keys) is in a Docker *
 - DROOL's [master key](Master-Key.md) is in the volume too. Once you're set up, keep a copy of it
   somewhere safe ([Secure Your Installation](Secure-Your-Installation.md#a-copy-of-the-master-key-kept-apart-from-your-backups)).
 
+## What the container may do
+
+DROOL's `compose.yaml` gives the container nothing it doesn't need. Keep it that way:
+
+- **Two ports:** 8080 for the web interface (and DROOL's API), 9443 for Shepherds. If you'll never use
+  Shepherds, `DROOL_AGENT_ENABLED: "false"` under `environment:` turns that endpoint off
+  ([how](#if-youll-use-shepherds); [Configuration](Configuration.md)).
+- **One writable place:** the data volume, at `/data` inside the container, plus a temporary `/tmp` in
+  memory that only `drool backup verify` uses. The rest of the container is read-only.
+- **No privileges:** an ordinary unprivileged user, no Linux capabilities and no way to gain any; no
+  host network, no Docker socket, no devices and no folders from your machine.
+- **Your machine's firewall is never touched.** DROOL manages the firewalls of the hosts it manages,
+  over SSH or their Shepherd, never the firewall of the machine it runs on.
+- **A health check** runs `drool healthcheck` inside the container: that's where `(healthy)` in
+  `docker compose ps` comes from.
+- **No shell inside.** The image contains DROOL and nothing else, so `docker compose exec drool sh`
+  doesn't work; run DROOL's own commands with `docker compose exec drool drool <command>`
+  ([Command Line](Command-Line.md)).
+- **Rootless Docker** works the same way, with the same `compose.yaml`.
+
 ## If you'll use Shepherds
 
 Shepherds (DROOL's optional agents, see [SSH vs Shepherds](SSH-vs-Shepherds.md)) connect to DROOL on
@@ -394,7 +414,8 @@ are the same except where the files come from:
    ```
 
    The first command must print `OK` for each file you downloaded. If it says `FAILED`, download
-   that file again and don't use it until it says `OK`.
+   that file again and don't use it until it says `OK`. (Checking the release's signature too:
+   [Checking a release's files](Installing-DROOL.md#checking-a-releases-files).)
 4. Continue with step 5.
 
 A release's `compose.yaml` names its own version (for example `drool:1.0.0`), so DROOL changes only

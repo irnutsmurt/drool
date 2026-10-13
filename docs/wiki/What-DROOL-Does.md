@@ -67,10 +67,29 @@ The [Glossary](Glossary.md) has the rest.
 
 ## What DROOL doesn't do (yet)
 
-So you don't go looking for it: DROOL doesn't manage Windows or macOS, has no single sign-on, no
-high availability (one controller, one database), no firewall support for hosts that run Docker,
-firewalld or UFW, no package repository for installing DROOL itself, and it doesn't update itself.
-Backups are made from the command line. Desired State covers services, packages and files only.
+So you don't go looking for it:
+
+- **Platforms:** Linux only. Windows is a future goal; macOS and BSD aren't planned.
+- **Scale:** one controller with one database, no high availability; tested with tens of hosts, not
+  thousands ([Supported Platforms](Supported-Platforms.md)).
+- **Accounts:** local accounts only, no single sign-on. Two-factor sign-in uses authenticator apps; no
+  WebAuthn or passkeys yet.
+- **Firewall:** plain-nftables hosts only: not hosts that run Docker or other container networks,
+  firewalld, UFW or Tailscale. No WireGuard identity networking.
+- **Network Activity:** it shows traffic; it doesn't block addresses or countries, score reputation,
+  capture packets, detect intrusions or alert on network activity.
+- **Desired State:** services, packages and files only (no users, cron, sysctl or containers, no
+  package versions); no compliance benchmarks (CIS, STIG), policy expressions or remediation scripts.
+- **Files:** no templated files or directory sync.
+- **Automation:** workflows have no branches, conditions or approval steps, and run results aren't sent
+  as notifications.
+- **Alerts:** no on-call rotations, escalation or paging, incident grouping, alert rule expressions,
+  custom dashboards or log collection. No SMS or push apps: a [webhook](Webhooks.md) can feed ntfy,
+  Gotify or Home Assistant.
+- **Extensions:** no plugins yet.
+- **DROOL itself:** no package repository for installing it, it doesn't update itself, and backups are
+  made from the command line.
+
 Each page mentions the limits that matter for that task.
 
 ## Next

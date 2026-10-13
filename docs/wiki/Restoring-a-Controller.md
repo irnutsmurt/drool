@@ -16,6 +16,10 @@ installation is untouched.
   sign in or set it up**: restore before using it.
 - Everyone will have to sign in again afterwards.
 
+A restore looks for the key that opens the backup's credentials in this order: the key in the backup
+(if it was made with `--include-master-key`), the key you give with `--master-key`, then the key
+already installed.
+
 ## Native installation
 
 On the same machine (the installed key opens the backup):

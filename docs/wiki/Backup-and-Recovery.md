@@ -46,6 +46,23 @@ folder was made.
 
 ![Settings → System → Backup and restore: what a backup contains, the commands for Docker, Podman and a native installation, the reminder about the master key, and drool backup verify](images/system-backup-commands.png)
 
+## When something goes wrong
+
+| Situation | What to do |
+|---|---|
+| The controller machine is gone | Install DROOL on another machine and, before setting it up, restore your latest backup with the master key you kept ([Restoring a Controller](Restoring-a-Controller.md)). Start it, point the name or address Shepherds use at it if it changed, then work through **Settings → System → Restore** ([What Happens After Restore](What-Happens-After-Restore.md)) |
+| The master key is lost | DROOL refuses to start with a missing or wrong key. Restore the latest backup without its credentials; everything else comes back ([Recovering Without Credentials](Recovering-Without-Credentials.md)) |
+| A restore was interrupted | DROOL refuses to start and says so. `drool restore --recover` puts the previous installation back ([commands](Restoring-a-Controller.md#if-something-goes-wrong)) |
+| After a restore, hosts are *Ahead of DROOL*, *Needs attention*, *Update required* or *Blocked* | **Settings → System → Restore** explains each one ([What Happens After Restore](What-Happens-After-Restore.md)) |
+| After a restore, Shepherds can't connect, because the Shepherd CA was replaced after the backup was made | Issue a new intermediate CA with the offline root key (**Shepherds → Trust (PKI)**, or `drool agent-ca rotate --root-key FILE`): its trust manifest supersedes the one the Shepherds hold ([Shepherd PKI](Shepherd-PKI.md)) |
+| An update went wrong | [Going back](Updating-DROOL.md#if-something-went-wrong-going-back) |
+| The audit history failed verification | [If verification fails](Audit-Log.md#if-verification-fails) |
+| A Shepherd was compromised | Revoke it (on its host's page, or under **Shepherds**), and enroll it again after reinstalling the host. If you later restore an older backup, revoke it again: Shepherds older than M16 don't report a revocation made after the backup |
+| The master key may have leaked | Rotate it ([Key Rotation](Key-Rotation.md)), and keep the saved previous key with the older backups, offline |
+
+These situations need a person on purpose: DROOL won't guess which side of a disagreement is right,
+roll a host back to an old backup, or repeat an operation whose outcome it can't know.
+
 ## Other things worth keeping
 
 - **The Agent Root CA key**, once you've exported it from the controller (a different secret, for a

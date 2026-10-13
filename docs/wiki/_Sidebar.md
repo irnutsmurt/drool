@@ -233,6 +233,7 @@
 <summary><b>Reference</b></summary>
 
 - [Glossary](Glossary.md)
+- [Supported Platforms](Supported-Platforms.md)
 - [Status Meanings](Status-Meanings.md)
 - [Ports and Files](Ports-and-Files.md)
 - [Configuration](Configuration.md)

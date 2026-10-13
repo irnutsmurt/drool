@@ -43,7 +43,13 @@ Afterwards, **Settings → System** shows the version that's running.
   for example), it doesn't start, and nothing has been changed. Not every version changes the
   database; when nothing changes, no such backup is made.
 - **DROOL keeps the newest three** pre-upgrade backups. Each is a full copy of the database (about
-  the size of a normal backup), so on a small disk delete old ones once an upgrade has proved good.
+  the size of a normal backup: tens of megabytes for a small fleet, more for a busy one), so on a small
+  disk delete old ones once an upgrade has proved good. Or turn them off with
+  `backup.before_upgrade: false` (`DROOL_BACKUP_BEFORE_UPGRADE=false`) and back up yourself before
+  every update ([Configuration](Configuration.md)).
+- **Databases from builds older than `v0.1.0-alpha`** aren't guaranteed to upgrade: their database
+  changes were rewritten during early development. From `v0.1.0-alpha` on, database changes are only
+  ever added.
 - **Older Shepherds keep working.** A newer controller works with Shepherds that speak the same
   protocol, and tells you what an older one can't do. See [Shepherd Incompatible](Shepherd-Incompatible.md).
 
@@ -79,19 +85,26 @@ keep working with the older controller.
 
 ## Moving from a manual installation to the package
 
-If you once installed DROOL by hand (`/usr/local/bin/drool` with `/etc/systemd/system/drool.service`),
-that old unit would keep running the old program after you install the package, and the package
-warns about it. Remove the old files first; your data in `/var/lib/drool` stays as it is:
+If you installed DROOL by hand, from the release archive or an older build, that installation's unit
+file (`/etc/systemd/system/drool.service`) would keep running its own program after you install the
+package, and the package warns about it. Remove exactly the files the manual installation added; your
+data in `/var/lib/drool`, your settings in `/etc/drool` and the `drool` user stay as they are:
 
 ```sh
 sudo systemctl stop drool
-sudo rm -f /etc/systemd/system/drool.service /usr/local/bin/drool /usr/local/bin/drool-agent-linux-*
-sudo rm -rf /usr/local/lib/drool
+sudo rm -f /etc/systemd/system/drool.service /usr/local/bin/drool
+sudo rm -f /usr/local/lib/drool/drool-agent-linux-amd64 /usr/local/lib/drool/drool-agent-linux-arm64
+sudo rmdir /usr/local/lib/drool
 sudo apt install ./drool_1.0.0-1_amd64.deb
 sudo systemctl daemon-reload && sudo systemctl enable --now drool
 ```
 
-(Use `dnf install` with the `.rpm` on RHEL-family systems.)
+- The second line removes the unit file and the program, the third the two Shepherd programs the
+  release archive puts in `/usr/local/lib/drool/`.
+- `rmdir` then removes that folder, but only if it's empty. If it says the folder doesn't exist (an
+  installation older than the archive didn't have it) or isn't empty (something else is in it),
+  nothing was removed; that's fine, go on.
+- Use `dnf install` with the `.rpm` on RHEL-family systems.
 
 ## Related
 

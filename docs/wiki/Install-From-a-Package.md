@@ -69,9 +69,9 @@ sha256sum --check --ignore-missing SHA256SUMS
 
 It must print `OK` after the package's name, for example `drool_1.0.0-1_amd64.deb: OK`. If it says
 `FAILED`, the file is damaged or isn't the one the release published: download it again, and don't
-install it until it says `OK`. Official releases also sign `SHA256SUMS`; the README's
-[Download and verify](https://github.com/irnutsmurt/drool#download-and-verify) shows how to check
-that signature.
+install it until it says `OK`. Official releases also sign `SHA256SUMS`:
+[Checking a release's files](Installing-DROOL.md#checking-a-releases-files) shows how to check that
+signature.
 
 ## Step 3: Install it
 
@@ -98,7 +98,8 @@ then open the address and use the one-time setup code it prints:
 followed by a reminder about the master key. The next steps do exactly that.
 
 The package creates a `drool` system user, which DROOL runs as (never root), and puts DROOL's data in
-`/var/lib/drool`.
+`/var/lib/drool`. The `drool` service runs in a strict systemd sandbox: no capabilities, a read-only
+system, a private `/tmp`.
 
 ## Step 4: Start DROOL
 

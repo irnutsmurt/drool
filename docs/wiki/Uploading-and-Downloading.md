@@ -37,6 +37,9 @@ Click **Download** next to a file. Your browser saves it. To read a file the log
 Text files that are too large (over 1 MiB) or binary can't be opened in the editor; the editor then
 offers **Download it** instead.
 
+Uploads and downloads are one file at a time: a whole folder can't be uploaded or downloaded. To put
+the same file on many hosts, use [file deployment](Deploying-a-File-to-Multiple-Hosts.md).
+
 ## Related
 
 [Browsing Files](Browsing-Files.md) · [Editing Files](Editing-Files.md)

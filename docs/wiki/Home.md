@@ -75,5 +75,6 @@ common ones:
 
 Every page is listed in the sidebar, by topic.
 
-This guide describes DROOL as it is today, including its limits. For developers and the full technical
-detail, see the project's [README](https://github.com/irnutsmurt/drool#readme).
+This guide describes DROOL as it is today, including its limits. For the design, the implementation
+record and how releases are made, see the project's [README](https://github.com/irnutsmurt/drool#readme),
+which links to all three.

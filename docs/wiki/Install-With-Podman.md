@@ -266,7 +266,8 @@ mkdir -p ~/.config/containers/systemd
 cp drool.container ~/.config/containers/systemd/
 ```
 
-The first command must print `OK` for each file. The release's `drool.container` already names its
+The first command must print `OK` for each file ([checking the signature too](Installing-DROOL.md#checking-a-releases-files)).
+The release's `drool.container` already names its
 image, so skip steps 1 to 3 and continue with step 4. If you're already running the development
 image, read the release notes before switching.
 

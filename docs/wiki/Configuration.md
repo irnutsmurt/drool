@@ -44,7 +44,7 @@ from. The release installs a commented example as `/usr/share/drool/config.examp
 | `server.tls.mode` | `self_signed` | `self_signed`, `provided` (your own certificate) or `off` (only behind a reverse proxy on the same machine) |
 | `server.trusted_proxies` | none | Reverse proxies whose `X-Forwarded-For` header DROOL believes |
 | `agent.enabled` | `true` | The Shepherd endpoint |
-| `agent.port` | `9443` | The Shepherd endpoint's port |
+| `agent.port` | `9443` | The Shepherd endpoint's port. It must differ from `server.web_port`: DROOL refuses to start with both on one port |
 | `agent.bind` | same as `server.bind` | The address the Shepherd endpoint listens on |
 | `agent.advertise` | the address you use for the web interface | The address Shepherds connect to (put into enrollment tokens). **Containers need it set**, for example `drool.example.net:9443` |
 | `data_dir` | `/var/lib/drool` (containers: `/data`) | Where DROOL keeps its database and files |

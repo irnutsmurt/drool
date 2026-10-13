@@ -43,7 +43,8 @@ sha256sum --check --ignore-missing SHA256SUMS
 ```
 
 The last command must print `drool_1.0.0_linux_amd64.tar.gz: OK`. If it says `FAILED`, download the
-archive again and don't use it until it says `OK`.
+archive again and don't use it until it says `OK`. Official releases also sign `SHA256SUMS`:
+[Checking a release's files](Installing-DROOL.md#checking-a-releases-files).
 
 (Don't confuse it with `drool-agent_1.0.0_linux_amd64.tar.gz`: that one is the Shepherd alone, for the
 machines DROOL manages.)

@@ -109,6 +109,8 @@ If every administrator is locked out, a new one can be created on the controller
   and that the *Agent Root CA private key is on this controller*. Neither is urgent; both are
   explained in [Secure Your Installation](Secure-Your-Installation.md).
 - **Light, Dark, System** at the top switches the colour theme (saved in this browser).
+- **On a phone**, the sidebar is behind the **☰** button, tables show one card per row, and the
+  firewall policy opens in its [Rules view](Rules-View.md) (the topology map is for larger screens).
 - **Your name** and **Sign out** are at the top right; your own settings are under
   **Settings → Account**.
 
