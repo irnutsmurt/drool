@@ -13,6 +13,7 @@ exists. Where that message appears depends on how you installed DROOL:
 | Installation | Show the startup message | Lost the code, or it expired? Get a new one | Step by step |
 |---|---|---|---|
 | Docker Compose | `cd ~/drool`, then `docker compose logs drool` (the message is at the end) | `docker compose exec drool drool setup code` (in `~/drool`) | [Install with Docker Compose, step 6](Install-With-Docker-Compose.md#step-6-find-the-address-and-the-setup-code) |
+| Synology Container Manager | **Container** → **drool-drool-1** → **Details** → **Log** | Restart the container (**Action → Restart**): the new startup message has a new code | [Install on a Synology NAS, step 6](Install-On-a-Synology-NAS.md#step-6-find-the-setup-code) |
 | Podman | `journalctl --user -u drool -n 50` | `podman exec drool drool setup code` | [Install with Podman, step 6](Install-With-Podman.md#step-6-find-the-address-and-the-setup-code) |
 | Package (.deb or .rpm) | `sudo journalctl -u drool -n 50` | `sudo -u drool drool setup code` | [Install from a package, step 6](Install-From-a-Package.md#step-6-find-the-address-and-the-setup-code) |
 | Release archive | `sudo journalctl -u drool -n 50` | `sudo -u drool /usr/local/bin/drool setup code` | [Install from the release archive, step 5](Install-From-the-Release-Archive.md#step-5-find-the-address-and-the-setup-code) |

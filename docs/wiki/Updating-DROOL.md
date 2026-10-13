@@ -24,6 +24,7 @@ Update the controller first; see [Updating Shepherds](Updating-Shepherds.md) for
 |---|---|
 | Docker Compose, release image | `docker load -i drool_1.0.1_image.oci.tar`, put the new release's `compose.yaml` in **the same folder** as before, `~/drool` (the data volume is named after the folder), then, in that folder, `docker compose up -d` |
 | Docker Compose, development image | In your DROOL folder: `cd ~/drool`, then `docker compose pull && docker compose up -d`. This gets the newest `main` |
+| Synology Container Manager | In Container Manager: stop the project, delete its container and DROOL's image, then **Action → Build** ([step by step](Install-On-a-Synology-NAS.md#update-drool)). Never **Action → Clean**: it can remove DROOL's data volume |
 | Rootless Podman, release image | `podman load -i drool_1.0.1_image.oci.tar`, copy the new `drool.container` to `~/.config/containers/systemd/`, then `systemctl --user daemon-reload && systemctl --user restart drool` |
 | Rootless Podman, development image | `podman pull ghcr.io/irnutsmurt/drool:main && systemctl --user restart drool` |
 | Native package | `sudo apt install ./drool_1.0.1-1_amd64.deb` or `sudo dnf install ./drool-1.0.1-1.x86_64.rpm` — a running DROOL restarts with the new version |

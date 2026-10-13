@@ -16,6 +16,9 @@ The examples install DROOL on the machine `drool.example.net`, address 10.10.0.1
 ([About the Examples](About-the-Examples.md)). Wherever an example shows 10.10.0.10, use your own
 machine's address.
 
+On a Synology NAS, use [Install on a Synology NAS](Install-On-a-Synology-NAS.md) instead: the same
+file, set up entirely in Container Manager, without a terminal.
+
 ## Before you start
 
 - **A 64-bit Linux machine that stays on** (amd64, or arm64 such as a Raspberry Pi with a 64-bit
@@ -42,7 +45,7 @@ machine's address.
   needed.
 - **`curl`** to download the file (`curl --version` checks). `wget` works too.
 - **Ports 8080 and 9443 free** on that machine: 8080 for DROOL's web interface, 9443 for Shepherds
-  (DROOL's optional agents).
+  (DROOL's optional agents). Other ports work too: [Use other ports](#use-other-ports).
 
 ## Which DROOL this installs
 
@@ -327,9 +330,9 @@ Everything DROOL stores (hosts, credentials, history, its keys) is in a Docker *
 
 DROOL's `compose.yaml` gives the container nothing it doesn't need. Keep it that way:
 
-- **Two ports:** 8080 for the web interface (and DROOL's API), 9443 for Shepherds. If you'll never use
-  Shepherds, `DROOL_AGENT_ENABLED: "false"` under `environment:` turns that endpoint off
-  ([how](#if-youll-use-shepherds); [Configuration](Configuration.md)).
+- **Two ports:** 8080 for the web interface (and DROOL's API), 9443 for Shepherds
+  ([other ports](#use-other-ports)). If you'll never use Shepherds, `DROOL_AGENT_ENABLED: "false"`
+  under `environment:` turns that endpoint off ([Configuration](Configuration.md)).
 - **One writable place:** the data volume, at `/data` inside the container, plus a temporary `/tmp` in
   memory that only `drool backup verify` uses. The rest of the container is read-only.
 - **No privileges:** an ordinary unprivileged user, no Linux capabilities and no way to gain any; no
@@ -343,34 +346,36 @@ DROOL's `compose.yaml` gives the container nothing it doesn't need. Keep it that
   ([Command Line](Command-Line.md)).
 - **Rootless Docker** works the same way, with the same `compose.yaml`.
 
-## If you'll use Shepherds
+## Use other ports
 
-Shepherds (DROOL's optional agents, see [SSH vs Shepherds](SSH-vs-Shepherds.md)) connect to DROOL on
-port 9443, at an address DROOL gives them when you install them. Inside a container DROOL can't find
-out its own address, so tell it. (Without this setting, DROOL gives Shepherds the address you opened
-it with in your browser, which fails if that was `localhost` or an address your other machines can't
-reach.) You can do this now or any time later.
+`compose.yaml` starts, after its comments, with the two ports other computers use to reach DROOL:
+
+```yaml
+x-drool-ports:
+  web: &web-port 8080
+  shepherds: &shepherd-port ${DROOL_AGENT_PUBLIC_PORT:-9443}
+```
+
+- **`web`** is the port your browser uses: `https://10.10.0.10:8080`.
+- **`shepherds`** is the port Shepherds connect to: the number after `:-`.
+
+Inside its container DROOL always listens on 8080 and 9443 (the `target:` lines further down), and
+Docker forwards this machine's two ports to them. DROOL can't see that forwarding from inside its
+container, so the same two numbers are also handed to DROOL, under `environment:`. It then tells
+Shepherds the right port, and its startup message shows the right web port. **Change the numbers at
+the top and nothing else.**
+
+For example, for Shepherds on port 2043 of this machine:
 
 1. Open `compose.yaml` in a text editor, for example `nano compose.yaml` (in `~/drool`).
-2. Find these two lines:
+2. Change `9443` on the `shepherds:` line to `2043`:
 
    ```yaml
-       # environment:
-       #   DROOL_AGENT_ADVERTISE: drool.example.net:9443
+     shepherds: &shepherd-port ${DROOL_AGENT_PUBLIC_PORT:-2043}
    ```
 
-3. On both lines, delete the `#` and the space after it. Then put your machine's name or IP address
-   in place of `drool.example.net`, keeping `:9443`:
-
-   ```yaml
-       environment:
-         DROOL_AGENT_ADVERTISE: 10.10.0.10:9443
-   ```
-
-   Keep the spaces at the start of the lines exactly as they are: `environment:` lines up with
-   `ports:` and `volumes:`. Change only these two lines; a second, similar `environment:` example
-   further down the file is for something else. (In nano, Ctrl+O and Enter save, Ctrl+X quits.)
-4. Apply the change:
+   (In nano, Ctrl+O and Enter save, Ctrl+X quits.)
+3. Apply it:
 
    ```sh
    docker compose up -d
@@ -378,6 +383,48 @@ reach.) You can do this now or any time later.
 
    Docker replaces the container; your data stays. If you haven't created the administrator yet,
    DROOL now has a new setup code ([why](#when-drool-makes-a-new-code-by-itself)).
+
+`docker compose ps` then shows `0.0.0.0:2043->9443/tcp`: this machine's port 2043 forwarded to
+DROOL's 9443. DROOL keeps listening on 9443 inside the container and tells Shepherds to connect to
+`10.10.0.10:2043`.
+
+Instead of editing the file, you can set the Shepherd port in a file named `.env` next to
+`compose.yaml`, with the line `DROOL_AGENT_PUBLIC_PORT=2043`: Docker Compose reads it by itself. You
+don't need one otherwise.
+
+**Change the Shepherd port before you install Shepherds.** A Shepherd that's already installed keeps
+connecting to the port it was given at installation and goes offline when that port disappears.
+Putting the old number back brings it back.
+
+## If you'll use Shepherds
+
+Shepherds (DROOL's optional agents, see [SSH vs Shepherds](SSH-vs-Shepherds.md)) connect to DROOL
+at the address you open DROOL with in your browser, on the Shepherd port: 9443, or the one you chose
+([Use other ports](#use-other-ports)). Before you install one, the install dialog shows exactly where
+it will connect, for example **Shepherds will connect to: 10.10.0.10:9443**. Your managed hosts must
+be able to reach that address and port.
+
+So open DROOL by an address your managed hosts can reach too, not `localhost`. If they reach this
+machine by another name or address (a DNS name, NAT, a VPN), tell DROOL that name:
+
+1. Open `compose.yaml` in a text editor, for example `nano compose.yaml` (in `~/drool`).
+2. Find this line, under `environment:`:
+
+   ```yaml
+         # DROOL_AGENT_ADVERTISE: drool.example.net
+   ```
+
+3. Delete the `#` and the space after it, and put your machine's name or IP address in place of
+   `drool.example.net`:
+
+   ```yaml
+         DROOL_AGENT_ADVERTISE: drool.example.net
+   ```
+
+   Keep the spaces at the start of the line: it lines up with `DROOL_AGENT_PUBLIC_PORT` above it.
+   DROOL adds the Shepherd port by itself; write `name:port` only if Shepherds must use yet another
+   port.
+4. Apply it: `docker compose up -d`.
 
 Other settings work the same way: each is an environment variable under `environment:`
 ([Configuration](Configuration.md)).

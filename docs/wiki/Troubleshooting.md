@@ -31,6 +31,8 @@ words, the usual causes, and what to do, starting with the most likely.
 | You see | Go to |
 |---|---|
 | A Shepherd is **offline** | [Shepherd Offline](Shepherd-Offline.md) |
+| Installing a Shepherd fails: *connection refused*, or it never connects | [Installing a Shepherd](Installing-a-Shepherd.md#if-installing-fails) |
+| *connection refused* on port 9443 after changing the Docker port | [Installing a Shepherd](Installing-a-Shepherd.md#shepherd-installation-says-connection-refused-on-port-9443-after-changing-the-docker-port) |
 | **Incompatible**, **Update required**, **Reduced capabilities**, **Identity conflict** | [Shepherd Incompatible](Shepherd-Incompatible.md) |
 | *CapabilityError* in a run | [Shepherd Capability Presets](Shepherd-Capability-Presets.md) |
 

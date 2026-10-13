@@ -267,8 +267,12 @@ reach, set `agent.advertise` in `/etc/drool/config.yaml`
 
 ```yaml
 agent:
-  advertise: [drool.example.net:9443]
+  advertise: [drool.example.net]
 ```
+
+DROOL adds the Shepherd port. If your hosts reach DROOL through port forwarding on another port (a
+router forwarding 2043 to this machine's 9443), set `agent.public_port: 2043` too; DROOL still listens
+on 9443.
 
 ## Something went wrong?
 

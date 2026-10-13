@@ -14,13 +14,21 @@ There are three ways to install one:
 
 ## Before you start
 
-- **The host can reach DROOL's Shepherd port.** Shepherds connect to the address DROOL *advertises*,
-  on port **9443**. In the examples that's `drool.example.net:9443`. On the host,
-  `nc -vz drool.example.net 9443` must succeed.
-  - In a container installation, DROOL can't know that address by itself: set
-    `DROOL_AGENT_ADVERTISE` first ([Docker Compose](Install-With-Docker-Compose.md#if-youll-use-shepherds),
+- **The host can reach DROOL's Shepherd port.** Shepherds connect to the address DROOL *advertises*:
+  the address you open DROOL with in your browser, on the Shepherd port, **9443** unless you chose
+  another. Both install dialogs show it before anything changes, as **Shepherds will connect to: …**.
+  In the examples that's `drool.example.net:9443`. On the host, `nc -vz drool.example.net 9443` must
+  succeed.
+  - In a container, DROOL listens on 9443 inside the container. If the machine publishes it as another
+    port (`2043:9443`), DROOL must know that port too: DROOL's `compose.yaml` takes care of it from one
+    number ([Docker Compose](Install-With-Docker-Compose.md#use-other-ports),
+    [Synology](Install-On-a-Synology-NAS.md#step-4-check-the-ports),
     [Podman](Install-With-Podman.md#if-youll-use-shepherds)).
-  - If the controller's machine has a firewall, port 9443 must be open there.
+  - If your hosts reach DROOL by another name or address than the one in your browser (or you opened
+    it as `localhost`), set `DROOL_AGENT_ADVERTISE` first
+    ([Docker Compose](Install-With-Docker-Compose.md#if-youll-use-shepherds),
+    [Podman](Install-With-Podman.md#if-youll-use-shepherds), [Configuration](Configuration.md)).
+  - If the controller's machine has a firewall, the Shepherd port must be open there.
 - **The host is Linux on amd64 or arm64.** (Other architectures stay on SSH.)
 - **You're an administrator** (installing needs **agents.enroll**).
 - **Choose a preset**: how much DROOL may do through the Shepherd. The host keeps this limit even if
@@ -32,7 +40,9 @@ There are three ways to install one:
 ## From the host's page (easiest)
 
 1. Open the host (in the examples, `media-02`) and find the **Management** card.
-2. Click **Install Shepherd (DROOL agent)**.
+2. Click **Install Shepherd (DROOL agent)**. The dialog says where the Shepherd will connect, for
+   example **Shepherds will connect to: drool.example.net:9443**. If the host can't reach that
+   address and port, cancel and fix it first ([Before you start](#before-you-start)).
 
    ![The "Install a Shepherd (DROOL agent) on media-02" dialog with the Monitor, Managed and Full presets and what each allows, the optional release-signing key, and the Install with the managed preset button](images/shepherd-install-dialog.png)
 
@@ -66,13 +76,15 @@ Afterwards the **Management** card looks like this:
 ## A host that DROOL can't reach over SSH
 
 For a host behind NAT, in another network, or a laptop that moves around, use the one-line installer.
-The host needs only outgoing access to DROOL (ports 8080 to download, 9443 to connect).
+The host needs only outgoing access to DROOL: the web port (8080) to download, the Shepherd port (9443)
+to connect, or the ports you chose instead.
 
 1. **Open DROOL by the address your hosts can reach** (for example `https://drool.example.net:8080`,
    not `https://localhost:8080`): the installer command uses the address in your browser.
 2. Go to **Shepherds → Add a host with a Shepherd** (or, for a host that's already in DROOL,
    **Manual install…** on its Management card).
-3. Choose a preset and click **Create token and installer**.
+3. Choose a preset and click **Create token and installer**. The dialog says where the Shepherd will
+   connect (**Shepherds will connect to: …**): the host must be able to reach it.
 4. Copy the command. It is shown **only once** and expires after one hour. It looks like this:
 
    ```sh
@@ -114,12 +126,56 @@ failure. A host where anything fails stays exactly as it was, on SSH.
 
 | What you see | Likely cause | What to do |
 |---|---|---|
-| The install times out, or the Shepherd never shows as connected | The host can't reach the advertised address on port 9443 | On the host: `nc -vz drool.example.net 9443`. Fix the name (`DROOL_AGENT_ADVERTISE`), DNS, or a firewall in between |
+| The install times out or says *connection refused*, or the Shepherd never shows as connected | The host can't reach the address in **Shepherds will connect to** | On the host: `nc -vz drool.example.net 9443` (with that address and port). Fix the name (`DROOL_AGENT_ADVERTISE`), DNS, or a firewall in between |
+| *connection refused* on port 9443, after you published DROOL's Shepherd port as another port | DROOL gave the host the port inside its container | [Below](#shepherd-installation-says-connection-refused-on-port-9443-after-changing-the-docker-port) |
 | An error about sudo | The SSH account can't become root | [Sudo Failed](Sudo-Failed.md) |
 | *token expired* or *already used* | Tokens last one hour and work once | Create a new one |
 | An architecture error | The host isn't amd64 or arm64 | Keep the host on SSH |
 
+Whatever fails, the host stays as it was: DROOL stops the Shepherd it installed and the host remains
+managed over SSH (*Rolled back: the agent service was stopped; the host remains managed over SSH.*).
+Fix the cause and install again.
+
 See also [Shepherd Offline](Shepherd-Offline.md).
+
+### Shepherd installation says connection refused on port 9443 after changing the Docker port
+
+You published DROOL's Shepherd port as another port on the machine, for example `2043:9443` in
+`compose.yaml` or in Synology's Container Manager, and installing a Shepherd fails like this:
+
+```text
+Installing and enrolling as root (agent endpoint 10.10.0.10:9443)...
+… dial tcp 10.10.0.10:9443: connect: connection refused
+Rolled back: the agent service was stopped; the host remains managed over SSH.
+```
+
+**Why:** inside its container DROOL listens on 9443, and Docker forwards the machine's port (here
+2043) to it. DROOL can't see that forwarding from inside its container. DROOL builds before
+2026-10-13 gave Shepherds the port DROOL listens on, 9443, which nothing on the machine answers. The
+installation then rolled back as it should: the Shepherd service was stopped and the host is still
+managed over SSH. There is nothing to clean up on the host.
+
+**Fix:** use a current DROOL image with the current `compose.yaml`, and set the Shepherd port there,
+once:
+
+- **Synology Container Manager:** replace the project's YAML with the current file, set your port on
+  the `shepherds:` line, and update DROOL's image
+  ([Change a port later](Install-On-a-Synology-NAS.md#change-a-port-later),
+  [Update DROOL](Install-On-a-Synology-NAS.md#update-drool)).
+- **Docker Compose:** in `~/drool`, download `compose.yaml` again
+  ([step 2](Install-With-Docker-Compose.md#step-2-download-composeyaml)), set your port on its
+  `shepherds:` line ([Use other ports](Install-With-Docker-Compose.md#use-other-ports)), then
+  `docker compose pull` and `docker compose up -d`. Copy any other changes you made, such as
+  `DROOL_AGENT_ADVERTISE`, into the new file.
+- **Your own compose file, or Podman:** publish the port as before and add the same port as
+  `DROOL_AGENT_PUBLIC_PORT`, for example `DROOL_AGENT_PUBLIC_PORT: "2043"` under `environment:`
+  (Podman: `Environment=DROOL_AGENT_PUBLIC_PORT=2043`). Don't change `DROOL_AGENT_PORT`: it's where
+  DROOL listens inside the container, and stays 9443.
+
+Then open the host's page and click **Install Shepherd (DROOL agent)** again. The dialog should now
+say **Shepherds will connect to: 10.10.0.10:2043**, and the installer
+`(agent endpoint 10.10.0.10:2043)`. If the dialog has no **Shepherds will connect to** line, DROOL's
+image is still an old one.
 
 ## Next
 

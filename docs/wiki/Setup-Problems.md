@@ -1,8 +1,9 @@
 # Problems installing or setting up DROOL
 
 Find what you're seeing, then follow the steps. The install pages explain each command in more
-detail: [Docker Compose](Install-With-Docker-Compose.md) · [Podman](Install-With-Podman.md) ·
-[package](Install-From-a-Package.md) · [release archive](Install-From-the-Release-Archive.md).
+detail: [Docker Compose](Install-With-Docker-Compose.md) · [Synology NAS](Install-On-a-Synology-NAS.md) ·
+[Podman](Install-With-Podman.md) · [package](Install-From-a-Package.md) ·
+[release archive](Install-From-the-Release-Archive.md).
 
 With Docker Compose, run every `docker compose` command in your DROOL folder: `cd ~/drool` first.
 
@@ -26,6 +27,7 @@ installation:
 | Installation | Show the startup message |
 |---|---|
 | Docker Compose | `cd ~/drool`, then `docker compose logs drool`: the message is at the end |
+| Synology Container Manager | **Container** → **drool-drool-1** → **Details** → **Log** |
 | Podman | `journalctl --user -u drool -n 50` |
 | Package or release archive | `sudo journalctl -u drool -n 50` |
 
@@ -37,6 +39,7 @@ If the code isn't there:
   | Installation | Command |
   |---|---|
   | Docker Compose | `cd ~/drool`, then `docker compose exec drool drool setup code` |
+  | Synology Container Manager | Restart the container (**Container** → **drool-drool-1** → **Action → Restart**); the new code is in its new startup message |
   | Podman | `podman exec drool drool setup code` |
   | Package | `sudo -u drool drool setup code` |
   | Release archive | `sudo -u drool /usr/local/bin/drool setup code` |
@@ -226,9 +229,12 @@ means the file isn't valid:
 | *pull access denied for drool, repository does not exist or may require 'docker login'* | Compose is looking for an image called `drool:local`: your `compose.yaml` is from before 2026-10-13, when the file didn't name DROOL's image on GitHub yet, or a `.env` file sets `DROOL_IMAGE=drool:local`. In `~/drool`, download `compose.yaml` again ([step 2](Install-With-Docker-Compose.md#step-2-download-composeyaml)); `grep '^ *image:' compose.yaml` must show `ghcr.io/irnutsmurt/drool:main`. A `.env` file isn't needed: delete it (`rm .env`) unless you set something else in it on purpose |
 | *port is already allocated*, *address already in use* | Another program uses port 8080 or 9443 on this machine. `sudo ss -ltnp 'sport = :8080'` shows which. Stop it, or give DROOL another port (below) |
 
-**Another port for Docker:** in `compose.yaml`, change only the first number of `"8080:8080"`, for
-example to `"8443:8080"`, and run `docker compose up -d`. Then open `https://…:8443`. The startup
-message still says `:8080`, because that's the port inside the container.
+**Another port for Docker:** at the top of `compose.yaml`, change the number on the `web:` line (or,
+for Shepherds, the `shepherds:` line), for example `8080` to `8443`, and run `docker compose up -d`
+([Use other ports](Install-With-Docker-Compose.md#use-other-ports)). Then open `https://…:8443`; the
+startup message says `:8443` too. Inside the container DROOL still listens on 8080. On a Synology NAS,
+edit the project's YAML in Container Manager instead
+([how](Install-On-a-Synology-NAS.md#change-a-port-later)).
 
 ## Podman messages
 

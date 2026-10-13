@@ -14,8 +14,8 @@ renewed automatically. This page explains what's there, and what to do when some
 | **Shepherd certificate** | Each Shepherd's identity. Valid **30 days**, renewed automatically |
 
 All of it is shown under **Shepherds → Trust (PKI)**: the root fingerprint and validity, the
-intermediate, the trust manifest version, the agent endpoint (port 9443, separate from the web
-interface) and the controller epoch.
+intermediate, the trust manifest version, the agent endpoint (where Shepherds connect, and the port
+DROOL listens on, 9443, separate from the web interface) and the controller epoch.
 
 ![Shepherds → Trust (PKI): a warning that the root private key is still on the controller; the root fingerprint, intermediate, trust manifest version 1, agent endpoint and controller epoch; "Take the root key offline" in three steps; Replace the intermediate CA (Planned rotation, or Compromise: rotate and revoke); Import a trust manifest; and what backups contain](images/shepherd-pki.png)
 

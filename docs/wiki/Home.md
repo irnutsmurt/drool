@@ -35,7 +35,8 @@ More: [What DROOL Does](What-DROOL-Does.md).
 ## New here? Start with these
 
 1. [Installing DROOL](Installing-DROOL.md): today the quickest way is
-   [Docker Compose](Install-With-Docker-Compose.md), step by step from nothing installed
+   [Docker Compose](Install-With-Docker-Compose.md), step by step from nothing installed (on a
+   Synology NAS: [Install on a Synology NAS](Install-On-a-Synology-NAS.md), without a terminal)
 2. [First Login](First-Login.md)
 3. [Your First Host](Your-First-Host.md): connect a machine, run your first command on it and see it
    in Monitoring

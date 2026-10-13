@@ -28,7 +28,7 @@ In the examples, `media-01` has a Shepherd; `media-02`, `database-01` and `web-0
 | | SSH | Shepherd |
 |---|---|---|
 | **What's on the host** | Nothing but DROOL's account (`drooladmin`, which DROOL creates itself: [DROOL's Own SSH Account](Dedicated-SSH-Account.md)) and DROOL's key | The `drool-agent` program and service, plus its settings in `/etc/drool/agent.yaml` |
-| **Who connects to whom** | DROOL connects *to* the host's SSH port (directly or through one [jump host](Jump-Hosts.md)) | The Shepherd connects *out* to DROOL on port **9443**; the host needs no open port |
+| **Who connects to whom** | DROOL connects *to* the host's SSH port (directly or through one [jump host](Jump-Hosts.md)) | The Shepherd connects *out* to DROOL on its Shepherd port (**9443** by default); the host needs no open port |
 | **How trust works** | You approve the host's SSH key once; DROOL refuses to connect if it changes ([details](SSH-Host-Key-Verification.md)) | Both sides prove themselves with certificates DROOL issues at enrollment; the Shepherd's private key never leaves the host ([details](Shepherd-PKI.md)) |
 | **What DROOL may do** | Whatever the SSH account may do (with sudo: everything) | At most what the host's own `/etc/drool/agent.yaml` allows ([presets](Shepherd-Capability-Presets.md)) |
 | **Monitoring** | A snapshot every 5 minutes; disk health hourly (only with passwordless sudo) | Continuous: samples every 10 seconds, services every 30 seconds, disk health every 30 minutes; kept on the host while DROOL is unreachable and delivered later |

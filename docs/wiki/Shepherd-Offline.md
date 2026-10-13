@@ -37,10 +37,21 @@ Then, depending on what you find:
 
 ## In Docker
 
-The controller must publish port 9443 and advertise an address Shepherds can reach: set
-`DROOL_AGENT_ADVERTISE` in `compose.yaml` (for example `drool.example.net:9443`;
-[how](Install-With-Docker-Compose.md#if-youll-use-shepherds)). An advertised address
-like `localhost` or a container-internal name doesn't work for other machines.
+DROOL listens on 9443 inside its container; the machine publishes that port, as 9443 or another port.
+Shepherds must be given the published port and an address they can reach:
+
+- **The port:** set it once, at the top of DROOL's `compose.yaml` (the `shepherds:` line): it both
+  publishes the port and tells DROOL ([how](Install-With-Docker-Compose.md#use-other-ports);
+  [Synology](Install-On-a-Synology-NAS.md#change-a-port-later)). A Shepherd that was given another
+  port than the published one can't connect.
+- **The address:** Shepherds use the address you opened DROOL with. If they reach the machine by
+  another name, set `DROOL_AGENT_ADVERTISE`
+  ([how](Install-With-Docker-Compose.md#if-youll-use-shepherds)). `localhost` or a container-internal
+  name doesn't work for other machines.
+
+**Shepherds → Trust (PKI)** shows both: where Shepherds connect now, and the port DROOL listens on.
+Shepherds that were installed before you changed the published port keep using the old one: put the
+old number back.
 
 ## Related
 

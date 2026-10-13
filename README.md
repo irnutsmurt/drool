@@ -147,8 +147,8 @@ docker compose logs drool
 
 This makes a folder for DROOL, downloads the repository's `compose.yaml` into it, downloads the image
 that file names (DROOL's development image, `ghcr.io/irnutsmurt/drool:main`, from GitHub Container
-Registry), starts DROOL in the background and shows its log. The end of the log is DROOL's startup
-message, with two things you need:
+Registry), starts DROOL in the background and shows its log. Nothing else needs configuring. The end
+of the log is DROOL's startup message, with two things you need:
 
 - **The address to open**, printed as `https://<this-host's-address>:8080/setup`. Put in the address of
   the machine you ran this on, for example `https://10.10.0.10:8080/setup`. Your browser warns about
@@ -157,12 +157,18 @@ message, with two things you need:
   administrator account. It works once, for 60 minutes; `docker compose exec drool drool setup code`
   makes a new one.
 
+DROOL uses port 8080 for its web interface and 9443 for Shepherds, its optional agents. **For other
+ports**, change the two numbers at the top of `compose.yaml` and run `docker compose up -d`: Docker
+publishes those ports, DROOL keeps listening on 8080 and 9443 inside its container, and it gives
+Shepherds the port you chose. **On a Synology NAS**, paste the same file into Container Manager as a new project, with
+no terminal: [Install on a Synology NAS](https://github.com/irnutsmurt/drool/wiki/Install-On-a-Synology-NAS).
+
 `:main` is a **development image, not a stable release**: it's rebuilt from the newest code that passed
 DROOL's tests, so `docker compose pull` always gets whatever is newest. Keep backups.
 
 **[Full installation guide →](https://github.com/irnutsmurt/drool/wiki/Installing-DROOL)** Every way to
-install DROOL (Docker Compose, Podman, `.deb` and `.rpm` packages, the release archive), each step
-explained, from nothing installed to the setup screen. Then continue with
+install DROOL (Docker Compose, a Synology NAS, Podman, `.deb` and `.rpm` packages, the release
+archive), each step explained, from nothing installed to the setup screen. Then continue with
 [First Login](https://github.com/irnutsmurt/drool/wiki/First-Login) and
 [Your First Host](https://github.com/irnutsmurt/drool/wiki/Your-First-Host).
 

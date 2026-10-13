@@ -14,7 +14,7 @@ being qualified on.
 
 | How | Supported | Expected to work |
 |---|---|---|
-| Container image (`linux/amd64`, `linux/arm64`) | Docker Engine, also rootless Docker; rootless Podman 4.4 or newer, with the Quadlet unit | Rootful Podman, other OCI runtimes with the same settings |
+| Container image (`linux/amd64`, `linux/arm64`) | Docker Engine, also rootless Docker; rootless Podman 4.4 or newer, with the Quadlet unit | Rootful Podman, other OCI runtimes with the same settings; Synology Container Manager (DSM 7.2 or newer: Docker with Compose underneath, [guide](Install-On-a-Synology-NAS.md)) |
 | `.deb` package | Debian 12, 13; Ubuntu 22.04, 24.04, 26.04 | Other Debian-based distributions with systemd |
 | `.rpm` package | Rocky Linux 9, 10; AlmaLinux 9, 10; Fedora 44 | RHEL 9, 10 and other RHEL rebuilds |
 | Release archive (static binary) | The distributions above, on amd64 and arm64 | Any Linux with systemd on amd64 or arm64 |

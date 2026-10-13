@@ -41,12 +41,14 @@ from. The release installs a commented example as `/usr/share/drool/config.examp
 |---|---|---|
 | `server.bind` | `0.0.0.0` | The address the web interface listens on |
 | `server.web_port` | `8080` | The web interface's port (HTTPS) |
+| `server.public_port` | `server.web_port` | The port browsers use, when a container publishes the web interface under another one (`8443:8080`). It only changes the address DROOL prints when it starts; DROOL still listens on `server.web_port`. DROOL's `compose.yaml` sets it from its web port |
 | `server.tls.mode` | `self_signed` | `self_signed`, `provided` (your own certificate) or `off` (only behind a reverse proxy on the same machine) |
 | `server.trusted_proxies` | none | Reverse proxies whose `X-Forwarded-For` header DROOL believes |
 | `agent.enabled` | `true` | The Shepherd endpoint |
-| `agent.port` | `9443` | The Shepherd endpoint's port. It must differ from `server.web_port`: DROOL refuses to start with both on one port |
+| `agent.port` | `9443` | The port the Shepherd endpoint listens on. It must differ from `server.web_port`: DROOL refuses to start with both on one port. In a container this is the port inside the container: leave it, and set `agent.public_port` |
+| `agent.public_port` | `agent.port` | The port Shepherds connect to, when it isn't `agent.port`: a container publishing 9443 as another port (`2043:9443`), or port forwarding. It never changes where DROOL listens. DROOL's `compose.yaml` sets it from its Shepherd port |
 | `agent.bind` | same as `server.bind` | The address the Shepherd endpoint listens on |
-| `agent.advertise` | the address you use for the web interface | The address Shepherds connect to (put into enrollment tokens). **Containers need it set**, for example `drool.example.net:9443` |
+| `agent.advertise` | the address you open DROOL with, on `agent.public_port` (else `agent.port`) | The addresses Shepherds connect to (put into enrollment tokens and given to Shepherds when they're installed). Names or addresses, for example `drool.example.net`; one without a port gets `agent.public_port` (else `agent.port`), and `name:port` is used exactly as written. Set it when your hosts reach DROOL by another name than the one you open it with |
 | `data_dir` | `/var/lib/drool` (containers: `/data`) | Where DROOL keeps its database and files |
 | `secrets.master_key_file` | `<data_dir>/master.key` | Where the [master key](Master-Key.md) is |
 | `network.geoip_dir` | `<data_dir>/geoip` | Where the [GeoIP and ASN](GeoIP-and-ASN.md) databases are |

@@ -24,19 +24,24 @@ You need:
 - **A 64-bit Linux machine** (amd64 or arm64) to run DROOL on, which stays on. A small VM or a mini PC
   is plenty: DROOL is a single unprivileged program with its own database (SQLite). In the examples
   this machine is `drool.example.net` (10.10.0.10).
-- **One of:** Docker with Docker Compose; rootless Podman 4.4 or newer; or, once DROOL has a release,
-  a Debian, Ubuntu, Rocky Linux, AlmaLinux, RHEL or Fedora system to install a package on.
+- **One of:** Docker with Docker Compose; a Synology NAS with Container Manager (DSM 7.2 or newer);
+  rootless Podman 4.4 or newer; or, once DROOL has a release, a Debian, Ubuntu, Rocky Linux,
+  AlmaLinux, RHEL or Fedora system to install a package on.
 - **Two network ports on that machine:**
   - **8080**: the web interface. Your browser must be able to reach it.
   - **9443**: where Shepherds (DROOL agents) connect. Only needed if you'll use Shepherds; your managed
     hosts must be able to reach it.
+
+  These are the defaults; you can choose others. In a container, the ports other computers use can
+  differ from the ones DROOL listens on inside it: the Docker Compose and Synology pages show how to
+  change them in one place.
 
   DROOL never changes the firewall of the machine it runs on. If that machine has a firewall, you open
   these ports yourself (the install pages show how).
 - **A computer with a web browser** that can reach that machine over the network (it can be the same
   machine).
 - **A terminal on that machine**, where you type or paste commands. Every command on the install pages
-  is explained.
+  is explained. (On a Synology NAS you don't need one: everything happens in DSM.)
 - **Room for history.** Plan on roughly 1.5 MB per host for monitoring history and about 1 MB per host
   for alert history, plus the output of your runs (kept for 30 days by default).
 
@@ -49,7 +54,8 @@ DROOL doesn't need root to run, and its container needs no special privileges.
   it changes with every change to DROOL: when you update, you get whatever is newest. It isn't signed
   with DROOL's release key, and `drool version` reports it as a *development* build. **DROOL has no
   official release yet, so today this is the only ready-made way to run DROOL**, with
-  [Docker Compose](Install-With-Docker-Compose.md) or [Podman](Install-With-Podman.md). Good for
+  [Docker Compose](Install-With-Docker-Compose.md) (also on a [Synology NAS](Install-On-a-Synology-NAS.md))
+  or [Podman](Install-With-Podman.md). Good for
   trying DROOL and following its development; keep backups.
 - **A release**, published on the [Releases page](https://github.com/irnutsmurt/drool/releases), is a
   fixed version: a set of files (packages, archives, a container image file, `compose.yaml`) that
@@ -65,6 +71,7 @@ DROOL doesn't need root to run, and its container needs no special privileges.
 | Method | Available | Good for | DROOL's data is in |
 |---|---|---|---|
 | [Docker Compose](Install-With-Docker-Compose.md) | **Today**, with the development image | Most people: any 64-bit Linux with Docker. The quickest way to try DROOL | The Docker volume `drool_drool-data` |
+| [Synology NAS](Install-On-a-Synology-NAS.md) | **Today**, with the development image | A Synology NAS with Container Manager, set up entirely in DSM, without a terminal | The Docker volume `drool_drool-data` |
 | [Rootless Podman](Install-With-Podman.md) | **Today**, with the development image | Podman users who want DROOL as a systemd service without root | The Podman volume `drool-data` |
 | [Package (.deb or .rpm)](Install-From-a-Package.md) | With a release | Debian, Ubuntu, Rocky Linux, AlmaLinux, RHEL, Fedora | `/var/lib/drool` |
 | [Release archive](Install-From-the-Release-Archive.md) | With a release | Other systemd-based distributions | `/var/lib/drool` |

@@ -7,7 +7,7 @@ What DROOL listens on, what it connects to, and what it puts where.
 | From | To | Port | What for |
 |---|---|---|---|
 | Your browser | The controller | **TCP 8080** (HTTPS) | The web interface and the API (`server.web_port`) |
-| Shepherds | The controller | **TCP 9443** (mutual TLS) | Shepherd connections; only if you use Shepherds (`agent.port`) |
+| Shepherds | The controller | **TCP 9443** (mutual TLS) | Shepherd connections; only if you use Shepherds (`agent.port`; in a container, the port it's published as, `agent.public_port`) |
 | The controller | Managed hosts (or the jump host) | **TCP 22** (SSH), or the port set on the host | Managing hosts over SSH |
 | The jump host | Hosts behind it | Their SSH port | Connections forwarded through the jump host |
 | The controller | Notification destinations | Their ports (SMTP 587/465/25, HTTPS 443, …) | Alerts ([Notification Routing](Notification-Routing.md)) |

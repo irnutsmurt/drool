@@ -228,18 +228,22 @@ drool-data` deletes it, with everything DROOL knows. Keep a copy of DROOL's
 
 ## If you'll use Shepherds
 
-Shepherds connect to DROOL on port 9443 at an address DROOL gives them; inside a container DROOL
-can't find out its own address. (Without this setting, DROOL uses the address you opened it with in
-your browser, which fails for `localhost` or an address other machines can't reach.)
+Shepherds connect to DROOL at the address you open DROOL with in your browser, on port 9443. Before
+you install one, the install dialog shows exactly where it will connect, for example **Shepherds will
+connect to: 10.10.0.10:9443**. Your managed hosts must be able to reach that address and port.
+
+If they reach this machine by another name or address (a DNS name, NAT, a VPN), or you opened DROOL as
+`localhost`, tell DROOL that name:
 
 1. Open `~/.config/containers/systemd/drool.container` in a text editor.
-2. Find the line `#Environment=DROOL_AGENT_ADVERTISE=drool.example.net:9443`, delete the `#` at its
-   start, and put your machine's name or address in place of `drool.example.net`:
+2. Find the line `#Environment=DROOL_AGENT_ADVERTISE=drool.example.net`, delete the `#` at its start,
+   and put your machine's name or address in place of `drool.example.net`:
 
    ```text
-   Environment=DROOL_AGENT_ADVERTISE=10.10.0.10:9443
+   Environment=DROOL_AGENT_ADVERTISE=drool.example.net
    ```
 
+   DROOL adds the Shepherd port by itself.
 3. Apply it:
 
    ```sh
@@ -248,6 +252,13 @@ your browser, which fails for `localhost` or an address other machines can't rea
    ```
 
    Your data stays. Before the first administrator exists, the restart makes a new setup code.
+
+**Another Shepherd port on this machine:** change the first number of `PublishPort=9443:9443`, for
+example to `PublishPort=2043:9443`, and remove the `#` from `#Environment=DROOL_AGENT_PUBLIC_PORT=2043`
+with the same number, so DROOL tells Shepherds that port. Leave the second number, 9443: it's where
+DROOL listens inside the container. (The web port works the same way, with
+`DROOL_SERVER_PUBLIC_PORT`.) Then apply it as in step 3. Change it before you install Shepherds:
+installed ones keep using the port they were given.
 
 ## With a release instead
 

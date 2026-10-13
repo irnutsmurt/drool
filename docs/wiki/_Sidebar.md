@@ -11,6 +11,7 @@
 - [What DROOL Does](What-DROOL-Does.md)
 - [Installing DROOL](Installing-DROOL.md)
   - [Docker Compose](Install-With-Docker-Compose.md)
+  - [Synology NAS](Install-On-a-Synology-NAS.md)
   - [Podman](Install-With-Podman.md)
   - [Package (.deb, .rpm)](Install-From-a-Package.md)
   - [Release Archive](Install-From-the-Release-Archive.md)
