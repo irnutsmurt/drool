@@ -222,6 +222,8 @@ func (s *Server) routes() []route {
 		{method: "GET", path: APIPrefix + "/groups/{id}", auth: authed, perm: auth.PermHostsRead, h: s.handleGetGroup},
 		{method: "PATCH", path: APIPrefix + "/groups/{id}", auth: authed, perm: auth.PermHostsWrite, h: s.handleUpdateGroup},
 		{method: "DELETE", path: APIPrefix + "/groups/{id}", auth: authed, perm: auth.PermHostsWrite, h: s.handleDeleteGroup},
+		{method: "POST", path: APIPrefix + "/groups/{id}/members", auth: authed, perm: auth.PermHostsWrite, h: s.handleAddGroupMembers},
+		{method: "DELETE", path: APIPrefix + "/groups/{id}/members/{host_id}", auth: authed, perm: auth.PermHostsWrite, h: s.handleRemoveGroupMember},
 
 		{method: "POST", path: APIPrefix + "/jobs/preview", auth: authed, perm: auth.PermJobsRead, h: s.handlePreviewJob},
 		{method: "POST", path: APIPrefix + "/jobs", auth: authed, perm: auth.PermJobsExecute, h: s.handleCreateJob},

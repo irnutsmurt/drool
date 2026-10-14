@@ -876,6 +876,7 @@ export interface paths {
         };
         get: operations["listGroups"];
         put?: never;
+        /** @description A pack needs only a name; it can be empty. `host_ids`, when present, are its first members. */
         post: operations["createGroup"];
         delete?: never;
         options?: never;
@@ -900,6 +901,45 @@ export interface paths {
         head?: never;
         /** @description `host_ids`, when present, replaces the members. */
         patch: operations["updateGroup"];
+        trace?: never;
+    };
+    "/groups/{id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Adds hosts to the pack and keeps its other members; hosts already in it stay as they are. */
+        post: operations["addGroupMembers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/groups/{id}/members/{host_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                host_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Takes the host out of the pack. The pack stays, even with no hosts left, and so does the host. */
+        delete: operations["removeGroupMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/jobs/preview": {
@@ -9655,6 +9695,60 @@ export interface operations {
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
             422: components["responses"]["Problem"];
+        };
+    };
+    addGroupMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    host_ids: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description The pack with its members. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Group"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    removeGroupMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                host_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pack with its remaining members. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Group"];
+                };
+            };
+            404: components["responses"]["Problem"];
         };
     };
     previewJob: {

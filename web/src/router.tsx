@@ -12,6 +12,7 @@ import { HostsPage } from "@/pages/hosts/HostsPage";
 import { AddHostPage } from "@/pages/hosts/AddHostPage";
 import { HostDetailPage } from "@/pages/hosts/HostDetailPage";
 import { GroupsPage } from "@/pages/GroupsPage";
+import { PackPage } from "@/pages/PackPage";
 import { CredentialsPage } from "@/pages/CredentialsPage";
 import { JobsPage } from "@/pages/jobs/JobsPage";
 import { NewJobPage } from "@/pages/jobs/NewJobPage";
@@ -74,6 +75,7 @@ export const router = createBrowserRouter([
       { path: "hosts/:id/files/edit", element: <RequirePermission permission="files.read">{later(<EditFilePage />)}</RequirePermission> },
       { path: "file-deployments/:id", element: <RequirePermission permission="files.read">{later(<FileDeploymentPage />)}</RequirePermission> },
       { path: "groups", element: <RequirePermission permission="hosts.read"><GroupsPage /></RequirePermission> },
+      { path: "groups/:id", element: <RequirePermission permission="hosts.read"><PackPage /></RequirePermission> },
       { path: "jobs", element: <RequirePermission permission="jobs.read"><JobsPage /></RequirePermission> },
       { path: "jobs/new", element: <RequirePermission permission="jobs.execute"><NewJobPage /></RequirePermission> },
       { path: "jobs/:id", element: <RequirePermission permission="jobs.read"><JobDetailPage /></RequirePermission> },

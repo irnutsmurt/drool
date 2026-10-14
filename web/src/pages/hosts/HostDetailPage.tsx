@@ -26,6 +26,7 @@ import { HostAlertsCard, HostMaintenanceBanner } from "@/components/alerts/HostA
 import { useAlertSummary } from "@/components/alerts/queries";
 import { Alert } from "@/components/ui/Alert";
 import { HostReconciliationNotice } from "@/components/system/RestoreReconciliation";
+import { HostPacksDialog } from "@/components/packs/PackDialogs";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -60,6 +61,7 @@ export function HostDetailPage() {
   const recentJobs = useJobs(id);
   const [editing, setEditing] = useState(false);
   const [probe, setProbe] = useState<ProbeResult>();
+  const [packsOpen, setPacksOpen] = useState(false);
 
   const refreshQueries = () => {
     void qc.invalidateQueries({ queryKey: qk.host(id) });
@@ -132,7 +134,11 @@ export function HostDetailPage() {
   const membership = (
     <dl className="mt-3 grid grid-cols-[minmax(7rem,9rem)_1fr] gap-y-1.5 border-t border-line pt-3 text-sm">
       <dt className="text-muted">Packs <span className="text-xs">(groups)</span></dt>
-      <dd>{packs.length ? packs.map((g, i) => <span key={g.id}>{i > 0 && ", "}<Link className="text-accent" to="/groups">{g.name}</Link></span>) : "—"}</dd>
+      <dd>
+        {packs.length ? packs.map((g, i) => <span key={g.id}>{i > 0 && ", "}<Link className="text-accent" to={`/groups/${g.id}`}>{g.name}</Link></span>) : "—"}
+        {can("hosts.write") && <button type="button" className={`ml-2 text-xs ${plainLink}`} onClick={() => setPacksOpen(true)}>Change…</button>}
+        {packsOpen && <HostPacksDialog host={h} packs={groups.data?.items ?? []} onClose={() => setPacksOpen(false)} />}
+      </dd>
       <dt className="text-muted">Tags</dt>
       <dd className="flex flex-wrap gap-1">{h.tags.length ? h.tags.map((t) => <Badge key={t}>{t}</Badge>) : "—"}</dd>
       {h.description && (<><dt className="text-muted">Description</dt><dd>{h.description}</dd></>)}

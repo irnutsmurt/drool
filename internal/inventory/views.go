@@ -317,6 +317,47 @@ func (s *Service) SetMembersTx(ctx context.Context, q *db.Queries, id string, ho
 	return nil
 }
 
+// AddMembersTx adds hosts to a group and keeps its other members; a host
+// already in it stays as it is. It returns the hosts it added.
+func (s *Service) AddMembersTx(ctx context.Context, q *db.Queries, id string, hostIDs []string) ([]string, error) {
+	if _, err := q.GetGroup(ctx, id); errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrGroupNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	if len(hostIDs) == 0 {
+		return nil, invalid("name at least one host to add")
+	}
+	added := []string{}
+	for _, h := range hostIDs {
+		if _, err := q.GetHost(ctx, h); errors.Is(err, sql.ErrNoRows) {
+			return nil, invalid("host %s not found", h)
+		} else if err != nil {
+			return nil, err
+		}
+		n, err := q.AddGroupMember(ctx, db.AddGroupMemberParams{GroupID: id, HostID: h})
+		if err != nil {
+			return nil, err
+		}
+		if n > 0 {
+			added = append(added, h)
+		}
+	}
+	return added, nil
+}
+
+// RemoveMemberTx takes a host out of a group. The group and the host stay;
+// a host that wasn't in it is no error.
+func (s *Service) RemoveMemberTx(ctx context.Context, q *db.Queries, id, hostID string) (bool, error) {
+	if _, err := q.GetGroup(ctx, id); errors.Is(err, sql.ErrNoRows) {
+		return false, ErrGroupNotFound
+	} else if err != nil {
+		return false, err
+	}
+	n, err := q.RemoveGroupMember(ctx, db.RemoveGroupMemberParams{GroupID: id, HostID: hostID})
+	return n > 0, err
+}
+
 // DeleteGroupTx removes a group (hosts are unaffected).
 func (s *Service) DeleteGroupTx(ctx context.Context, q *db.Queries, id string) (db.Group, error) {
 	g, err := q.GetGroup(ctx, id)

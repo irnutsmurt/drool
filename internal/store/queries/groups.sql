@@ -30,3 +30,9 @@ DELETE FROM group_members WHERE host_id = ?;
 
 -- name: InsertGroupMember :exec
 INSERT INTO group_members (group_id, host_id) VALUES (?, ?);
+
+-- name: AddGroupMember :execrows
+INSERT OR IGNORE INTO group_members (group_id, host_id) VALUES (?, ?);
+
+-- name: RemoveGroupMember :execrows
+DELETE FROM group_members WHERE group_id = ? AND host_id = ?;

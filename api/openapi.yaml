@@ -1041,6 +1041,7 @@ paths:
     post:
       operationId: createGroup
       tags: [groups]
+      description: A pack needs only a name; it can be empty. `host_ids`, when present, are its first members.
       requestBody:
         required: true
         content:
@@ -1090,6 +1091,41 @@ paths:
       tags: [groups]
       responses:
         '204': { description: Deleted. }
+        '404': { $ref: '#/components/responses/Problem' }
+  /groups/{id}/members:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: addGroupMembers
+      tags: [groups]
+      description: Adds hosts to the pack and keeps its other members; hosts already in it stay as they are.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [host_ids], properties: { host_ids: { type: array, items: { type: string }, minItems: 1 } } }
+      responses:
+        '200':
+          description: The pack with its members.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Group' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /groups/{id}/members/{host_id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: host_id, in: path, required: true, schema: { type: string } }
+    delete:
+      operationId: removeGroupMember
+      tags: [groups]
+      description: Takes the host out of the pack. The pack stays, even with no hosts left, and so does the host.
+      responses:
+        '200':
+          description: The pack with its remaining members.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Group' }
         '404': { $ref: '#/components/responses/Problem' }
 
   /jobs/preview:

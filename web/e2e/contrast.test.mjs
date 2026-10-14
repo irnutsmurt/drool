@@ -77,7 +77,9 @@ const desiredPages = async (hosts) => {
   }
   const f = desiredFixture;
   return ["/desired", "/desired?status=all", "/desired/baselines", `/desired/baselines/${f.baseline}`, `/desired/baselines/${f.baseline}/edit`,
-    "/desired/baselines/new", "/desired/history", `/hosts/${f.host}/desired`];
+    "/desired/baselines/new", "/desired/history", `/hosts/${f.host}/desired`,
+    // A pack's page, with a member and Desired State (dogfooding 2026-10-14).
+    `/groups/${f.groups[0]}`];
 };
 
 async function cleanupDesired() {

@@ -25,6 +25,8 @@ export const useHostKeys = (id: string) =>
     queryFn: () => unwrap(api.GET("/hosts/{id}/hostkeys", { params: { path: { id } } })),
   });
 export const useGroups = () => useQuery({ queryKey: qk.groups, queryFn: () => unwrap(api.GET("/groups")) });
+export const useGroup = (id: string) =>
+  useQuery({ queryKey: [...qk.groups, id], queryFn: () => unwrap(api.GET("/groups/{id}", { params: { path: { id } } })) });
 export const useCredentials = (enabled = true) =>
   useQuery({ queryKey: qk.credentials, queryFn: () => unwrap(api.GET("/secrets")), enabled });
 export const useControllerKey = () =>

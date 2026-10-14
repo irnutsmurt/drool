@@ -578,6 +578,64 @@ func (s *Server) handleUpdateGroup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toGroupJSON(*g))
 }
 
+type groupMembersRequest struct {
+	HostIDs []string `json:"host_ids"`
+}
+
+// handleAddGroupMembers adds hosts to a pack and keeps its other members:
+// membership is managed after the pack exists, from the pack or the host,
+// and two people adding hosts at once both get theirs.
+func (s *Server) handleAddGroupMembers(w http.ResponseWriter, r *http.Request) {
+	var req groupMembersRequest
+	if p := decodeJSON(w, r, &req); p != nil {
+		writeProblem(w, r, p)
+		return
+	}
+	ctx := r.Context()
+	id := r.PathValue("id")
+	var g *inventory.GroupView
+	err := s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
+		added, err := s.d.Inventory.AddMembersTx(ctx, q, id, req.HostIDs)
+		if err != nil {
+			return audit.Event{}, err
+		}
+		if g, err = s.d.Inventory.GroupTx(ctx, q, id); err != nil {
+			return audit.Event{}, err
+		}
+		return audit.Event{Action: "group.members.add", TargetType: "group", TargetID: id,
+			Details: map[string]any{"name": g.Name, "added": added}}, nil
+	})
+	if err != nil {
+		writeProblem(w, r, s.inventoryError(err))
+		return
+	}
+	writeJSON(w, http.StatusOK, toGroupJSON(*g))
+}
+
+// handleRemoveGroupMember takes one host out of a pack; the pack stays,
+// even with no hosts left.
+func (s *Server) handleRemoveGroupMember(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, host := r.PathValue("id"), r.PathValue("host_id")
+	var g *inventory.GroupView
+	err := s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
+		removed, err := s.d.Inventory.RemoveMemberTx(ctx, q, id, host)
+		if err != nil {
+			return audit.Event{}, err
+		}
+		if g, err = s.d.Inventory.GroupTx(ctx, q, id); err != nil {
+			return audit.Event{}, err
+		}
+		return audit.Event{Action: "group.members.remove", TargetType: "group", TargetID: id,
+			Details: map[string]any{"name": g.Name, "host_id": host, "removed": removed}}, nil
+	})
+	if err != nil {
+		writeProblem(w, r, s.inventoryError(err))
+		return
+	}
+	writeJSON(w, http.StatusOK, toGroupJSON(*g))
+}
+
 func (s *Server) handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := r.PathValue("id")

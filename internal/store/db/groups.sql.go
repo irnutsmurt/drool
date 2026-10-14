@@ -9,6 +9,23 @@ import (
 	"context"
 )
 
+const addGroupMember = `-- name: AddGroupMember :execrows
+INSERT OR IGNORE INTO group_members (group_id, host_id) VALUES (?, ?)
+`
+
+type AddGroupMemberParams struct {
+	GroupID string
+	HostID  string
+}
+
+func (q *Queries) AddGroupMember(ctx context.Context, arg AddGroupMemberParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, addGroupMember, arg.GroupID, arg.HostID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteGroup = `-- name: DeleteGroup :exec
 DELETE FROM groups WHERE id = ?
 `
@@ -202,6 +219,23 @@ func (q *Queries) ListMembersOfGroup(ctx context.Context, groupID string) ([]str
 		return nil, err
 	}
 	return items, nil
+}
+
+const removeGroupMember = `-- name: RemoveGroupMember :execrows
+DELETE FROM group_members WHERE group_id = ? AND host_id = ?
+`
+
+type RemoveGroupMemberParams struct {
+	GroupID string
+	HostID  string
+}
+
+func (q *Queries) RemoveGroupMember(ctx context.Context, arg RemoveGroupMemberParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, removeGroupMember, arg.GroupID, arg.HostID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateGroup = `-- name: UpdateGroup :exec
