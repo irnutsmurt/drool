@@ -12,7 +12,7 @@ import { CodeBlock } from "@/components/ui/CodeBlock";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
 import { errorMessage, formatAgo, formatDateTime } from "@/lib/format";
-import { CapsList } from "./CapsList";
+import { CapsList, capsReported } from "./CapsList";
 import { ManagementBadge, stateLabels } from "./ManagementBadge";
 import { PresetPicker } from "./PresetPicker";
 import { ak, useHostAgent, usePKI, type AgentCaps } from "./queries";
@@ -142,7 +142,7 @@ export function ManagementCard({ host, children }: { host: Host; children?: Reac
           </dl>
           <div>
             <div className="mb-1 flex items-center gap-2 text-sm font-medium">What DROOL may do on this host
-              {can("agents.manage") && <Button size="sm" variant="ghost" onClick={() => setDialog("caps")}>Narrow…</Button>}</div>
+              {can("agents.manage") && capsReported(id.ceiling) && <Button size="sm" variant="ghost" onClick={() => setDialog("caps")}>Narrow…</Button>}</div>
             <p className="mb-2 text-xs text-muted">The host's own ceiling (/etc/drool/agent.yaml) is the limit; DROOL can narrow it but never widen it.
               {a?.requested_caps && " Narrowed by the controller."}</p>
             <CapsList caps={id.effective} />
@@ -200,7 +200,7 @@ export function ManagementCard({ host, children }: { host: Host; children?: Reac
       {dialog === "install" && <InstallDialog host={host} onClose={() => { setDialog(null); invalidate(); }} />}
       {dialog === "manual" && <ManualInstallDialog host={host} onClose={() => setDialog(null)} />}
       {dialog === "revoke" && id && <RevokeDialog identityId={id.id} hostName={host.name} onClose={() => { setDialog(null); invalidate(); }} />}
-      {dialog === "caps" && id && <CapsDialog hostId={host.id} ceiling={id.ceiling} requested={a?.requested_caps ?? null} onClose={() => { setDialog(null); invalidate(); }} />}
+      {dialog === "caps" && id && capsReported(id.ceiling) && <CapsDialog hostId={host.id} ceiling={id.ceiling} requested={a?.requested_caps ?? null} onClose={() => { setDialog(null); invalidate(); }} />}
     </Card>
   );
 }

@@ -3750,8 +3750,12 @@ components:
         hostname: { type: string }
         os: { type: string }
         arch: { type: string }
-        ceiling: { $ref: '#/components/schemas/AgentCaps' }
-        effective: { $ref: '#/components/schemas/AgentCaps' }
+        ceiling:
+          description: The host's own limit (/etc/drool/agent.yaml) as its Shepherd reported it; an empty object until it has.
+          oneOf: [{ $ref: '#/components/schemas/AgentCaps' }, { type: object, maxProperties: 0 }]
+        effective:
+          description: What DROOL may do through the Shepherd now (the ceiling, narrowed by the controller). An empty object until the Shepherd first connects and reports it, which happens moments after it enrolls.
+          oneOf: [{ $ref: '#/components/schemas/AgentCaps' }, { type: object, maxProperties: 0 }]
         root_equivalent: { type: array, items: { type: string } }
         manifest_version: { type: integer }
         epoch_reported: { type: string }

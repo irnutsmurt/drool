@@ -5,7 +5,7 @@ import { api, unwrap } from "@/api/client";
 import { useHosts } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { CompatibilityBadge, ManualInstallDialog } from "@/components/agents/ManagementCard";
-import { isRootEquivalent } from "@/components/agents/CapsList";
+import { capsReported, isRootEquivalent } from "@/components/agents/CapsList";
 import { ak, useAgents, useEndpointMigrations, useEnrollmentTokens, usePKI, useReleaseKeys, useReleases, useRollout, useRollouts, useUpdatePolicy } from "@/components/agents/queries";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
@@ -76,7 +76,8 @@ function AgentsTab() {
           { header: "Version", cell: (a) => <span>{a.agent_version} <span className="text-xs text-muted">proto {a.protocol || `${a.protocol_min}–${a.protocol_max}`}</span></span> },
           { header: "Update", cell: (a) => a.update_state ? <Badge tone={updateTone(a.update_state)}>{a.update_state.replace("_", " ")} {a.update_version}</Badge> : <span className="text-muted">current</span> },
           { header: "Certificate", cell: (a) => <span className="text-xs text-muted">until {formatDateTime(a.cert_not_after)}</span> },
-          { header: "Capabilities", cell: (a) => isRootEquivalent(a.effective) ? <Badge tone="danger">root-equivalent</Badge> : <Badge>limited</Badge> },
+          { header: "Capabilities", cell: (a) => !capsReported(a.effective) ? <span className="text-xs text-muted">not reported yet</span>
+            : isRootEquivalent(a.effective) ? <Badge tone="danger">root-equivalent</Badge> : <Badge>limited</Badge> },
         ]}
       />
       {adding && <ManualInstallDialog onClose={() => setAdding(false)} />}

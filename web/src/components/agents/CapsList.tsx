@@ -22,7 +22,18 @@ export function isRootEquivalent(c: AgentCaps): boolean {
   return capRows(c).some((r) => r.rootEq);
 }
 
-export function CapsList({ caps, compact }: { caps: AgentCaps; compact?: boolean }) {
+/** A Shepherd's capabilities as the API has them: empty until the Shepherd
+ * reports them when it first connects, moments after enrolling. */
+export type ReportedCaps = AgentCaps | Record<string, never>;
+
+export function capsReported(c: ReportedCaps | null | undefined): c is AgentCaps {
+  return !!c && "packages" in c && "services" in c && "files" in c;
+}
+
+export function CapsList({ caps, compact }: { caps: ReportedCaps; compact?: boolean }) {
+  if (!capsReported(caps)) {
+    return <p className={compact ? "text-xs text-muted" : "text-sm text-muted"}>Not reported yet: the Shepherd sends what it may do when it connects.</p>;
+  }
   const rows = capRows(caps);
   return (
     <div>

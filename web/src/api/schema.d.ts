@@ -4101,8 +4101,10 @@ export interface components {
             hostname: string;
             os: string;
             arch: string;
-            ceiling: components["schemas"]["AgentCaps"];
-            effective: components["schemas"]["AgentCaps"];
+            /** @description The host's own limit (/etc/drool/agent.yaml) as its Shepherd reported it; an empty object until it has. */
+            ceiling: components["schemas"]["AgentCaps"] | Record<string, never>;
+            /** @description What DROOL may do through the Shepherd now (the ceiling, narrowed by the controller). An empty object until the Shepherd first connects and reports it, which happens moments after it enrolls. */
+            effective: components["schemas"]["AgentCaps"] | Record<string, never>;
             root_equivalent: string[];
             manifest_version: number;
             epoch_reported: string;
