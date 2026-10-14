@@ -551,7 +551,7 @@ func (s *Service) Execute(ctx context.Context, hostID string, op model.Operation
 		}
 		cls := model.ClassExecution
 		switch code {
-		case "exists", "foreign", "replaced", "group", "prereq", "nosudoersd":
+		case "exists", "foreign", "replaced", "group", "prereq", "nosudoersd", "sudotty":
 			cls = model.ClassConfiguration
 		case "":
 			cls = model.ClassAuthorization
@@ -577,7 +577,13 @@ func (s *Service) Execute(ctx context.Context, hostID string, op model.Operation
 		note(out, "Authorized DROOL's key (%s) for %s", key.fingerprint, user)
 	}
 	if vals["sudoers_changed"] == "1" {
-		note(out, "Installed %s (passwordless sudo, checked with visudo)", sudoersPath(user))
+		note(out, "Installed %s (passwordless sudo, checked with this host's visudo)", sudoersPath(user))
+	}
+	if vals["sudo_exception"] == "requiretty" {
+		note(out, "This host's sudo requires a terminal (requiretty): the rule includes an exception for %s, which visudo accepted", user)
+	}
+	if r := strings.Trim(vals["sudo_rule"], ";"); r != "" {
+		note(out, "Sudo rule for %s: %s", user, strings.ReplaceAll(r, ";", " | "))
 	}
 
 	// 3. Prove it: a brand-new connection, every hop dialled again and the

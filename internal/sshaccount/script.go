@@ -25,10 +25,11 @@ func sudoersPath(user string) string { return sudoersDir + "/drool-account-" + u
 // SSH access. It never touches an account DROOL didn't create (the marker
 // file, written before the account and tied to DROOL's key and the
 // account's user ID, is the only proof DROOL accepts; the name proves
-// nothing), never installs software, validates the sudo rule with visudo
-// before sudo reads it, and ignores SIGHUP so that a dropped connection
-// can't stop it halfway: running it again finds what it did and continues.
-var accountScript = template.Must(template.New("account").Funcs(template.FuncMap{"q": hostops.ShQuote}).Parse(`set -u
+// nothing), never installs software, installs only a sudo rule this host's
+// own visudo accepted (sudoPolicy), and ignores SIGHUP so that a dropped
+// connection can't stop it halfway: running it again finds what it did and
+// continues.
+var accountScript = template.Must(template.New("account").Funcs(template.FuncMap{"q": hostops.ShQuote, "sudoPolicy": func() string { return sudoPolicy }}).Parse(`set -u
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 umask 077
@@ -44,7 +45,7 @@ err() { printf '@@ERR %s %s\n' "$1" "$2"; exit 1; }
 kv() { printf '@@%s %s\n' "$1" "$2"; }
 [ "$(id -u)" = 0 ] || err notroot "the setup didn't run as root"
 missing=""
-for c in useradd usermod getent visudo sudo; do
+for c in useradd usermod getent visudo sudo runuser setsid; do
 	command -v "$c" >/dev/null 2>&1 || missing="$missing $c"
 done
 [ -z "$missing" ] || err prereq "this host doesn't have:$missing. DROOL doesn't install software to set up its account: install it first (visudo comes with sudo), or keep signing in with this account"
@@ -118,42 +119,11 @@ if ! grep -qF "$body" "$AK" 2>/dev/null; then
 fi
 chown "$U:$G" "$AK" && chmod 600 "$AK" || err ssh "cannot set the owner and mode of $AK"
 if command -v restorecon >/dev/null 2>&1; then restorecon -R "$H/.ssh" >/dev/null 2>&1 || true; fi
-T=$(mktemp /etc/sudoers.d/.drool-account.XXXXXX) || err sudoers "cannot write in /etc/sudoers.d"
-cat >"$T" <<DROOL_SUDOERS
-# Managed by DROOL: $U is the account DROOL signs in with on this host.
-# Full management: $U may run any command as root without a password,
-# which makes it root-equivalent. Delete this file to take that away.
-Defaults:$U !requiretty
-$U ALL=(ALL:ALL) NOPASSWD: ALL
-DROOL_SUDOERS
-chmod 440 "$T"
-if ! out=$(visudo -cf "$T" 2>&1); then
-	rm -f "$T"
-	err sudoers "visudo rejected DROOL's sudo rule, so it wasn't installed: $(printf '%s' "$out" | tail -n 3 | tr '\n' ' ')"
-fi
-if [ -f "$S" ] && cmp -s "$T" "$S"; then
-	rm -f "$T"
-else
-	prev=""
-	if [ -f "$S" ]; then prev=$(mktemp /etc/sudoers.d/.drool-prev.XXXXXX) && cp -p "$S" "$prev" || err sudoers "cannot keep a copy of $S"; fi
-	mv -f "$T" "$S" || { rm -f "$T"; err sudoers "cannot install $S"; }
-	# A configuration that validated before must still validate; problems
-	# that were already there (another file's mode, say) are reported, not
-	# DROOL's to fix. Either way sudo itself must read the whole
-	# configuration and grant the rule.
-	bad=""
-	if [ "$pre_ok" = 1 ] && ! out=$(visudo -c 2>&1); then
-		bad="the sudo configuration doesn't validate with DROOL's rule in it: $(printf '%s\n' "$out" | grep -v 'parsed OK$' | head -n 3 | tr '\n' ' ')"
-	elif ! out=$(sudo -n -l -U "$U" 2>&1) || ! printf '%s\n' "$out" | grep -q 'NOPASSWD: ALL'; then
-		bad="sudo doesn't grant DROOL's rule to $U: $(printf '%s\n' "$out" | head -n 3 | tr '\n' ' ')"
-	fi
-	if [ -n "$bad" ]; then
-		if [ -n "$prev" ]; then mv -f "$prev" "$S"; else rm -f "$S"; fi
-		err sudoers "$bad. DROOL took its rule out again"
-	fi
-	[ -n "$prev" ] && rm -f "$prev"
-	kv sudoers_changed 1
-fi
+SD={{q .SudoersDir}}
+PRE=$(mktemp) || err state "cannot create a temporary file"
+trap 'rm -f "$PRE"' EXIT
+printf '%s\n' "$pre" | grep -v 'parsed OK$' >"$PRE" || true
+{{sudoPolicy}}
 kv home "$H"
 kv uid "$(id -u "$U")"
 kv done 1
@@ -169,10 +139,11 @@ type scriptInput struct {
 	MarkerDir   string
 	Marker      string
 	Sudoers     string
+	SudoersDir  string
 }
 
 func renderScript(in scriptInput) (string, error) {
-	in.MarkerDir, in.Marker, in.Sudoers = markerDir, markerPath(in.User), sudoersPath(in.User)
+	in.MarkerDir, in.Marker, in.Sudoers, in.SudoersDir = markerDir, markerPath(in.User), sudoersPath(in.User), sudoersDir
 	var b bytes.Buffer
 	err := accountScript.Execute(&b, in)
 	return b.String(), err
@@ -196,3 +167,90 @@ func parseOutput(out []byte) (vals map[string]string, code, msg string) {
 	}
 	return vals, code, msg
 }
+
+// sudoPolicy installs the sudo rule DROOL's account needs, and only what this
+// host's own sudo accepts and uses (After M17, ARCHITECTURE-ALPHA §36.2). The
+// rule is full sudo without a password. A requiretty exception is added
+// only if sudo, run as the account without a terminal the way DROOL will,
+// asks for one, and only if this host's visudo accepts it: sudo
+// implementations differ (sudo-rs, Ubuntu's default since 25.10, has no
+// requiretty setting, and its visudo rejects the line), so nothing is taken
+// for granted by distribution or version. Every proposed file is checked
+// with visudo -cf before it is installed; once installed, the whole
+// configuration must report no problem it didn't report before (problems
+// already on the host are reported, not DROOL's to fix), and sudo itself
+// must let the account run a command as root without a password and
+// without a terminal. Otherwise DROOL's file is taken out again, and a file
+// it replaced is put back.
+//
+// It runs inside the account script, as root, with U (the account), S (its
+// sudoers file), SD (the sudoers directory), pre_ok (1: visudo -c passed
+// before) and PRE (a file with the problems visudo -c reported before), and
+// the script's err and kv. Its own tests run it against stand-in commands.
+const sudoPolicy = `RULE="$U ALL=(ALL:ALL) NOPASSWD: ALL"
+TTYX="Defaults:$U !requiretty"
+# candidate: a proposed sudoers file ($1: an extra line, or none) in a
+# dot-named file (sudo skips those), checked with this host's own visudo.
+candidate() {
+	T=$(mktemp "$SD/.drool-account.XXXXXX") || err sudoers "cannot write in $SD"
+	{
+		printf '%s\n' "# Managed by DROOL: $U is the account DROOL signs in with on this host." \
+			"# Full management: $U may run any command as root without a password," \
+			"# which makes it root-equivalent. Delete this file to take that away."
+		[ -z "$1" ] || printf '%s\n' "$1"
+		printf '%s\n' "$RULE"
+	} >"$T" && chmod 440 "$T" || { rm -f "$T"; err sudoers "cannot write a sudo rule in $SD"; }
+	if ! vout=$(visudo -cf "$T" 2>&1); then
+		rm -f "$T"
+		return 1
+	fi
+}
+place() {
+	if [ -f "$S" ] && cmp -s "$T" "$S"; then rm -f "$T"; return 0; fi
+	mv -f "$T" "$S" || { rm -f "$T"; undo "cannot install $S"; }
+	changed=1
+}
+undo() {
+	if [ -n "$prev" ]; then mv -f "$prev" "$S"; else rm -f "$S"; fi
+	err "${2:-sudoers}" "$1. DROOL took its rule out again"
+}
+# worse: the whole configuration reports a problem it didn't report before.
+worse() {
+	post=$(visudo -c 2>&1) && return 1
+	if [ "$pre_ok" = 1 ]; then wout=$(printf '%s\n' "$post" | grep -v 'parsed OK$'); return 0; fi
+	wout=$(printf '%s\n' "$post" | grep -v 'parsed OK$' | grep -Fxvf "$PRE")
+	[ -n "$wout" ]
+}
+# probe: sudo as the account, without a terminal, as DROOL will run it. It
+# passes when sudo ran id -u as root; what sudo said (pmsg) only explains a
+# failure: warnings such as "unable to resolve host" don't make one.
+probe() {
+	perr=$(mktemp) || err state "cannot create a temporary file"
+	pout=$(LC_ALL=C setsid -w runuser -u "$U" -- sudo -n -- id -u </dev/null 2>"$perr")
+	pstatus=$?
+	pmsg=$(head -c 400 "$perr" | tr '\n' ' ')
+	rm -f "$perr"
+	[ "$pstatus" = 0 ] && [ "$pout" = 0 ]
+}
+prev=""
+if [ -f "$S" ]; then
+	prev=$(mktemp "$SD/.drool-prev.XXXXXX") && cp -p "$S" "$prev" || err sudoers "cannot keep a copy of $S"
+fi
+changed=0
+candidate "" || { [ -z "$prev" ] || rm -f "$prev"; err sudoers "visudo rejected DROOL's sudo rule, so it wasn't installed: $(printf '%s' "$vout" | tail -n 3 | tr '\n' ' ')"; }
+place
+worse && undo "the sudo configuration reports a new problem with DROOL's rule in it: $(printf '%s\n' "$wout" | head -n 3 | tr '\n' ' ')"
+if ! probe; then
+	printf '%s\n' "$pmsg" | grep -qiE 'must have a tty|requiretty' ||
+		undo "sudo doesn't let $U run commands as root without a password and without a terminal: ${pmsg:-it printed \"$pout\" instead of 0}"
+	# This host's sudo requires a terminal for the account (requiretty).
+	kv sudo_tty required
+	candidate "$TTYX" || undo "this host's sudo requires a terminal for $U (requiretty), and its visudo doesn't accept an exception for the account: $(printf '%s' "$vout" | tail -n 2 | tr '\n' ' ')" sudotty
+	place
+	worse && undo "the sudo configuration reports a new problem with DROOL's rule in it: $(printf '%s\n' "$wout" | head -n 3 | tr '\n' ' ')"
+	probe || undo "this host's sudo still requires a terminal for $U with an exception for the account in DROOL's rule: $pmsg" sudotty
+	kv sudo_exception requiretty
+fi
+[ -z "$prev" ] || rm -f "$prev"
+[ "$changed" = 0 ] || kv sudoers_changed 1
+kv sudo_rule "$(grep -v '^#' "$S" | tr '\n' ';')"`

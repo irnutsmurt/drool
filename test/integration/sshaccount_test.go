@@ -144,7 +144,9 @@ func TestDedicatedSSHAccount(t *testing.T) {
 	expect(t, strings.TrimSpace(web.exec(t, "stat -c '%U %a' /home/drool/.ssh /home/drool/.ssh/authorized_keys")) == "drool 700\ndrool 600", "modes: %s", web.exec(t, "stat -c '%U %a' /home/drool/.ssh /home/drool/.ssh/authorized_keys"))
 	expect(t, strings.Count(web.exec(t, "cat /home/drool/.ssh/authorized_keys"), keyBody) == 1, "authorized_keys: %s", web.exec(t, "cat /home/drool/.ssh/authorized_keys"))
 	sudoers := web.exec(t, "cat /etc/sudoers.d/drool-account-drool")
-	expect(t, strings.Contains(sudoers, "drool ALL=(ALL:ALL) NOPASSWD: ALL") && strings.Contains(sudoers, "root-equivalent"), "sudoers: %s", sudoers)
+	// The minimal rule: this host's sudo needs no terminal exception.
+	expect(t, strings.Contains(sudoers, "drool ALL=(ALL:ALL) NOPASSWD: ALL") && strings.Contains(sudoers, "root-equivalent") && !strings.Contains(sudoers, "requiretty"), "sudoers: %s", sudoers)
+	expect(t, strings.Contains(out, "Sudo rule for drool: drool ALL=(ALL:ALL) NOPASSWD: ALL") && !strings.Contains(out, "requiretty"), "the reported rule: %s", out)
 	expect(t, strings.TrimSpace(web.exec(t, "stat -c '%U %a' /etc/sudoers.d/drool-account-drool /var/lib/drool/ssh-accounts /var/lib/drool/ssh-accounts/drool")) == "root 440\nroot 700\nroot 600", "file modes")
 	marker := web.exec(t, "cat /var/lib/drool/ssh-accounts/drool")
 	expect(t, strings.Contains(marker, "uid="+strings.TrimSpace(web.exec(t, "id -u drool"))) && strings.Contains(marker, "key=SHA256:"), "marker: %s", marker)
@@ -178,7 +180,8 @@ func TestDedicatedSSHAccount(t *testing.T) {
 		ID string `json:"id"`
 	}
 	ctl.must(t, "GET", "/api/v1/secrets/"+login, nil, &cred)
-	expect(t, rh.exec(t, "getent shadow drool | cut -d: -f2") != "" && strings.Contains(rh.exec(t, "cat /etc/sudoers.d/drool-account-drool"), "NOPASSWD: ALL"), "rh account")
+	rhRule := rh.exec(t, "cat /etc/sudoers.d/drool-account-drool")
+	expect(t, rh.exec(t, "getent shadow drool | cut -d: -f2") != "" && strings.Contains(rhRule, "NOPASSWD: ALL") && !strings.Contains(rhRule, "requiretty"), "rh account: %s", rhRule)
 	expect(t, pwuserState(rh) == before, "the setup account changed on %s", other.Name)
 	r = run(t, hr.ID, cmd("id -u", true))
 	expect(t, r.State == "succeeded", "root as drool on %s: %v", other.Name, r)
