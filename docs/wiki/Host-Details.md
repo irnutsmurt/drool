@@ -34,7 +34,7 @@ Every card links to the full page for that area.
 | Card | What it shows | Full page |
 |---|---|---|
 | **Health** | Tiles for CPU, Memory, Storage, Temperature, Network, Services, Storage devices and Active health issues, how the host is monitored (*Polled over SSH every 5 min* or *Continuous: the Shepherd samples every 10 s*), uptime, whether a reboot is required, and pending updates | **View monitoring →** ([Host Monitoring](Host-Monitoring.md)) |
-| **Management** | SSH or Shepherd, the fallback, what DROOL would use right now, the SSH user, credential, sudo setting, jump host, trusted host key, last test, Packs, tags, description; buttons to install or manage a Shepherd | [SSH vs Shepherds](SSH-vs-Shepherds.md) |
+| **Management** | SSH or Shepherd, the fallback, what DROOL would use right now, the SSH user, credential, sudo setting, jump host, trusted host key, last test, Packs (each links to its page; **Change…** adds the host to Packs or removes it), tags, description; buttons to install or manage a Shepherd | [SSH vs Shepherds](SSH-vs-Shepherds.md) |
 | **Alerts** | Open alerts for this host; **History**; **Start maintenance** | [Understanding Alerts](Understanding-Alerts.md), [Maintenance Mode](Maintenance-Mode.md) |
 | **Desired State** | Whether the host matches its baselines, and what differs | **View desired state →** ([Drift](Drift.md)) |
 | **Firewall** | The firewall mode and whether DROOL filters this host | **View firewall →** ([Firewall Modes](Firewall-Modes.md)) |

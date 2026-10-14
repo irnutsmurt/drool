@@ -98,7 +98,7 @@ Open the host and click **Edit**. The same form opens with every field; click **
 take effect on DROOL's next connection to the host. Run **Test connection** afterwards to check.
 
 Tags and the description can also be changed there. To change which Packs a host belongs to, use
-the [Packs](Packs.md) page.
+**Change…** next to **Packs** on the host's page, or the Pack's own page ([Packs](Packs.md#add-and-remove-hosts)).
 
 ## Many hosts
 

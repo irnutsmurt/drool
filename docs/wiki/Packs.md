@@ -16,25 +16,55 @@ A host can be in several Packs. Membership is looked up when it's used: a host y
 ## Before you start
 
 - Creating, changing and deleting Packs needs **hosts.write** (administrators).
-- The hosts must already be in DROOL ([Adding a Host](Adding-a-Host.md)).
+- A Pack can be created before its hosts exist, and it can stay empty. To add hosts to it, they
+  must be in DROOL ([Adding a Host](Adding-a-Host.md)).
 
 ## Create a Pack
 
-1. Open **Packs** in the sidebar.
-2. Type a name under **New pack**, for example `media-servers`, and click **Create pack**.
+1. Open **Packs** in the sidebar and click **Create pack**.
+2. Type a name, for example `media-servers`, and if you like a description. Click **Create**.
 
    Names can contain letters, digits, `.`, `_` and `-`, and must start with a letter or digit: no
    spaces. (`media-servers` works, `Media Servers` doesn't.)
-3. On the new Pack's card, click **Members** and tick the hosts that belong in it (`media-01`,
-   `media-02`, `nas-01`). Changes are saved as you tick.
 
-## What each Pack's card offers
+   ![The "Create a pack" dialog: name media-servers, description "Jellyfin, Plex and the NAS", a note that hosts are added on the pack's page, now or later, and the Create button](images/pack-create.png)
 
-| On the card | What it's for |
+3. DROOL opens the new Pack's page. It has no hosts yet:
+
+   ![The media-servers pack's page: no hosts assigned yet, an Add hosts button in the header and in the empty Hosts card, Customize monitoring and Delete pack](images/pack-empty.png)
+
+An empty Pack is a Pack like any other: schedules, firewall rules and baselines can already name it,
+and its hosts are included from the moment you add them. A run started on it while it's empty is
+refused (*the selected targets match no hosts*), and a schedule skips that time.
+
+## Add and remove hosts
+
+On the Pack's page:
+
+1. Click **Add hosts**.
+2. Tick the hosts that belong in the Pack (`media-01`, `media-02`, `nas-01`) and click **Add 3 hosts**.
+   With many hosts, a search box narrows the list by name, address or tag. Hosts already in the Pack
+   aren't listed.
+
+   ![The "Add hosts to media-servers" dialog with database-01, gpu-01, media-01, media-02, nas-01 and web-01; media-01, media-02 and nas-01 ticked, and the Add 3 hosts button](images/pack-add-hosts.png)
+
+The Pack's page then lists its hosts:
+
+![The media-servers pack with media-01, media-02 and nas-01, their addresses and tags, a Remove button on each, its Desired State, and links to run on the pack, its alerts, its network activity and the baselines](images/pack-hosts.png)
+
+- **Remove** takes a host out of the Pack after you confirm. The host stays in DROOL, and the Pack
+  stays too, even when its last host is gone; the Pack's settings stop applying to that host.
+- **From a host's page:** next to **Packs**, **Change…** lists every Pack with a tick for the
+  ones the host is in. Ticking adds the host, unticking removes it.
+- Each change is saved on its own, so two people adding hosts at the same time both keep theirs.
+
+## What each Pack offers
+
+| Where | What it's for |
 |---|---|
-| **Customize monitoring** | Health-check adjustments for this Pack's hosts, e.g. no high-CPU warning for a render farm ([Health Overrides](Health-Overrides.md)) |
-| **Members** | Add and remove hosts |
-| **Delete** | Remove the Pack (see below) |
+| **Customize monitoring** (Packs page and the Pack's page) | Health-check adjustments for this Pack's hosts, e.g. no high-CPU warning for a render farm ([Health Overrides](Health-Overrides.md)) |
+| **Manage hosts** (Packs page) | Opens the Pack's page, where you add and remove hosts |
+| **Delete** / **Delete pack** | Remove the Pack (see below) |
 | **Desired State: … · priority 0 — Change priority** | Which baselines apply to the Pack, and its priority when two Packs disagree ([Conflicts](Conflicts.md)) |
 | **Alerts** | Alerts of this Pack's hosts |
 | **Run on this pack** | A new run with the Pack as its target ([Running a Command](Running-a-Command.md)) |

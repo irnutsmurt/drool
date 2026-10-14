@@ -1426,6 +1426,8 @@ Meaningful choices made during implementation, newest last.
 | After M17 | `compose.yaml` declares the two public ports once, in `x-drool-ports` (YAML anchors): `web` (8080) is published and given to DROOL as `DROOL_SERVER_PUBLIC_PORT`; `shepherds: ${DROOL_AGENT_PUBLIC_PORT:-9443}` is published onto the container's 9443 and given to DROOL as `DROOL_AGENT_PUBLIC_PORT`. The container ports stay 8080 and 9443 | One number to change, in the file, in the environment or in an optional `.env`, and no way to publish one port while advertising another. It works in Synology's Container Manager, where the YAML is edited in the browser (rendered with Compose v2.9.0, v2.20.1 and 5.5.1) |
 | After M17 | A bulk conversion stores the web UI's host name with its rollout (`agent_rollouts.web_host`, migration 0022), and each host's installation resolves its endpoint from it | Conversions run after the request that started them; without it every converted host was told `localhost` unless `agent.advertise` was set |
 | After M17 | A Shepherd's `effective` capabilities are an empty object until its first hello (enrollment records only the ceiling); the API schema says so (`ceiling` and `effective`: `AgentCaps` or `{}`), and the UI shows *Not reported yet* instead of the list | The host page polls every 5 s and counts an enrolled identity as live: a poll between `drool-agent install` enrolling and the service's hello rendered the capability list from `{}`, and the page failed ("Cannot read properties of undefined (reading 'enabled')") right after a successful installation (dogfooding). With the schema honest, the type checker finds every place that reads them |
+| After M17 | A Pack is created with a name and an optional description alone and can stay empty; it lands on its own page (`/groups/:id`), which says *No hosts assigned yet* and has **Add hosts**, and removes hosts one at a time without deleting the Pack. Membership changes one host at a time: `POST /groups/{id}/members` (adds, keeps the other members) and `DELETE /groups/{id}/members/{host_id}`, from the Pack's page or a host's (**Change…** next to its Packs); `PATCH /groups/{id}` with `host_ids` still replaces the whole set | Dogfooding: creating a Pack opened a checkbox list of every host, so a Pack felt like a one-off selection instead of an object of its own. The schema already allowed empty Packs (`groups` and `group_members` are separate tables, and members were optional on create), so the fix is the UI and two routes; changing one member at a time also stops two people's edits from replacing each other |
+| After M17 | The SSH account's sudo rule is minimal (`<user> ALL=(ALL:ALL) NOPASSWD: ALL`); a `requiretty` exception is added only if sudo, run as the account without a terminal, asks for one and the host's own visudo accepts it; the rule's effect is proven by that no-terminal sudo instead of root's `sudo -l -U`; a configuration with problems before is compared problem by problem (§36.2) | Dogfooding: on sudo-rs (Ubuntu's default since 25.10), which has no `requiretty`, visudo rejected the line DROOL wrote on every host, and the setup stopped safely. Root's `sudo -l -U` also fails without a terminal where `requiretty` is global, and with problems already on the host nothing caught a rule that made the configuration worse |
 
 ---
 
@@ -2544,6 +2546,8 @@ away in the documentation; none is started. Size and risk are estimates from the
 | 8 | Adding a host required preparing an account on it by hand (`useradd`, a sudoers file, pasting DROOL's key), and the administrator's own password or key otherwise stayed in DROOL | Done: DROOL's own SSH account (§36) | Done (after M17) |
 | 9 | `internal/sshx` TestPoolCertificateJumpPaths fails now and then under `-race -count=10`: its clock is real time plus an offset, and the test leaves the jump certificate one second of validity, so a slow run (1.03 s observed) sees it expire and the path re-dialled | A timing margin in the test, not a product fault; it passes on its own and in the normal suite. Fix by freezing the test clock rather than by sleeps or a looser assertion | Fix before final 1.0 qualification |
 | 10 | With Compose publishing the Shepherd endpoint under another port (`2043:9443` on a Synology NAS), Shepherds were told the port inside the container, and installation failed with *connection refused* | Done: a public port separate from the listen port, set once in `compose.yaml` (§37) | Done (after M17) |
+| 11 | Creating a Pack required picking hosts at once; a Pack felt like a one-time grouping | Done: a Pack is created empty and gets its own page, where hosts are added and removed afterwards (§22) | Done (after M17) |
+| 12 | DROOL's own SSH account wrote `Defaults:<user> !requiretty` everywhere; sudo-rs's visudo rejects it | Done: a minimal sudo rule, the exception only where the host's sudo needs and accepts it (§36.2) | Done (after M17) |
 
 ---
 
@@ -2571,7 +2575,8 @@ and `POST /hosts/{id}/ssh-account`, `setup_credentials` on `POST /hosts`, migrat
 3. **The original Linux account is never deleted or modified automatically.** The setup only runs
    as it; its password, keys, groups and sudo rights stay.
 4. **A full-management account is root-equivalent through sudo, and DROOL says so.** The rule is
-   `ALL=(ALL:ALL) NOPASSWD: ALL` (plus `!requiretty` for that user): no allowlist that would pretend
+   `ALL=(ALL:ALL) NOPASSWD: ALL` (plus a `requiretty` exception for that user only where the host's
+   sudo requires a terminal and its visudo accepts the exception): no allowlist that would pretend
    otherwise. The plan, the form, the result and the user guide say it in the same words.
 5. **A shared credential is never deleted while anything references it.** The switch transaction
    deletes a temporary credential only through `secrets.DeleteTx`, which checks every host (jump
@@ -2599,12 +2604,24 @@ reading. It needs `useradd`, `usermod`, `getent`, `visudo` and `sudo`, and an `i
 - **Key.** `~/.ssh` (0700) and `authorized_keys` (0600), owned by the account; `controller-default`
   added once (lines others added to DROOL's own account stay); `restorecon` where SELinux has it.
   The same key for every host: no per-host keys.
-- **sudo.** The rule goes to a dot-named temporary file in `/etc/sudoers.d` (sudo skips names with a
-  dot), is checked with `visudo -cf`, then moved to `/etc/sudoers.d/drool-account-<user>` (0440). If
-  `visudo -c` passed before, it must still pass; whether or not, `sudo -l -U <user>` must read the
-  whole configuration and grant `NOPASSWD: ALL`. Otherwise the previous file is put back (or the new
-  one removed). Problems `visudo -c` already reported (another file's mode) are passed on as a
-  warning, not fixed.
+- **sudo** (`sudoPolicy`, revised after M17 dogfooding). The policy is minimal and follows the
+  host's actual sudo, never its distribution or version: `<user> ALL=(ALL:ALL) NOPASSWD: ALL`, and a
+  `Defaults:<user> !requiretty` line only when the host needs and accepts it. Each proposed file goes
+  to a dot-named temporary file in `/etc/sudoers.d` (sudo skips names with a dot) and is checked
+  alone with the host's `visudo -cf`; a rejected one is deleted and never installed. An accepted one
+  is moved to `/etc/sudoers.d/drool-account-<user>` (0440), keeping a copy of a file it replaces.
+  Then: (1) `visudo -c` must report no problem it didn't report before (problems already on the
+  host, such as another file's mode, are passed on as a warning and not counted against DROOL); (2)
+  sudo must run `id -u` as root for the account without a password and without a terminal
+  (`setsid -w runuser -u <user> -- sudo -n -- id -u </dev/null`, judged by its exit status and
+  output, not by warnings such as *unable to resolve host*). If that test says a terminal is required
+  (*must have a tty*), the exception is proposed, checked with `visudo -cf` and tested again; a
+  host that rejects it, or still wants a terminal with it, is refused (`sudotty`, a configuration
+  error) with its rule taken out. Any failure puts back the file DROOL replaced (or removes its own),
+  and leaves no proposal behind. The no-terminal test replaced root's `sudo -l -U <user>`, which
+  itself fails without a terminal on hosts with a global `requiretty`. Found on a host with sudo-rs
+  (Ubuntu's sudo since 25.10): it has no `requiretty` setting, and its visudo rejected the line
+  DROOL used to write on every host. The fresh connection (invariant 2) stays the final proof.
 - **Interruptions.** The script ignores `SIGHUP` and `SIGPIPE`, so a dropped connection can't stop it
   halfway; running it again finds DROOL's record and continues (it reports `account existing`).
 
@@ -2645,7 +2662,19 @@ reported as unknown, resuming, a concurrent edit winning, no secret in output, r
 `setup_credentials`, plan JSON), integration `TestDedicatedSSHAccount` (real sshd, `useradd` and
 `visudo` on Debian 12 and Rocky Linux 9 in unprivileged containers: a refused fresh sign-in, then
 the setup again; a stored credential kept; an existing `drool` refused and untouched; a refusing
-sudo creating nothing; a host behind a jump host), and the browser test `web/e2e/addhost.test.mjs`.
+sudo creating nothing; a host behind a jump host; the minimal rule), and the browser test
+`web/e2e/addhost.test.mjs`. The sudo policy has its own tests: `TestSudoPolicy` runs `sudoPolicy`
+against stand-in `visudo`, `sudo`, `runuser` and `setsid` (no terminal needed; a visudo that rejects
+`requiretty`; a terminal required with the exception accepted, and rejected; a rejected rule never
+installed; a rule sudo doesn't honour; an earlier file put back exactly; problems already on the host
+not blamed; a configuration made worse, with and without earlier problems; no proposal left behind),
+and integration `TestSSHAccountSudoPolicy` runs the real script on real sudo-rs (Ubuntu 26.04 with
+`sudo-rs`, whose visudo rejects the old line: a first attempt failing at the sudo rule after the
+account was created, then the setup again continuing with that account and installing the minimal
+rule) and on a Rocky Linux host whose sudo requires a terminal for the account (the exception refused
+by a visudo that rejects it, then added where visudo accepts it, the account working without a
+terminal and on the fresh connection). Against the old script, the sudo-rs case fails with the
+reported message.
 
 ---
 

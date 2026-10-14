@@ -23,7 +23,7 @@ letters, digits, `_` and `-` (at most 32, starting with a letter or `_`), and ca
 |---|---|---|
 | The account | `/etc/passwd` | A system account with a home folder (`/home/drooladmin`) and the shell `/bin/bash` (`/bin/sh` if there's no bash). It has **no password** (`*`), so nobody can sign in as it with one. |
 | DROOL's key | `~drooladmin/.ssh/authorized_keys` | DROOL's own SSH key (`controller-default`), the same one for every host. The folder and file belong to the account, modes 700 and 600. |
-| The sudo rule | `/etc/sudoers.d/drool-account-drooladmin` | Passwordless sudo for everything (shown below), mode 440. `visudo` checks it before sudo reads it. |
+| The sudo rule | `/etc/sudoers.d/drool-account-drooladmin` | Passwordless sudo for everything (shown below), mode 440. The host's own `visudo` checks it before DROOL installs it. |
 | DROOL's record | `/var/lib/drool/ssh-accounts/drooladmin` | Readable by root only: which DROOL key set the account up and the account's user ID. It's how DROOL knows an account is its own. |
 
 The sudo rule, as DROOL writes it:
@@ -32,9 +32,23 @@ The sudo rule, as DROOL writes it:
 # Managed by DROOL: drooladmin is the account DROOL signs in with on this host.
 # Full management: drooladmin may run any command as root without a password,
 # which makes it root-equivalent. Delete this file to take that away.
-Defaults:drooladmin !requiretty
 drooladmin ALL=(ALL:ALL) NOPASSWD: ALL
 ```
+
+That is the whole rule on almost every host. DROOL adds a line only when the host's sudo needs one:
+
+- **If sudo requires a terminal for the account** (`requiretty` in the host's sudo configuration),
+  DROOL adds `Defaults:drooladmin !requiretty` above the rule, because DROOL runs commands without a
+  terminal. It finds out by trying: as the new account, without a terminal, it runs `sudo -n id -u`.
+  It adds the line only if the host's own `visudo` accepts it.
+- **If the host's sudo doesn't accept that line**, DROOL stops and installs nothing
+  ([below](#when-the-setup-stops)). sudo-rs, Ubuntu's sudo since 25.10, has no `requiretty` at all,
+  so it never needs the line, and DROOL never writes it there.
+
+Before it installs anything, DROOL checks the exact file with the host's `visudo`. Afterwards the
+whole sudo configuration must report no problem it didn't report before, and sudo must actually let
+the account run a command as root without a password. If any of that fails, DROOL takes its file
+out again (and puts back the one it replaced, on a second run).
 
 **Full management gives this DROOL account passwordless sudo and therefore root-equivalent
 administrative capability.** That is what DROOL needs to install packages, manage services, reboot
@@ -43,8 +57,9 @@ Protect DROOL accordingly: [Secure Your Installation](Secure-Your-Installation.m
 
 What DROOL never does for this:
 
-- **install software.** The host needs `sudo` (with `visudo`), `useradd`, `usermod` and `getent`,
-  which every supported distribution has. If something is missing, DROOL stops and says what.
+- **install software.** The host needs `sudo` (with `visudo`), `useradd`, `usermod`, `getent`,
+  `runuser` and `setsid`, which every supported distribution has. If something is missing, DROOL
+  stops and says what.
 - **delete or change the account you use for the setup.** Its password, keys, groups and sudo
   rights stay exactly as they were.
 - **take over an account it didn't create**, whatever its name ([below](#an-account-with-that-name-already-exists)).
@@ -119,13 +134,17 @@ credential is deleted. The message says which step failed:
 | *this host doesn't have: sudo* | Install sudo on the host yourself, or keep signing in with this account. |
 | */etc/sudoers doesn't read /etc/sudoers.d* | Add the line `@includedir /etc/sudoers.d` to `/etc/sudoers` with `sudo visudo` (older systems write `#includedir`). |
 | *DROOL couldn't use drooladmin on a fresh connection: authentication as "drooladmin" failed* | The account was created, but the host's SSH server won't let it in. Usually `AllowUsers`, `AllowGroups`, `DenyUsers` or `DenyGroups` in `/etc/ssh/sshd_config` (the plan warns when they're set). Allow the account, then run the setup again: it continues with the account it created. |
-| *… sudo without a password didn't work* | Another sudo rule takes the account's rights away, or sudo rules come from elsewhere (LDAP). Fix that, then run the setup again. |
+| *… sudo without a password didn't work*, *sudo doesn't let drooladmin run commands as root without a password and without a terminal* | Another sudo rule takes the account's rights away, or sudo rules come from elsewhere (LDAP). Fix that, then run the setup again. |
+| *this host's sudo requires a terminal for drooladmin (requiretty), and its visudo doesn't accept an exception for the account* | The host's sudo wants a terminal, and doesn't accept the line that would let DROOL work without one. DROOL installed nothing. Remove `requiretty` for that account (or for everyone) from the host's sudo configuration, then run the setup again. |
+| *visudo rejected DROOL's sudo rule, so it wasn't installed* | The message quotes `visudo`. Nothing was installed. Check the host's sudo (`sudo visudo -c`), then run the setup again. |
+| *the sudo configuration reports a new problem with DROOL's rule in it* | DROOL took its rule out again; the message quotes `visudo -c`. Check the host's sudo configuration, then run the setup again. |
 | *the connection to … was lost while DROOL was setting up …, so DROOL doesn't know how far it got* | Run the setup again: it looks at what's on the host and continues. |
 | *…'s connection settings were changed while DROOL was setting up …* | Someone edited the host meanwhile; that change wins. Run the setup again. |
 
 A warning that doesn't stop the setup: *visudo -c reports problems that are already on this host*
-(for example another file in `/etc/sudoers.d` with the wrong mode). DROOL doesn't fix other files;
-it checks that its own rule adds no problem and that sudo grants it.
+(for example another file in `/etc/sudoers.d` with the wrong mode). DROOL doesn't fix other files
+and doesn't count those problems against its rule: it checks that its own file is valid, that it
+adds no new problem, and that sudo grants it.
 
 To run the setup again: **Try again** where it stopped, or **Set up a dedicated DROOL SSH account**
 on the host's page.
