@@ -14,6 +14,7 @@ export type NetSettings = Schemas["NetSettings"];
 export type NetSettingsView = Schemas["NetSettingsView"];
 export type NetEnrichment = Schemas["NetEnrichment"];
 export type NetCollection = Schemas["NetCollection"];
+export type NetEnrichState = Schemas["NetEnrichState"];
 export type NetRule = Schemas["NetRule"];
 export type NetRuleInput = Schemas["NetRuleInput"];
 

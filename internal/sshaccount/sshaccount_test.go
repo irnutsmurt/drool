@@ -708,3 +708,73 @@ func TestScript(t *testing.T) {
 		t.Fatal("paths")
 	}
 }
+
+// The cleanup scripts (dogfooding correction batch) are valid shell, quote
+// what they're given, prove ownership before anything is written, carry the
+// helper only when starting it, and the helper checks again before its
+// first removal and removes the marker last. They're only parsed here (sh
+// -n): they remove accounts, and run against real hosts in the container
+// tests.
+func TestCleanupScripts(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh")
+	}
+	parse := func(name, s string) {
+		t.Helper()
+		f := filepath.Join(t.TempDir(), name+".sh")
+		os.WriteFile(f, []byte(s), 0o600)
+		if out, err := exec.Command(sh, "-n", f).CombinedOutput(); err != nil {
+			t.Fatalf("%s: %v: %s", name, err, out)
+		}
+	}
+	for _, mode := range []string{"check", "start"} {
+		s, err := renderCleanup(mode, "drool", "SHA256:a'b")
+		if err != nil {
+			t.Fatal(err)
+		}
+		parse(mode, s)
+		if !strings.Contains(s, `KEYFP='SHA256:a'\''b'`) {
+			t.Fatalf("%s doesn't quote", mode)
+		}
+		proof := strings.Index(s, `err replaced "the account $U isn't the one DROOL created`)
+		if proof == -1 || strings.Index(s, "err notours") > proof || strings.Index(s, "err foreign") > proof {
+			t.Fatalf("%s: ownership checks out of order", mode)
+		}
+		helper := strings.Index(s, "DROOL_ACCOUNT_CLEANUP")
+		switch mode {
+		case "check":
+			if helper != -1 || strings.Contains(s, "systemd-run") || strings.Contains(s, "mktemp") {
+				t.Fatal("the check writes or starts something")
+			}
+		case "start":
+			if helper == -1 || helper < proof || !strings.Contains(s, "systemd-run --quiet --collect") || !strings.Contains(s, `setsid /bin/sh "$D/cleanup.sh" </dev/null >/dev/null 2>&1 &`) {
+				t.Fatal("the start doesn't stage and start the helper after the proof")
+			}
+		}
+	}
+	h, err := CleanupHelper("drool", "SHA256:abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parse("helper", h)
+	recheck := strings.Index(h, `[ "$(mval key)" != "$KEYFP" ] || [ -z "$muid" ] || [ "$muid" != "$uid" ]`)
+	first := strings.Index(h, "rm -f -- \"$S\"")
+	if recheck == -1 || first == -1 || recheck > first {
+		t.Fatal("the helper removes something before checking ownership again")
+	}
+	if strings.Index(h, `rm -f -- "$M"`) < strings.Index(h, `userdel "$U"`) {
+		t.Fatal("the marker goes before the account")
+	}
+	for _, want := range []string{`[ "$(head -n 1 "$S")" = "$HEADER" ]`, `[ "$(stat -c %u "$H" 2>/dev/null)" = "$uid" ]`, `/|/root|/home|/var|/var/lib|/usr|/etc`,
+		`[ -n "$mgid" ]`, `/run/drool-account-cleanup.*|/var/tmp/drool-account-cleanup.*) rm -rf -- "$me"`} {
+		if !strings.Contains(h, want) {
+			t.Errorf("the helper lacks %q", want)
+		}
+	}
+	// The setup now records the group created with the account.
+	s, _ := renderScript(scriptInput{Mode: "apply", User: "drool", Key: "ssh-ed25519 AAAAC3Nza drool", Fingerprint: "SHA256:abc", Token: "0123456789ab"})
+	if !strings.Contains(s, `printf 'gid=%s\n' "$gid" >>"$M"`) {
+		t.Fatal("the setup doesn't record the account's group")
+	}
+}

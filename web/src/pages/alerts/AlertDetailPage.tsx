@@ -12,6 +12,7 @@ import { errorMessage } from "@/lib/format";
 import { fmtTime } from "@/components/monitoring/format";
 import { useAcknowledge, useAlert, type AlertDetail, type Delivery } from "@/components/alerts/queries";
 import { MaintenanceDialog } from "@/components/alerts/MaintenanceDialog";
+import { IgnoreDialog } from "@/components/alerts/AlertActions";
 import { AlertSeverity, AlertStateBadge, categoryLabel, checkLabel, clearedBy, fmtDuration, NotificationBadge, resolutionWord, untilText } from "@/components/alerts/ui";
 
 const deliveryWord: Record<string, string> = { opening: "Opening", escalation: "Escalation", reminder: "Reminder", recovery: "Recovery", cleared: "Cleared (not a recovery)" };
@@ -146,6 +147,7 @@ function Quieter({ d }: { d: AlertDetail }) {
   const { can } = useAuth();
   const a = d.alert;
   const [snooze, setSnooze] = useState(false);
+  const [ignore, setIgnore] = useState(false);
   if (a.state === "resolved") return null;
   const service = serviceChecks.has(a.check);
   return (
@@ -164,19 +166,22 @@ function Quieter({ d }: { d: AlertDetail }) {
           </dd>
         </div>
         <div>
-          <dt className="font-medium">{service ? "Expected or ignored" : "Intentional"}</dt>
+          <dt className="font-medium">Ignore</dt>
           <dd className="text-xs text-muted">
             {service ? (
-              <>If {a.subject || "the service"} is meant to be this way, set its expected state (Stopped, or Ignored) on the{" "}
-                <Link className="text-accent underline" to={`/hosts/${a.host_id}/monitoring?tab=services`}>host&apos;s services</Link>, or for a Pack on its page. Then it isn&apos;t a problem, and nothing alerts.</>
+              <>If {a.subject || "the service"} is meant to be this way: ignore it on {a.host_name}, or expect the state it&apos;s in. Its
+                state stays on the <Link className="text-accent underline" to={`/hosts/${a.host_id}/monitoring?tab=services`}>host&apos;s services</Link>, and
+                nothing alerts.</>
             ) : (
-              <>If this is how {a.host_name} is meant to be, change the health check for it in its{" "}
-                <Link className="text-accent underline" to={`/hosts/${a.host_id}/monitoring`}>monitoring</Link> (health settings). Then it isn&apos;t a problem, and nothing alerts.</>
+              <>If this is how {a.host_name} is meant to be: turn this check off for it, on {a.host_name} only (its{" "}
+                <Link className="text-accent underline" to={`/hosts/${a.host_id}/monitoring`}>health settings</Link>). Then it isn&apos;t a problem, and nothing alerts.</>
             )}
+            {can("monitoring.manage") && <> <button type="button" className="text-accent underline" onClick={() => setIgnore(true)}>Ignore…</button></>}
           </dd>
         </div>
       </dl>
-      {snooze && <MaintenanceDialog hostIds={[a.host_id]} onClose={() => setSnooze(false)} />}
+      {snooze && <MaintenanceDialog hostIds={[a.host_id]} defaultReason={`Snoozed: ${a.title}`} onClose={() => setSnooze(false)} />}
+      {ignore && <IgnoreDialog a={a} onClose={() => setIgnore(false)} />}
     </Card>
   );
 }

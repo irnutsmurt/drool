@@ -243,6 +243,7 @@ func (e *fwEnv) agentFwHost(t *testing.T, name string, caps agentcaps.Caps, mods
 	}
 	fake, fp := fakeHostDir(t, name)
 	opts := agent.Options{Paths: p, Version: "v1.0.0", StatusEvery: time.Second, RenewCheck: time.Hour, Supervisor: "exit", FirewallPaths: &fp,
+		StartRemoval: (&testRemoval{}).start, RemovalDir: t.TempDir(),
 		// The in-process agent runs on the developer's machine: it must not
 		// read that machine's sockets or conntrack.
 		NetCollect: &collect.Options{DisableConntrack: true, SS: func(context.Context) (string, error) { return "", nil }},
@@ -411,7 +412,8 @@ func TestFirewallAgentTransaction(t *testing.T) {
 	}
 	// The agent comes back: the rollback is reported on reconnect.
 	e.h.fw.SetTestCommitDelay(0)
-	a2, err := agent.New(agent.Options{Paths: agentPathsOf(ag), Version: "v1.0.0", StatusEvery: time.Second, RenewCheck: time.Hour, Supervisor: "exit", FirewallPaths: &fp, Monitor: fixtureMonitor(t)})
+	a2, err := agent.New(agent.Options{Paths: agentPathsOf(ag), Version: "v1.0.0", StatusEvery: time.Second, RenewCheck: time.Hour, Supervisor: "exit", FirewallPaths: &fp, Monitor: fixtureMonitor(t),
+		StartRemoval: (&testRemoval{}).start, RemovalDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}

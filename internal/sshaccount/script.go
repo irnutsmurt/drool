@@ -101,6 +101,9 @@ if [ "$state" = new ]; then
 		err useradd "useradd couldn't create $U: $(printf '%s' "$out" | head -c 300)"
 	fi
 	uid=$(id -u "$U") && printf 'uid=%s\n' "$uid" >>"$M" || err state "cannot record the account's user ID in $M"
+	# The group useradd created with it (none of that name existed): what
+	# proves it DROOL's when the account is removed again.
+	gid=$(id -g "$U") && [ "$(getent group "$U" | cut -d: -f3)" = "$gid" ] && printf 'gid=%s\n' "$gid" >>"$M"
 	created=1
 fi
 kv created "$created"

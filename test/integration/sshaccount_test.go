@@ -208,7 +208,13 @@ func TestDedicatedSSHAccount(t *testing.T) {
 	expect(t, jh.State == "failed" && strings.Contains(jh.ErrorMessage, "Nothing was switched"), "wrong sudo password: %v\n%s", jh, output(t, jid, ht.ID))
 	_, err = docker("exec", taken.Name, "getent", "passwd", "drool-mgmt")
 	expect(t, err != nil, "an account was created although sudo refused")
-	ctl.must(t, "PATCH", "/api/v1/hosts/"+ht.ID, map[string]any{"become_credential_id": cur.BecomeCredentialID}, nil)
+	// The host signs in another way now, so its setup-only sudo password
+	// was forgotten (the setup credential lifecycle); a stored one with the
+	// right password takes its place.
+	st, err = ctl.do("GET", "/api/v1/secrets/"+cur.BecomeCredentialID, nil, nil)
+	expect(t, err == nil && st == 404, "the setup-only sudo password outlived the switch: %d %v", st, err)
+	right := createSecret(t, "taken-sudo", "sudo_password", sudoPassword)
+	ctl.must(t, "PATCH", "/api/v1/hosts/"+ht.ID, map[string]any{"become_credential_id": right}, nil)
 	jid, jh = setUp(ht.ID, "drool-mgmt")
 	expect(t, jh.State == "succeeded", "another name: %v\n%s", jh, output(t, jid, ht.ID))
 	expect(t, getH(ht.ID).User == "drool-mgmt", "host user after another name")

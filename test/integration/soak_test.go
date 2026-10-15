@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -139,7 +140,9 @@ func soak(t *testing.T, n int, duration time.Duration) string {
 	}
 	start := func(p agent.Paths) *swarmAgent {
 		a, err := agent.New(agent.Options{Paths: p, Version: agentV1, StatusEvery: time.Minute, RenewCheck: time.Hour, Supervisor: "exit",
-			Runner: stubRunner{}, NetCollect: &collect.Options{DisableConntrack: true, SS: func(context.Context) (string, error) { return "", nil }}})
+			Runner: stubRunner{}, NetCollect: &collect.Options{DisableConntrack: true, SS: func(context.Context) (string, error) { return "", nil }},
+			// Never the real self-removal helper on the workstation.
+			StartRemoval: func(string) (string, error) { return "", errors.New("not in this test") }, RemovalDir: t.TempDir()})
 		if err != nil {
 			t.Fatal(err)
 		}

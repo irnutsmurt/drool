@@ -279,6 +279,8 @@ func TestHealthOverridesThresholdChanges(t *testing.T) {
 		failedAt := e.clk.now()
 		e.h.mon.IngestServices(context.Background(), s, &services.Report{Supported: true, At: failedAt.UnixMilli(), Units: []services.Unit{
 			{Name: "nightly.service", Load: "loaded", Active: "failed", Sub: "failed", FileState: "enabled", Result: "exit-code"}}}, true)
+		// Only a monitored service alerts (dogfooding correction batch).
+		e.mustPut(map[string]any{"scope": "host", "host_id": s, "check": "service_expected", "subject": "unit:nightly.service", "fields": map[string]any{"expected": "running"}})
 		e.mustPut(map[string]any{"scope": "host", "host_id": s, "check": "service_failed", "subject": "unit:nightly.service", "fields": map[string]any{"duration_min": 10}})
 		e.clk.add(8 * time.Minute)
 		tick()
@@ -296,6 +298,7 @@ func TestHealthOverridesThresholdChanges(t *testing.T) {
 			t.Fatal("one minute after the change it opens")
 		}
 		// Disabling it for this unit closes it as disabled; another unit still alerts.
+		e.mustPut(map[string]any{"scope": "host", "host_id": s, "check": "service_expected", "subject": "unit:web.service", "fields": map[string]any{"expected": "running"}})
 		e.h.mon.IngestServices(context.Background(), s, &services.Report{Supported: true, At: e.clk.now().UnixMilli(), Units: []services.Unit{
 			{Name: "nightly.service", Load: "loaded", Active: "failed", Sub: "failed", FileState: "enabled", Result: "exit-code"},
 			{Name: "web.service", Load: "loaded", Active: "failed", Sub: "failed", FileState: "enabled", Result: "exit-code"}}}, true)

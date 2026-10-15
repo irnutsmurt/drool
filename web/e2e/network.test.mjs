@@ -310,6 +310,23 @@ test("topology: Configured, Observed and both, grouped by network owner, with a 
   assert.deepEqual(page.errors, []);
 });
 
+test("country and network owner: shown from the databases, genuinely unknown said so, no 'not configured' note", async () => {
+  await page.goto(base + "/network", { waitUntil: "networkidle0" });
+  await waitFor(page, async () => (await rows()).length > 0, "rows");
+  assert.equal(await page.$('[data-testid="enrichment-note"]'), null, "a note although both databases are loaded");
+  // An address neither database knows: unknown, said so.
+  await page.goto(base + "/network?peer=49.12.200.77", { waitUntil: "networkidle0" });
+  await waitFor(page, async () => (await rows()).length === 1, "the unknown address");
+  const r = (await rows())[0];
+  assert.match(r, /country unknown/);
+  assert.match(r, /network unknown/);
+  await click(page, '[data-testid="flow-table"] tbody button', "Details");
+  await waitFor(page, async () => !!(await page.$('[data-testid="flow-details"]')), "details");
+  assert.match(await page.$eval('[data-testid="flow-details"]', (e) => e.innerText), /Country\s+Unknown \(the GeoIP country database has no answer for this address\)/);
+  await page.keyboard.press("Escape");
+  assert.deepEqual(page.errors, []);
+});
+
 test("empty results, settings and enrichment status don't break", async () => {
   await page.goto(base + "/network?peer=192.0.2.123", { waitUntil: "networkidle0" });
   await waitText(page, "No connections match");

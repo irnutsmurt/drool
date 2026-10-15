@@ -216,28 +216,91 @@ func (s *Server) handlePutOverride(w http.ResponseWriter, r *http.Request) {
 	if !s.checkScope(w, r, in.OverrideKey, in.Fields) {
 		return
 	}
-	var before, after *monsvc.Override
-	var emit func()
-	err := s.d.Store.InRawTx(ctx, func(tx *sql.Tx) error {
-		var err error
-		before, after, err = s.d.Monitor.PutOverrideTx(ctx, tx, in.OverrideKey, in.Fields, in.SubjectLabel, principalFrom(ctx).UserID, nowMs())
-		if err != nil || before == nil && after == nil {
-			return err
-		}
-		tt, tid := overrideTarget(in.OverrideKey)
-		emit, err = s.d.Audit.RecordTx(ctx, db.New(tx), audit.Event{Action: overrideAction(before, after), TargetType: tt, TargetID: tid,
-			Details: overrideDetails(in.OverrideKey, in.SubjectLabel, before, after)})
-		return err
-	})
+	_, after, err := s.putOverride(r, in.OverrideKey, in.Fields, in.SubjectLabel, nil)
 	if err != nil {
 		writeProblem(w, r, s.healthProblem(r, err))
 		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"override": after, "removed": after == nil})
+}
+
+// putOverride stores one override and audits it in the same transaction
+// (extra details go with the audit record), then judges every host against
+// the new configuration. The caller has checked the scope.
+func (s *Server) putOverride(r *http.Request, k monsvc.OverrideKey, fields monsvc.Fields, label string, extra map[string]any) (before, after *monsvc.Override, err error) {
+	ctx := r.Context()
+	var emit func()
+	err = s.d.Store.InRawTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		before, after, err = s.d.Monitor.PutOverrideTx(ctx, tx, k, fields, label, principalFrom(ctx).UserID, nowMs())
+		if err != nil || before == nil && after == nil {
+			return err
+		}
+		tt, tid := overrideTarget(k)
+		d := overrideDetails(k, label, before, after)
+		for x, v := range extra {
+			d[x] = v
+		}
+		emit, err = s.d.Audit.RecordTx(ctx, db.New(tx), audit.Event{Action: overrideAction(before, after), TargetType: tt, TargetID: tid, Details: d})
+		return err
+	})
+	if err != nil {
+		return nil, nil, err
 	}
 	if emit != nil {
 		emit()
 	}
 	s.d.Monitor.ApplyHealthConfig(ctx)
-	writeJSON(w, http.StatusOK, map[string]any{"override": after, "removed": after == nil})
+	return before, after, nil
+}
+
+// handleMonitorService ticks or unticks Monitor for one service on a host
+// (dogfooding correction batch). It changes the host's own expected state
+// for the unit as monsvc.MonitorPlan works out: unticking a service a pack
+// or every-host setting monitors makes an exception for this host
+// ("ignored") instead of revealing the inherited setting again. The same
+// permissions and audit as any host override: an exception that stops
+// inherited monitoring weakens detection, and needs monitoring.settings.
+func (s *Server) handleMonitorService(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.monitorHost(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		Monitor *bool `json:"monitor"`
+	}
+	if p := decodeJSON(w, r, &in); p != nil {
+		writeProblem(w, r, p)
+		return
+	}
+	if in.Monitor == nil {
+		writeProblem(w, r, errValidation("monitor must be true or false"))
+		return
+	}
+	unit := r.PathValue("unit")
+	ctx := r.Context()
+	s.d.Monitor.ApplyHealthConfig(ctx)
+	k, fields, noop := s.d.Monitor.MonitorPlan(ctx, id, unit, *in.Monitor)
+	if err := k.Validate(); err != nil {
+		writeProblem(w, r, errValidation(err.Error()))
+		return
+	}
+	var after *monsvc.Override
+	if !noop {
+		if !s.checkScope(w, r, k, fields) {
+			return
+		}
+		var err error
+		if _, after, err = s.putOverride(r, k, fields, unit, map[string]any{"monitor": *in.Monitor}); err != nil {
+			writeProblem(w, r, s.healthProblem(r, err))
+			return
+		}
+	}
+	out := map[string]any{"changed": !noop, "override": after}
+	if row, found := s.d.Monitor.ServiceRowOf(ctx, id, unit); found {
+		out["unit"] = row
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleDeleteOverride(w http.ResponseWriter, r *http.Request) {

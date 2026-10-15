@@ -17,7 +17,9 @@ export function osLabel(host: Host): string {
   return f.distro_name || [f.distro, f.distro_version].filter(Boolean).join(" ") || f.os_family;
 }
 
-/** Reasons a host needs attention, most important first. */
+/** Reasons a host needs attention, most important first. A failed systemd
+ * unit isn't one by itself: services alert only when monitored, and a
+ * monitored one shows up as an open alert. */
 export function attentionReasons(host: Host): string[] {
   const out: string[] = [];
   const h = host.health;
@@ -26,7 +28,6 @@ export function attentionReasons(host: Host): string[] {
   if (host.status === "pending_hostkey") out.push("needs host key approval");
   if (h && !h.reachable && !h.stale) out.push("offline");
   if (h?.stale) out.push(`no data since ${formatAgo(h.checked_at)}`);
-  if (h?.failed_units) out.push(`${h.failed_units} failed unit${h.failed_units === 1 ? "" : "s"}`);
   if (h?.reboot_required) out.push("reboot required");
   if (h?.security_updates) out.push(`${h.security_updates} security update${h.security_updates === 1 ? "" : "s"}`);
   if (h?.max_fs_used_pct != null && h.max_fs_used_pct >= 90) out.push(`${h.max_fs_mount} ${Math.round(h.max_fs_used_pct)}% full`);

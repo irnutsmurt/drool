@@ -231,3 +231,18 @@ func (s *Service) OpenIssueForTest(ctx context.Context, hostID, check, subject, 
 func (s *Service) ResolveIssueForTest(ctx context.Context, hostID, check, subject string) {
 	s.eval.resolve(ctx, hostID, check, subject)
 }
+
+// PolicySnapshot is the health configuration as loaded at one moment
+// (tests of passes that began before a change).
+type PolicySnapshot struct{ p *policy }
+
+// PolicyForTest returns the configuration loaded now.
+func (s *Service) PolicyForTest(ctx context.Context) PolicySnapshot {
+	return PolicySnapshot{s.eval.current(ctx)}
+}
+
+// ServicePassForTest evaluates a host's services the way a tick that
+// loaded snap before a change still does.
+func (s *Service) ServicePassForTest(ctx context.Context, hostID string, snap PolicySnapshot) {
+	s.eval.services(ctx, hostID, snap.p, s.now())
+}

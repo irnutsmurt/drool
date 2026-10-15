@@ -3,11 +3,13 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -90,10 +92,65 @@ func (r *runningAgent) stop() {
 	r.a.Close()
 }
 
+// testRemoval stands in for the Shepherd's self-removal helper in every
+// in-process agent: the real one would ask this machine's systemd and
+// remove its Shepherd paths. It records the helper it was given and, when
+// done is set, runs it as a stand-in (done gets the script).
+type testRemoval struct {
+	mu      sync.Mutex
+	scripts []string
+	done    func(script string)
+	block   chan struct{} // set: starting waits until it's closed
+	fail    bool          // the helper can't start
+}
+
+func (r *testRemoval) start(path string) (string, error) {
+	r.mu.Lock()
+	block, fail := r.block, r.fail
+	r.mu.Unlock()
+	if block != nil {
+		<-block
+	}
+	if fail {
+		return "", errors.New("no systemd-run here")
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	r.mu.Lock()
+	r.scripts = append(r.scripts, string(b))
+	done := r.done
+	r.mu.Unlock()
+	if done != nil {
+		go done(string(b))
+	}
+	return "test stand-in", nil
+}
+
+// set changes what starting does (under the lock: the agent reads it in
+// its own goroutine).
+func (r *testRemoval) set(f func(r *testRemoval)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	f(r)
+}
+
+func (r *testRemoval) count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.scripts)
+}
+
 func startAgent(t *testing.T, p agent.Paths, version string) *runningAgent {
 	t.Helper()
+	return startAgentWith(t, p, version, &testRemoval{})
+}
+
+func startAgentWith(t *testing.T, p agent.Paths, version string, rm *testRemoval) *runningAgent {
+	t.Helper()
 	a, err := agent.New(agent.Options{Paths: p, Version: version, StatusEvery: time.Second, RenewCheck: 200 * time.Millisecond, Supervisor: "exit",
-		Monitor: fixtureMonitor(t)})
+		Monitor: fixtureMonitor(t), StartRemoval: rm.start, RemovalDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}

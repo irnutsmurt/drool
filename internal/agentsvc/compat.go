@@ -31,6 +31,7 @@ var KnownFeatures = []Feature{
 	{"netmon-1", "network activity"},
 	{"monitor-1", "system monitoring"},
 	{"epoch-1", "moving to a restored controller's epoch"},
+	{"uninstall-1", "removing itself when DROOL asks"},
 }
 
 // Compatibility statuses, worst first.

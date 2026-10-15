@@ -22,13 +22,17 @@ type FleetHost struct {
 	DiskMount   string   `json:"disk_mount,omitempty"`
 	Temperature *float64 `json:"temperature,omitempty"`
 	Services    int      `json:"services"`
-	Failed      int      `json:"failed_services"`
-	StorageText string   `json:"storage"` // worst device state
-	Issues      int      `json:"issues"`
-	Worst       string   `json:"worst"` // ok | info | warning | critical
-	Reduced     bool     `json:"reduced"`
-	Helpers     []string `json:"helpers"` // helpers that would add capability
-	Categories  []string `json:"categories"`
+	// Failed counts units in the failed state, monitored or not (the
+	// inventory's fact); ServiceIssues the monitored services' problems,
+	// the only ones that count as unhealthy.
+	Failed        int      `json:"failed_services"`
+	ServiceIssues int      `json:"service_issues"`
+	StorageText   string   `json:"storage"` // worst device state
+	Issues        int      `json:"issues"`
+	Worst         string   `json:"worst"` // ok | info | warning | critical
+	Reduced       bool     `json:"reduced"`
+	Helpers       []string `json:"helpers"` // helpers that would add capability
+	Categories    []string `json:"categories"`
 }
 
 // FleetSummary counts what needs attention across the fleet.
@@ -50,7 +54,7 @@ var FleetCategories = []string{"unhealthy", "stale", "cpu", "memory", "disk", "s
 var checkCategory = map[string]string{
 	CheckCPU: "cpu", CheckMemory: "memory", CheckFilesystem: "disk", CheckInodes: "disk", CheckFSReadOnly: "storage",
 	CheckDeviceReadOnly: "storage", CheckStorageHealth: "storage", CheckMediaErrors: "storage", CheckKernelStorage: "storage",
-	CheckProbe: "storage", CheckServiceFailed: "services", CheckServiceStopped: "services", CheckInterfaceDown: "network",
+	CheckProbe: "storage", CheckServiceFailed: "services", CheckServiceStopped: "services", CheckServiceUnexpected: "services", CheckInterfaceDown: "network",
 	CheckTemperature: "temperature", CheckStale: "stale", CheckFidelity: "fidelity", CheckGPUUtil: "gpu",
 }
 
@@ -156,6 +160,9 @@ func (s *Service) Fleet(ctx context.Context, f FleetFilter) (*FleetSummary, erro
 		cats := map[string]bool{}
 		for _, i := range byHost[h.ID] {
 			r.Issues++
+			if checkCategory[i.Check] == "services" {
+				r.ServiceIssues++
+			}
 			r.Worst = worstStatus(r.Worst, i.Severity)
 			if c := checkCategory[i.Check]; c != "" {
 				cats[c] = true

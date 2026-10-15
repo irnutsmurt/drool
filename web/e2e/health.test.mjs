@@ -34,9 +34,15 @@ const go = async (path) => {
   await sleep(400);
 };
 
+// Takes away the overrides these tests made. Those there before the first
+// test stay: the fixture's monitored services on nas-01 and pi-sd are
+// host overrides (service_expected), and other test files rely on them.
+let kept;
 const cleanup = async () => {
-  for (const o of (await api(page, "GET", "/monitoring/health/overrides")).body.items) {
-    await api(page, "DELETE", `/monitoring/health/overrides/${o.id}`);
+  const all = (await api(page, "GET", "/monitoring/health/overrides")).body.items;
+  kept ??= new Set(all.map((o) => o.id));
+  for (const o of all) {
+    if (!kept.has(o.id)) await api(page, "DELETE", `/monitoring/health/overrides/${o.id}`);
   }
 };
 

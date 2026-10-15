@@ -205,11 +205,15 @@ test("notifications: a Telegram destination: setup steps, a write-only token, a 
 test("a failing destination is visible; alert state stays accurate", async () => {
   receiver.status = 401;
   const before = receiver.hits.length;
-  // A host leaves maintenance with an active alert: one opening notification after the grace period.
-  const any = (await api(page, "GET", "/alerts?view=active")).body.items;
-  assert.ok(any.length > 0, "an active alert");
-  const vm = any[0].host_id;
-  const open = (await api(page, "GET", `/alerts?view=active&host_id=${vm}`)).body.items;
+  // A host leaves maintenance with an active alert: one opening notification
+  // after the grace period. old-vm's: it never reports, so its stale alert
+  // stays open (an alert whose evidence decays could close meanwhile).
+  let open;
+  await waitFor(page, async () => {
+    open = (await api(page, "GET", `/alerts?view=active&host_id=${page.ids["old-vm"]}`)).body.items.filter((a) => a.check === "stale");
+    return open.length > 0;
+  }, "old-vm's stale alert", 120000);
+  const vm = open[0].host_id;
   const m = (await api(page, "POST", "/maintenance", { host_ids: [vm], indefinite: true, reason: "test" })).body;
   await api(page, "POST", `/maintenance/${m.id}/end`);
   await waitFor(page, async () => receiver.hits.length > before, "opening after maintenance", 30000);
@@ -255,5 +259,130 @@ test("the Overview and the Monitoring page show alert counts and recent events",
   t = await text(page);
   assert.match(t, /\d+ critical/);
   assert.match(t, /Warning and Critical health issues become alerts/);
+  assert.deepEqual(page.errors, []);
+});
+
+test("alert quick actions: Acknowledge, Snooze and Ignore from the list; who may; the list refreshes; phone and keyboard", async () => {
+  const id = page.ids["nas-01"];
+  const activeRow = (title) => page.$$eval("tbody tr", (rs, t) => rs.find((r) => r.innerText.includes(t))?.innerText ?? "", title);
+  const actionsFor = (a) => `button[aria-label="Actions for ${a.title} on ${a.host_name}"]`;
+  // A monitored service that fails on nas-01 (backup.service, expected to
+  // run on this host, alerting at once): a service alert of our own.
+  const putOv = (body) => api(page, "PUT", "/monitoring/health/overrides", { scope: "host", host_id: id, subject: "unit:backup.service", subject_label: "backup.service", ...body });
+  await putOv({ check: "service_expected", fields: { expected: "running" } });
+  await putOv({ check: "service_failed", fields: { duration_min: 0 } });
+  let svc;
+  try {
+    await waitFor(page, async () => {
+      svc = (await api(page, "GET", `/alerts?view=active&host_id=${id}`)).body.items.find((a) => a.subject === "backup.service");
+      return !!svc;
+    }, "the backup.service alert", 120000);
+
+    // Acknowledge… with a note, from the list: it leaves Active at once.
+    await go("/alerts?view=active");
+    await waitFor(page, async () => (await activeRow(svc.title)).length > 0, "the row");
+    await click(page, actionsFor(svc), "Actions");
+    await page.waitForSelector('[data-testid="alert-actions"]');
+    const menu = await page.$eval('[data-testid="alert-actions"]', (e) => e.innerText);
+    for (const want of ["Acknowledge…", "Snooze…", "Ignore…", "Open the alert"]) assert.ok(menu.includes(want), "actions lack " + want);
+    await shot(page, "alert-quick-actions");
+    await click(page, '[data-testid="alert-actions"] button', "Acknowledge…");
+    await page.waitForSelector('[data-testid="alert-acknowledge"]');
+    await page.type('[data-testid="alert-acknowledge"] textarea', "Looking at the backup job");
+    await click(page, '[data-testid="alert-acknowledge"] button[type="submit"]', "Acknowledge");
+    await waitFor(page, async () => !(await page.$('[role="dialog"]')), "dialog closed");
+    await waitFor(page, async () => (await activeRow(svc.title)) === "", "gone from Active");
+    const acked = (await api(page, "GET", `/alerts/${svc.id}`)).body.alert;
+    assert.equal(acked.state, "acknowledged");
+    assert.equal(acked.acknowledgement.note, "Looking at the backup job");
+
+    // Acknowledged: no Acknowledge any more; Snooze… is maintenance for its host.
+    await go("/alerts?view=acknowledged");
+    await waitFor(page, async () => (await activeRow(svc.title)).length > 0, "the acknowledged row");
+    await click(page, actionsFor(svc), "Actions");
+    await page.waitForSelector('[data-testid="alert-actions"]');
+    assert.ok(!(await page.$eval('[data-testid="alert-actions"]', (e) => e.innerText)).includes("Acknowledge…"));
+    await click(page, '[data-testid="alert-actions"] button', "Snooze…");
+    await waitText(page, "Notifications are paused for these hosts");
+    assert.match(await page.$eval('[role="dialog"]', (e) => e.innerText), /For: nas-01/);
+    assert.equal(await (await field(page, "Reason (recommended)")).evaluate((x) => x.value), `Snoozed: ${svc.title}`);
+    await click(page, '[role="dialog"] label', "1 hour");
+    await click(page, '[role="dialog"] button[type="submit"]', "Start maintenance");
+    await waitFor(page, async () => /suppressed by maintenance/i.test(await activeRow(svc.title)), "suppressed in the list");
+    const m = (await api(page, "GET", `/maintenance?state=active&host_id=${id}`)).body.maintenance;
+    assert.equal(m.length, 1);
+    await api(page, "POST", `/maintenance/${m[0].id}/end`);
+
+    // Ignore…: the setting behind it, at the narrowest scope, with what
+    // changes and where it's undone; the alert closes as cleared.
+    await go("/alerts?view=acknowledged");
+    await click(page, actionsFor(svc), "Actions");
+    await click(page, '[data-testid="alert-actions"] button', "Ignore…");
+    await page.waitForSelector('[data-testid="alert-ignore"] input[type="radio"]');
+    const ig = await page.$eval('[data-testid="alert-ignore"]', (e) => e.innerText);
+    for (const want of ["Ignore backup.service on nas-01", "Stop monitoring backup.service on nas-01", "Expect backup.service to be stopped on nas-01",
+      "cleared by configuration, not as a recovery", "Reset to inherited"]) {
+      assert.ok(ig.includes(want), "ignore dialog lacks " + want);
+    }
+    await shot(page, "alert-ignore");
+    await click(page, '[data-testid="alert-ignore"] label', "Ignore backup.service on nas-01");
+    await click(page, '[data-testid="alert-ignore"] button[type="submit"]', "Change the setting");
+    await waitFor(page, async () => /Done: Ignore backup.service on nas-01/.test(await page.$eval('[data-testid="alert-ignore"]', (e) => e.innerText)), "applied");
+    await click(page, '[data-testid="alert-ignore"] button', "Close");
+    await waitFor(page, async () => (await activeRow(svc.title)) === "", "gone from Acknowledged");
+    const closed = (await api(page, "GET", `/alerts/${svc.id}`)).body.alert;
+    assert.equal(closed.state, "resolved");
+    assert.equal(closed.resolution, "reconfigured", "a configuration change, never a recovery");
+  } finally {
+    await putOv({ check: "service_expected", fields: {} });
+    await putOv({ check: "service_failed", fields: {} });
+  }
+
+  // Who may: an operator acknowledges and snoozes, but turning a check off
+  // is an administrator's; a viewer has no actions at all.
+  const op = { user: "quick-op", password: "a-long-operator-password-1" };
+  const viewer = { user: "quick-viewer", password: "a-long-viewer-password-1" };
+  const made = [];
+  for (const [u, role] of [[op, "operator"], [viewer, "viewer"]]) {
+    const r = await api(page, "POST", "/users", { username: u.user, password: u.password, role });
+    made.push(r.body.id);
+  }
+  try {
+    const crit = (await api(page, "GET", `/alerts?view=open&host_id=${id}&severity=critical`)).body.items.find((a) => a.check !== "stale");
+    assert.ok(crit, "a critical nas-01 alert");
+    const opPage = await session(browser, { as: op });
+    await opPage.goto(base + "/alerts?view=open", { waitUntil: "networkidle0" });
+    await click(opPage, actionsFor(crit), "Actions");
+    await click(opPage, '[data-testid="alert-actions"] button', "Ignore…");
+    await opPage.waitForSelector('[data-testid="alert-ignore"] input[type="radio"]');
+    const opIg = await opPage.$eval('[data-testid="alert-ignore"]', (e) => e.innerText);
+    assert.match(opIg, /Turn off “/);
+    assert.match(opIg, /Needs an administrator's \(monitoring\.settings\)/);
+    assert.equal(await opPage.$eval('[data-testid="alert-ignore"] button[type="submit"]', (b) => b.disabled), true);
+    await opPage.close();
+    const vPage = await session(browser, { as: viewer });
+    await vPage.goto(base + "/alerts?view=open", { waitUntil: "networkidle0" });
+    await waitText(vPage, crit.title);
+    assert.equal(await vPage.$$eval('button[aria-label^="Actions for"]', (b) => b.length), 0, "a viewer got actions");
+    await vPage.close();
+
+    // A phone: the row's Actions… is there; from the keyboard too.
+    const phone = await session(browser, { mobile: true, width: 390, height: 844 });
+    await phone.goto(base + "/alerts?view=open", { waitUntil: "networkidle0" });
+    await phone.waitForSelector(actionsFor(crit));
+    const overflow = await phone.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    assert.ok(overflow <= 0, "the list scrolls sideways on a phone: " + overflow);
+    // Reachable with Tab, opened with Enter, closed with Escape.
+    await tabTo(phone, () => (document.activeElement?.getAttribute("aria-label") ?? "").startsWith("Actions for"), "an alert's Actions…", 200);
+    await phone.keyboard.press("Enter");
+    await phone.waitForSelector('[data-testid="alert-actions"]');
+    await shot(phone, "alert-quick-actions-phone");
+    await phone.keyboard.press("Escape");
+    await waitFor(phone, async () => !(await phone.$('[role="dialog"]')), "closed with Escape");
+    assert.deepEqual(phone.errors, []);
+    await phone.close();
+  } finally {
+    for (const u of made) if (u) await api(page, "DELETE", `/users/${u}`).catch(() => {});
+  }
   assert.deepEqual(page.errors, []);
 });

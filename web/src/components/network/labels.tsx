@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/Badge";
-import type { NetCollection, NetFlow } from "./queries";
+import type { NetCollection, NetEnrichState, NetFlow } from "./queries";
 
 // Every status is shown with words and a symbol, never by colour alone.
 
@@ -104,15 +104,37 @@ export function RemoteLabel({ flow }: { flow: NetFlow }) {
   );
 }
 
-export function CountryLabel({ flow }: { flow: NetFlow }) {
+/** Why a public address has no country or network owner, when it wasn't
+ * looked up at all: lookups off, or no database of that kind. "Unknown" is
+ * kept for a database that genuinely has no answer (state "on"). */
+export function noLookup(state: NetEnrichState | undefined, kind: "country" | "asn"): string | null {
+  const s = state?.[kind];
+  if (s === "off") return kind === "country" ? "country lookups are off" : "network-owner lookups are off";
+  if (s === "unavailable") return kind === "country" ? "no country database is configured" : "no ASN database is configured";
+  return null;
+}
+
+/** Not looked up: a dash (the page says why once), with the reason for
+ * screen readers and on hover. */
+function NotLookedUp({ why }: { why: string }) {
+  return <span className="text-xs text-muted" title={why}><span aria-hidden="true">—</span><span className="sr-only">{why}</span></span>;
+}
+
+export function CountryLabel({ flow, state }: { flow: NetFlow; state?: NetEnrichState }) {
   if (flow.scope !== "public") return <span className="text-xs text-muted">{flow.scope === "internal" ? "internal" : "—"}</span>;
-  if (!flow.geo?.country_code) return <span className="text-xs text-muted">country unknown</span>;
+  if (!flow.geo?.country_code) {
+    const why = noLookup(state, "country");
+    return why ? <NotLookedUp why={why} /> : <span className="text-xs text-muted">country unknown</span>;
+  }
   return <span className="text-xs" title={flow.geo.country_code}>{flow.geo.country || flow.geo.country_code} <span className="text-muted">({flow.geo.country_code})</span></span>;
 }
 
-export function NetworkLabel({ flow }: { flow: NetFlow }) {
+export function NetworkLabel({ flow, state }: { flow: NetFlow; state?: NetEnrichState }) {
   if (flow.scope !== "public") return null;
-  if (!flow.geo?.asn) return <span className="text-xs text-muted">network unknown</span>;
+  if (!flow.geo?.asn) {
+    const why = noLookup(state, "asn");
+    return why ? <NotLookedUp why={why} /> : <span className="text-xs text-muted">network unknown</span>;
+  }
   return <span className="text-xs" title={`AS${flow.geo.asn} ${flow.geo.org}`}><span className="text-muted">AS{flow.geo.asn}</span> {flow.geo.org}</span>;
 }
 

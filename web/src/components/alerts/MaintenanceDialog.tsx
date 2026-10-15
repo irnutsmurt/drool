@@ -19,7 +19,7 @@ const presets = [
 
 /** Start maintenance now. It only silences notifications: monitoring,
  * health issues and every safety mechanism keep working. */
-export function MaintenanceDialog({ hostIds = [], groupIds = [], onClose }: { hostIds?: string[]; groupIds?: string[]; onClose: () => void }) {
+export function MaintenanceDialog({ hostIds = [], groupIds = [], defaultReason = "", onClose }: { hostIds?: string[]; groupIds?: string[]; defaultReason?: string; onClose: () => void }) {
   const hosts = useHosts();
   const groups = useGroups();
   const start = useStartMaintenance();
@@ -28,7 +28,7 @@ export function MaintenanceDialog({ hostIds = [], groupIds = [], onClose }: { ho
   const [filter, setFilter] = useState("");
   const [preset, setPreset] = useState("120");
   const [until, setUntil] = useState("");
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState(defaultReason);
   const fixed = hostIds.length + groupIds.length > 0;
   const [choose, setChoose] = useState(!fixed);
   const managed = (hosts.data?.items ?? []).filter((h) => !h.jump_only);

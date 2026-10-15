@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
@@ -15,8 +15,9 @@ import { FlowFilters } from "@/components/network/FlowFilters";
 import { FlowTable } from "@/components/network/FlowTable";
 import { ClassifyDialog } from "@/components/network/ClassifyDialog";
 import {
-  filterFromParams, filterToParams, nk, useNetFacets, useNetRules, useNetSettings, useNetSummary, type NetFilter, type NetRule, type NetSettings,
+  filterFromParams, filterToParams, nk, useNetFacets, useNetRules, useNetSettings, useNetSummary, type NetEnrichState, type NetFilter, type NetRule, type NetSettings,
 } from "@/components/network/queries";
+import { plainLink } from "@/components/ui/links";
 import { Dialog } from "@/components/ui/Dialog";
 
 const tabs = [
@@ -69,6 +70,7 @@ function Activity() {
   const s = sum.data;
   return (
     <div className="space-y-4">
+      {s && <EnrichmentNote state={s.enrichment_state} />}
       {s && (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" data-testid="network-summary">
           <Stat label="Connections (flows)" value={s.counts.flows} detail={`${s.counts.inbound} inbound · ${s.counts.outbound} outbound`} />
@@ -127,10 +129,29 @@ function Fidelity({ s }: { s: NonNullable<ReturnType<typeof useNetSummary>["data
       </span>
       <p className="mt-1 text-muted">
         conntrack sees every new connection; socket sampling (every 30 s) misses connections that open and close in between; SSH snapshots show only what is open at that moment.
-        {!s.enrichment && <> Country and network data are <strong>not available</strong>: no GeoIP/ASN database is installed (see Collection and enrichment).</>}
       </p>
     </div>
   );
+}
+
+/** One explanation, at the top, when country or network-owner data isn't
+ * looked up at all (lookups off, or no database of that kind), so the rows
+ * can show "—" instead of an "unknown" that would be untrue: with a
+ * database loaded, "unknown" means the database has no answer. */
+export function EnrichmentNote({ state }: { state: NetEnrichState }) {
+  const link = <Link className={plainLink} to="/network?tab=settings">Configure enrichment →</Link>;
+  let text: ReactNode = null;
+  if (state.country === "off" && state.asn === "off") {
+    text = <>Country and network-owner lookups are turned off. <Link className={plainLink} to="/network?tab=settings">Collection and enrichment →</Link></>;
+  } else if (state.country === "unavailable" && state.asn === "unavailable") {
+    text = <>Country and network-owner information is unavailable because GeoIP/ASN databases are not configured. {link}</>;
+  } else if (state.country === "unavailable") {
+    text = <>Country information is unavailable because no GeoIP country database is configured; network owners are shown. {link}</>;
+  } else if (state.asn === "unavailable") {
+    text = <>Network-owner information is unavailable because no ASN database is configured; countries are shown. {link}</>;
+  }
+  if (!text) return null;
+  return <p className="rounded-ui border border-line bg-surface px-3 py-2 text-sm" role="note" data-testid="enrichment-note">{text}</p>;
 }
 
 /** The classifications: what recurring traffic is, whether it's expected. */
@@ -274,7 +295,7 @@ function SettingsTab() {
           </p>
           {st.files.length === 0 ? (
             <div className="rounded-ui border border-line bg-surface-2 p-3 text-xs">
-              <p className="font-medium">No databases installed — monitoring works without them; country and network show as “Unknown”.</p>
+              <p className="font-medium">No databases installed. Monitoring works without them: connections show no country or network owner (“—”), and Network Activity says why. “Unknown” is shown only when a database has no answer for an address.</p>
               <p className="mt-1">To enable enrichment, put country and ASN databases in the directory above, for example:</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-5">
                 <li>MaxMind GeoLite2 Country and ASN (free account; keep them current with <code>geoipupdate</code>)</li>

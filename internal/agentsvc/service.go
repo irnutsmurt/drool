@@ -65,6 +65,23 @@ type Service struct {
 	locker     Locker
 	grpc       *grpc.Server
 	listener   net.Listener
+
+	// How long a self-removal waits for the Shepherd's answer, for it to
+	// disconnect, and for SSH to confirm that nothing is left (tests make
+	// them short).
+	removeAckWait, removeGoneWait, removeVerifyWait time.Duration
+}
+
+// SetRemovalWaits sets how long a self-removal waits (tests).
+func (s *Service) SetRemovalWaits(ack, gone, verify time.Duration) {
+	s.removeAckWait, s.removeGoneWait, s.removeVerifyWait = ack, gone, verify
+}
+
+func orDefault(d, def time.Duration) time.Duration {
+	if d > 0 {
+		return d
+	}
+	return def
 }
 
 // Hooks let the rest of the controller react to agent events.

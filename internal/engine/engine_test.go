@@ -659,10 +659,13 @@ func TestRestartMarksInterrupted(t *testing.T) {
 		return ok()
 	}
 	job := v.run(cmdSpec("a", "b"))
+	// Both hosts run at once (the default concurrency) and block in their
+	// operation: from then on the first engine writes nothing until the
+	// test ends, so it can't overwrite what the second engine records.
 	deadline := time.Now().Add(5 * time.Second)
-	for v.hosts(job)["a"].State != HostRunning {
+	for hs := v.hosts(job); hs["a"].State != HostRunning || hs["b"].State != HostRunning; hs = v.hosts(job) {
 		if time.Now().After(deadline) {
-			t.Fatal("host never started")
+			t.Fatalf("hosts never started: %+v", hs)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

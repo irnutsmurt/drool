@@ -12,6 +12,7 @@ import { statusHelp } from "@/components/hosts/statusHelp";
 import { attentionReasons, osLabel, ReachabilityBadge } from "@/components/hosts/health";
 import { ServicesCard, StatusLines, SystemCard } from "@/components/hosts/InventoryCards";
 import { ProbeSteps } from "@/components/hosts/ProbeSteps";
+import { RemoveHostDialog } from "@/components/hosts/RemoveHostDialog";
 import { ManagedFilesCard } from "@/components/files/ManagedFilesCard";
 import { DesiredStateCard } from "@/components/desired/DesiredStateCard";
 import { useDesiredHost } from "@/components/desired/queries";
@@ -86,13 +87,11 @@ export function HostDetailPage() {
     mutationFn: () => unwrap(api.POST("/hosts/{id}/refresh", { params: { path: { id } } })),
     onSuccess: () => refreshQueries(),
   });
-  const remove = useMutation({
-    mutationFn: () => unwrap(api.DELETE("/hosts/{id}", { params: { path: { id } } })),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: qk.hosts });
-      navigate("/hosts");
-    },
-  });
+  const [removing, setRemoving] = useState(false);
+  const removed = () => {
+    void qc.invalidateQueries({ queryKey: qk.hosts });
+    navigate("/hosts");
+  };
 
   const crumbs = [{ label: "Hosts", to: "/hosts" }];
   if (host.error) return <><PageHeader crumbs={crumbs} title="Host" /><LoadError what="the host" error={host.error} /></>;
@@ -277,14 +276,11 @@ export function HostDetailPage() {
 
         {can("hosts.write") && (
           <Card title="Danger zone">
-            {remove.error && <div className="mb-3"><Alert>{errorMessage(remove.error)}</Alert></div>}
             <div className="flex flex-wrap items-center gap-3">
-              <Button variant="danger" disabled={remove.isPending}
-                onClick={() => { if (confirm(`Remove ${h.name} from DROOL? Nothing is changed on the host.`)) remove.mutate(); }}>
-                Remove host
-              </Button>
-              <span className="text-xs text-muted">Removes the host from DROOL only; nothing on the host changes. A password or key typed only to set it up goes too, unless another host uses it.</span>
+              <Button variant="danger" onClick={() => setRemoving(true)}>Remove host…</Button>
+              <span className="text-xs text-muted">Remove it from DROOL only (nothing on the host changes), or first clean up what DROOL installed there: its Shepherd, and the SSH account DROOL created.</span>
             </div>
+            {removing && <RemoveHostDialog hostId={h.id} hostName={h.name} onRemoved={removed} onClose={() => setRemoving(false)} />}
           </Card>
         )}
       </div>
@@ -317,8 +313,6 @@ function HostAttention({ h, hideStatus }: { h: Host; hideStatus: boolean }) {
       items.push({ key: r, tone: "warn", text: r, to: can("jobs.execute") ? `/jobs/new?hosts=${h.id}&op=system_update` : undefined, action: "Install updates" });
     } else if (r === "reboot required") {
       items.push({ key: r, tone: "warn", text: "Reboot required", to: can("jobs.execute") ? `/jobs/new?hosts=${h.id}&op=reboot` : undefined, action: "Reboot" });
-    } else if (/failed unit/.test(r)) {
-      items.push({ key: r, tone: "danger", text: r, to: can("monitoring.read") ? `/hosts/${h.id}/monitoring?tab=services` : undefined, action: "View services" });
     } else if (/full$/.test(r)) {
       items.push({ key: r, tone: "danger", text: r, to: can("monitoring.read") ? `/hosts/${h.id}/monitoring?tab=metrics` : undefined, action: "View storage" });
     } else {
@@ -347,6 +341,7 @@ function HostAttention({ h, hideStatus }: { h: Host; hideStatus: boolean }) {
   const m = agent.data?.management ?? h.management;
   const ident = agent.data?.identity;
   if (m.blocked) items.push({ key: "mgmt", tone: "danger", to: "#management", action: "Management", text: <>DROOL can&apos;t manage this host right now{m.reason ? `: ${m.reason}` : ""}</> });
+  else if (m.active === "none" && m.reason) items.push({ key: "mgmt", tone: "warn", to: "#management", action: "Management", text: m.reason });
   else if (ident?.status === "quarantined") items.push({ key: "quarantine", tone: "danger", to: "#management", action: "Management", text: "Shepherd identity conflict: management is paused" });
 
   const loading = (can("alerts.read") && alerts.isPending) || (can("desired.read") && desired.isPending) || (can("firewall.read") && fw.isPending) || agent.isPending;

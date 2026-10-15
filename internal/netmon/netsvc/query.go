@@ -58,6 +58,42 @@ type Geo struct {
 	Org         string `json:"org,omitempty"`
 }
 
+// EnrichState says what country and network-owner (ASN) data can be shown
+// for public addresses, per kind (dogfooding correction batch):
+//
+//   - "off": enrichment is turned off;
+//   - "unavailable": it's on, but no usable database of that kind is
+//     loaded (missing, unreadable): nothing could be looked up;
+//   - "on": a database of that kind is loaded, so a public address it has
+//     no answer for is genuinely unknown.
+//
+// Pages say "Unknown" only for "on"; the other two are explained once.
+type EnrichState struct {
+	Country string `json:"country"`
+	ASN     string `json:"asn"`
+}
+
+// Enrichment states.
+const (
+	EnrichOff         = "off"
+	EnrichUnavailable = "unavailable"
+	EnrichOn          = "on"
+)
+
+func (s *Service) enrichState(on bool) EnrichState {
+	country, asn := s.geo.Kinds()
+	k := func(loaded bool) string {
+		switch {
+		case !on:
+			return EnrichOff
+		case !loaded:
+			return EnrichUnavailable
+		}
+		return EnrichOn
+	}
+	return EnrichState{Country: k(country), ASN: k(asn)}
+}
+
 // HostRef names a DROOL host.
 type HostRef struct {
 	ID     string   `json:"id"`
@@ -110,6 +146,8 @@ type Page struct {
 	// filled (continue with NextCursor).
 	Scanned   int  `json:"scanned"`
 	Truncated bool `json:"truncated"`
+	// EnrichmentState: what a flow without country or network data means.
+	EnrichmentState EnrichState `json:"enrichment_state"`
 }
 
 // Limits.
@@ -518,7 +556,7 @@ func (s *Service) List(ctx context.Context, f Filter) (*Page, error) {
 	}
 	where, args := f.sqlWhere()
 	col := f.sortCol()
-	page := &Page{Items: []Flow{}}
+	page := &Page{Items: []Flow{}, EnrichmentState: s.enrichState(v.enrich)}
 	if !f.goFilters() {
 		var n int64
 		if err := s.d.Store.Reader.QueryRowContext(ctx, "SELECT count(*) FROM fw_observations o WHERE "+where, args...).Scan(&n); err == nil {
@@ -605,6 +643,8 @@ type Detail struct {
 	FleetFirstSeen string             `json:"fleet_first_seen,omitempty"`
 	Firewall       fwsvc.HostFirewall `json:"firewall"`
 	Collection     Collection         `json:"collection"`
+	// EnrichmentState: what missing country or network data means.
+	EnrichmentState EnrichState `json:"enrichment_state"`
 	// Suggestion: an allow rule for the Firewall Designer's draft, when no
 	// policy covers the flow.
 	Suggestion *fwsvc.DraftSuggestion `json:"suggestion"`
@@ -622,7 +662,7 @@ func (s *Service) Get(ctx context.Context, id int64) (*Detail, error) {
 	if err != nil {
 		return nil, err
 	}
-	d := &Detail{Flow: v.flow(ctx, r), Firewall: v.cl.Firewall(ctx, r.HostID), Related: []Flow{}}
+	d := &Detail{Flow: v.flow(ctx, r), Firewall: v.cl.Firewall(ctx, r.HostID), Related: []Flow{}, EnrichmentState: s.enrichState(v.enrich)}
 	s.addPeerFirstSeen(ctx, []Flow{d.Flow})
 	if t, err := s.d.Store.R.HostFirstSeenPeer(ctx, db.HostFirstSeenPeerParams{HostID: r.HostID, Peer: r.Peer}); err == nil && t > 0 {
 		d.PeerFirstSeen = ts(t)

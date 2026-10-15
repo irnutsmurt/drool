@@ -323,9 +323,11 @@ export function CompatibilityBadge({ c }: { c: Schemas["AgentCompatibility"] }) 
   return <Badge tone={tone}>{label}</Badge>;
 }
 
-/** Removing a host's Shepherd: what DROOL will remove, read from the host
- * over SSH as root first (that path manages the host afterwards, so a host
- * without one is refused), then the removal, and what DROOL could confirm. */
+/** Removing a host's Shepherd (dogfooding correction batch): the Shepherd
+ * removes itself when it can (no SSH needed), else DROOL removes it over
+ * SSH; with neither, it can only be forgotten after a removal by hand. The
+ * result says what DROOL could confirm: "initiated" when it couldn't look,
+ * "verified" only when SSH showed nothing is left. */
 function UninstallDialog({ host, onClose }: { host: Host; onClose: () => void }) {
   const plan = useQuery({
     queryKey: ["hosts", host.id, "agent-uninstall-plan"],
@@ -334,43 +336,70 @@ function UninstallDialog({ host, onClose }: { host: Host; onClose: () => void })
     retry: false,
   });
   const run = useMutation({
-    mutationFn: () => unwrap(api.POST("/hosts/{id}/agent/uninstall", { params: { path: { id: host.id } } })),
+    mutationFn: (method?: "shepherd" | "ssh" | "forget") => unwrap(api.POST("/hosts/{id}/agent/uninstall", { params: { path: { id: host.id } }, body: method ? { method } : {} })),
   });
   const p = plan.data;
   const res = run.data;
-  const tone = res?.outcome === "uninstalled" || res?.outcome === "nothing" ? "ok" : res?.outcome === "partial" ? "warn" : "danger";
+  const tone = res?.outcome === "uninstalled" || res?.outcome === "nothing" ? "ok" : res?.outcome === "initiated" || res?.outcome === "partial" || res?.outcome === "forgotten" ? "warn" : "danger";
+  const outcomeTitle: Record<string, string> = {
+    uninstalled: "Verified removed", initiated: "Self-removal initiated", partial: "Partly removed", unknown: "Outcome unknown",
+    refused: "Refused by the Shepherd", forgotten: "Forgotten in DROOL", nothing: "Nothing to remove",
+  };
+  const self = p?.method === "shepherd";
   return (
     <Dialog title={`Uninstall the Shepherd from ${host.name}?`} onClose={onClose} wide>
       <div className="space-y-4 text-sm" data-testid="uninstall-shepherd">
-        {plan.isPending && <p className="text-muted">Asking {host.name} over SSH what is there…</p>}
+        {plan.isPending && <p className="text-muted">Checking how DROOL can reach the Shepherd on {host.name}…</p>}
         {plan.error && <Alert>{errorMessage(plan.error)}</Alert>}
-        {p && !res && !p.can_uninstall && <Alert tone={p.refusal_code === "nothing_to_remove" ? "ok" : "warn"}>{p.refusal}</Alert>}
+        {p && !res && !p.can_uninstall && (
+          <>
+            <Alert tone={p.refusal_code === "nothing_to_remove" ? "ok" : "warn"}>{p.refusal}</Alert>
+            {p.refusal_code === "no_path" && p.identity && p.identity.status !== "revoked" && (
+              <p className="text-muted">
+                After removing it by hand (user guide: Removing a Host, “By hand”), <strong>Forget the Shepherd</strong> revokes its identity in DROOL. Nothing on
+                {" "}{host.name} changes.
+              </p>
+            )}
+          </>
+        )}
         {p && !res && p.can_uninstall && (
           <>
-            <section>
-              <h3 className="mb-1 font-medium">On {host.name}, DROOL will (as root, over SSH)</h3>
+            <section data-testid="uninstall-how">
+              <h3 className="mb-1 font-medium">{self ? "The Shepherd removes itself" : `DROOL removes it over SSH (as root, ${p.sign_in})`}</h3>
+              <p className="mb-2 text-muted">
+                {self
+                  ? "DROOL asks it over its own connection: it starts a helper that outlives it, which stops the Shepherd and removes:"
+                  : `The Shepherd can't be asked (${p.shepherd.reason}). Over SSH, DROOL stops it${p.systemd === "running" ? " and disables its service" : " and the supervisor that restarts it"}${p.processes > 0 ? ` (${p.processes} process${p.processes === 1 ? "" : "es"} running now)` : ""}, and removes:`}
+              </p>
               <ul className="list-disc space-y-1 pl-5">
-                <li>stop the Shepherd{p.systemd === "running" ? ", and disable its service" : " (and the supervisor that restarts it on a host without systemd)"}{p.processes > 0 ? ` (${p.processes} process${p.processes === 1 ? "" : "es"} running now)` : ""};</li>
                 {p.items.map((it) => (
-                  <li key={it.path} className={it.present ? "" : "text-muted"}>
-                    remove {it.what}: <code className="font-mono text-xs">{it.path}</code>{it.present ? "" : " (not there)"}
+                  <li key={it.path} className={p.checked && !it.present ? "text-muted" : ""}>
+                    {it.what}: <code className="font-mono text-xs">{it.path}</code>{p.checked && !it.present ? " (not there)" : ""}
                   </li>
                 ))}
               </ul>
+              {self && (
+                <p className="mt-2 text-muted">
+                  {p.ssh.available
+                    ? "Afterwards DROOL checks over SSH that nothing of it is left."
+                    : "DROOL can't look at the host afterwards (no working SSH): it will report the removal as initiated, not verified."}
+                </p>
+              )}
             </section>
             <section>
               <h3 className="mb-1 font-medium">In DROOL</h3>
               <ul className="list-disc space-y-1 pl-5">{p.controller.map((c) => <li key={c}>{c}</li>)}</ul>
             </section>
-            <p className="text-muted">Monitoring goes back to polling over SSH every few minutes, and operations run over SSH. To use a Shepherd again later,
-              install one as before. Files DROOL deployed, its firewall rules and DROOL's own SSH account stay as they are.</p>
+            <p className="text-muted">To use a Shepherd again later, install one as before. Files DROOL deployed, its firewall rules and DROOL&apos;s own SSH
+              account stay as they are (removing the host can clean up the account).</p>
           </>
         )}
         {run.error && <Alert>{errorMessage(run.error)}</Alert>}
         {res && (
           <>
-            <Alert tone={tone}>{res.message}</Alert>
-            {res.removed.length > 0 && <p>Removed: <span className="font-mono text-xs">{res.removed.join(", ")}</span></p>}
+            <Alert tone={tone}><strong>{outcomeTitle[res.outcome] ?? res.outcome}.</strong> {res.message}</Alert>
+            {res.removed.length > 0 && <p>Removed{res.verified ? " (checked over SSH)" : ""}: <span className="font-mono text-xs">{res.removed.join(", ")}</span></p>}
+            {res.remaining.length > 0 && <p className="text-warn">Still there: <span className="font-mono text-xs">{res.remaining.join(", ")}</span></p>}
             {res.output && (
               <details><summary className="cursor-pointer text-muted">What the host reported</summary>
                 <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-ui bg-surface-2 p-2 font-mono text-xs">{res.output}</pre>
@@ -378,13 +407,18 @@ function UninstallDialog({ host, onClose }: { host: Host; onClose: () => void })
             )}
           </>
         )}
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={onClose}>{res ? "Done" : "Cancel"}</Button>
           {!res && p?.can_uninstall && (
-            <Button variant="danger" disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? "Uninstalling… (up to a minute)" : "Uninstall Shepherd"}</Button>
+            <Button variant="danger" disabled={run.isPending} onClick={() => run.mutate(undefined)}>
+              {run.isPending ? (self ? "Removing… (up to a minute)" : "Uninstalling… (up to a minute)") : "Uninstall Shepherd"}
+            </Button>
+          )}
+          {!res && p && !p.can_uninstall && p.refusal_code === "no_path" && p.identity && p.identity.status !== "revoked" && (
+            <Button variant="danger" disabled={run.isPending} onClick={() => run.mutate("forget")}>Forget the Shepherd</Button>
           )}
           {res && (res.outcome === "partial" || res.outcome === "unknown") && (
-            <Button variant="danger" disabled={run.isPending} onClick={() => run.mutate()}>Try again</Button>
+            <Button variant="danger" disabled={run.isPending} onClick={() => { run.reset(); void plan.refetch(); }}>Check again</Button>
           )}
         </div>
       </div>

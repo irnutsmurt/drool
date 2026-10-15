@@ -192,6 +192,13 @@ func (e *Enricher) open(path string, size int64) (*DB, error) {
 	return Open(b)
 }
 
+// Kinds reports which kinds of database are loaded.
+func (e *Enricher) Kinds() (country, asn bool) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.country != nil, e.asn != nil
+}
+
 // Available reports whether any database is loaded.
 func (e *Enricher) Available() bool {
 	e.mu.RLock()

@@ -469,6 +469,8 @@ func (a *Agent) serve(ctx context.Context, s *session) error {
 			}(msg.EpochTransition)
 		case *pb.ControllerMessage_FirewallConfig:
 			a.setFirewallConfig(msg.FirewallConfig)
+		case *pb.ControllerMessage_SelfUninstall:
+			go a.handleSelfUninstall(s, msg.SelfUninstall)
 		case *pb.ControllerMessage_Disconnect:
 			if msg.Disconnect.Code == "revoked" {
 				a.rememberRevocation(msg.Disconnect.Reason)

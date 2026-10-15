@@ -13,6 +13,7 @@ import { fmtSince, fmtTime } from "@/components/monitoring/format";
 import { useAlerts, useAlertSummary, useEndMaintenance, useMaintenance, type Alert, type AlertCategory, type AlertFilter } from "@/components/alerts/queries";
 import { AlertSeverity, AlertStateBadge, categoryLabel, fmtDuration, MaintenanceNote, NotificationBadge, untilText } from "@/components/alerts/ui";
 import { MaintenanceDialog } from "@/components/alerts/MaintenanceDialog";
+import { AlertActionsButton, AlertActionsDialog } from "@/components/alerts/AlertActions";
 import { useSchedules, minutesText } from "@/components/automation/queries";
 import { ScheduleStateBadge } from "@/components/automation/ui";
 import { plainLink } from "@/components/ui/links";
@@ -97,6 +98,9 @@ function AlertList({ view, params, set }: { view: "active" | "acknowledged" | "r
     until: day(params.get("to"), true),
   };
   const q = useAlerts(f);
+  // The row's Actions… dialog, kept here: it stays open while what it does
+  // takes the alert out of this list.
+  const [acting, setActing] = useState<Alert>();
   const rows = q.data?.pages.flatMap((p) => p.items) ?? [];
   const history = view === "resolved";
   const empty = { active: "No active alerts. Everything monitoring checks is fine, or acknowledged.", acknowledged: "No acknowledged alerts.", resolved: "No resolved alerts match." }[view];
@@ -150,12 +154,13 @@ function AlertList({ view, params, set }: { view: "active" | "acknowledged" | "r
               <th className="px-3 py-2 font-medium">{history ? "Duration" : "Age"}</th>
               <th className="px-3 py-2 font-medium">State</th>
               <th className="px-3 py-2 font-medium">Notification</th>
+              {!history && <th className="px-3 py-2 font-medium"><span className="sr-only">Actions</span></th>}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={6} className="rt-empty px-3 py-6 text-center text-muted">{q.isLoading ? "Loading…" : empty}</td></tr>
-            ) : rows.map((a) => <AlertRow key={a.id} a={a} history={history} />)}
+              <tr><td colSpan={history ? 6 : 7} className="rt-empty px-3 py-6 text-center text-muted">{q.isLoading ? "Loading…" : empty}</td></tr>
+            ) : rows.map((a) => <AlertRow key={a.id} a={a} history={history} onActions={setActing} />)}
           </tbody>
         </table>
       </div>
@@ -164,11 +169,12 @@ function AlertList({ view, params, set }: { view: "active" | "acknowledged" | "r
           <Button onClick={() => void q.fetchNextPage()} disabled={q.isFetchingNextPage}>{q.isFetchingNextPage ? "Loading…" : "Load more"}</Button>
         </div>
       )}
+      {acting && <AlertActionsDialog a={acting} onClose={() => setActing(undefined)} />}
     </Card>
   );
 }
 
-function AlertRow({ a, history }: { a: Alert; history: boolean }) {
+function AlertRow({ a, history, onActions }: { a: Alert; history: boolean; onActions: (a: Alert) => void }) {
   return (
     <tr className="border-b border-line last:border-0 align-top">
       <td data-label="Severity" className="px-3 py-2"><AlertSeverity severity={a.severity} /></td>
@@ -188,6 +194,7 @@ function AlertRow({ a, history }: { a: Alert; history: boolean }) {
         </div>
       </td>
       <td data-label="Notification" className="px-3 py-2"><NotificationBadge a={a} /></td>
+      {!history && <td data-label="" className="px-3 py-2 text-right whitespace-nowrap"><AlertActionsButton a={a} onOpen={onActions} /></td>}
     </tr>
   );
 }

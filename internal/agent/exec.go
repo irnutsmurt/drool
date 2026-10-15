@@ -67,6 +67,9 @@ func (a *Agent) admit(env *agentrpc.OpEnvelope) *agentrpc.Rejection {
 	if env.OpID == "" || env.ExpiresAt.IsZero() {
 		return &agentrpc.Rejection{Reason: agentrpc.RejectInvalid, Message: "the command has no operation id or expiry"}
 	}
+	if a.removing() {
+		return &agentrpc.Rejection{Reason: agentrpc.RejectBusy, Message: "this Shepherd is removing itself from the host"}
+	}
 	if _, seen := a.ledger.Get(env.OpID); seen {
 		return &agentrpc.Rejection{Reason: agentrpc.RejectDuplicate, Message: "operation " + env.OpID + " was already received; not running it again"}
 	}

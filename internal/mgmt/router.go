@@ -140,14 +140,22 @@ func (r *Router) Decide(ctx context.Context, h db.Host) Decision {
 	return d
 }
 
+// host reads a host; one that doesn't exist (removed meanwhile) is
+// inventory.ErrHostNotFound.
+func (r *Router) host(ctx context.Context, hostID string) (db.Host, error) {
+	h, err := r.St.R.GetHost(ctx, hostID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return h, inventory.ErrHostNotFound
+	}
+	return h, err
+}
+
 // --- jobs ---
 
 // Prepare implements engine.Executor.
 func (r *Router) Prepare(ctx context.Context, hostID string) (engine.Path, error) {
-	h, err := r.St.R.GetHost(ctx, hostID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, inventory.ErrHostNotFound
-	} else if err != nil {
+	h, err := r.host(ctx, hostID)
+	if err != nil {
 		return nil, err
 	}
 	p := &path{r: r, host: h, pins: map[int]string{}}
@@ -266,7 +274,7 @@ func (p *path) Execute(ctx context.Context, op model.Operation, out driver.Outpu
 // its allowed paths); a capability denial is final, never a reason to use
 // SSH instead.
 func (r *Router) OpenFS(ctx context.Context, hostID string, elevated bool) (files.FS, error) {
-	h, err := r.St.R.GetHost(ctx, hostID)
+	h, err := r.host(ctx, hostID)
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +303,7 @@ func (r *Router) OpenFS(ctx context.Context, hostID string, elevated bool) (file
 
 // Simulate runs a package/system-update dry run on the host's path.
 func (r *Router) Simulate(ctx context.Context, hostID string, op model.Operation) (*hostops.SimResult, error) {
-	h, err := r.St.R.GetHost(ctx, hostID)
+	h, err := r.host(ctx, hostID)
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +336,7 @@ func (r *Router) Simulate(ctx context.Context, hostID string, op model.Operation
 // (desired state, M14): the agent's read-only query, or SSH as the login
 // user. Nothing changes on the host.
 func (r *Router) PackageVersions(ctx context.Context, hostID string, names []string) (string, map[string]string, error) {
-	h, err := r.St.R.GetHost(ctx, hostID)
+	h, err := r.host(ctx, hostID)
 	if err != nil {
 		return "", nil, err
 	}

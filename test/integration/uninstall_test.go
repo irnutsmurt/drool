@@ -8,13 +8,14 @@ import (
 	"time"
 )
 
-// TestShepherdUninstallOnHost (final After-M17 batch): a real Shepherd,
-// installed over SSH into an unprivileged container (no systemd: it runs
-// under its supervisor script), is removed again from the UI's endpoint.
-// The real removal script stops the supervisor and the agent and deletes its
-// programs, configuration, identity and log; DROOL revokes the identity and
-// manages the host over SSH, which keeps working; a second removal finds
-// nothing left.
+// TestShepherdUninstallOnHost (final After-M17 batch; self-removal since the
+// dogfooding correction batch): a real Shepherd, installed over SSH into an
+// unprivileged container (no systemd: it runs under its supervisor
+// script), is removed from its host's page. Connected, it removes itself:
+// its detached helper stops the supervisor and the agent and deletes its
+// programs, configuration, identity and log; DROOL revokes the identity,
+// checks over SSH that nothing is left ("Verified removed") and manages the
+// host over SSH, which keeps working; a second removal finds nothing left.
 func TestShepherdUninstallOnHost(t *testing.T) {
 	freshController(t)
 	d := selected()[0]
@@ -30,6 +31,7 @@ func TestShepherdUninstallOnHost(t *testing.T) {
 
 	var plan struct {
 		CanUninstall bool   `json:"can_uninstall"`
+		Method       string `json:"method"`
 		Systemd      string `json:"systemd"`
 		Processes    int    `json:"processes"`
 		Items        []struct {
@@ -42,11 +44,13 @@ func TestShepherdUninstallOnHost(t *testing.T) {
 	for _, it := range plan.Items {
 		present[it.Path] = it.Present
 	}
-	expect(t, plan.CanUninstall && plan.Systemd == "none" && plan.Processes >= 2, "plan: %+v", plan)
+	expect(t, plan.CanUninstall && plan.Method == "shepherd" && plan.Systemd == "none" && plan.Processes >= 2, "plan: %+v", plan)
 	expect(t, present["/usr/libexec/drool-agent"] && present["/var/lib/drool-agent"] && present["/etc/drool/agent.yaml"] &&
 		!present["/etc/systemd/system/drool-agent.service"], "plan items: %+v", plan.Items)
 
 	var res struct {
+		Method          string   `json:"method"`
+		Verified        bool     `json:"verified"`
 		Outcome         string   `json:"outcome"`
 		Removed         []string `json:"removed"`
 		Remaining       []string `json:"remaining"`
@@ -60,12 +64,12 @@ func TestShepherdUninstallOnHost(t *testing.T) {
 	if !runE2E(t, ctl, "shepherd-uninstall", "DROOL_E2E_HOST="+h.ID) {
 		t.Log("no browser here: uninstalling through the API")
 		ctl.must(t, "POST", "/api/v1/hosts/"+h.ID+"/agent/uninstall", nil, &res)
-		expect(t, res.Outcome == "uninstalled" && res.IdentityRevoked && res.Management == "ssh" && len(res.Remaining) == 0,
+		expect(t, res.Method == "shepherd" && res.Outcome == "uninstalled" && res.Verified && res.IdentityRevoked && res.Management == "ssh" && len(res.Remaining) == 0,
 			"uninstall: %+v", res)
 	}
 	// On the host: nothing of it left, nothing running.
 	expect(t, agentProcs() == "", "Shepherd processes left: %s", agentProcs())
-	left := c.exec(t, `for p in /usr/libexec/drool-agent /var/lib/drool-agent /var/log/drool-agent /etc/drool/agent.yaml /etc/drool/release-keys.d /etc/drool; do [ -e "$p" ] && echo "$p"; done; true`)
+	left := shepherdLeft(t, c)
 	expect(t, strings.TrimSpace(left) == "", "left on the host: %s", left)
 	// In DROOL: revoked, managed over SSH, which works.
 	a := waitAgent(t, h.ID, 30*time.Second, "managed over SSH", func(a hostAgent) bool { return a.Management.Preferred == "ssh" })

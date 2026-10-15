@@ -337,17 +337,25 @@ func image(t *testing.T, d distro) string {
 
 // container is a test host.
 type container struct {
-	Name string // docker name, also its DNS name on the networks
-	Port int    // published SSH port on 127.0.0.1 (0 if not published)
-	img  string
-	nets []string
+	Name  string // docker name, also its DNS name on the networks
+	Port  int    // published SSH port on 127.0.0.1 (0 if not published)
+	img   string
+	nets  []string
+	extra []string // more docker run arguments (startHostWith)
 }
 
 // startHost runs a host container. publish exposes SSH on loopback for the
 // controller; hosts behind the jump host are not published.
 func startHost(t *testing.T, img, short string, publish bool, nets ...string) *container {
 	t.Helper()
-	c := &container{Name: "drool-it-" + runID + "-" + short, img: img, nets: nets}
+	return startHostWith(t, img, short, publish, nil, nets...)
+}
+
+// startHostWith is startHost with more docker run arguments (nothing
+// privileged: mounts such as --tmpfs).
+func startHostWith(t *testing.T, img, short string, publish bool, extra []string, nets ...string) *container {
+	t.Helper()
+	c := &container{Name: "drool-it-" + runID + "-" + short, img: img, nets: nets, extra: extra}
 	c.run(t, publish, 0)
 	t.Cleanup(func() {
 		if !*flagKeep {
@@ -369,6 +377,7 @@ func (c *container) run(t *testing.T, publish bool, port int) {
 		}
 		args = append(args, "-p", fmt.Sprintf("127.0.0.1:%d:22", port))
 	}
+	args = append(args, c.extra...)
 	mustDocker(t, append(args, c.img)...)
 	for _, n := range c.nets[1:] {
 		mustDocker(t, "network", "connect", n, c.Name)

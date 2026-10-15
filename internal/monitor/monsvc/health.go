@@ -102,6 +102,7 @@ type hostEval struct {
 	mediaLast  map[string]time.Time
 	resets     map[string][]time.Time
 	cfgAt      map[string]time.Time // check → when its rules last changed for this host
+	svcMu      sync.Mutex           // one service evaluation at a time (see services)
 }
 
 type issueRef struct {
@@ -479,9 +480,14 @@ func (e *evaluator) reconfigure(ctx context.Context, old, np *policy, at time.Ti
 					c.since, c.clearSince, c.hits, c.notBefore = time.Time{}, time.Time{}, 0, at
 				}
 			}
-			if changed[CheckServiceFailed] || changed[CheckServiceStopped] {
+			if changed[CheckServiceFailed] || changed[CheckServiceStopped] || changed[CheckServiceUnexpected] {
 				svc = append(svc, h)
 			}
+		} else if hasServiceIssue(e.active[h]) {
+			// After a start (or an upgrade that changed what counts as a
+			// problem), judge every host's service issues against the
+			// configuration now, reporting or not.
+			svc = append(svc, h)
 		}
 		for _, k := range sortedKeys(e.active[h]) {
 			chk, sub, _ := strings.Cut(k, "|")
@@ -501,6 +507,18 @@ func (e *evaluator) reconfigure(ctx context.Context, old, np *policy, at time.Ti
 	for _, h := range svc {
 		e.services(ctx, h, np, e.s.now())
 	}
+}
+
+// hasServiceIssue reports whether a host's active issues include a
+// service's.
+func hasServiceIssue(active map[string]issueRef) bool {
+	for k := range active {
+		switch chk, _, _ := strings.Cut(k, "|"); chk {
+		case CheckServiceFailed, CheckServiceStopped, CheckServiceUnexpected:
+			return true
+		}
+	}
+	return false
 }
 
 func sortedKeys[V any](m map[string]V) []string {
@@ -571,7 +589,7 @@ func (e *evaluator) subjectOf(hostID, check, sub string) (subjectCtx, *hwLimits)
 		return subjectCtx{keys: []string{"gpu:" + sub}, label: label}, nil
 	case CheckInterfaceDown:
 		return subjectCtx{keys: []string{"iface:" + sub}, label: sub}, nil
-	case CheckServiceFailed, CheckServiceStopped:
+	case CheckServiceFailed, CheckServiceStopped, CheckServiceUnexpected:
 		return unitCtx(sub), nil
 	case CheckProbe:
 		return subjectCtx{keys: []string{"mount:" + sub}, label: sub}, nil
@@ -1386,25 +1404,42 @@ func later(a, b time.Time) time.Time {
 }
 
 // services opens and resolves service issues for one host, following each
-// unit's expected state (CheckServiceExpected, final After-M17 batch):
+// unit's expected state (CheckServiceExpected). Monitoring a service is
+// opt-in (dogfooding correction batch): a unit with no expected state is
+// inventory only, however it fails.
 //
 //   - running: stopped (or not installed) is a problem, failed is critical;
 //   - stopped: running is a problem; stopped or failed is what was wanted;
 //   - ignored: its state is shown, never an issue;
-//   - automatic (no setting): a failure of a unit DROOL reports on its own
-//     (one that starts at boot) is a problem; stopped is fine.
+//   - none (not monitored): its state is shown, never an issue.
 //
-// A unit still failed, stopped or running when its check is turned off or
-// its expected state changes ends as a configuration change; a unit that
-// is gone ends as gone; only one back in its expected state has recovered.
-// Expectations never change because someone started or stopped a unit.
+// An issue that its unit's expected state or check no longer allows ends as
+// a configuration change, whatever state the unit is in; one whose unit is
+// gone ends as gone; only a unit back in its expected state has recovered.
+// A unit whose state isn't known now (its host stopped reporting) keeps its
+// issue, as does every unit while the host reports no inventory at all:
+// nothing is known to have changed. Expectations never change because
+// someone started or stopped a unit.
+//
+// One evaluation per host at a time, with the newest configuration loaded:
+// a pass that began before a change (a tick holding the rules it started
+// with) never undoes what the change's own re-evaluation decided, such as
+// closing the issue that monitoring a failed service just opened, or
+// re-opening one that ignoring it just closed.
 func (e *evaluator) services(ctx context.Context, hostID string, pol *policy, now time.Time) {
+	e.mu.Lock()
+	he := e.host(hostID)
+	e.mu.Unlock()
+	he.svcMu.Lock()
+	defer he.svcMu.Unlock()
+	if p := e.pol.Load(); p != nil {
+		pol = p
+	}
 	units, err := e.s.Services(ctx, hostID)
 	if err != nil {
 		return
 	}
 	e.mu.Lock()
-	he := e.host(hostID)
 	cfgF, cfgS, cfgU := he.cfgAt[CheckServiceFailed], he.cfgAt[CheckServiceStopped], he.cfgAt[CheckServiceUnexpected]
 	e.mu.Unlock()
 	failed, stopped, unexpected := map[string]bool{}, map[string]bool{}, map[string]bool{}
@@ -1413,44 +1448,56 @@ func (e *evaluator) services(ctx context.Context, hostID string, pol *policy, no
 		return [2]string{ResReconfigured, msg + " This is a configuration change, not a recovery."}
 	}
 	present := map[string]ServiceRow{}
+	unknown := map[string]bool{}
 	for _, u := range units {
 		present[u.Name] = u
+		exp, src := pol.expected(hostID, u.Name)
+		from := ExpectSource(src)
+		sc := unitCtx(u.Name)
+		// What the expected state rules out, whatever state the unit is in.
+		switch exp {
+		case ExpectIgnored:
+			whyF[u.Name] = reconf(u.Name + " is ignored (" + from + "): its state is shown, never a health issue.")
+		case ExpectStopped:
+			whyF[u.Name] = reconf(u.Name + " is expected to be stopped (" + from + "), and it isn't running.")
+		case ExpectAuto:
+			whyF[u.Name] = reconf(u.Name + " isn't monitored (" + from + "): DROOL shows its state, and alerts on a service only when it's monitored.")
+		}
+		if exp != ExpectRunning {
+			whyS[u.Name] = reconf(u.Name + " is no longer expected to run (" + ExpectLabel(exp) + ", " + from + ").")
+		}
+		if exp != ExpectStopped {
+			whyU[u.Name] = reconf(u.Name + " is no longer expected to be stopped (" + ExpectLabel(exp) + ", " + from + ").")
+		}
 		if !u.Known {
+			unknown[u.Name] = true
 			continue
 		}
 		su := services.Unit{Name: u.Name, Active: u.Active, Sub: u.Sub, FileState: u.FileState, Load: u.Load, Transient: u.Transient}
 		changed := time.UnixMilli(u.ChangedAt)
-		exp, src := pol.expected(hostID, u.Name)
-		from := ExpectSource(src)
-		sc := unitCtx(u.Name)
 		switch services.State(su) {
 		case "failed":
+			if exp != ExpectRunning {
+				break
+			}
 			r := pol.rule(hostID, CheckServiceFailed, sc, nil)
 			switch {
-			case exp == ExpectIgnored:
-				whyF[u.Name] = reconf(u.Name + " is ignored (" + from + "): its state is shown, never a health issue.")
-			case exp == ExpectStopped:
-				whyF[u.Name] = reconf(u.Name + " is expected to be stopped (" + from + "), and it isn't running.")
 			case !r.on:
 				whyF[u.Name] = [2]string{ResDisabled, disabledNote(CheckServiceFailed, sc, r)}
-			case exp == ExpectAuto && !services.Notable(su):
-				whyF[u.Name] = reconf(u.Name + " isn't expected to run, and isn't a unit DROOL reports on its own.")
 			case e.isActive(hostID, CheckServiceFailed, u.Name) || now.Sub(later(changed, cfgF)) >= r.dur:
 				failed[u.Name] = true
-				sev, detail := "warning", "The unit failed"
-				if exp == ExpectRunning {
-					sev, detail = "critical", "The unit, expected to run ("+from+"), failed"
-				}
+				detail := "The unit, expected to run (" + from + "), failed"
 				if u.Result != "" && u.Result != "success" {
 					detail += " (" + u.Result + ")"
 				}
-				e.open(ctx, hostID, CheckServiceFailed, u.Name, sev, u.Name+" failed", detail+".", nil)
+				e.open(ctx, hostID, CheckServiceFailed, u.Name, "critical", u.Name+" failed", detail+".", nil)
 			}
 		case "stopped":
+			if exp != ExpectRunning {
+				break
+			}
 			r := pol.rule(hostID, CheckServiceStopped, sc, nil)
 			switch {
-			case exp != ExpectRunning:
-				whyS[u.Name] = reconf(u.Name + " is no longer expected to run (" + ExpectLabel(exp) + ", " + from + ").")
 			case !r.on:
 				whyS[u.Name] = [2]string{ResDisabled, disabledNote(CheckServiceStopped, sc, r)}
 			case e.isActive(hostID, CheckServiceStopped, u.Name) || now.Sub(later(changed, cfgS)) >= r.dur:
@@ -1459,10 +1506,11 @@ func (e *evaluator) services(ctx context.Context, hostID string, pol *policy, no
 					"Expected to run ("+from+"), but it is "+u.Active+"/"+u.Sub+".", nil, later(changed, cfgS))
 			}
 		case "running":
+			if exp != ExpectStopped {
+				break
+			}
 			r := pol.rule(hostID, CheckServiceUnexpected, sc, nil)
 			switch {
-			case exp != ExpectStopped:
-				whyU[u.Name] = reconf(u.Name + " is no longer expected to be stopped (" + ExpectLabel(exp) + ", " + from + ").")
 			case !r.on:
 				whyU[u.Name] = [2]string{ResDisabled, disabledNote(CheckServiceUnexpected, sc, r)}
 			case e.isActive(hostID, CheckServiceUnexpected, u.Name) || now.Sub(later(changed, cfgU)) >= r.dur:
@@ -1486,19 +1534,19 @@ func (e *evaluator) services(ctx context.Context, hostID string, pol *policy, no
 		e.open(ctx, hostID, CheckServiceStopped, w, "warning", w+" is not installed", "It is expected to run ("+ExpectSource(src)+") but systemd doesn't know it.", nil)
 	}
 	end := func(check, k string, why map[string][2]string) {
-		if w, ok := why[k]; ok {
-			e.resolveWhy(ctx, hostID, check, k, w[0], w[1])
-			return
-		}
-		if _, ok := present[k]; !ok && len(units) > 0 && check != CheckServiceStopped {
+		_, here := present[k]
+		switch {
+		case why[k] != [2]string{}:
+			e.resolveWhy(ctx, hostID, check, k, why[k][0], why[k][1])
+		case unknown[k] || len(units) == 0:
+			// Its state isn't known now: the issue stays as it is.
+		case !here && check != CheckServiceStopped:
 			e.resolveWhy(ctx, hostID, check, k, ResGone, k+" is no longer known to systemd on the host. This is not a recovery.")
-			return
-		}
-		if _, ok := present[k]; !ok && len(units) > 0 && !pol.isWatched(hostID, k) {
+		case !here && !pol.isWatched(hostID, k):
 			e.resolveWhy(ctx, hostID, check, k, ResReconfigured, k+" is no longer expected to run. This is a configuration change, not a recovery.")
-			return
+		default:
+			e.resolve(ctx, hostID, check, k)
 		}
-		e.resolve(ctx, hostID, check, k)
 	}
 	for check, set := range map[string]map[string]bool{CheckServiceFailed: failed, CheckServiceStopped: stopped, CheckServiceUnexpected: unexpected} {
 		why := map[string]map[string][2]string{CheckServiceFailed: whyF, CheckServiceStopped: whyS, CheckServiceUnexpected: whyU}[check]
@@ -1520,7 +1568,7 @@ func ExpectLabel(v float64) string {
 	case ExpectIgnored:
 		return "ignored"
 	}
-	return "automatic"
+	return "not monitored"
 }
 
 // ExpectSource says where a unit's expected state comes from, for
@@ -1542,7 +1590,7 @@ func ExpectSource(r Resolved) string {
 		return "set for every host"
 	}
 	if r.Conflict != nil {
-		return "packs disagree, so automatic"
+		return "packs disagree, so it isn't monitored"
 	}
 	return "no setting"
 }

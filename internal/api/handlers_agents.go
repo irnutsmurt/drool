@@ -65,6 +65,12 @@ func (s *Server) management(ctx context.Context, h db.Host) *managementJSON {
 	default:
 		m.Active = "none"
 	}
+	if m.Active == "none" && m.Reason == "" && h.ManagementMethod == "ssh" && h.SshConfigured == 0 {
+		// A host whose Shepherd was removed and that has no SSH access
+		// (dogfooding correction batch): nothing is invented.
+		m.Reason = "DROOL has no way to manage this host: it has no Shepherd and no SSH access is set up. Set up SSH access in its connection settings, " +
+			"install a Shepherd again, or remove the host."
+	}
 	return m
 }
 
@@ -690,8 +696,8 @@ func (s *Server) handleInstallAgent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
-// handlePlanUninstallAgent says what removing the host's Shepherd would do,
-// read from the host over SSH as root; it changes nothing.
+// handlePlanUninstallAgent says what removing the host's Shepherd would do
+// and which ways work now (the Shepherd itself, SSH); it changes nothing.
 func (s *Server) handlePlanUninstallAgent(w http.ResponseWriter, r *http.Request) {
 	if !s.agentsEnabled(w, r) {
 		return
@@ -708,17 +714,32 @@ func (s *Server) handlePlanUninstallAgent(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, plan)
 }
 
-// handleUninstallAgent removes the host's Shepherd over its SSH path, which
-// manages the host afterwards (agentsvc.UninstallViaSSH): agents.manage and
-// hosts.write (the management path changes), confirmed by a recent sign-in,
-// under the host's exclusive lock. A refusal (no SSH to fall back on, SSH
-// not working as root) changes nothing.
+// handleUninstallAgent removes the host's Shepherd (agentsvc.Uninstall):
+// the Shepherd removes itself when it can, else DROOL removes it over SSH,
+// or, asked for, DROOL only forgets it. agents.manage and hosts.write (the
+// management path changes), confirmed by a recent sign-in, under the host's
+// exclusive lock. A refusal changes nothing.
 func (s *Server) handleUninstallAgent(w http.ResponseWriter, r *http.Request) {
 	if !s.agentsEnabled(w, r) {
 		return
 	}
 	ctx := r.Context()
 	id := r.PathValue("id")
+	var in struct {
+		Method string `json:"method"`
+	}
+	if r.ContentLength != 0 {
+		if p := decodeJSON(w, r, &in); p != nil {
+			writeProblem(w, r, p)
+			return
+		}
+	}
+	switch in.Method {
+	case "", agentsvc.MethodShepherd, agentsvc.MethodSSH, agentsvc.MethodForget:
+	default:
+		writeProblem(w, r, errValidation("method must be shepherd, ssh or forget"))
+		return
+	}
 	if !principalFrom(ctx).Can(auth.PermHostsWrite) {
 		writeProblem(w, r, errForbidden("removing a Shepherd changes how DROOL manages the host, which also requires hosts.write"))
 		return
@@ -735,12 +756,12 @@ func (s *Server) handleUninstallAgent(w http.ResponseWriter, r *http.Request) {
 	defer release()
 	uctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
-	res, err := s.d.Agents.UninstallViaSSH(uctx, id, principalFrom(ctx).UserID)
+	res, err := s.d.Agents.Uninstall(uctx, id, principalFrom(ctx).UserID, in.Method)
 	var refused *agentsvc.ErrUninstallRefused
 	switch {
 	case errors.As(err, &refused):
 		s.d.Audit.Record(context.WithoutCancel(ctx), audit.Event{Action: "agent.uninstall", Result: audit.Denied, TargetType: "host", TargetID: id,
-			Details: map[string]any{"refused": refused.Code, "reason": refused.Msg}})
+			Details: map[string]any{"refused": refused.Code, "reason": refused.Msg, "method": in.Method}})
 		writeProblem(w, r, errConflict(refused.Code, refused.Msg))
 		return
 	case err != nil:

@@ -659,6 +659,7 @@ type AgentMessage struct {
 	//	*AgentMessage_ChannelFailed
 	//	*AgentMessage_ConfigAck
 	//	*AgentMessage_EpochTransition
+	//	*AgentMessage_SelfUninstall
 	Msg           isAgentMessage_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -800,6 +801,15 @@ func (x *AgentMessage) GetEpochTransition() *EpochTransitionResult {
 	return nil
 }
 
+func (x *AgentMessage) GetSelfUninstall() *SelfUninstallResult {
+	if x != nil {
+		if x, ok := x.Msg.(*AgentMessage_SelfUninstall); ok {
+			return x.SelfUninstall
+		}
+	}
+	return nil
+}
+
 type isAgentMessage_Msg interface {
 	isAgentMessage_Msg()
 }
@@ -848,6 +858,10 @@ type AgentMessage_EpochTransition struct {
 	EpochTransition *EpochTransitionResult `protobuf:"bytes,11,opt,name=epoch_transition,json=epochTransition,proto3,oneof"`
 }
 
+type AgentMessage_SelfUninstall struct {
+	SelfUninstall *SelfUninstallResult `protobuf:"bytes,12,opt,name=self_uninstall,json=selfUninstall,proto3,oneof"`
+}
+
 func (*AgentMessage_Hello) isAgentMessage_Msg() {}
 
 func (*AgentMessage_Heartbeat) isAgentMessage_Msg() {}
@@ -870,6 +884,8 @@ func (*AgentMessage_ConfigAck) isAgentMessage_Msg() {}
 
 func (*AgentMessage_EpochTransition) isAgentMessage_Msg() {}
 
+func (*AgentMessage_SelfUninstall) isAgentMessage_Msg() {}
+
 type ControllerMessage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Msg:
@@ -890,6 +906,7 @@ type ControllerMessage struct {
 	//	*ControllerMessage_FirewallConfig
 	//	*ControllerMessage_MonitorConfig
 	//	*ControllerMessage_EpochTransition
+	//	*ControllerMessage_SelfUninstall
 	Msg           isControllerMessage_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1076,6 +1093,15 @@ func (x *ControllerMessage) GetEpochTransition() *EpochTransition {
 	return nil
 }
 
+func (x *ControllerMessage) GetSelfUninstall() *SelfUninstall {
+	if x != nil {
+		if x, ok := x.Msg.(*ControllerMessage_SelfUninstall); ok {
+			return x.SelfUninstall
+		}
+	}
+	return nil
+}
+
 type isControllerMessage_Msg interface {
 	isControllerMessage_Msg()
 }
@@ -1144,6 +1170,10 @@ type ControllerMessage_EpochTransition struct {
 	EpochTransition *EpochTransition `protobuf:"bytes,16,opt,name=epoch_transition,json=epochTransition,proto3,oneof"`
 }
 
+type ControllerMessage_SelfUninstall struct {
+	SelfUninstall *SelfUninstall `protobuf:"bytes,17,opt,name=self_uninstall,json=selfUninstall,proto3,oneof"`
+}
+
 func (*ControllerMessage_HelloAck) isControllerMessage_Msg() {}
 
 func (*ControllerMessage_Ping) isControllerMessage_Msg() {}
@@ -1175,6 +1205,8 @@ func (*ControllerMessage_FirewallConfig) isControllerMessage_Msg() {}
 func (*ControllerMessage_MonitorConfig) isControllerMessage_Msg() {}
 
 func (*ControllerMessage_EpochTransition) isControllerMessage_Msg() {}
+
+func (*ControllerMessage_SelfUninstall) isControllerMessage_Msg() {}
 
 type Hello struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
@@ -2955,6 +2987,191 @@ func (x *EpochTransitionResult) GetControllerEpoch() string {
 	return ""
 }
 
+// SelfUninstall asks a Shepherd to remove itself from its host (dogfooding
+// correction batch, ARCHITECTURE-ALPHA §40): a typed lifecycle request, not
+// a command, and no capability (shell or other) is needed. The agent checks
+// it is meant for it (its identity, the controller epoch, the time), starts
+// a detached removal helper as root that outlives the agent, and answers
+// with SelfUninstallResult. The helper stops and removes the Shepherd (its
+// service or supervisor, programs, capability ceiling, release keys,
+// identity, state and logs) and then itself. Agents announce "uninstall-1"
+// when they understand it; older agents are never sent it.
+type SelfUninstall struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	RequestId       string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	IdentityId      string                 `protobuf:"bytes,2,opt,name=identity_id,json=identityId,proto3" json:"identity_id,omitempty"`
+	ControllerEpoch string                 `protobuf:"bytes,3,opt,name=controller_epoch,json=controllerEpoch,proto3" json:"controller_epoch,omitempty"`
+	IssuedAtUnix    int64                  `protobuf:"varint,4,opt,name=issued_at_unix,json=issuedAtUnix,proto3" json:"issued_at_unix,omitempty"`
+	ExpiresAtUnix   int64                  `protobuf:"varint,5,opt,name=expires_at_unix,json=expiresAtUnix,proto3" json:"expires_at_unix,omitempty"`
+	Reason          string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"` // for the agent's log
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *SelfUninstall) Reset() {
+	*x = SelfUninstall{}
+	mi := &file_agent_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SelfUninstall) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SelfUninstall) ProtoMessage() {}
+
+func (x *SelfUninstall) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SelfUninstall.ProtoReflect.Descriptor instead.
+func (*SelfUninstall) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *SelfUninstall) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *SelfUninstall) GetIdentityId() string {
+	if x != nil {
+		return x.IdentityId
+	}
+	return ""
+}
+
+func (x *SelfUninstall) GetControllerEpoch() string {
+	if x != nil {
+		return x.ControllerEpoch
+	}
+	return ""
+}
+
+func (x *SelfUninstall) GetIssuedAtUnix() int64 {
+	if x != nil {
+		return x.IssuedAtUnix
+	}
+	return 0
+}
+
+func (x *SelfUninstall) GetExpiresAtUnix() int64 {
+	if x != nil {
+		return x.ExpiresAtUnix
+	}
+	return 0
+}
+
+func (x *SelfUninstall) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type SelfUninstallResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Accepted      bool                   `protobuf:"varint,2,opt,name=accepted,proto3" json:"accepted,omitempty"` // the helper was started
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`        // why not, in plain words
+	Code          string                 `protobuf:"bytes,4,opt,name=code,proto3" json:"code,omitempty"`          // invalid | identity | epoch | expired | start
+	Helper        string                 `protobuf:"bytes,5,opt,name=helper,proto3" json:"helper,omitempty"`      // how the helper runs ("systemd unit …", "process 1234")
+	Removes       []string               `protobuf:"bytes,6,rep,name=removes,proto3" json:"removes,omitempty"`    // the paths it removes
+	Already       bool                   `protobuf:"varint,7,opt,name=already,proto3" json:"already,omitempty"`   // a removal this agent started before (a retried request)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SelfUninstallResult) Reset() {
+	*x = SelfUninstallResult{}
+	mi := &file_agent_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SelfUninstallResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SelfUninstallResult) ProtoMessage() {}
+
+func (x *SelfUninstallResult) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SelfUninstallResult.ProtoReflect.Descriptor instead.
+func (*SelfUninstallResult) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *SelfUninstallResult) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *SelfUninstallResult) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+func (x *SelfUninstallResult) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *SelfUninstallResult) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *SelfUninstallResult) GetHelper() string {
+	if x != nil {
+		return x.Helper
+	}
+	return ""
+}
+
+func (x *SelfUninstallResult) GetRemoves() []string {
+	if x != nil {
+		return x.Removes
+	}
+	return nil
+}
+
+func (x *SelfUninstallResult) GetAlready() bool {
+	if x != nil {
+		return x.Already
+	}
+	return false
+}
+
 type Disconnect struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Reason        string                 `protobuf:"bytes,1,opt,name=reason,proto3" json:"reason,omitempty"`
@@ -2965,7 +3182,7 @@ type Disconnect struct {
 
 func (x *Disconnect) Reset() {
 	*x = Disconnect{}
-	mi := &file_agent_proto_msgTypes[40]
+	mi := &file_agent_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2977,7 +3194,7 @@ func (x *Disconnect) String() string {
 func (*Disconnect) ProtoMessage() {}
 
 func (x *Disconnect) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[40]
+	mi := &file_agent_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2990,7 +3207,7 @@ func (x *Disconnect) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Disconnect.ProtoReflect.Descriptor instead.
 func (*Disconnect) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{40}
+	return file_agent_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *Disconnect) GetReason() string {
@@ -3016,7 +3233,7 @@ type RequestTelemetry struct {
 
 func (x *RequestTelemetry) Reset() {
 	*x = RequestTelemetry{}
-	mi := &file_agent_proto_msgTypes[41]
+	mi := &file_agent_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3028,7 +3245,7 @@ func (x *RequestTelemetry) String() string {
 func (*RequestTelemetry) ProtoMessage() {}
 
 func (x *RequestTelemetry) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[41]
+	mi := &file_agent_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3041,7 +3258,7 @@ func (x *RequestTelemetry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestTelemetry.ProtoReflect.Descriptor instead.
 func (*RequestTelemetry) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{41}
+	return file_agent_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *RequestTelemetry) GetKind() string {
@@ -3063,7 +3280,7 @@ type Frame struct {
 
 func (x *Frame) Reset() {
 	*x = Frame{}
-	mi := &file_agent_proto_msgTypes[42]
+	mi := &file_agent_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3075,7 +3292,7 @@ func (x *Frame) String() string {
 func (*Frame) ProtoMessage() {}
 
 func (x *Frame) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[42]
+	mi := &file_agent_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3088,7 +3305,7 @@ func (x *Frame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Frame.ProtoReflect.Descriptor instead.
 func (*Frame) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{42}
+	return file_agent_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *Frame) GetChannelId() string {
@@ -3129,7 +3346,7 @@ type FetchReleaseRequest struct {
 
 func (x *FetchReleaseRequest) Reset() {
 	*x = FetchReleaseRequest{}
-	mi := &file_agent_proto_msgTypes[43]
+	mi := &file_agent_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3141,7 +3358,7 @@ func (x *FetchReleaseRequest) String() string {
 func (*FetchReleaseRequest) ProtoMessage() {}
 
 func (x *FetchReleaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[43]
+	mi := &file_agent_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3154,7 +3371,7 @@ func (x *FetchReleaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchReleaseRequest.ProtoReflect.Descriptor instead.
 func (*FetchReleaseRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{43}
+	return file_agent_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *FetchReleaseRequest) GetReleaseId() string {
@@ -3180,7 +3397,7 @@ type Chunk struct {
 
 func (x *Chunk) Reset() {
 	*x = Chunk{}
-	mi := &file_agent_proto_msgTypes[44]
+	mi := &file_agent_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3192,7 +3409,7 @@ func (x *Chunk) String() string {
 func (*Chunk) ProtoMessage() {}
 
 func (x *Chunk) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[44]
+	mi := &file_agent_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3205,7 +3422,7 @@ func (x *Chunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Chunk.ProtoReflect.Descriptor instead.
 func (*Chunk) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{44}
+	return file_agent_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *Chunk) GetData() []byte {
@@ -3267,7 +3484,7 @@ const file_agent_proto_rawDesc = "" +
 	"\tsignature\x18\x03 \x01(\fR\tsignature\"0\n" +
 	"\x0fRecoverResponse\x12\x1d\n" +
 	"\n" +
-	"cert_chain\x18\x01 \x03(\fR\tcertChain\"\xc6\x05\n" +
+	"cert_chain\x18\x01 \x03(\fR\tcertChain\"\x94\x06\n" +
 	"\fAgentMessage\x12-\n" +
 	"\x05hello\x18\x01 \x01(\v2\x15.drool.agent.v1.HelloH\x00R\x05hello\x129\n" +
 	"\theartbeat\x18\x02 \x01(\v2\x19.drool.agent.v1.HeartbeatH\x00R\theartbeat\x129\n" +
@@ -3281,8 +3498,9 @@ const file_agent_proto_rawDesc = "" +
 	"\n" +
 	"config_ack\x18\n" +
 	" \x01(\v2\x19.drool.agent.v1.ConfigAckH\x00R\tconfigAck\x12R\n" +
-	"\x10epoch_transition\x18\v \x01(\v2%.drool.agent.v1.EpochTransitionResultH\x00R\x0fepochTransitionB\x05\n" +
-	"\x03msg\"\xac\b\n" +
+	"\x10epoch_transition\x18\v \x01(\v2%.drool.agent.v1.EpochTransitionResultH\x00R\x0fepochTransition\x12L\n" +
+	"\x0eself_uninstall\x18\f \x01(\v2#.drool.agent.v1.SelfUninstallResultH\x00R\rselfUninstallB\x05\n" +
+	"\x03msg\"\xf4\b\n" +
 	"\x11ControllerMessage\x127\n" +
 	"\thello_ack\x18\x01 \x01(\v2\x18.drool.agent.v1.HelloAckH\x00R\bhelloAck\x12*\n" +
 	"\x04ping\x18\x02 \x01(\v2\x14.drool.agent.v1.PingH\x00R\x04ping\x12@\n" +
@@ -3302,7 +3520,8 @@ const file_agent_proto_rawDesc = "" +
 	"\x06config\x18\r \x01(\v2\x1a.drool.agent.v1.ConfigPushH\x00R\x06config\x12I\n" +
 	"\x0ffirewall_config\x18\x0e \x01(\v2\x1e.drool.agent.v1.FirewallConfigH\x00R\x0efirewallConfig\x12F\n" +
 	"\x0emonitor_config\x18\x0f \x01(\v2\x1d.drool.agent.v1.MonitorConfigH\x00R\rmonitorConfig\x12L\n" +
-	"\x10epoch_transition\x18\x10 \x01(\v2\x1f.drool.agent.v1.EpochTransitionH\x00R\x0fepochTransitionB\x05\n" +
+	"\x10epoch_transition\x18\x10 \x01(\v2\x1f.drool.agent.v1.EpochTransitionH\x00R\x0fepochTransition\x12F\n" +
+	"\x0eself_uninstall\x18\x11 \x01(\v2\x1d.drool.agent.v1.SelfUninstallH\x00R\rselfUninstallB\x05\n" +
 	"\x03msg\"\xae\x04\n" +
 	"\x05Hello\x12-\n" +
 	"\x04info\x18\x01 \x01(\v2\x19.drool.agent.v1.AgentInfoR\x04info\x12#\n" +
@@ -3440,7 +3659,25 @@ const file_agent_proto_rawDesc = "" +
 	"\x05error\x18\x03 \x01(\tR\x05error\x12\x12\n" +
 	"\x04code\x18\x04 \x01(\tR\x04code\x121\n" +
 	"\x05state\x18\x05 \x01(\v2\x1b.drool.agent.v1.StateReportR\x05state\x12)\n" +
-	"\x10controller_epoch\x18\x06 \x01(\tR\x0fcontrollerEpoch\"8\n" +
+	"\x10controller_epoch\x18\x06 \x01(\tR\x0fcontrollerEpoch\"\xe0\x01\n" +
+	"\rSelfUninstall\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1f\n" +
+	"\videntity_id\x18\x02 \x01(\tR\n" +
+	"identityId\x12)\n" +
+	"\x10controller_epoch\x18\x03 \x01(\tR\x0fcontrollerEpoch\x12$\n" +
+	"\x0eissued_at_unix\x18\x04 \x01(\x03R\fissuedAtUnix\x12&\n" +
+	"\x0fexpires_at_unix\x18\x05 \x01(\x03R\rexpiresAtUnix\x12\x16\n" +
+	"\x06reason\x18\x06 \x01(\tR\x06reason\"\xc6\x01\n" +
+	"\x13SelfUninstallResult\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1a\n" +
+	"\baccepted\x18\x02 \x01(\bR\baccepted\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\x12\x12\n" +
+	"\x04code\x18\x04 \x01(\tR\x04code\x12\x16\n" +
+	"\x06helper\x18\x05 \x01(\tR\x06helper\x12\x18\n" +
+	"\aremoves\x18\x06 \x03(\tR\aremoves\x12\x18\n" +
+	"\aalready\x18\a \x01(\bR\aalready\"8\n" +
 	"\n" +
 	"Disconnect\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\x12\x12\n" +
@@ -3480,7 +3717,7 @@ func file_agent_proto_rawDescGZIP() []byte {
 	return file_agent_proto_rawDescData
 }
 
-var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 45)
+var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 47)
 var file_agent_proto_goTypes = []any{
 	(*GetTrustRequest)(nil),           // 0: drool.agent.v1.GetTrustRequest
 	(*TrustBundle)(nil),               // 1: drool.agent.v1.TrustBundle
@@ -3522,11 +3759,13 @@ var file_agent_proto_goTypes = []any{
 	(*EpochTransition)(nil),           // 37: drool.agent.v1.EpochTransition
 	(*EpochDomain)(nil),               // 38: drool.agent.v1.EpochDomain
 	(*EpochTransitionResult)(nil),     // 39: drool.agent.v1.EpochTransitionResult
-	(*Disconnect)(nil),                // 40: drool.agent.v1.Disconnect
-	(*RequestTelemetry)(nil),          // 41: drool.agent.v1.RequestTelemetry
-	(*Frame)(nil),                     // 42: drool.agent.v1.Frame
-	(*FetchReleaseRequest)(nil),       // 43: drool.agent.v1.FetchReleaseRequest
-	(*Chunk)(nil),                     // 44: drool.agent.v1.Chunk
+	(*SelfUninstall)(nil),             // 40: drool.agent.v1.SelfUninstall
+	(*SelfUninstallResult)(nil),       // 41: drool.agent.v1.SelfUninstallResult
+	(*Disconnect)(nil),                // 42: drool.agent.v1.Disconnect
+	(*RequestTelemetry)(nil),          // 43: drool.agent.v1.RequestTelemetry
+	(*Frame)(nil),                     // 44: drool.agent.v1.Frame
+	(*FetchReleaseRequest)(nil),       // 45: drool.agent.v1.FetchReleaseRequest
+	(*Chunk)(nil),                     // 46: drool.agent.v1.Chunk
 }
 var file_agent_proto_depIdxs = []int32{
 	2,  // 0: drool.agent.v1.TrustBundle.manifest:type_name -> drool.agent.v1.SignedManifest
@@ -3543,50 +3782,52 @@ var file_agent_proto_depIdxs = []int32{
 	23, // 11: drool.agent.v1.AgentMessage.channel_failed:type_name -> drool.agent.v1.ChannelFailed
 	36, // 12: drool.agent.v1.AgentMessage.config_ack:type_name -> drool.agent.v1.ConfigAck
 	39, // 13: drool.agent.v1.AgentMessage.epoch_transition:type_name -> drool.agent.v1.EpochTransitionResult
-	16, // 14: drool.agent.v1.ControllerMessage.hello_ack:type_name -> drool.agent.v1.HelloAck
-	18, // 15: drool.agent.v1.ControllerMessage.ping:type_name -> drool.agent.v1.Ping
-	22, // 16: drool.agent.v1.ControllerMessage.open_channel:type_name -> drool.agent.v1.OpenChannel
-	21, // 17: drool.agent.v1.ControllerMessage.renew:type_name -> drool.agent.v1.RenewResponse
-	24, // 18: drool.agent.v1.ControllerMessage.query_op:type_name -> drool.agent.v1.QueryOp
-	26, // 19: drool.agent.v1.ControllerMessage.cancel_op:type_name -> drool.agent.v1.CancelOp
-	27, // 20: drool.agent.v1.ControllerMessage.endpoint_candidate:type_name -> drool.agent.v1.EndpointCandidate
-	29, // 21: drool.agent.v1.ControllerMessage.endpoint_commit:type_name -> drool.agent.v1.EndpointCommit
-	30, // 22: drool.agent.v1.ControllerMessage.update_offer:type_name -> drool.agent.v1.UpdateOffer
-	2,  // 23: drool.agent.v1.ControllerMessage.manifest:type_name -> drool.agent.v1.SignedManifest
-	40, // 24: drool.agent.v1.ControllerMessage.disconnect:type_name -> drool.agent.v1.Disconnect
-	41, // 25: drool.agent.v1.ControllerMessage.request_telemetry:type_name -> drool.agent.v1.RequestTelemetry
-	33, // 26: drool.agent.v1.ControllerMessage.config:type_name -> drool.agent.v1.ConfigPush
-	34, // 27: drool.agent.v1.ControllerMessage.firewall_config:type_name -> drool.agent.v1.FirewallConfig
-	35, // 28: drool.agent.v1.ControllerMessage.monitor_config:type_name -> drool.agent.v1.MonitorConfig
-	37, // 29: drool.agent.v1.ControllerMessage.epoch_transition:type_name -> drool.agent.v1.EpochTransition
-	3,  // 30: drool.agent.v1.Hello.info:type_name -> drool.agent.v1.AgentInfo
-	14, // 31: drool.agent.v1.Hello.state:type_name -> drool.agent.v1.StateReport
-	31, // 32: drool.agent.v1.Hello.update:type_name -> drool.agent.v1.UpdateReport
-	13, // 33: drool.agent.v1.Hello.revocation:type_name -> drool.agent.v1.Revocation
-	15, // 34: drool.agent.v1.StateReport.domains:type_name -> drool.agent.v1.DomainState
-	15, // 35: drool.agent.v1.ConfigPush.version:type_name -> drool.agent.v1.DomainState
-	15, // 36: drool.agent.v1.ConfigAck.version:type_name -> drool.agent.v1.DomainState
-	38, // 37: drool.agent.v1.EpochTransition.domains:type_name -> drool.agent.v1.EpochDomain
-	14, // 38: drool.agent.v1.EpochTransitionResult.state:type_name -> drool.agent.v1.StateReport
-	0,  // 39: drool.agent.v1.Agent.GetTrust:input_type -> drool.agent.v1.GetTrustRequest
-	4,  // 40: drool.agent.v1.Agent.Enroll:input_type -> drool.agent.v1.EnrollRequest
-	6,  // 41: drool.agent.v1.Agent.RecoveryChallenge:input_type -> drool.agent.v1.RecoveryChallengeRequest
-	8,  // 42: drool.agent.v1.Agent.Recover:input_type -> drool.agent.v1.RecoverRequest
-	10, // 43: drool.agent.v1.Agent.Session:input_type -> drool.agent.v1.AgentMessage
-	42, // 44: drool.agent.v1.Agent.Channel:input_type -> drool.agent.v1.Frame
-	43, // 45: drool.agent.v1.Agent.FetchRelease:input_type -> drool.agent.v1.FetchReleaseRequest
-	1,  // 46: drool.agent.v1.Agent.GetTrust:output_type -> drool.agent.v1.TrustBundle
-	5,  // 47: drool.agent.v1.Agent.Enroll:output_type -> drool.agent.v1.EnrollResponse
-	7,  // 48: drool.agent.v1.Agent.RecoveryChallenge:output_type -> drool.agent.v1.RecoveryChallengeResponse
-	9,  // 49: drool.agent.v1.Agent.Recover:output_type -> drool.agent.v1.RecoverResponse
-	11, // 50: drool.agent.v1.Agent.Session:output_type -> drool.agent.v1.ControllerMessage
-	42, // 51: drool.agent.v1.Agent.Channel:output_type -> drool.agent.v1.Frame
-	44, // 52: drool.agent.v1.Agent.FetchRelease:output_type -> drool.agent.v1.Chunk
-	46, // [46:53] is the sub-list for method output_type
-	39, // [39:46] is the sub-list for method input_type
-	39, // [39:39] is the sub-list for extension type_name
-	39, // [39:39] is the sub-list for extension extendee
-	0,  // [0:39] is the sub-list for field type_name
+	41, // 14: drool.agent.v1.AgentMessage.self_uninstall:type_name -> drool.agent.v1.SelfUninstallResult
+	16, // 15: drool.agent.v1.ControllerMessage.hello_ack:type_name -> drool.agent.v1.HelloAck
+	18, // 16: drool.agent.v1.ControllerMessage.ping:type_name -> drool.agent.v1.Ping
+	22, // 17: drool.agent.v1.ControllerMessage.open_channel:type_name -> drool.agent.v1.OpenChannel
+	21, // 18: drool.agent.v1.ControllerMessage.renew:type_name -> drool.agent.v1.RenewResponse
+	24, // 19: drool.agent.v1.ControllerMessage.query_op:type_name -> drool.agent.v1.QueryOp
+	26, // 20: drool.agent.v1.ControllerMessage.cancel_op:type_name -> drool.agent.v1.CancelOp
+	27, // 21: drool.agent.v1.ControllerMessage.endpoint_candidate:type_name -> drool.agent.v1.EndpointCandidate
+	29, // 22: drool.agent.v1.ControllerMessage.endpoint_commit:type_name -> drool.agent.v1.EndpointCommit
+	30, // 23: drool.agent.v1.ControllerMessage.update_offer:type_name -> drool.agent.v1.UpdateOffer
+	2,  // 24: drool.agent.v1.ControllerMessage.manifest:type_name -> drool.agent.v1.SignedManifest
+	42, // 25: drool.agent.v1.ControllerMessage.disconnect:type_name -> drool.agent.v1.Disconnect
+	43, // 26: drool.agent.v1.ControllerMessage.request_telemetry:type_name -> drool.agent.v1.RequestTelemetry
+	33, // 27: drool.agent.v1.ControllerMessage.config:type_name -> drool.agent.v1.ConfigPush
+	34, // 28: drool.agent.v1.ControllerMessage.firewall_config:type_name -> drool.agent.v1.FirewallConfig
+	35, // 29: drool.agent.v1.ControllerMessage.monitor_config:type_name -> drool.agent.v1.MonitorConfig
+	37, // 30: drool.agent.v1.ControllerMessage.epoch_transition:type_name -> drool.agent.v1.EpochTransition
+	40, // 31: drool.agent.v1.ControllerMessage.self_uninstall:type_name -> drool.agent.v1.SelfUninstall
+	3,  // 32: drool.agent.v1.Hello.info:type_name -> drool.agent.v1.AgentInfo
+	14, // 33: drool.agent.v1.Hello.state:type_name -> drool.agent.v1.StateReport
+	31, // 34: drool.agent.v1.Hello.update:type_name -> drool.agent.v1.UpdateReport
+	13, // 35: drool.agent.v1.Hello.revocation:type_name -> drool.agent.v1.Revocation
+	15, // 36: drool.agent.v1.StateReport.domains:type_name -> drool.agent.v1.DomainState
+	15, // 37: drool.agent.v1.ConfigPush.version:type_name -> drool.agent.v1.DomainState
+	15, // 38: drool.agent.v1.ConfigAck.version:type_name -> drool.agent.v1.DomainState
+	38, // 39: drool.agent.v1.EpochTransition.domains:type_name -> drool.agent.v1.EpochDomain
+	14, // 40: drool.agent.v1.EpochTransitionResult.state:type_name -> drool.agent.v1.StateReport
+	0,  // 41: drool.agent.v1.Agent.GetTrust:input_type -> drool.agent.v1.GetTrustRequest
+	4,  // 42: drool.agent.v1.Agent.Enroll:input_type -> drool.agent.v1.EnrollRequest
+	6,  // 43: drool.agent.v1.Agent.RecoveryChallenge:input_type -> drool.agent.v1.RecoveryChallengeRequest
+	8,  // 44: drool.agent.v1.Agent.Recover:input_type -> drool.agent.v1.RecoverRequest
+	10, // 45: drool.agent.v1.Agent.Session:input_type -> drool.agent.v1.AgentMessage
+	44, // 46: drool.agent.v1.Agent.Channel:input_type -> drool.agent.v1.Frame
+	45, // 47: drool.agent.v1.Agent.FetchRelease:input_type -> drool.agent.v1.FetchReleaseRequest
+	1,  // 48: drool.agent.v1.Agent.GetTrust:output_type -> drool.agent.v1.TrustBundle
+	5,  // 49: drool.agent.v1.Agent.Enroll:output_type -> drool.agent.v1.EnrollResponse
+	7,  // 50: drool.agent.v1.Agent.RecoveryChallenge:output_type -> drool.agent.v1.RecoveryChallengeResponse
+	9,  // 51: drool.agent.v1.Agent.Recover:output_type -> drool.agent.v1.RecoverResponse
+	11, // 52: drool.agent.v1.Agent.Session:output_type -> drool.agent.v1.ControllerMessage
+	44, // 53: drool.agent.v1.Agent.Channel:output_type -> drool.agent.v1.Frame
+	46, // 54: drool.agent.v1.Agent.FetchRelease:output_type -> drool.agent.v1.Chunk
+	48, // [48:55] is the sub-list for method output_type
+	41, // [41:48] is the sub-list for method input_type
+	41, // [41:41] is the sub-list for extension type_name
+	41, // [41:41] is the sub-list for extension extendee
+	0,  // [0:41] is the sub-list for field type_name
 }
 
 func init() { file_agent_proto_init() }
@@ -3606,6 +3847,7 @@ func file_agent_proto_init() {
 		(*AgentMessage_ChannelFailed)(nil),
 		(*AgentMessage_ConfigAck)(nil),
 		(*AgentMessage_EpochTransition)(nil),
+		(*AgentMessage_SelfUninstall)(nil),
 	}
 	file_agent_proto_msgTypes[11].OneofWrappers = []any{
 		(*ControllerMessage_HelloAck)(nil),
@@ -3624,6 +3866,7 @@ func file_agent_proto_init() {
 		(*ControllerMessage_FirewallConfig)(nil),
 		(*ControllerMessage_MonitorConfig)(nil),
 		(*ControllerMessage_EpochTransition)(nil),
+		(*ControllerMessage_SelfUninstall)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -3631,7 +3874,7 @@ func file_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   45,
+			NumMessages:   47,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

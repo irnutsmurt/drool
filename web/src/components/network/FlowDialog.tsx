@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { errorMessage, formatDateTime } from "@/lib/format";
 import { ClassifyDialog } from "./ClassifyDialog";
-import { ClassBadge, CollectionBadge, DirectionLabel, PolicyBadge, ScopeBadge, classSource, ep, policyText, when } from "./labels";
-import { useNetFlow, useNetRules } from "./queries";
+import { ClassBadge, CollectionBadge, DirectionLabel, PolicyBadge, ScopeBadge, classSource, ep, noLookup, policyText, when } from "./labels";
+import { useNetFlow, useNetRules, type NetEnrichState } from "./queries";
 
 const enforcementText: Record<string, string> = {
   unmanaged: "DROOL does not manage this host's firewall",
@@ -45,8 +45,10 @@ export function FlowDialog({ id, onClose }: { id: number; onClose: () => void })
             {f.scope === "internal" && f.scope_range && <><dt className="text-muted">Internal range</dt><dd>{f.scope_range}</dd></>}
             {f.scope === "public" && (
               <>
-                <dt className="text-muted">Country</dt><dd>{f.geo?.country_code ? `${f.geo.country || f.geo.country_code} (${f.geo.country_code})` : "Unknown"}</dd>
-                <dt className="text-muted">Network</dt><dd>{f.geo?.asn ? `AS${f.geo.asn} ${f.geo.org}` : "Unknown"}</dd>
+                <dt className="text-muted">Country</dt>
+                <dd>{f.geo?.country_code ? `${f.geo.country || f.geo.country_code} (${f.geo.country_code})` : <GeoMissing state={f.enrichment_state} kind="country" />}</dd>
+                <dt className="text-muted">Network</dt>
+                <dd>{f.geo?.asn ? `AS${f.geo.asn} ${f.geo.org}` : <GeoMissing state={f.enrichment_state} kind="asn" />}</dd>
               </>
             )}
             <dt className="text-muted">Protocol</dt><dd>{f.protocol.toUpperCase()}</dd>
@@ -117,4 +119,12 @@ export function FlowDialog({ id, onClose }: { id: number; onClose: () => void })
       )}
     </Dialog>
   );
+}
+
+/** Why a public address shows no country or network owner: not looked up
+ * (lookups off, no database of that kind), or the database has no answer. */
+function GeoMissing({ state, kind }: { state: NetEnrichState; kind: "country" | "asn" }) {
+  const why = noLookup(state, kind);
+  if (!why) return <>Unknown <span className="text-xs text-muted">(the {kind === "country" ? "GeoIP country" : "ASN"} database has no answer for this address)</span></>;
+  return <span className="text-muted">Not looked up: {why} (<Link className="text-accent underline" to="/network?tab=settings">Collection and enrichment</Link>)</span>;
 }

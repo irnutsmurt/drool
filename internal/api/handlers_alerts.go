@@ -181,6 +181,63 @@ func (s *Server) handleGetAlert(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, d)
 }
 
+// quietOption is one health setting that would quiet an alert's condition
+// for good, and whether the caller may apply it: the same rules as PUT
+// /monitoring/health/overrides, which applies it (Needs names what's
+// missing).
+type quietOption struct {
+	monsvc.QuietOption
+	Allowed bool   `json:"allowed"`
+	Needs   string `json:"needs,omitempty"`
+}
+
+// handleAlertIgnoreOptions lists the ways to quiet an open alert's
+// condition for good (the Alerts page's "Ignore…", dogfooding correction
+// batch): health settings at the narrowest scope that does it, never a
+// manual close. Applying one is an ordinary override write.
+func (s *Server) handleAlertIgnoreOptions(w http.ResponseWriter, r *http.Request) {
+	if !s.alertsEnabled(w, r) || !s.monitorEnabled(w, r) {
+		return
+	}
+	ctx := r.Context()
+	a, err := s.d.Alerts.Get(ctx, r.PathValue("id"))
+	if err != nil {
+		writeProblem(w, r, s.alertProblem(r, err, "alert"))
+		return
+	}
+	out := struct {
+		AlertID string        `json:"alert_id"`
+		Options []quietOption `json:"options"`
+		Closes  string        `json:"closes,omitempty"`
+		Note    string        `json:"note,omitempty"`
+	}{AlertID: a.ID, Options: []quietOption{}}
+	if a.State == alerts.StateResolved {
+		out.Note = "This alert is closed: there is nothing to quiet."
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	s.d.Monitor.ApplyHealthConfig(ctx)
+	opts, note := s.d.Monitor.QuietOptions(ctx, a.HostID, a.HostName, a.Check, a.Subject)
+	p := principalFrom(ctx)
+	for _, o := range opts {
+		x := quietOption{QuietOption: o}
+		switch {
+		case !p.Can(auth.PermMonitoringManage):
+			x.Needs = string(auth.PermMonitoringManage)
+		case !p.Can(auth.PermMonitoringSettings) && s.d.Monitor.Weakens(ctx, o.Change.OverrideKey, o.Change.Fields):
+			x.Needs = string(auth.PermMonitoringSettings)
+		default:
+			x.Allowed = true
+		}
+		out.Options = append(out.Options, x)
+	}
+	out.Note = note
+	if len(opts) > 0 {
+		out.Closes = "The alert then closes as cleared by configuration, not as a recovery. The setting stays until someone changes it."
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) handleAcknowledgeAlert(w http.ResponseWriter, r *http.Request) {
 	if !s.alertsEnabled(w, r) {
 		return

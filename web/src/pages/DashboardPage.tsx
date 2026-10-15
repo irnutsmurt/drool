@@ -196,7 +196,7 @@ function AttentionCard({ managed }: { managed: Host[] }) {
     items.push({ key: "notify", tone: "warn", body: <><Link className={plainLink} to="/settings/notifications">{plural(a.destinations.failing, "notification destination")}</Link> failing: people may not be told about alerts</> });
   }
   const hostItems = managed.map((h) => ({ host: h, reasons: attentionReasons(h) })).filter((x) => x.reasons.length > 0);
-  const severe = (r: string[]) => r.some((x) => /changed|denied|offline|failed unit|full/.test(x));
+  const severe = (r: string[]) => r.some((x) => /changed|denied|offline|full/.test(x));
   hostItems.sort((x, y) => Number(severe(y.reasons)) - Number(severe(x.reasons)));
   for (const { host, reasons } of hostItems.slice(0, 8)) {
     items.push({ key: "host" + host.id, tone: severe(reasons) ? "danger" : "warn",
@@ -311,7 +311,7 @@ function UpdatesCard({ managed }: { managed: Host[] }) {
             <><span className="text-warn">{plural(reboot.length, "host")} need{reboot.length === 1 ? "s" : ""} a reboot</span>: {reboot.slice(0, 6).map((h, i) => <span key={h.id}>{i > 0 && ", "}<Link className={plainLink} to={`/hosts/${h.id}`}>{h.name}</Link></span>)}{reboot.length > 6 && " …"}</>
           )}
         </li>
-        <li>{failedUnits ? <span className="text-danger">{failedUnits} failed systemd unit{failedUnits === 1 ? "" : "s"} on {plural(failedHosts, "host")}</span> : <span className="text-muted">No failed systemd units reported.</span>}</li>
+        <li className="text-muted">{failedUnits ? <>{failedUnits} systemd unit{failedUnits === 1 ? " is" : "s are"} in the failed state on {plural(failedHosts, "host")}: only monitored services alert.</> : "No failed systemd units reported."}</li>
       </ul>
     </Card>
   );

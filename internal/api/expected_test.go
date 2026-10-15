@@ -140,12 +140,24 @@ func TestExpectedServiceState(t *testing.T) {
 		t.Fatalf("expectation removed: %+v", r)
 	}
 
-	// Ignored: the state is still collected and shown, never an issue.
+	// Automatic (no expected state): inventory only. A failed unit is shown
+	// as failed, never an issue (dogfooding correction batch).
 	report(h, failed("ModemManager.service"))
 	tick(h, 3*time.Minute)
-	if e.issuesOf(h, "active")["service_failed|ModemManager.service"].ID == "" {
-		t.Fatal("automatic: a failed unit is a problem")
+	if e.issuesOf(h, "active")["service_failed|ModemManager.service"].ID != "" {
+		t.Fatal("automatic: a failed unit nobody monitors raised an issue")
 	}
+	if r := row(h, "ModemManager.service"); r.State != "failed" || r.Monitored || r.Health != "unmonitored" || !strings.Contains(r.HealthNote, "not monitored") {
+		t.Fatalf("automatic, failed: %+v", r)
+	}
+	// Monitored for every host, it is a problem; ignored, the issue clears.
+	expect("global", "", "ModemManager.service", "running")
+	tick(h, 2*time.Minute)
+	if i := e.issuesOf(h, "active")["service_failed|ModemManager.service"]; i.ID == "" || i.Severity != "critical" {
+		t.Fatalf("expected running for every host, failed: %+v", e.issuesOf(h, "active"))
+	}
+
+	// Ignored: the state is still collected and shown, never an issue.
 	expect("global", "", "ModemManager.service", "ignored")
 	if r := e.issuesOf(h, "resolved")["service_failed|ModemManager.service"]; r.Resolution != "reconfigured" || !strings.Contains(r.ResolutionNote, "ignored (set for every host)") {
 		t.Fatalf("ignored: %+v", r)

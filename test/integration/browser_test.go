@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -99,6 +100,37 @@ func TestBrowser(t *testing.T) {
 	t.Logf("browser tests (%s):\n%s", time.Since(start).Round(time.Second), out)
 	if err != nil {
 		t.Fatalf("browser tests failed: %v (screenshots in %s)", err, shots)
+	}
+	// Country and network owner without their databases (dogfooding
+	// correction batch): the ASN database removed, then the country one;
+	// the browser checks what Network Activity says each time. Last: these
+	// change what every other test sees.
+	if slices.Contains(files, "network") {
+		geo := filepath.Join(ctl.dataDir, "geoip")
+		for _, phase := range []struct{ remove, state string }{{"test-asn.mmdb", "country"}, {"test-country.mmdb", "none"}} {
+			if err := os.Remove(filepath.Join(geo, phase.remove)); err != nil {
+				t.Fatal(err)
+			}
+			ctl.must(t, "POST", "/api/v1/network/enrichment/reload", nil, nil)
+			cmd := exec.Command("node", "--test", "e2e/network-enrichment.test.mjs")
+			cmd.Dir = filepath.Join(root, "web")
+			cmd.Env = append(os.Environ(), "DROOL_E2E_URL="+ctl.base(), "DROOL_E2E_USER="+adminUser, "DROOL_E2E_PASSWORD="+adminPassword,
+				"CHROME="+chrome, "DROOL_E2E_SHOTS="+shots, "DROOL_E2E_ENRICH="+phase.state)
+			out, err := cmd.CombinedOutput()
+			t.Logf("enrichment without %s:\n%s", phase.remove, out)
+			if err != nil {
+				t.Fatalf("enrichment browser test (%s): %v", phase.state, err)
+			}
+		}
+		writeTestGeoIP(t, geo)
+		ctl.must(t, "POST", "/api/v1/network/enrichment/reload", nil, nil)
+	}
+	// The addhost test removed its host with "Clean up DROOL access": on
+	// the container, looked at independently, DROOL's account is gone and
+	// the setup account stays (dogfooding correction batch).
+	if slices.Contains(files, "addhost") {
+		waitFor(t, 90*time.Second, "DROOL's account gone from acct-browser", func() bool { return accountLeft(t, acct) == "" })
+		expect(t, strings.Contains(acct.exec(t, "getent passwd pwuser"), "pwuser:"), "the setup account was removed")
 	}
 }
 
@@ -211,6 +243,9 @@ func writeTestFlows(t *testing.T, addrs map[string]string) {
 		}
 	}
 	add("web-1", "out", "tcp", "2a00:1450:4001:82a::200e", 443, "curl", 12, -7200, -40)
+	// A public address the test databases have no answer for: genuinely
+	// unknown (dogfooding correction batch).
+	add("web-1", "out", "tcp", "49.12.200.77", 443, "curl", 3, -3600, -60)
 	add("web-1", "out", "tcp", addrs["server-a"], 8080, "nginx", 4210, -10*86400, -10)
 	add("server-a", "in", "tcp", addrs["web-1"], 8080, "app", 4188, -10*86400, -12)
 	add("server-a", "out", "tcp", addrs["server-b"], 5432, "app", 912, -9*86400, -30)

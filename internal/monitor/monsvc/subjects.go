@@ -1,6 +1,7 @@
 package monsvc
 
 import (
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -229,7 +230,7 @@ func hostSubjects(st *monitor.State, r *storage.Report, units []ServiceRow, watc
 		}
 	}
 	for _, u := range units {
-		if watched[u.Name] || activeUnits[u.Name] || u.Notable && u.State == "failed" {
+		if watched[u.Name] || activeUnits[u.Name] {
 			out = append(out, unitSubject(u.Name))
 		}
 	}
@@ -253,6 +254,10 @@ func hostSubjects(st *monitor.State, r *storage.Report, units []ServiceRow, watc
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Kind < out[j].Kind })
 	return out
 }
+
+// unitNameRe is a systemd unit name: no spaces or slashes, with its type
+// suffix (nginx.service, getty@tty1.service, backup.timer).
+var unitNameRe = regexp.MustCompile(`^[A-Za-z0-9:_.@\\-]{1,250}\.[a-z]{2,10}$`)
 
 func unitSubject(u string) Subject {
 	return Subject{Key: "unit:" + u, Kind: SubjectService, Label: u, Identity: "systemd unit name", Strength: IdentityStable, Issue: u}
@@ -296,6 +301,9 @@ func validSubjectKey(check, key string) bool {
 	spec, ok := Spec(check)
 	if !ok || spec.Subject == "" {
 		return false
+	}
+	if spec.Subject == SubjectService {
+		return unitNameRe.MatchString(strings.TrimPrefix(key, "unit:")) && strings.HasPrefix(key, "unit:")
 	}
 	for _, p := range pre[spec.Subject] {
 		if strings.HasPrefix(key, p) && len(key) > len(p) {

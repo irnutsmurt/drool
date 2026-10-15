@@ -56,8 +56,10 @@ const (
 
 var fieldOrder = []string{FieldExpected, FieldEnabled, FieldWarning, FieldCritical, FieldDuration, FieldClear, FieldClearDuration, FieldIntervals}
 
-// Expected service states (FieldExpected). Without a setting a unit is
-// judged automatically: failed is a problem, and stopped is fine.
+// Expected service states (FieldExpected). Monitoring a service is
+// opt-in (dogfooding correction batch): without a setting a unit is
+// inventory only, its state shown and never a health issue. Running or
+// stopped means it is monitored.
 const (
 	ExpectAuto    = 0
 	ExpectRunning = 1 // stopped (or not installed) is a problem; failed is critical
@@ -67,7 +69,7 @@ const (
 
 var expectNames = map[float64]string{ExpectRunning: "running", ExpectStopped: "stopped", ExpectIgnored: "ignored"}
 
-// ExpectName is an expected state's name ("" for automatic).
+// ExpectName is an expected state's name ("" for none: not monitored).
 func ExpectName(v float64) string { return expectNames[v] }
 
 // ExpectValue parses an expected state's name.
@@ -143,7 +145,7 @@ func fExpected() FieldSpec {
 	return FieldSpec{Name: FieldExpected, Label: "Expected state", Type: "choice", Min: ExpectRunning, Max: ExpectIgnored, Options: []FieldOption{
 		{Value: "running", Label: "Running", Help: "Stopped or missing is a problem; failed is critical."},
 		{Value: "stopped", Label: "Stopped", Help: "Running is a problem; stopped or failed is what you want."},
-		{Value: "ignored", Label: "Ignored", Help: "Its state stays visible but never raises a health issue or alert."},
+		{Value: "ignored", Label: "Ignored", Help: "Not monitored, even where a pack or every-host setting monitors it: its state stays visible but never raises a health issue or alert."},
 	}}
 }
 
@@ -171,10 +173,10 @@ var checkSpecs = []CheckSpec{
 	{ID: CheckProbe, Label: "Write/read probe", Category: "storage", Subject: SubjectProbe, Description: "The active write/read probe of a filesystem failed.",
 		Fields: []FieldSpec{fEnabled()}},
 	{ID: CheckServiceExpected, Label: "Expected state", Category: "services", Subject: SubjectService,
-		Description: "Whether a service should run. Without a setting DROOL judges it automatically: failed is a problem, stopped is fine. Set per host, or for a pack's hosts or every host.",
+		Description: "Whether DROOL monitors a service, and the state it should be in. Without a setting a service isn't monitored: its state is shown, never a health issue. Set per host, or for a pack's hosts or every host.",
 		Fields:      []FieldSpec{fExpected()}},
 	{ID: CheckServiceFailed, Label: "Service failed", Category: "services", Subject: SubjectService,
-		Description: "A unit that starts at boot, or is expected to run, stayed failed (not one expected stopped or ignored).", Fields: []FieldSpec{fEnabled(), fMin(FieldDuration, "Failed for at least")}},
+		Description: "A unit expected to run failed (a service nobody monitors never alerts).", Fields: []FieldSpec{fEnabled(), fMin(FieldDuration, "Failed for at least")}},
 	{ID: CheckServiceStopped, Label: "Service not running", Category: "services", Subject: SubjectService,
 		Description: "A unit expected to run stayed stopped (or isn't installed).", Fields: []FieldSpec{fEnabled(), fMin(FieldDuration, "Stopped for at least")}},
 	{ID: CheckServiceUnexpected, Label: "Service running unexpectedly", Category: "services", Subject: SubjectService,
@@ -848,8 +850,8 @@ func (p *policy) isWatched(host, unit string) bool {
 	return v == ExpectRunning
 }
 
-// expectedUnits lists the units with an expected state on a host (any
-// value but automatic), from any scope.
+// expectedUnits lists the units with an expected state on a host
+// (running, stopped or ignored), from any scope.
 func (p *policy) expectedUnits(host string) []string {
 	cand := map[string]bool{}
 	for k := range p.subj[host][CheckServiceExpected] {

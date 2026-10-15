@@ -54,7 +54,10 @@ test("host overview: headline tiles link to details; unknown is never zero", asy
   await go(`/hosts/${page.ids["nas-01"]}`);
   await waitText(page, "View monitoring");
   let t = await text(page);
-  for (const want of ["CPU", "Memory", "Storage", "Temperature", "Network", "Services", "Storage devices", "Active health issues", "5/6 healthy"]) {
+  // Services counts what is monitored (jellyfin and smbd, the fixture's);
+  // the failed backup.service nobody monitors is a note, not a problem.
+  for (const want of ["CPU", "Memory", "Storage", "Temperature", "Network", "Services", "Storage devices", "Active health issues",
+    "2/2 monitored as expected", "1 failed, not monitored."]) {
     assert.ok(t.includes(want), `host page shows ${want}`);
   }
   await click(page, "main a", "Storage devices");
@@ -114,7 +117,7 @@ test("services: filters, all units, history, watching", async () => {
   assert.deepEqual(page.errors, []);
 });
 
-test("services: expected state says why something alerts or doesn't; actions fit the unit and warn against its expected state", async () => {
+test("services: Monitor is the one control; failed but unmonitored never alerts; Customize… sets the rest; actions warn against it", async () => {
   const id = page.ids["nas-01"];
   await go(`/hosts/${id}/monitoring?tab=services`);
   await waitText(page, "jellyfin.service");
@@ -122,32 +125,58 @@ test("services: expected state says why something alerts or doesn't; actions fit
   await click(page, "label", "Show all units");
   await waitText(page, "plex.service");
   const row = (name) => page.$$eval("table tbody tr", (rs, n) => rs.find((r) => r.innerText.includes(n))?.innerText ?? "", name);
-  const sel = (unit) => `select[aria-label="Expected state of ${unit}"]`;
-  const expectState = async (unit, value) => {
-    await page.select(sel(unit), value);
-    await page.waitForNetworkIdle({ idleTime: 300 }).catch(() => {});
+  const box = (unit) => `input[type="checkbox"][aria-label="Monitor ${unit}"]`;
+  const monitored = (unit) => page.$eval(box(unit), (b) => b.checked);
+  const settle = () => page.waitForNetworkIdle({ idleTime: 300 }).catch(() => {});
+  const customize = async (unit, choice) => {
+    await click(page, `button[aria-label="Customize monitoring of ${unit}"]`, "Custom");
+    await page.waitForSelector('[data-testid="service-monitor"]');
+    await click(page, '[data-testid="service-monitor"] label', choice);
+    await click(page, '[data-testid="service-monitor"] button[type="submit"]', "Save");
+    await waitFor(page, async () => !(await page.$('[data-testid="service-monitor"]')), "customize closed");
+    await settle();
   };
-  // As the fixture has them (jellyfin.service is expected to run on nas-01).
-  const before = {};
-  for (const u of ["plex.service", "jellyfin.service", "backup.service"]) before[u] = await page.$eval(sel(u), (s) => s.value);
-  assert.equal(before["jellyfin.service"], "running", "the fixture's watched service is expected running");
+  // The table answers "what runs, and is it monitored": a Monitor box, no
+  // per-row policy editor.
+  assert.equal(await page.$$eval('table select[aria-label^="Expected state of"]', (s) => s.length), 0, "no expected-state dropdown per row");
+  const head = await page.$$eval("table thead th", (th) => th.map((x) => x.innerText.trim()));
+  assert.ok(head.includes("Monitor") && !head.includes("Expected"), "columns: " + head.join(", "));
+  // jellyfin.service is monitored by this host (the fixture's watched
+  // service): ticked, nothing more to say, not "customized".
+  assert.equal(await monitored("jellyfin.service"), true);
+  assert.match(await row("jellyfin.service"), /Expected to run \(set on this host\)/);
+  assert.doesNotMatch(await row("jellyfin.service"), /Customized/);
+  // backup.service failed, and nobody monitors it: shown as failed, says
+  // it doesn't alert, unticked.
+  assert.equal(await monitored("backup.service"), false);
+  assert.match(await row("backup.service"), /Failed/);
+  assert.match(await row("backup.service"), /Failed, but not monitored, so it doesn't alert/);
+  const alerts = (await api(page, "GET", `/alerts?view=open&host_id=${id}`)).body.items;
+  assert.ok(!alerts.some((a) => a.subject === "backup.service"), "an unmonitored failed service alerted");
+  await shot(page, "monitoring-services-monitor");
   try {
-    // plex.service is stopped and disabled: fine on its own. Expected to run
-    // on this host, it's a problem, and the row says why.
-    await expectState("plex.service", "running");
-    await waitFor(page, async () => (await row("plex.service")).includes("Not running, though expected to run (set on this host)"), "plex expected running");
+    // Ticking Monitor expects plex.service to run: stopped is then a problem.
+    await page.click(box("plex.service"));
+    await waitFor(page, async () => (await row("plex.service")).includes("Not running, though expected to run (set on this host)"), "plex monitored");
+    assert.equal(await monitored("plex.service"), true);
     // Its actions fit a stopped, disabled unit: no Stop, no Disable.
     await click(page, 'button[aria-label="Actions for plex.service"]', "Actions");
     await waitFor(page, async () => !!(await page.$('[data-testid="service-action"] [aria-label="Actions"]')), "actions");
     const offered = await page.$$eval('[data-testid="service-action"] [aria-label="Actions"] button', (bs) => bs.map((b) => b.getAttribute("aria-label")));
     assert.deepEqual(offered, ["Start plex.service", "Enable plex.service", "Enable & Start plex.service"]);
     await page.keyboard.press("Escape");
+    // Unticking takes the host's setting away again.
+    await page.click(box("plex.service"));
+    await waitFor(page, async () => !(await row("plex.service")).includes("expected to run"), "plex unmonitored");
+    assert.equal(await monitored("plex.service"), false);
 
-    // jellyfin.service runs and starts at boot. Expected stopped, running
-    // is the problem; restarting it would keep it running, and the
-    // confirmation says so before anything happens.
-    await expectState("jellyfin.service", "stopped");
+    // Customize… (the advanced path): jellyfin.service expected stopped.
+    // Running is then the problem; the row says so and is "customized".
+    await customize("jellyfin.service", "Monitor: expect it to be stopped");
     await waitFor(page, async () => (await row("jellyfin.service")).includes("Running, though expected to be stopped (set on this host)"), "jellyfin expected stopped");
+    assert.equal(await monitored("jellyfin.service"), true, "expected stopped is monitored");
+    assert.match(await row("jellyfin.service"), /expected stopped/);
+    assert.match(await row("jellyfin.service"), /Customized/);
     await click(page, 'button[aria-label="Actions for jellyfin.service"]', "Actions");
     await waitFor(page, async () => !!(await page.$('[data-testid="service-action"] [aria-label="Actions"]')), "actions");
     const jelly = await page.$$eval('[data-testid="service-action"] [aria-label="Actions"] button', (bs) => bs.map((b) => b.getAttribute("aria-label")));
@@ -159,23 +188,34 @@ test("services: expected state says why something alerts or doesn't; actions fit
     await click(page, '[data-testid="service-action"] button', "Back");
     await page.keyboard.press("Escape");
 
-    // backup.service failed; it's static, so there's nothing to enable, and
-    // the dialog says why. Ignored: still shown, never an alert.
+    // backup.service: static, so nothing to enable (the dialog says why);
+    // ignored on this host from Customize…: shown, never an alert.
     await click(page, 'button[aria-label="Actions for backup.service"]', "Actions");
     await waitFor(page, async () => !!(await page.$('[data-testid="action-note"]')), "action note");
     assert.match(await page.$eval('[data-testid="action-note"]', (e) => e.innerText), /Static: started by other units/);
-    const backup = await page.$$eval('[data-testid="service-action"] [aria-label="Actions"] button', (bs) => bs.map((b) => b.getAttribute("aria-label")));
-    assert.deepEqual(backup, ["Start backup.service"]);
     await page.keyboard.press("Escape");
-    await expectState("backup.service", "ignored");
+    await customize("backup.service", "Ignore it on this host");
     await waitFor(page, async () => (await row("backup.service")).includes("Ignored (set on this host): its state is shown, never a health issue or alert"), "backup ignored");
+    assert.match(await row("backup.service"), /ignored on this host/);
+    // The Monitored filter lists what is monitored.
+    await click(page, '[aria-label="Show services"] button', "Monitored");
+    await waitFor(page, async () => {
+      const rows = await page.$$eval("table tbody tr", (r) => r.map((x) => x.innerText));
+      return rows.length >= 1 && rows.some((r) => r.includes("jellyfin.service")) && !rows.some((r) => r.includes("backup.service"));
+    }, "monitored filter");
+    await click(page, '[aria-label="Show services"] button', "All");
     await shot(page, "monitoring-services-expected");
   } finally {
-    // Back to what the other tests expect.
-    for (const [u, v] of Object.entries(before)) if ((await page.$eval(sel(u), (s) => s.value)) !== v) await expectState(u, v);
+    // Back to what the other tests expect: jellyfin.service monitored by
+    // this host, backup.service and plex.service not.
+    await customize("jellyfin.service", "Monitor: expect it to run").catch(() => {});
+    await customize("backup.service", "Reset to inherited").catch(() => {});
+    if (await monitored("plex.service")) await page.click(box("plex.service"));
+    await settle();
   }
-  await waitFor(page, async () => !(await row("plex.service")).includes("expected to run"), "plex back to automatic");
-  await waitFor(page, async () => (await row("jellyfin.service")).includes("Expected to run (set on this host)"), "jellyfin expected to run again");
+  await waitFor(page, async () => (await row("jellyfin.service")).includes("Expected to run (set on this host)") && !(await row("jellyfin.service")).includes("Customized"),
+    "jellyfin monitored as before");
+  await waitFor(page, async () => !(await row("backup.service")).includes("Ignored"), "backup back to unmonitored");
   assert.deepEqual(page.errors, []);
 });
 

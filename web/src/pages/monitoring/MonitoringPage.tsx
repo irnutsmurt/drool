@@ -166,7 +166,10 @@ export function MonitoringPage() {
                   <td data-label="Memory" className="px-2 py-1.5 tabular-nums">{fmtPct(r.memory)}</td>
                   <td data-label="Disk" className="px-2 py-1.5 tabular-nums">{fmtPct(r.disk)}{r.disk_mount && <span className="text-xs text-muted"> {r.disk_mount}</span>}</td>
                   <td data-label="Temperature" className="px-2 py-1.5 tabular-nums">{fmtTemp(r.temperature)}</td>
-                  <td data-label="Services" className="px-2 py-1.5 tabular-nums">{r.services === 0 ? "—" : r.failed_services ? <span className="text-danger">✕ {r.failed_services} failed</span> : `${r.services} ok`}</td>
+                  <td data-label="Services" className="px-2 py-1.5 tabular-nums">
+                    {r.services === 0 ? "—" : r.service_issues ? <span className="text-danger">✕ {r.service_issues} monitored {r.service_issues === 1 ? "problem" : "problems"}</span> : `${r.services} listed`}
+                    {r.failed_services > 0 && !r.service_issues && <div className="text-xs text-muted">{r.failed_services} failed, not alerting</div>}
+                  </td>
                   <td data-label="Storage devices" className="px-2 py-1.5">{r.storage ? <StatusBadge status={deviceHealth[r.storage]?.status ?? "unknown"}>{deviceHealth[r.storage]?.word ?? r.storage}</StatusBadge> : "—"}</td>
                   <td data-label="Updated" className="px-2 py-1.5 text-xs text-muted">{r.updated_at ? fmtSince(r.updated_at) : "never"}</td>
                 </tr>

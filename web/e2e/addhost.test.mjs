@@ -83,3 +83,37 @@ test("adding a host with a dedicated DROOL SSH account", { skip: !spec && "needs
   assert.ok(!creds.includes("setup-acct-browser") && !creds.includes("for setup only"), creds);
   assert.deepEqual(page.errors, []);
 });
+
+test("removing that host cleans up DROOL's account on it", { skip: !spec && "needs DROOL_E2E_ACCOUNT_HOST" }, async () => {
+  const hosts = await page.evaluate(async () => (await (await fetch("/api/v1/hosts")).json()).items);
+  const h = hosts.find((x) => x.name === "acct-browser");
+  assert.ok(h, "acct-browser was added");
+  await page.goto(`${base}/hosts/${h.id}`, { waitUntil: "networkidle0" });
+  await click(page, "main button", "Remove host…");
+  const dialog = () => page.$eval('[data-testid="remove-host"]', (e) => e.innerText).catch(() => "");
+  await waitFor(page, async () => /Clean up DROOL access/.test(await dialog()), "the removal plan", 60000);
+  const plan = await dialog();
+  for (const want of ["Clean up DROOL access and remove the host (recommended)", "✓ DROOL's SSH account drool", "/etc/sudoers.d/drool-account-drool",
+    "Remove from DROOL only", "Nothing on acct-browser changes", "can't watch the end of it", "firewall rules"]) {
+    assert.ok(plan.includes(want), "removal plan lacks: " + want);
+  }
+  // The recommended choice is chosen.
+  assert.equal(await page.$eval('[data-testid="remove-host"] input[type="radio"]:checked', (r) => r.closest("label").innerText.split("\n")[0]),
+    "Clean up DROOL access and remove the host (recommended)");
+  await shot(page, "remove-host-plan");
+  await sleep(3500); // past the test controller's re-authentication window
+  await click(page, '[data-testid="remove-host"] button', "Clean up and remove");
+  await page.waitForSelector('[data-testid="reauth-dialog"]');
+  await fill(page, "Password", adminPassword);
+  await click(page, '[data-testid="reauth-dialog"] button', "Confirm");
+  await waitFor(page, async () => /is removed from DROOL/.test(await dialog()), "the result", 120000);
+  const done = await dialog();
+  assert.match(done, /SSH account: initiated\./);
+  assert.match(done, /Cleanup initiated/);
+  assert.match(done, /can't verify the final state through that account/);
+  await shot(page, "remove-host-done");
+  await click(page, '[data-testid="remove-host"] button', "Done");
+  await waitFor(page, async () => new URL(page.url()).pathname === "/hosts", "back on the host list");
+  assert.ok(!(await text(page)).includes("acct-browser"), "the host is still listed");
+  assert.deepEqual(page.errors, []);
+});

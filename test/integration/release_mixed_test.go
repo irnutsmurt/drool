@@ -134,7 +134,10 @@ func TestMixedVersionShepherds(t *testing.T) {
 	missing := func(n *node) string { return strings.Join(compat(t, n.h.ID).Identity.Compatibility.Missing, "; ") }
 	status := func(n *node) string { return compat(t, n.h.ID).Identity.Compatibility.Status }
 	expect(t, status(m15ssh) == "reduced" && strings.Contains(missing(m15ssh), "restored controller"), "M15: %s (%s)", status(m15ssh), missing(m15ssh))
-	expect(t, status(m16n) == "compatible" && status(cur) == "compatible", "M16 %s, current %s", status(m16n), status(cur))
+	// M16 works, without removing itself when asked (dogfooding correction
+	// batch): told, so it can be updated or removed over SSH.
+	expect(t, status(m16n) == "reduced" && strings.Contains(missing(m16n), "removing itself") && status(cur) == "compatible", "M16 %s (%s), current %s",
+		status(m16n), missing(m16n), status(cur))
 	t.Logf("before the restore: M15 %s (%s), M16 %s, current %s", status(m15ssh), missing(m15ssh), status(m16n), status(cur))
 
 	// Back up, restore: a new controller epoch. The current and M16

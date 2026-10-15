@@ -28,6 +28,12 @@ type accountHost struct {
 	ctlPub   ssh.PublicKey
 	mu       sync.Mutex
 	accounts map[string]bool
+	// The removal cleanup (dogfooding correction batch): what the marker
+	// proves ("" owned, else the refusal code the script reports), a start
+	// that fails after the check passed, and the cleanups started.
+	marker    string
+	failStart bool
+	cleanups  int
 }
 
 func newAccountHost(t *testing.T, controllerKey string) *accountHost {
@@ -52,6 +58,9 @@ func newAccountHost(t *testing.T, controllerKey string) *accountHost {
 				return "", "", 0
 			}
 		}
+		if account && cmd == "sudo -n -- sh -s" && isCleanup(string(stdin)) {
+			return ah.cleanup(user, string(stdin))
+		}
 		if account && cmd == "id -un" {
 			return user + "\n", "", 0
 		}
@@ -61,6 +70,31 @@ func newAccountHost(t *testing.T, controllerKey string) *accountHost {
 		return linuxExec(cmd, stdin)
 	})
 	return ah
+}
+
+// isCleanup tells the account cleanup's script (check or start) from the
+// setup's.
+func isCleanup(s string) bool { return strings.Contains(s, `kv owned "$U"`) }
+
+// cleanup answers the cleanup script as the host would: the marker proves
+// the account (or the refusal set), check only reports, start stages the
+// helper. The account is then gone: DROOL's key no longer works for it.
+func (ah *accountHost) cleanup(user, s string) (string, string, int) {
+	ah.mu.Lock()
+	defer ah.mu.Unlock()
+	start := strings.Contains(s, "DROOL_ACCOUNT_CLEANUP")
+	if ah.marker != "" {
+		return "@@ERR " + ah.marker + " the account " + user + " isn't provably DROOL's (" + ah.marker + ")\n", "", 1
+	}
+	if start && ah.failStart {
+		return "@@owned " + user + "\n@@uid 998\n@@ERR start systemd couldn't start the cleanup helper\n", "", 1
+	}
+	if !start {
+		return "@@owned " + user + "\n@@uid 998\n@@ok 1\n", "", 0
+	}
+	ah.cleanups++
+	delete(ah.accounts, user)
+	return "@@owned " + user + "\n@@uid 998\n@@started process 4242 in its own session\n@@helper /run/drool-account-cleanup.x1/cleanup.sh\n@@done 1\n", "", 0
 }
 
 func (ah *accountHost) script(s string) (string, string, int) {

@@ -93,6 +93,54 @@ func (s *Service) SetWatchedTx(ctx context.Context, tx *sql.Tx, hostID string, w
 	return changed, nil
 }
 
+// MonitorPlan works out what ticking (on) or unticking Monitor for a unit
+// on a host changes: the host's own expected state for it, as the key and
+// the fields it gets (empty: the host's own setting goes, and with it the
+// override). noop: the unit is already monitored (on) or not (off).
+//
+//   - on: if what the host inherits (a pack, every host) monitors the unit,
+//     the host's own setting goes; otherwise it becomes "running";
+//   - off: if what the host inherits monitors the unit, the host makes an
+//     exception, "ignored"; otherwise its own setting goes.
+//
+// Monitored means expected running or stopped: unticking never reveals an
+// inherited expectation again, and ticking never hides one.
+func (s *Service) MonitorPlan(ctx context.Context, hostID, unit string, on bool) (k OverrideKey, fields Fields, noop bool) {
+	p := s.eval.current(ctx)
+	k = OverrideKey{Scope: ScopeHost, HostID: hostID, Check: CheckServiceExpected, Subject: "unit:" + unit}
+	monitored := func(v *float64) bool { return v != nil && (*v == ExpectRunning || *v == ExpectStopped) }
+	eff := p.resolve(hostID, CheckServiceExpected, unitCtx(unit), nil, FieldExpected, levelAll)
+	inh := p.resolve(hostID, CheckServiceExpected, unitCtx(unit), nil, FieldExpected, levelSubject)
+	if monitored(eff.Value) == on {
+		return k, nil, true
+	}
+	fields = Fields{}
+	switch {
+	case on && !monitored(inh.Value):
+		fields[FieldExpected] = ExpectRunning
+	case !on && monitored(inh.Value):
+		fields[FieldExpected] = ExpectIgnored
+	}
+	return k, fields, false
+}
+
+// ServiceRowOf returns one unit of a host as the services list shows it
+// (false when the host doesn't report it).
+func (s *Service) ServiceRowOf(ctx context.Context, hostID, unit string) (ServiceRow, bool) {
+	units, err := s.Services(ctx, hostID)
+	if err != nil {
+		return ServiceRow{}, false
+	}
+	pol := s.eval.current(ctx)
+	for _, u := range units {
+		if u.Name == unit {
+			s.judgeService(pol, hostID, &u)
+			return u, true
+		}
+	}
+	return ServiceRow{}, false
+}
+
 // SaveHostSettingsTx stores a host's settings (the caller audits; expected
 // states go through SetWatchedTx).
 func SaveHostSettingsTx(ctx context.Context, tx *sql.Tx, hostID string, h HostSettings, by string, now int64) error {
@@ -132,12 +180,24 @@ type ServiceRow struct {
 	Notable bool   `json:"notable"` // in the default view
 	Watched bool   `json:"watched"` // expected to run (the old "watched")
 	// Expected is the unit's expected state ("running", "stopped",
-	// "ignored"; "" automatic), and ExpectedSource where it comes from.
+	// "ignored"; "" none: not monitored), and ExpectedSource where it comes
+	// from.
 	Expected       string          `json:"expected"`
 	ExpectedSource *ExpectedSource `json:"expected_source,omitempty"`
+	// Monitored: DROOL alerts on its state (expected running or stopped).
+	// Monitoring a service is opt-in (dogfooding correction batch).
+	Monitored bool `json:"monitored"`
+	// Inherited is what the host gets without its own setting for the
+	// unit (from a pack or every host; "" none), and InheritedSource
+	// says from where: what unticking Monitor has to make an exception to.
+	Inherited       string `json:"inherited"`
+	InheritedSource string `json:"inherited_source,omitempty"`
+	// Customized: this host changes the unit's health checks (turned off,
+	// another duration). Its expected state is described on its own.
+	Customized bool `json:"customized"`
 	// Health says whether its state is a health problem now (problem |
-	// expected | ignored | ok | unknown) and HealthNote why it alerts or
-	// doesn't.
+	// expected | ignored | unmonitored | ok | unknown) and HealthNote why
+	// it alerts or doesn't.
 	Health     string `json:"health"`
 	HealthNote string `json:"health_note,omitempty"`
 	// Actions DROOL offers for it now (services.Actions), and why others
@@ -187,7 +247,7 @@ func (s *Service) Services(ctx context.Context, hostID string) ([]ServiceRow, er
 }
 
 // Service filters.
-var ServiceFilters = []string{"all", "running", "stopped", "failed", "enabled", "disabled"}
+var ServiceFilters = []string{"all", "running", "stopped", "failed", "enabled", "disabled", "monitored"}
 
 // ServicesView is the service inventory page.
 type ServicesView struct {
@@ -230,6 +290,9 @@ func (s *Service) ServiceList(ctx context.Context, hostID, filter string, allUni
 		if u.FileState == "disabled" {
 			v.Counts["disabled"]++
 		}
+		if u.Monitored {
+			v.Counts["monitored"]++
+		}
 		keep := false
 		switch filter {
 		case "", "all":
@@ -240,6 +303,8 @@ func (s *Service) ServiceList(ctx context.Context, hostID, filter string, allUni
 			keep = enabled
 		case "disabled":
 			keep = u.FileState == "disabled"
+		case "monitored":
+			keep = u.Monitored
 		}
 		if keep {
 			v.Units = append(v.Units, u)
@@ -254,6 +319,7 @@ func (s *Service) ServiceList(ctx context.Context, hostID, filter string, allUni
 func (s *Service) judgeService(pol *policy, hostID string, u *ServiceRow) {
 	exp, src := pol.expected(hostID, u.Name)
 	u.Expected, u.Watched = ExpectName(exp), exp == ExpectRunning
+	u.Monitored = exp == ExpectRunning || exp == ExpectStopped
 	from := ExpectSource(src)
 	if exp != ExpectAuto || src.Conflict != nil {
 		es := &ExpectedSource{Kind: src.Source.Kind, Label: from}
@@ -263,6 +329,16 @@ func (s *Service) judgeService(pol *policy, hostID string, u *ServiceRow) {
 			}
 		}
 		u.ExpectedSource = es
+	}
+	if inh := pol.resolve(hostID, CheckServiceExpected, unitCtx(u.Name), nil, FieldExpected, levelSubject); inh.Value != nil {
+		u.Inherited, u.InheritedSource = ExpectName(*inh.Value), ExpectSource(inh)
+	} else if inh.Conflict != nil {
+		u.InheritedSource = ExpectSource(inh)
+	}
+	for _, c := range []string{CheckServiceFailed, CheckServiceStopped, CheckServiceUnexpected} {
+		if len(pol.subj[hostID][c]["unit:"+u.Name]) > 0 {
+			u.Customized = true
+		}
 	}
 	su := services.Unit{Name: u.Name, Active: u.Active, Sub: u.Sub, FileState: u.FileState, Load: u.Load, Transient: u.Transient}
 	u.Actions, u.ActionNote = services.Actions(su)
@@ -282,12 +358,12 @@ func (s *Service) judgeService(pol *policy, hostID string, u *ServiceRow) {
 		u.Health, u.HealthNote = alerting(on(CheckServiceUnexpected), "Running, though expected to be stopped ("+from+"): a health issue once that lasts.")
 	case exp == ExpectStopped:
 		u.Health, u.HealthNote = "expected", "Not alerting: expected to be stopped ("+from+")."
-	case u.State == "failed" && u.Notable:
-		u.Health, u.HealthNote = alerting(on(CheckServiceFailed), "Failed: a health issue. If it's meant to stay off, set its expected state to Stopped.")
 	case src.Conflict != nil:
-		u.Health, u.HealthNote = "ok", "Packs disagree about its expected state, so DROOL judges it automatically: set it on this host, or give one pack a higher priority."
+		u.Health, u.HealthNote = "unmonitored", "Not monitored: packs disagree about it. Set it on this host, or give one pack a higher priority."
+	case u.State == "failed":
+		u.Health, u.HealthNote = "unmonitored", "Failed, but not monitored, so it doesn't alert. Tick Monitor if it should run."
 	default:
-		u.Health = "ok"
+		u.Health = "unmonitored"
 	}
 }
 
@@ -604,29 +680,57 @@ func (s *Service) Overview(ctx context.Context, hostID string) (*HostOverview, e
 		nt.Detail = fmt.Sprintf("%d of %d physical interfaces up", up, phys)
 	}
 	o.Tiles = append(o.Tiles, nt)
-	// Services.
+	// Services: the monitored ones (an expected state of running or
+	// stopped) and whether they are as expected. A failed service nobody
+	// monitors is in the inventory, never a warning here.
 	units, _ := s.Services(ctx, hostID)
-	notable, failed := 0, 0
 	pol := s.eval.current(ctx)
+	monitored, failedFree := 0, 0
+	here := map[string]bool{}
 	for _, u := range units {
-		if u.Notable || pol.isWatched(hostID, u.Name) {
-			notable++
-			if u.State == "failed" {
-				failed++
-			}
+		here[u.Name] = true
+		if exp, _ := pol.expected(hostID, u.Name); exp == ExpectRunning || exp == ExpectStopped {
+			monitored++
+		} else if u.State == "failed" {
+			failedFree++
 		}
 	}
-	svc := Tile{Key: "services", Label: "Services", Status: sevOf(CheckServiceFailed, CheckServiceStopped)}
+	for _, w := range pol.expectedRunning(hostID) {
+		if !here[w] {
+			monitored++ // expected to run, not installed
+		}
+	}
+	bad := map[string]bool{}
+	for _, i := range issues {
+		if i.Check == CheckServiceFailed || i.Check == CheckServiceStopped || i.Check == CheckServiceUnexpected {
+			bad[i.Subject] = true
+		}
+	}
+	svc := Tile{Key: "services", Label: "Services", Status: sevOf(CheckServiceFailed, CheckServiceStopped, CheckServiceUnexpected)}
 	switch {
 	case len(units) == 0:
 		svc.Text, svc.Status = "No inventory", "unknown"
 		var note string
 		s.d.Store.Reader.QueryRowContext(ctx, `SELECT services_note FROM mon_current WHERE host_id = ?`, hostID).Scan(&note)
 		svc.Detail = note
+	case monitored == 0:
+		svc.Text = "None monitored"
+		if svc.Status == "ok" {
+			svc.Status = "info"
+		}
+		svc.Detail = "Tick Monitor on a service to be told when it stops or fails."
 	default:
-		svc.Text = fmt.Sprintf("%d/%d healthy", notable-failed, notable)
-		if failed > 0 && svc.Status == "ok" {
-			svc.Status = "warning"
+		svc.Text = fmt.Sprintf("%d/%d monitored as expected", max(0, monitored-len(bad)), monitored)
+	}
+	if failedFree > 0 && len(units) > 0 {
+		note := fmt.Sprintf("%d failed, not monitored.", failedFree)
+		if failedFree == 1 {
+			note = "1 failed, not monitored."
+		}
+		if monitored == 0 {
+			svc.Detail = note + " " + svc.Detail
+		} else {
+			svc.Detail = note
 		}
 	}
 	o.Tiles = append(o.Tiles, svc)

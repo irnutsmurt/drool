@@ -47,7 +47,7 @@ export function StatusLines({ host }: { host: Host }) {
           </Row>
           <Row label="Failed units">
             {h.failed_units == null ? <span className="text-muted">n/a (systemd not running)</span>
-              : h.failed_units === 0 ? "none" : <span className="text-danger">{h.failed_unit_names.join(", ")}</span>}
+              : h.failed_units === 0 ? "none" : <>{h.failed_unit_names.join(", ")} <span className="text-muted">(alerts only when monitored)</span></>}
           </Row>
         </>)}
         <Row label="Reboot">
@@ -185,8 +185,8 @@ export function ServicesCard({ host }: { host: Host }) {
             </ul>
           )}
           {full.failed_units.length > 0 && (
-            <p className="text-sm text-danger">
-              Failed:{" "}
+            <p className="text-sm">
+              Failed (a failed unit alerts only when its service is monitored):{" "}
               {full.failed_units.map((u, i) => (
                 <span key={u}>
                   {i > 0 && ", "}

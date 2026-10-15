@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cx } from "@/components/ui/cx";
 import { errorMessage, formatAgo } from "@/lib/format";
-import { CollectionBadge, DirectionLabel, PolicyBadge } from "./labels";
+import { CollectionBadge, DirectionLabel, noLookup, PolicyBadge } from "./labels";
 import { FlowTable } from "./FlowTable";
 import { nk, useHostNetwork, useNetFlows, type NetFilter } from "./queries";
 
@@ -58,7 +58,9 @@ export function HostNetworkPanel({ hostId }: { hostId: string }) {
               {hn.collection.snapshot_at && <> · last snapshot {formatAgo(hn.collection.snapshot_at)}</>}
               {hn.collection.events_lost > 0 && <> · <span className="text-warn">⚠ some new-connection events were lost (counts may be low)</span></>}
               {hn.collection.forwarded > 0 && <> · {hn.collection.forwarded} routed connection(s) through this host not shown (containers, routing)</>}
-              {!hn.enrichment && <> · country and network: not available (no GeoIP/ASN database)</>}
+              {noLookup(hn.enrichment_state, "country") && noLookup(hn.enrichment_state, "asn")
+                ? <> · country and network owner: not looked up ({noLookup(hn.enrichment_state, "country")}, {noLookup(hn.enrichment_state, "asn")})</>
+                : (noLookup(hn.enrichment_state, "country") || noLookup(hn.enrichment_state, "asn")) && <> · {noLookup(hn.enrichment_state, "country") ?? noLookup(hn.enrichment_state, "asn")}</>}
             </p>
           )}
           {hn && <Listening hn={hn} />}

@@ -45,6 +45,12 @@ type Options struct {
 	// (the runaway test build).
 	Monitor      *agentmon.Options
 	MonitorExtra func(ctx context.Context)
+	// StartRemoval starts the self-removal helper script (default: a
+	// transient systemd unit, or a process in its own session); RemovalDir
+	// is where its directory goes (default /run). Tests replace both: the
+	// real helper removes this machine's Shepherd.
+	StartRemoval func(path string) (how string, err error)
+	RemovalDir   string
 }
 
 // Agent is one running agent.
@@ -82,6 +88,8 @@ type Agent struct {
 	diag          *diagHandler
 	bgRun         hostexec.Runner // background package checks: a low-priority scope
 	monRun        hostexec.Runner // monitoring scripts: inside the agent's budget
+
+	removal *removal // this agent is removing itself (uninstall.go)
 }
 
 // LoadCeiling reads and checks /etc/drool/agent.yaml. When the agent runs

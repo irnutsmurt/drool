@@ -10,7 +10,7 @@ import (
 
 func TestJudge(t *testing.T) {
 	now := time.Now()
-	all := []string{"firewall-1", "netmon-1", "monitor-1", "query-1", "epoch-1"}
+	all := []string{"firewall-1", "netmon-1", "monitor-1", "query-1", "epoch-1", "uninstall-1"}
 	ok := db.AgentIdentity{Status: "active", Compatible: 1, AgentVersion: "v1.2.0", CertNotAfter: now.Add(24 * time.Hour).UnixMilli()}
 	grace := 180 * 24 * time.Hour
 	for _, c := range []struct {
@@ -25,9 +25,13 @@ func TestJudge(t *testing.T) {
 		{"all good", nil, all, nil, "", CompatOK, "compatible"},
 		{"update available", nil, all, nil, "v1.3.0", CompatUpdateAvailable, "v1.3.0"},
 		{"missing an optional feature", nil, all[:4], nil, "", CompatReduced, "moving to a restored controller's epoch"},
-		// What an M15 Shepherd announces: everything it can do, so only
-		// the restore transition is missing (it answers queries too).
-		{"an M15 Shepherd", nil, all[:3], nil, "", CompatReduced, "works, without moving to a restored controller's epoch (version"},
+		// What an M15 Shepherd announces: everything it can do, so the
+		// restore transition and removing itself are missing (it answers
+		// queries too).
+		{"an M15 Shepherd", nil, all[:3], nil, "", CompatReduced, "works, without moving to a restored controller's epoch, removing itself when DROOL asks (version"},
+		// A Shepherd from before the dogfooding correction batch: it works,
+		// without removing itself (SSH or a manual removal instead).
+		{"a Shepherd that can't remove itself", nil, all[:5], nil, "", CompatReduced, "works, without removing itself when DROOL asks (version"},
 		{"missing a needed feature", nil, all[1:], map[string]string{"firewall-1": "its firewall is managed"}, "", CompatUpdateRequired, "firewall management (its firewall is managed)"},
 		{"from before features", nil, nil, nil, "", CompatReduced, "before these were announced"},
 		{"protocol", func(i db.AgentIdentity) db.AgentIdentity {

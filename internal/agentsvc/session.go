@@ -53,6 +53,7 @@ type Session struct {
 	quarantined bool
 	pong        chan struct{}
 	opWait      map[string]chan *pb.OpStatus
+	removeWait  map[string]chan *pb.SelfUninstallResult
 	done        chan struct{}
 	closeReason string
 }
@@ -370,6 +371,8 @@ func (s *Service) Session(stream pb.Agent_SessionServer) error {
 			s.onConfigAck(ctx, se, msg.ConfigAck)
 		case *pb.AgentMessage_EpochTransition:
 			se.onTransitionResult(msg.EpochTransition)
+		case *pb.AgentMessage_SelfUninstall:
+			se.onSelfUninstallResult(msg.SelfUninstall)
 		}
 	}
 }

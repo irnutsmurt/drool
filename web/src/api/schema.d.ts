@@ -2269,8 +2269,42 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Remove the host's Shepherd over its SSH path: stop and disable it, remove its service, programs, configuration, identity (private key) and state, revoke its identity and the host's unused enrollment tokens, forget its capability narrowing, and manage the host over SSH; then check that nothing of it is left and no session remains. Needs agents.manage and hosts.write and a recent sign-in (high-impact). Refused (409, nothing changed) when the host has no working SSH path. `outcome` is uninstalled only when confirmed; partial lists what is left; unknown means the removal didn't report back and nothing changed in DROOL. Running it again continues. */
+        /** @description Remove the host's Shepherd. `shepherd` (the default when the Shepherd is connected and announces uninstall-1): the Shepherd removes itself, no SSH needed; DROOL sends a typed request over its session, it starts a detached helper and answers, and DROOL revokes its identity and the host's unused enrollment tokens, forgets its capability narrowing and manages the host over SSH (or by nothing, when it has no SSH access); `outcome` is initiated (DROOL can't look), or, when SSH works, uninstalled (verified) or partial after DROOL looked over SSH. `ssh` (when the Shepherd can't be asked): DROOL removes it over SSH as root, then the same controller changes; uninstalled only when confirmed. `forget`: DROOL only revokes and forgets it; nothing on the host changes. unknown means the host or the Shepherd didn't report back and nothing changed in DROOL; refused, that the Shepherd refused. Needs agents.manage and hosts.write and a recent sign-in (high-impact). Refused (409, nothing changed) when the chosen way doesn't work now. Running it again continues. */
         post: operations["uninstallAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/removal/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description What removing the host with "Clean up DROOL access" can do: its Shepherd and the SSH account DROOL created there (proven DROOL's on the host), each checked; nothing changes. Needs hosts.write. */
+        post: operations["planHostRemoval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/removal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Remove what DROOL installed on the host (its Shepherd removes itself; DROOL's SSH account is removed by a helper its last session starts), then the host from DROOL. Refused (409, nothing changed) when a part can't start; if a part fails once another ran, the host stays and the result says what was done. DELETE /hosts/{id} removes the host from DROOL only. Needs hosts.write and a recent sign-in (high-impact). */
+        post: operations["removeHostWithCleanup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3242,6 +3276,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/hosts/{id}/monitoring/services/{unit}/monitor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Tick or untick Monitor for one service on a host.
+         * @description Changes the host's own expected state for the unit. Ticking sets it to running, or removes the host's own setting when a pack or every-host setting already monitors the unit; unticking removes the host's own setting, or, when a pack or every-host setting monitors the unit, makes an exception for this host (ignored). Audited like any host health override; an exception that stops inherited monitoring needs monitoring.settings.
+         */
+        put: operations["monitorHostService"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/hosts/{id}/monitoring/service-events": {
         parameters: {
             query?: never;
@@ -3470,6 +3524,23 @@ export interface paths {
         put?: never;
         /** @description Acknowledge an active alert (audited). It stays open until its condition recovers, stops reminders and changes nothing about the health issue. Requires `alerts.acknowledge`. */
         post: operations["acknowledgeAlert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alerts/{id}/ignore-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The health settings that would quiet an open alert's condition for good, at the narrowest scope that does it: for a service, ignoring it on the host, taking the host's own expectation away, or the intentional opposite (expected stopped, or running); for other checks, turning that check off for the subject (or the host). Nothing is changed here: each option's `change` is applied with PUT /monitoring/health/overrides, with its permissions and audit, and the alert then closes as cleared by configuration, never as a recovery. `allowed` says whether the caller may apply it (`needs` names the missing permission). */
+        get: operations["alertIgnoreOptions"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4392,21 +4463,40 @@ export interface components {
             /** @description Set on `pack_in_use`: what still names the pack. */
             dependencies?: components["schemas"]["PackDependencies"];
         };
+        UninstallPath: {
+            available: boolean;
+            /** @enum {string} */
+            code?: "no_identity" | "not_connected" | "too_old" | "no_ssh" | "ssh_unavailable";
+            reason?: string;
+        };
         UninstallPlan: {
             host_id: string;
             host_name: string;
             can_uninstall: boolean;
             /** @enum {string} */
-            refusal_code?: "last_management_path" | "ssh_unavailable" | "nothing_to_remove";
+            refusal_code?: "no_path" | "no_identity" | "nothing_to_remove";
             refusal?: string;
-            /** @description How DROOL manages the host afterwards (user@address and privilege escalation). */
+            /**
+             * @description The way DROOL takes ('' when neither works).
+             * @enum {string}
+             */
+            method: "" | "shepherd" | "ssh";
+            shepherd: components["schemas"]["UninstallPath"];
+            ssh: components["schemas"]["UninstallPath"];
+            /** @description DROOL's SSH sign-in (user@address and privilege escalation; '' without SSH access). */
             sign_in: string;
+            /** @description How DROOL manages the host afterwards. */
+            after: string;
             identity: {
                 id: string;
                 fingerprint: string;
                 status: string;
                 connected: boolean;
             } | null;
+            /** @description The Shepherd's version. */
+            version: string;
+            /** @description items */
+            checked: boolean;
             systemd: string;
             /** @description systemd's state of drool-agent.service ('' without systemd). */
             service: string;
@@ -4421,16 +4511,59 @@ export interface components {
         };
         UninstallResult: {
             /** @enum {string} */
-            outcome: "uninstalled" | "partial" | "unknown" | "nothing";
+            method: "" | "shepherd" | "ssh" | "forget";
+            /** @enum {string} */
+            outcome: "uninstalled" | "initiated" | "partial" | "unknown" | "refused" | "forgotten" | "nothing";
             removed: string[];
             remaining: string[];
             still_running: number;
             session_left: boolean;
             identity_revoked: boolean;
             tokens_revoked: number;
-            management: string;
+            /** @enum {string} */
+            management: "ssh" | "none";
             message: string;
             output: string;
+            /** @description How the Shepherd's removal helper runs. */
+            helper?: string;
+            /** @description The Shepherd disconnected as expected. */
+            disconnected: boolean;
+            /** @description DROOL looked over SSH afterwards. */
+            verified: boolean;
+            verify_error?: string;
+        };
+        RemovalPlan: {
+            host_id: string;
+            host_name: string;
+            /** @description What DROOL installed on the host and can remove. */
+            parts: {
+                /** @enum {string} */
+                what: "shepherd" | "account";
+                label: string;
+                ready: boolean;
+                /** @enum {string} */
+                method?: "shepherd" | "ssh";
+                reason?: string;
+                removes: string[];
+            }[];
+            can_clean_up: boolean;
+            /** @description Why the host can't be removed now. */
+            blocked?: string;
+            after: string;
+            /** @description What DROOL leaves on the host either way. */
+            stays: string[];
+        };
+        RemovalResult: {
+            /** @enum {string} */
+            outcome: "removed" | "not_removed";
+            host_deleted: boolean;
+            steps: {
+                /** @enum {string} */
+                what: "shepherd" | "account";
+                outcome: string;
+                message: string;
+            }[];
+            message: string;
         };
         PackDependencies: {
             pack_id: string;
@@ -6107,6 +6240,13 @@ export interface components {
             remote_group_id?: string;
             remote_cidr?: string;
         };
+        /** @description What country and network-owner (ASN) data can be shown for public addresses, per kind: off (enrichment is turned off), unavailable (on, but no usable database of that kind is loaded, so nothing could be looked up), or on (a database is loaded: a public address it has no answer for is genuinely unknown). */
+        NetEnrichState: {
+            /** @enum {string} */
+            country: "off" | "unavailable" | "on";
+            /** @enum {string} */
+            asn: "off" | "unavailable" | "on";
+        };
         NetFlowPage: {
             items: components["schemas"]["NetFlow"][];
             next_cursor?: string;
@@ -6114,6 +6254,7 @@ export interface components {
             total: number | null;
             scanned: number;
             truncated: boolean;
+            enrichment_state: components["schemas"]["NetEnrichState"];
         };
         NetCollection: {
             /** @enum {string} */
@@ -6150,6 +6291,7 @@ export interface components {
             };
         };
         NetFlowDetail: components["schemas"]["NetFlow"] & {
+            enrichment_state: components["schemas"]["NetEnrichState"];
             /** Format: date-time */
             fleet_first_seen?: string;
             firewall: components["schemas"]["NetHostFirewall"];
@@ -6178,6 +6320,7 @@ export interface components {
             peers: number;
         };
         NetHost: {
+            enrichment_state: components["schemas"]["NetEnrichState"];
             host: components["schemas"]["NetHostRef"];
             collection: components["schemas"]["NetCollection"];
             firewall: components["schemas"]["NetHostFirewall"];
@@ -6235,6 +6378,7 @@ export interface components {
             error?: string;
         };
         NetSummary: {
+            enrichment_state: components["schemas"]["NetEnrichState"];
             counts: components["schemas"]["NetCounts"];
             hosts: {
                 total: number;
@@ -6795,7 +6939,7 @@ export interface components {
             /** @description Expected to run (the expected state running). */
             watched: boolean;
             /**
-             * @description The expected state ('' = automatic, judged by whether it starts at boot).
+             * @description The expected state ('' = none, the service isn't monitored).
              * @enum {string}
              */
             expected: "" | "running" | "stopped" | "ignored";
@@ -6807,11 +6951,22 @@ export interface components {
                 /** @description This host's own setting for the unit */
                 override_id?: string;
             };
+            /** @description DROOL alerts on its state (expected running or stopped). */
+            monitored: boolean;
+            /**
+             * @description What the host gets without its own setting for the unit (from a pack or every host).
+             * @enum {string}
+             */
+            inherited: "" | "running" | "stopped" | "ignored";
+            /** @description Where the inherited state comes from, in words ("from pack media"). */
+            inherited_source?: string;
+            /** @description This host changes the unit's health checks (turned off, another duration). */
+            customized: boolean;
             /**
              * @description Whether its state is a health problem now.
              * @enum {string}
              */
-            health: "problem" | "expected" | "ignored" | "ok" | "unknown";
+            health: "problem" | "expected" | "ignored" | "unmonitored" | "ok" | "unknown";
             /** @description Why it alerts or doesn't */
             health_note?: string;
             /** @description The service actions that make sense for it now. */
@@ -7032,7 +7187,7 @@ export interface components {
             clear_duration_min?: number;
             missed_intervals?: number;
             /**
-             * @description A service's expected state (check service_expected only; absent = automatic).
+             * @description A service's expected state (check service_expected only; absent = not monitored).
              * @enum {string}
              */
             expected?: "running" | "stopped" | "ignored";
@@ -7145,6 +7300,26 @@ export interface components {
             updated_at: number;
             created_at: number;
         };
+        AlertIgnoreOptions: {
+            alert_id: string;
+            options: {
+                /** @enum {string} */
+                id: "ignore_service" | "stop_monitoring" | "expect_stopped" | "expect_running" | "disable_check";
+                label: string;
+                /** @description What changes and what doesn't. */
+                effect: string;
+                /** @description Where it's undone. */
+                reset: string;
+                change: components["schemas"]["HealthOverrideInput"];
+                allowed: boolean;
+                /** @description The permission the caller lacks to apply it. */
+                needs?: string;
+            }[];
+            /** @description What happens to the alert. */
+            closes?: string;
+            /** @description Why there are no options. */
+            note?: string;
+        };
         HealthOverrideInput: {
             /** @enum {string} */
             scope: "global" | "group" | "host";
@@ -7207,7 +7382,10 @@ export interface components {
             disk_mount?: string;
             temperature?: number;
             services: number;
+            /** @description Units in the failed state */
             failed_services: number;
+            /** @description Active problems of monitored services (the only ones that count as unhealthy). */
+            service_issues: number;
             storage: string;
             issues: number;
             /** @enum {string} */
@@ -12327,7 +12505,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description Default: the way the plan takes.
+                     * @enum {string}
+                     */
+                    method?: "shepherd" | "ssh" | "forget";
+                };
+            };
+        };
         responses: {
             /** @description What happened. */
             200: {
@@ -12336,6 +12524,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UninstallResult"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    planHostRemoval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemovalPlan"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    removeHostWithCleanup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What happened. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemovalResult"];
                 };
             };
             403: components["responses"]["Problem"];
@@ -14115,7 +14351,7 @@ export interface operations {
     hostServices: {
         parameters: {
             query?: {
-                filter?: "all" | "running" | "stopped" | "failed" | "enabled" | "disabled";
+                filter?: "all" | "running" | "stopped" | "failed" | "enabled" | "disabled" | "monitored";
                 all?: boolean;
             };
             header?: never;
@@ -14162,6 +14398,43 @@ export interface operations {
                 };
             };
             404: components["responses"]["Problem"];
+        };
+    };
+    monitorHostService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+                unit: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    monitor: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description The unit as the services list shows it now (absent when the host doesn't report it). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description False when it was already monitored (or not). */
+                        changed: boolean;
+                        override?: components["schemas"]["HealthOverride"] | null;
+                        unit?: components["schemas"]["MonService"];
+                    };
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
         };
     };
     hostServiceEvents: {
@@ -14557,6 +14830,29 @@ export interface operations {
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
             422: components["responses"]["Problem"];
+        };
+    };
+    alertIgnoreOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The options (none for a closed alert). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertIgnoreOptions"];
+                };
+            };
+            404: components["responses"]["Problem"];
         };
     };
     listEvents: {

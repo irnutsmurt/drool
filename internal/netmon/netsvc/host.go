@@ -118,6 +118,8 @@ type HostNetwork struct {
 	ListeningAt string             `json:"listening_at,omitempty"` // when the inventory last collected them
 	Counts      Counts             `json:"counts"`
 	Enrichment  bool               `json:"enrichment"` // GeoIP/ASN data is available
+	// EnrichmentState: per kind, off, unavailable (no database) or on.
+	EnrichmentState EnrichState `json:"enrichment_state"`
 }
 
 // Counts summarise a set of flows.
@@ -142,7 +144,7 @@ func (s *Service) Host(ctx context.Context, hostID string) (*HostNetwork, error)
 		return nil, err
 	}
 	out := &HostNetwork{Host: v.hostRef(hostID), Collection: s.collection(ctx, hostID), Firewall: v.cl.Firewall(ctx, hostID),
-		Listening: []Listening{}, Enrichment: s.geo.Available() && v.enrich}
+		Listening: []Listening{}, Enrichment: s.geo.Available() && v.enrich, EnrichmentState: s.enrichState(v.enrich)}
 	out.Counts = s.counts(ctx, v, Filter{Hosts: []string{hostID}})
 	// Listening ports come from the inventory (one source of truth).
 	inbound := map[string][2]int64{}
@@ -241,11 +243,13 @@ func (s *Service) counts(ctx context.Context, v *view, f Filter) Counts {
 
 // Summary is the fleet's Network Activity header.
 type Summary struct {
-	Counts     Counts          `json:"counts"`
-	Hosts      HostCounts      `json:"hosts"`
-	Enrichment bool            `json:"enrichment"`
-	Settings   netmon.Settings `json:"settings"`
-	LastPrune  PruneResult     `json:"last_prune"`
+	Counts     Counts     `json:"counts"`
+	Hosts      HostCounts `json:"hosts"`
+	Enrichment bool       `json:"enrichment"`
+	// EnrichmentState: per kind, off, unavailable (no database) or on.
+	EnrichmentState EnrichState     `json:"enrichment_state"`
+	Settings        netmon.Settings `json:"settings"`
+	LastPrune       PruneResult     `json:"last_prune"`
 }
 
 // HostCounts says how the fleet is observed.
@@ -267,7 +271,8 @@ func (s *Service) FleetSummary(ctx context.Context, f Filter) (*Summary, error) 
 	if err != nil {
 		return nil, err
 	}
-	out := &Summary{Counts: s.counts(ctx, v, f), Enrichment: s.geo.Available() && v.enrich, Settings: s.Settings(ctx), LastPrune: s.LastPrune()}
+	out := &Summary{Counts: s.counts(ctx, v, f), Enrichment: s.geo.Available() && v.enrich, EnrichmentState: s.enrichState(v.enrich),
+		Settings: s.Settings(ctx), LastPrune: s.LastPrune()}
 	hosts, err := s.d.Store.R.ListHosts(ctx)
 	if err != nil {
 		return nil, err

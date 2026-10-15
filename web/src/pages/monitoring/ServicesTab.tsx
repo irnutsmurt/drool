@@ -1,4 +1,3 @@
-import { SubjectHealthButton } from "@/components/health/HostHealth";
 import { useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
@@ -9,7 +8,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { cx } from "@/components/ui/cx";
 import { errorMessage } from "@/lib/format";
 import { StatusBadge } from "@/components/monitoring/Status";
-import { ExpectedStateSelect, ServiceActionsDialog } from "@/components/monitoring/ServiceActions";
+import { isCustomized, MonitorToggle, ServiceActionsDialog, ServiceMonitorDialog } from "@/components/monitoring/ServiceActions";
 import { fmtSince, fmtTime } from "@/components/monitoring/format";
 import { useServiceHistory, useServices, type MonHostOverview, type MonService } from "@/components/monitoring/queries";
 
@@ -20,6 +19,7 @@ const filters = [
   { key: "failed", label: "Failed" },
   { key: "enabled", label: "Enabled" },
   { key: "disabled", label: "Disabled" },
+  { key: "monitored", label: "Monitored" },
 ];
 
 function StateBadge({ u }: { u: MonService }) {
@@ -56,11 +56,25 @@ function History({ id, unit, onClose }: { id: string; unit: string; onClose: () 
   );
 }
 
-/** Whether the unit's state alerts, and why (expected state, ignored). */
+/** Whether the unit's state alerts, and why (monitored or not, ignored). */
 function HealthLine({ u }: { u: MonService }) {
   if (!u.health_note) return null;
   const tone = u.health === "problem" ? "text-danger" : "text-muted";
   return <div className={`text-xs ${tone}`} data-testid="health-note">{u.health_note}</div>;
+}
+
+/** Failed, but nobody monitors it: a fact of the inventory, not a health
+ * problem (shown without the alarm colour). */
+function StateCell({ u }: { u: MonService }) {
+  // Failed, and nobody monitors it: the fact, in grey, never an alert's red.
+  if (u.state === "failed" && !u.monitored) {
+    return (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded bg-surface-2 px-1.5 py-0.5 text-xs font-medium text-muted">
+        <span aria-hidden="true">✕</span>Failed
+      </span>
+    );
+  }
+  return <StateBadge u={u} />;
 }
 
 export function ServicesTab({ id, o, hostName }: { id: string; o: MonHostOverview; hostName: string }) {
@@ -68,6 +82,7 @@ export function ServicesTab({ id, o, hostName }: { id: string; o: MonHostOvervie
   const [all, setAll] = useState(false);
   const [hist, setHist] = useState("");
   const [acting, setActing] = useState<MonService | null>(null);
+  const [custom, setCustom] = useState<MonService | null>(null);
   const q = useServices(id, filter, all);
   const { can } = useAuth();
   const v = q.data;
@@ -100,7 +115,7 @@ export function ServicesTab({ id, o, hostName }: { id: string; o: MonHostOvervie
                   <th className="px-2 py-1 font-medium">Enabled</th>
                   <th className="px-2 py-1 font-medium">Since</th>
                   <th className="px-2 py-1 font-medium" title="Automatic restarts since the unit was last started by hand">Restarts</th>
-                  <th className="px-2 py-1 font-medium">Expected</th>
+                  <th className="px-2 py-1 font-medium">Monitor</th>
                   <th className="px-2 py-1 font-medium"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
@@ -112,14 +127,16 @@ export function ServicesTab({ id, o, hostName }: { id: string; o: MonHostOvervie
                       <div className="font-mono text-xs">{u.name}</div>
                       {u.description && <div className="text-xs text-muted">{u.description}</div>}
                     </td>
-                    <td data-label="State" className="px-2 py-1.5"><span><StateBadge u={u} /> <span className="text-xs text-muted">{u.active}/{u.sub}</span></span><HealthLine u={u} /></td>
+                    <td data-label="State" className="px-2 py-1.5"><span><StateCell u={u} /> <span className="text-xs text-muted">{u.active}/{u.sub}</span></span><HealthLine u={u} /></td>
                     <td data-label="Enabled" className="px-2 py-1.5 text-xs">{u.file_state || "—"}</td>
                     <td data-label="Since" className="px-2 py-1.5 text-xs">{u.since ? fmtTime(u.since * 1000) : "—"}</td>
                     <td data-label="Restarts" className="px-2 py-1.5 tabular-nums">{u.restarts ?? "—"}</td>
-                    <td data-label="Expected" className="px-2 py-1.5"><ExpectedStateSelect hostId={id} unit={u} /></td>
+                    <td data-label="Monitor" className="px-2 py-1.5"><MonitorToggle hostId={id} unit={u} /></td>
                     <td data-label="" className="px-2 py-1.5 text-right whitespace-nowrap">
-                      <SubjectHealthButton hostId={id} kind="service" subjectRef={u.name} label={u.name} />
                       <Button size="sm" variant="ghost" onClick={() => setHist(u.name)}>History</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setCustom(u)} aria-label={`Customize monitoring of ${u.name}`}>
+                        {isCustomized(u) ? "⚙ Customized" : "Customize…"}
+                      </Button>
                       {can("jobs.execute") && (
                         <Button size="sm" onClick={() => setActing(u)} aria-label={`Actions for ${u.name}`}>Actions…</Button>
                       )}
@@ -130,15 +147,17 @@ export function ServicesTab({ id, o, hostName }: { id: string; o: MonHostOvervie
             </table>
           </div>
           <p className="text-xs text-muted">
-            Without an expected state, a failed service is a health issue and a stopped one is fine. Expected
-            <strong> Running</strong>: stopped is a problem too. <strong>Stopped</strong>: running is the problem, stopped or failed is fine.
-            <strong> Ignored</strong>: its state stays visible but never alerts. Set it here for this host, or for a pack's hosts on the
-            pack's page. Actions run as an ordinary run, and DROOL checks the result on the host; they never change the expected state.
+            DROOL lists every service and its state, but alerts only on the ones you <strong>Monitor</strong>: a monitored service that
+            stops, fails or isn&apos;t installed is a health issue. Without it, a failed service is shown as failed and never alerts.
+            <strong> Customize…</strong> sets more: expected <em>stopped</em> (running is the problem) or <em>ignored</em> on this host, and
+            how long before it alerts. For a pack&apos;s hosts, set it on the pack&apos;s page. Actions run as an ordinary run, DROOL checks the
+            result on the host, and they never change what is monitored.
           </p>
         </div>
       )}
       {hist && <History id={id} unit={hist} onClose={() => setHist("")} />}
       {acting && <ServiceActionsDialog hostId={id} hostName={hostName} unit={acting} onClose={() => setActing(null)} />}
+      {custom && <ServiceMonitorDialog hostId={id} hostName={hostName} unit={custom} onClose={() => setCustom(null)} />}
     </Card>
   );
 }

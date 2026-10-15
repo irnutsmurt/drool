@@ -122,6 +122,7 @@ message AgentMessage {
     ChannelFailed channel_failed = 9;
     ConfigAck config_ack = 10;
     EpochTransitionResult epoch_transition = 11;
+    SelfUninstallResult self_uninstall = 12;
   }
 }
 
@@ -143,6 +144,7 @@ message ControllerMessage {
     FirewallConfig firewall_config = 14;
     MonitorConfig monitor_config = 15;
     EpochTransition epoch_transition = 16;
+    SelfUninstall self_uninstall = 17;
   }
 }
 
@@ -350,6 +352,34 @@ message EpochTransitionResult {
   string code = 4;                 // changed | epoch | pending | unsupported | ...
   StateReport state = 5;           // the agent's domains afterwards
   string controller_epoch = 6;     // the agent's epoch afterwards
+}
+
+// SelfUninstall asks a Shepherd to remove itself from its host (dogfooding
+// correction batch, ARCHITECTURE-ALPHA §40): a typed lifecycle request, not
+// a command, and no capability (shell or other) is needed. The agent checks
+// it is meant for it (its identity, the controller epoch, the time), starts
+// a detached removal helper as root that outlives the agent, and answers
+// with SelfUninstallResult. The helper stops and removes the Shepherd (its
+// service or supervisor, programs, capability ceiling, release keys,
+// identity, state and logs) and then itself. Agents announce "uninstall-1"
+// when they understand it; older agents are never sent it.
+message SelfUninstall {
+  string request_id = 1;
+  string identity_id = 2;
+  string controller_epoch = 3;
+  int64 issued_at_unix = 4;
+  int64 expires_at_unix = 5;
+  string reason = 6;               // for the agent's log
+}
+
+message SelfUninstallResult {
+  string request_id = 1;
+  bool accepted = 2;               // the helper was started
+  string error = 3;                // why not, in plain words
+  string code = 4;                 // invalid | identity | epoch | expired | start
+  string helper = 5;               // how the helper runs ("systemd unit …", "process 1234")
+  repeated string removes = 6;     // the paths it removes
+  bool already = 7;                // a removal this agent started before (a retried request)
 }
 
 message Disconnect {

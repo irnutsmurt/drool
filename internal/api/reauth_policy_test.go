@@ -31,6 +31,7 @@ var reviewedReauthRoutes = map[string]reauthReason{
 	"POST /api/v1/ssh-ca/{id}/retire":               reauthSSHCA,
 	"PUT /api/v1/hosts/{id}/ssh-auth":               reauthHostAccess,
 	"POST /api/v1/hosts/{id}/ssh-account":           reauthHostAccess,
+	"POST /api/v1/hosts/{id}/removal":               reauthHostAccess, // removing DROOL's account and Shepherd from the host (dogfooding correction batch)
 	"POST /api/v1/agents/pki/export-root":           reauthShepherdPKI,
 	"POST /api/v1/agents/pki/remove-root":           reauthShepherdPKI,
 	"POST /api/v1/agents/pki/rotate":                reauthShepherdPKI,

@@ -81,15 +81,16 @@ func (s *simShepherdHost) exec(cmd string, stdin []byte) (string, string, int) {
 	return sshtest.ExecLocal(cmd, stdin)
 }
 
-// Removing a Shepherd from the UI (final After-M17 batch): what goes is read
-// from the host first; DROOL refuses where the host would be left without a
-// management path or SSH doesn't work as root; an answer that never came back
-// changes nothing in DROOL; a removal confirmed on the host revokes the
-// identity and the host's unused enrollment tokens, forgets the narrowing,
-// leaves the host managed over SSH (which keeps working) and no session;
-// what can't be confirmed is reported as partial; running it again finishes.
-// High-impact: agents.manage and hosts.write, and a recent sign-in. No secret
-// in any result or audit record.
+// Removing a Shepherd over SSH (final After-M17 batch; the Shepherd's own
+// way is TestShepherdSelfUninstall): what goes is read from the host first;
+// DROOL refuses where neither way works or SSH doesn't work as root; an
+// answer that never came back changes nothing in DROOL; a removal
+// confirmed on the host revokes the identity and the host's unused
+// enrollment tokens, forgets the narrowing, leaves the host managed over
+// SSH (which keeps working) and no session; what can't be confirmed is
+// reported as partial; running it again finishes; a Shepherd no way
+// reaches can be forgotten. High-impact: agents.manage and hosts.write, and
+// a recent sign-in. No secret in any result or audit record.
 func TestShepherdUninstall(t *testing.T) {
 	e := newAgentEnv(t)
 	ctx := context.Background()
@@ -118,8 +119,18 @@ func TestShepherdUninstall(t *testing.T) {
 		CanUninstall bool   `json:"can_uninstall"`
 		RefusalCode  string `json:"refusal_code"`
 		Refusal      string `json:"refusal"`
-		SignIn       string `json:"sign_in"`
-		Identity     *struct {
+		Method       string `json:"method"`
+		Checked      bool   `json:"checked"`
+		Shepherd     struct {
+			Available bool   `json:"available"`
+			Code      string `json:"code"`
+		} `json:"shepherd"`
+		SSH struct {
+			Available bool   `json:"available"`
+			Code      string `json:"code"`
+		} `json:"ssh"`
+		SignIn   string `json:"sign_in"`
+		Identity *struct {
 			ID, Status string
 			Connected  bool
 		} `json:"identity"`
@@ -137,7 +148,8 @@ func TestShepherdUninstall(t *testing.T) {
 		r.json(t, &pl)
 	}
 	if !pl.CanUninstall || pl.Identity == nil || !pl.Identity.Connected || pl.Processes != 1 || len(pl.Items) != 6 || !pl.Items[0].Present ||
-		!strings.Contains(pl.SignIn, "deploy@") || !strings.Contains(strings.Join(pl.Controller, " "), "Revoke the Shepherd's identity") {
+		!strings.Contains(pl.SignIn, "deploy@") || !strings.Contains(strings.Join(pl.Controller, " "), "Revoke the Shepherd's identity") ||
+		!pl.Checked || !pl.SSH.Available || !pl.Shepherd.Available || pl.Method != "shepherd" {
 		t.Fatalf("plan: %+v", pl)
 	}
 	if sim.removals != 0 || !e.connected(hostID) {
@@ -172,15 +184,20 @@ func TestShepherdUninstall(t *testing.T) {
 		Management      string   `json:"management"`
 		Message         string   `json:"message"`
 	}
-	uninstall := func(host string) (result, resp) {
+	uninstallBy := func(host, method string) (result, resp) {
 		t.Helper()
-		r := e.c.do("POST", "/api/v1/hosts/"+host+"/agent/uninstall", nil)
+		var body any
+		if method != "" {
+			body = map[string]any{"method": method}
+		}
+		r := e.c.do("POST", "/api/v1/hosts/"+host+"/agent/uninstall", body)
 		var res result
 		if r.status == 200 {
 			r.json(t, &res)
 		}
 		return res, r
 	}
+	uninstall := func(host string) (result, resp) { t.Helper(); return uninstallBy(host, "ssh") }
 
 	// The answer never comes back: unknown, and nothing changed in DROOL.
 	sim.noAnswer = true
@@ -226,7 +243,9 @@ func TestShepherdUninstall(t *testing.T) {
 		t.Fatalf("again: %+v", res)
 	}
 
-	// A host DROOL reaches only through its Shepherd: refused.
+	// A host DROOL reaches only through its Shepherd, which isn't connected
+	// now: no way works. Not over SSH (none is set up), not by itself; the
+	// Shepherd can be forgotten after removing it by hand.
 	tok2 := e.token(t, map[string]any{"preset": "monitor", "description": "agent-only"})
 	p2 := agentPaths(t, monitorCaps())
 	id2, err := agent.Enroll(ctx, p2, tok2.Token, "v1.0.0")
@@ -236,10 +255,23 @@ func TestShepherdUninstall(t *testing.T) {
 	_, r2 := uninstall(id2.HostID)
 	var p2r Problem
 	r2.json(t, &p2r)
-	if r2.status != 409 || p2r.Code != "last_management_path" || !strings.Contains(p2r.Detail, "Set up SSH access first") {
-		t.Fatalf("agent-only host: %d %s", r2.status, r2.body)
+	if r2.status != 409 || p2r.Code != "no_ssh" {
+		t.Fatalf("agent-only host, over SSH: %d %s", r2.status, r2.body)
 	}
-	assertAuditLike(t, e.h, "agent.uninstall", `"refused":"last_management_path"`)
+	_, r2 = uninstallBy(id2.HostID, "")
+	r2.json(t, &p2r)
+	if r2.status != 409 || p2r.Code != "no_path" || !strings.Contains(p2r.Detail, "by hand") || !strings.Contains(p2r.Detail, "isn't connected") {
+		t.Fatalf("agent-only host, offline: %d %s", r2.status, r2.body)
+	}
+	assertAuditLike(t, e.h, "agent.uninstall", `"refused":"no_path"`)
+	fg, rf := uninstallBy(id2.HostID, "forget")
+	if rf.status != 200 || fg.Outcome != "forgotten" || !fg.IdentityRevoked || fg.Management != "none" || !strings.Contains(fg.Message, "nothing on the host changed") {
+		t.Fatalf("forget: %d %+v", rf.status, fg)
+	}
+	if ha := e.hostAgent(t, id2.HostID); ha.Management.Active != "none" || !strings.Contains(ha.Management.Reason, "no way to manage this host") {
+		t.Fatalf("a host with no management path left: %+v", ha.Management)
+	}
+	assertAuditLike(t, e.h, "agent.uninstall", `"method":"forget"`, `"outcome":"forgotten"`)
 
 	// SSH doesn't work as root: refused before anything changes.
 	host3, srv3 := readyHostServer(t, e.h, e.c, "shep-03")

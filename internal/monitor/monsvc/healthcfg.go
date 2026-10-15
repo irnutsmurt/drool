@@ -113,14 +113,25 @@ func (s *Service) Current(ctx context.Context, k OverrideKey) (Override, bool) {
 }
 
 // FieldChange is one field's before and after (nil: inherited).
+// An expected state is written by name ("running"), a check's enabled as
+// a boolean, the rest as numbers: as the API takes them.
 type FieldChange struct {
-	Before *float64 `json:"before"`
-	After  *float64 `json:"after"`
+	Before any `json:"before"`
+	After  any `json:"after"`
 }
 
 // Diff lists changed fields.
 func Diff(before, after Fields) map[string]FieldChange {
 	out := map[string]FieldChange{}
+	val := func(k string, v float64) any {
+		switch k {
+		case FieldExpected:
+			return ExpectName(v)
+		case FieldEnabled:
+			return v != 0
+		}
+		return v
+	}
 	for _, k := range fieldOrder {
 		b, bok := before[k]
 		a, aok := after[k]
@@ -129,10 +140,10 @@ func Diff(before, after Fields) map[string]FieldChange {
 		}
 		var c FieldChange
 		if bok {
-			c.Before = fp(b)
+			c.Before = val(k, b)
 		}
 		if aok {
-			c.After = fp(a)
+			c.After = val(k, a)
 		}
 		out[k] = c
 	}
@@ -628,6 +639,9 @@ func (s *Service) hostSubjectList(ctx context.Context, p *policy, hostID string)
 		active[k] = true
 	}
 	for _, k := range s.eval.activeKeys(hostID, CheckServiceStopped) {
+		active[k] = true
+	}
+	for _, k := range s.eval.activeKeys(hostID, CheckServiceUnexpected) {
 		active[k] = true
 	}
 	hs := s.HostSettings(ctx, hostID)

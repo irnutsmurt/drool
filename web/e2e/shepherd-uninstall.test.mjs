@@ -1,8 +1,9 @@
-// Uninstalling a Shepherd from its host's page (final After-M17 batch):
-// what DROOL will remove, read from the host first; the removal; what DROOL
-// confirmed. Run by test/integration TestShepherdUninstallOnHost against a
-// host with a real, connected Shepherd (DROOL_E2E_HOST); the Go test checks
-// the host afterwards.
+// Uninstalling a Shepherd from its host's page (final After-M17 batch; the
+// Shepherd removes itself since the dogfooding correction batch): how it
+// goes and what it removes; the removal; what DROOL confirmed over SSH. Run
+// by test/integration TestShepherdUninstallOnHost against a host with a
+// real, connected Shepherd (DROOL_E2E_HOST); the Go test checks the host
+// afterwards.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { base, click, launch, session, shot, text, waitFor, waitText } from "./lib.mjs";
@@ -20,9 +21,10 @@ test("uninstall a Shepherd: the plan, the removal, the result", async () => {
   await page.goto(`${base}/hosts/${id}`, { waitUntil: "networkidle0" });
   await click(page, "button", "Uninstall Shepherd…");
   const dialog = () => page.$eval('[data-testid="uninstall-shepherd"]', (e) => e.innerText).catch(() => "");
-  await waitFor(page, async () => /DROOL will \(as root, over SSH\)/.test(await dialog()), "the plan", 60000);
+  await waitFor(page, async () => /The Shepherd removes itself/.test(await dialog()), "the plan", 60000);
   const plan = await dialog();
-  assert.match(plan, /stop the Shepherd/);
+  assert.match(plan, /starts a helper that outlives it/);
+  assert.match(plan, /Afterwards DROOL checks over SSH that nothing of it is left/);
   assert.match(plan, /\/usr\/libexec\/drool-agent/);
   assert.match(plan, /\/var\/lib\/drool-agent/);
   assert.match(plan, /In DROOL/);
@@ -31,9 +33,11 @@ test("uninstall a Shepherd: the plan, the removal, the result", async () => {
   assert.doesNotMatch(plan, /BEGIN|PRIVATE KEY/, "no secrets in the plan");
   await shot(page, "shepherd-uninstall-plan");
   await click(page, '[data-testid="uninstall-shepherd"] button', "Uninstall Shepherd");
-  await waitFor(page, async () => /Removed:/.test(await dialog()), "the result", 120000);
+  await waitFor(page, async () => /Verified removed|Self-removal initiated|Partly removed|unknown/i.test(await dialog()), "the result", 180000);
   const done = await dialog();
-  assert.match(done, /managed over SSH|over SSH/);
+  assert.match(done, /Verified removed/);
+  assert.match(done, /checked over SSH/);
+  assert.match(done, /manages .* over SSH/);
   await shot(page, "shepherd-uninstall-done");
   await click(page, '[data-testid="uninstall-shepherd"] button', "Done");
   // The page now says SSH, and offers to install a Shepherd again.

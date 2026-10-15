@@ -2315,15 +2315,51 @@ paths:
       operationId: uninstallAgent
       tags: [agents]
       description: >-
-        Remove the host's Shepherd over its SSH path: stop and disable it, remove its service, programs, configuration,
-        identity (private key) and state, revoke its identity and the host's unused enrollment tokens, forget its capability
-        narrowing, and manage the host over SSH; then check that nothing of it is left and no session remains. Needs
-        agents.manage and hosts.write and a recent sign-in (high-impact). Refused (409, nothing changed) when the host
-        has no working SSH path. `outcome` is uninstalled only when confirmed; partial lists what is left; unknown means the
-        removal didn't report back and nothing changed in DROOL. Running it again continues.
+        Remove the host's Shepherd. `shepherd` (the default when the Shepherd is connected and announces uninstall-1): the
+        Shepherd removes itself, no SSH needed; DROOL sends a typed request over its session, it starts a detached helper and
+        answers, and DROOL revokes its identity and the host's unused enrollment tokens, forgets its capability narrowing and
+        manages the host over SSH (or by nothing, when it has no SSH access); `outcome` is initiated (DROOL can't look), or,
+        when SSH works, uninstalled (verified) or partial after DROOL looked over SSH. `ssh` (when the Shepherd can't be asked):
+        DROOL removes it over SSH as root, then the same controller changes; uninstalled only when confirmed. `forget`: DROOL
+        only revokes and forgets it; nothing on the host changes. unknown means the host or the Shepherd didn't report back
+        and nothing changed in DROOL; refused, that the Shepherd refused. Needs agents.manage and hosts.write and a recent
+        sign-in (high-impact). Refused (409, nothing changed) when the chosen way doesn't work now. Running it again continues.
       parameters: [{ $ref: '#/components/parameters/HostId' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties: { method: { type: string, enum: [shepherd, ssh, forget], description: 'Default: the way the plan takes.' } }
       responses:
         '200': { description: What happened., content: { application/json: { schema: { $ref: '#/components/schemas/UninstallResult' } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/removal/plan:
+    post:
+      operationId: planHostRemoval
+      tags: [hosts]
+      description: >-
+        What removing the host with "Clean up DROOL access" can do: its Shepherd and the SSH account DROOL created there
+        (proven DROOL's on the host), each checked; nothing changes. Needs hosts.write.
+      parameters: [{ $ref: '#/components/parameters/HostId' }]
+      responses:
+        '200': { description: The plan., content: { application/json: { schema: { $ref: '#/components/schemas/RemovalPlan' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/removal:
+    post:
+      operationId: removeHostWithCleanup
+      tags: [hosts]
+      description: >-
+        Remove what DROOL installed on the host (its Shepherd removes itself; DROOL's SSH account is removed by a helper its
+        last session starts), then the host from DROOL. Refused (409, nothing changed) when a part can't start; if a part
+        fails once another ran, the host stays and the result says what was done. DELETE /hosts/{id} removes the host from
+        DROOL only. Needs hosts.write and a recent sign-in (high-impact).
+      parameters: [{ $ref: '#/components/parameters/HostId' }]
+      responses:
+        '200': { description: What happened., content: { application/json: { schema: { $ref: '#/components/schemas/RemovalResult' } } } }
         '403': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
         '409': { $ref: '#/components/responses/Problem' }
@@ -3056,7 +3092,7 @@ paths:
       description: Service inventory (systemd). The default view hides transient, static and other noise units unless failed; `all=true` shows everything.
       parameters:
         - { $ref: '#/components/parameters/HostId' }
-        - { name: filter, in: query, schema: { type: string, enum: [all, running, stopped, failed, enabled, disabled] } }
+        - { name: filter, in: query, schema: { type: string, enum: [all, running, stopped, failed, enabled, disabled, monitored] } }
         - { name: all, in: query, schema: { type: boolean } }
       responses:
         '200': { description: Services., content: { application/json: { schema: { $ref: '#/components/schemas/MonServicesView' } } } }
@@ -3072,6 +3108,43 @@ paths:
       responses:
         '200': { description: Transitions, newest first., content: { application/json: { schema: { $ref: '#/components/schemas/MonServiceEvents' } } } }
         '404': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/monitoring/services/{unit}/monitor:
+    put:
+      operationId: monitorHostService
+      tags: [monitoring]
+      summary: Tick or untick Monitor for one service on a host.
+      description: >-
+        Changes the host's own expected state for the unit. Ticking sets it to running, or removes the host's own setting when
+        a pack or every-host setting already monitors the unit; unticking removes the host's own setting, or, when a pack or
+        every-host setting monitors the unit, makes an exception for this host (ignored). Audited like any host health override;
+        an exception that stops inherited monitoring needs monitoring.settings.
+      parameters:
+        - { $ref: '#/components/parameters/HostId' }
+        - { name: unit, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [monitor]
+              properties: { monitor: { type: boolean } }
+      responses:
+        '200':
+          description: The unit as the services list shows it now (absent when the host doesn't report it).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [changed]
+                properties:
+                  changed: { type: boolean, description: False when it was already monitored (or not). }
+                  override: { oneOf: [{ $ref: '#/components/schemas/HealthOverride' }, { type: 'null' }] }
+                  unit: { $ref: '#/components/schemas/MonService' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
   /hosts/{id}/monitoring/service-events:
     get:
       operationId: hostServiceEvents
@@ -3249,6 +3322,21 @@ paths:
         '404': { $ref: '#/components/responses/Problem' }
         '409': { $ref: '#/components/responses/Problem' }
         '422': { $ref: '#/components/responses/Problem' }
+  /alerts/{id}/ignore-options:
+    get:
+      operationId: alertIgnoreOptions
+      tags: [alerts]
+      description: >-
+        The health settings that would quiet an open alert's condition for good, at the narrowest scope that does it: for a
+        service, ignoring it on the host, taking the host's own expectation away, or the intentional opposite (expected stopped,
+        or running); for other checks, turning that check off for the subject (or the host). Nothing is changed here: each option's
+        `change` is applied with PUT /monitoring/health/overrides, with its permissions and audit, and the alert then closes as
+        cleared by configuration, never as a recovery. `allowed` says whether the caller may apply it (`needs` names the
+        missing permission).
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: The options (none for a closed alert)., content: { application/json: { schema: { $ref: '#/components/schemas/AlertIgnoreOptions' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
   /events:
     get:
       operationId: listEvents
@@ -4041,20 +4129,33 @@ components:
           description: 'Set on `pack_in_use`: what still names the pack.'
           allOf: [{ $ref: '#/components/schemas/PackDependencies' }]
 
+    UninstallPath:
+      type: object
+      required: [available]
+      properties:
+        available: { type: boolean }
+        code: { type: string, enum: [no_identity, not_connected, too_old, no_ssh, ssh_unavailable] }
+        reason: { type: string }
     UninstallPlan:
       type: object
-      required: [host_id, host_name, can_uninstall, sign_in, identity, systemd, service, processes, items, controller]
+      required: [host_id, host_name, can_uninstall, method, shepherd, ssh, sign_in, after, identity, version, checked, systemd, service, processes, items, controller]
       properties:
         host_id: { type: string }
         host_name: { type: string }
         can_uninstall: { type: boolean }
-        refusal_code: { type: string, enum: [last_management_path, ssh_unavailable, nothing_to_remove] }
+        refusal_code: { type: string, enum: [no_path, no_identity, nothing_to_remove] }
         refusal: { type: string }
-        sign_in: { type: string, description: How DROOL manages the host afterwards (user@address and privilege escalation). }
+        method: { type: string, enum: ['', shepherd, ssh], description: The way DROOL takes ('' when neither works). }
+        shepherd: { $ref: '#/components/schemas/UninstallPath' }
+        ssh: { $ref: '#/components/schemas/UninstallPath' }
+        sign_in: { type: string, description: DROOL's SSH sign-in (user@address and privilege escalation; '' without SSH access). }
+        after: { type: string, description: How DROOL manages the host afterwards. }
         identity:
           type: [object, 'null']
           required: [id, fingerprint, status, connected]
           properties: { id: { type: string }, fingerprint: { type: string }, status: { type: string }, connected: { type: boolean } }
+        version: { type: string, description: The Shepherd's version. }
+        checked: { type: boolean, description: items, systemd, service and processes were read over SSH. }
         systemd: { type: string }
         service: { type: string, description: "systemd's state of drool-agent.service ('' without systemd)." }
         processes: { type: integer }
@@ -4064,18 +4165,59 @@ components:
         controller: { type: array, items: { type: string }, description: What changes in DROOL. }
     UninstallResult:
       type: object
-      required: [outcome, removed, remaining, still_running, session_left, identity_revoked, tokens_revoked, management, message, output]
+      required: [method, outcome, removed, remaining, still_running, session_left, identity_revoked, tokens_revoked, management, message, output, disconnected, verified]
       properties:
-        outcome: { type: string, enum: [uninstalled, partial, unknown, nothing] }
+        method: { type: string, enum: ['', shepherd, ssh, forget] }
+        outcome: { type: string, enum: [uninstalled, initiated, partial, unknown, refused, forgotten, nothing] }
         removed: { type: array, items: { type: string } }
         remaining: { type: array, items: { type: string } }
         still_running: { type: integer }
         session_left: { type: boolean }
         identity_revoked: { type: boolean }
         tokens_revoked: { type: integer }
-        management: { type: string }
+        management: { type: string, enum: [ssh, none] }
         message: { type: string }
         output: { type: string }
+        helper: { type: string, description: How the Shepherd's removal helper runs. }
+        disconnected: { type: boolean, description: The Shepherd disconnected as expected. }
+        verified: { type: boolean, description: DROOL looked over SSH afterwards. }
+        verify_error: { type: string }
+    RemovalPlan:
+      type: object
+      required: [host_id, host_name, parts, can_clean_up, after, stays]
+      properties:
+        host_id: { type: string }
+        host_name: { type: string }
+        parts:
+          type: array
+          description: What DROOL installed on the host and can remove.
+          items:
+            type: object
+            required: [what, label, ready, removes]
+            properties:
+              what: { type: string, enum: [shepherd, account] }
+              label: { type: string }
+              ready: { type: boolean }
+              method: { type: string, enum: [shepherd, ssh] }
+              reason: { type: string }
+              removes: { type: array, items: { type: string } }
+        can_clean_up: { type: boolean }
+        blocked: { type: string, description: Why the host can't be removed now. }
+        after: { type: string }
+        stays: { type: array, items: { type: string }, description: What DROOL leaves on the host either way. }
+    RemovalResult:
+      type: object
+      required: [outcome, host_deleted, steps, message]
+      properties:
+        outcome: { type: string, enum: [removed, not_removed] }
+        host_deleted: { type: boolean }
+        steps:
+          type: array
+          items:
+            type: object
+            required: [what, outcome, message]
+            properties: { what: { type: string, enum: [shepherd, account] }, outcome: { type: string }, message: { type: string } }
+        message: { type: string }
 
     PackDependencies:
       type: object
@@ -5846,15 +5988,26 @@ components:
         remote_host_id: { type: string, description: 'At most one remote side: a DROOL host, a pack''s hosts, or an address or CIDR.' }
         remote_group_id: { type: string }
         remote_cidr: { type: string }
+    NetEnrichState:
+      type: object
+      description: >-
+        What country and network-owner (ASN) data can be shown for public addresses, per kind: off (enrichment is turned off),
+        unavailable (on, but no usable database of that kind is loaded, so nothing could be looked up), or on (a database is
+        loaded: a public address it has no answer for is genuinely unknown).
+      required: [country, asn]
+      properties:
+        country: { type: string, enum: ['off', unavailable, 'on'] }
+        asn: { type: string, enum: ['off', unavailable, 'on'] }
     NetFlowPage:
       type: object
-      required: [items, total, scanned, truncated]
+      required: [items, total, scanned, truncated, enrichment_state]
       properties:
         items: { type: array, items: { $ref: '#/components/schemas/NetFlow' } }
         next_cursor: { type: string }
         total: { type: [integer, 'null'], description: Known when every filter ran in the database. }
         scanned: { type: integer }
         truncated: { type: boolean }
+        enrichment_state: { $ref: '#/components/schemas/NetEnrichState' }
     NetCollection:
       type: object
       required: [mode, source, label, detail, agent, enabled, events_lost, dropped, forwarded]
@@ -5892,8 +6045,9 @@ components:
       allOf:
         - { $ref: '#/components/schemas/NetFlow' }
         - type: object
-          required: [firewall, collection, suggestion, related]
+          required: [firewall, collection, suggestion, related, enrichment_state]
           properties:
+            enrichment_state: { $ref: '#/components/schemas/NetEnrichState' }
             fleet_first_seen: { type: string, format: date-time }
             firewall: { $ref: '#/components/schemas/NetHostFirewall' }
             collection: { $ref: '#/components/schemas/NetCollection' }
@@ -5925,8 +6079,9 @@ components:
         peers: { type: integer }
     NetHost:
       type: object
-      required: [host, collection, firewall, listening, counts, enrichment]
+      required: [host, collection, firewall, listening, counts, enrichment, enrichment_state]
       properties:
+        enrichment_state: { $ref: '#/components/schemas/NetEnrichState' }
         host: { $ref: '#/components/schemas/NetHostRef' }
         collection: { $ref: '#/components/schemas/NetCollection' }
         firewall: { $ref: '#/components/schemas/NetHostFirewall' }
@@ -5984,8 +6139,9 @@ components:
         error: { type: string }
     NetSummary:
       type: object
-      required: [counts, hosts, enrichment, settings, last_prune]
+      required: [counts, hosts, enrichment, enrichment_state, settings, last_prune]
       properties:
+        enrichment_state: { $ref: '#/components/schemas/NetEnrichState' }
         counts: { $ref: '#/components/schemas/NetCounts' }
         hosts:
           type: object
@@ -6534,7 +6690,7 @@ components:
         truncated: { type: boolean }
     MonService:
       type: object
-      required: [name, description, load, active, sub, file_state, transient, known, changed_at, state, notable, watched, expected, health, actions]
+      required: [name, description, load, active, sub, file_state, transient, known, changed_at, state, notable, watched, expected, monitored, inherited, customized, health, actions]
       properties:
         name: { type: string }
         description: { type: string }
@@ -6554,7 +6710,7 @@ components:
         expected:
           type: string
           enum: ['', running, stopped, ignored]
-          description: The expected state ('' = automatic, judged by whether it starts at boot).
+          description: The expected state ('' = none, the service isn't monitored).
         expected_source:
           type: object
           required: [kind, label]
@@ -6562,9 +6718,16 @@ components:
             kind: { type: string, description: 'subject (this host), group, global; unset when packs disagree.' }
             label: { type: string, description: 'Where it comes from, in words ("set on this host", "from pack media").' }
             override_id: { type: string, description: This host's own setting for the unit, if any. }
+        monitored: { type: boolean, description: DROOL alerts on its state (expected running or stopped). }
+        inherited:
+          type: string
+          enum: ['', running, stopped, ignored]
+          description: What the host gets without its own setting for the unit (from a pack or every host).
+        inherited_source: { type: string, description: 'Where the inherited state comes from, in words ("from pack media").' }
+        customized: { type: boolean, description: 'This host changes the unit''s health checks (turned off, another duration).' }
         health:
           type: string
-          enum: [problem, expected, ignored, ok, unknown]
+          enum: [problem, expected, ignored, unmonitored, ok, unknown]
           description: Whether its state is a health problem now.
         health_note: { type: string, description: Why it alerts or doesn't, in words. }
         actions:
@@ -6776,7 +6939,7 @@ components:
         expected:
           type: string
           enum: [running, stopped, ignored]
-          description: A service's expected state (check service_expected only; absent = automatic).
+          description: A service's expected state (check service_expected only; absent = not monitored).
     HealthGroupRef:
       type: object
       required: [id, name, priority]
@@ -6891,6 +7054,26 @@ components:
         updated_by: { type: string }
         updated_at: { type: integer }
         created_at: { type: integer }
+    AlertIgnoreOptions:
+      type: object
+      required: [alert_id, options]
+      properties:
+        alert_id: { type: string }
+        options:
+          type: array
+          items:
+            type: object
+            required: [id, label, effect, reset, change, allowed]
+            properties:
+              id: { type: string, enum: [ignore_service, stop_monitoring, expect_stopped, expect_running, disable_check] }
+              label: { type: string }
+              effect: { type: string, description: What changes and what doesn't. }
+              reset: { type: string, description: Where it's undone. }
+              change: { $ref: '#/components/schemas/HealthOverrideInput' }
+              allowed: { type: boolean }
+              needs: { type: string, description: The permission the caller lacks to apply it. }
+        closes: { type: string, description: What happens to the alert. }
+        note: { type: string, description: Why there are no options. }
     HealthOverrideInput:
       type: object
       required: [scope, check, fields]
@@ -6946,7 +7129,7 @@ components:
         last_prune: { $ref: '#/components/schemas/MonPrune' }
     MonFleetHost:
       type: object
-      required: [host_id, name, source, mode, updated_at, stale, services, failed_services, storage, issues, worst, reduced, helpers, categories]
+      required: [host_id, name, source, mode, updated_at, stale, services, failed_services, service_issues, storage, issues, worst, reduced, helpers, categories]
       properties:
         host_id: { type: string }
         name: { type: string }
@@ -6960,7 +7143,8 @@ components:
         disk_mount: { type: string }
         temperature: { type: number }
         services: { type: integer }
-        failed_services: { type: integer }
+        failed_services: { type: integer, description: Units in the failed state, monitored or not (the inventory's fact). }
+        service_issues: { type: integer, description: Active problems of monitored services (the only ones that count as unhealthy). }
         storage: { type: string }
         issues: { type: integer }
         worst: { type: string, enum: [ok, info, warning, critical] }

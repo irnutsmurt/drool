@@ -10,10 +10,11 @@ import { Input, Select } from "@/components/ui/Field";
 type Expected = "running" | "stopped" | "ignored";
 const labels: Record<Expected, string> = { running: "Running", stopped: "Stopped", ignored: "Ignored" };
 
-/** The expected state of services for a pack's hosts, or for every host:
- * the same health setting a host's Services tab sets for itself, one level
- * up (a host's own setting wins; packs follow their priority). Changing it
- * is an administrator's (monitoring.settings). */
+/** The services monitored on a pack's hosts, or on every host, and the
+ * state each should be in: the same health setting a host's Services tab
+ * sets for itself (its Monitor box, Customize…), one level up (a host's own
+ * setting wins; packs follow their priority). Changing it is an
+ * administrator's (monitoring.settings). */
 export function ExpectedServicesCard({ scope, groupId }: { scope: "group" | "global"; groupId?: string }) {
   const qc = useQueryClient();
   const { can } = useAuth();
@@ -45,16 +46,17 @@ export function ExpectedServicesCard({ scope, groupId }: { scope: "group" | "glo
     if (unit.trim()) put.mutate({ unit: unit.trim(), expected: value });
   }
   return (
-    <Card title={scope === "group" ? "Expected services" : "Expected services on every host"} className="mb-4">
+    <Card title={scope === "group" ? "Monitored services" : "Monitored services on every host"} className="mb-4">
       <p className="mb-3 text-sm text-muted">
-        Whether a service should run on {where}. <strong>Running</strong>: stopped or missing is a health issue. <strong>Stopped</strong>: running is.
-        <strong> Ignored</strong>: its state stays visible but never alerts. A host's own setting (its Services tab) beats this
+        Services DROOL monitors on {where}, and the state each should be in. <strong>Running</strong>: stopped, failed or missing is a health
+        issue. <strong>Stopped</strong>: running is. <strong>Ignored</strong>: never alerts there, even where {scope === "global" ? "a pack" : "every host"} monitors it.
+        A service nobody monitors is listed with its state and never alerts. A host&apos;s own setting (its Services tab) beats this
         {scope === "global" ? ", and so does a pack's" : "; packs that disagree follow their monitoring priority"}. Starting or stopping a
         service never changes it.
       </p>
       {list.error && <Alert>{String(list.error)}</Alert>}
       {items.length === 0 ? <p className="text-sm text-muted">No services set{scope === "group" ? " for this pack" : ""}.</p> : (
-        <ul className="divide-y divide-line text-sm" aria-label={`Expected services on ${where}`}>
+        <ul className="divide-y divide-line text-sm" aria-label={`Monitored services on ${where}`}>
           {items.map((o) => {
             const name = o.subject_label || (o.subject ?? "").replace(/^unit:/, "");
             return (
