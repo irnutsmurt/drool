@@ -3004,8 +3004,14 @@ type SelfUninstall struct {
 	IssuedAtUnix    int64                  `protobuf:"varint,4,opt,name=issued_at_unix,json=issuedAtUnix,proto3" json:"issued_at_unix,omitempty"`
 	ExpiresAtUnix   int64                  `protobuf:"varint,5,opt,name=expires_at_unix,json=expiresAtUnix,proto3" json:"expires_at_unix,omitempty"`
 	Reason          string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"` // for the agent's log
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// proceed: not a new request but the controller's confirmation that it
+	// has the agent's accepting answer to request_id: the removal helper may
+	// go ahead now. A Shepherd stopped right after sending its answer could
+	// lose it in flight. Without the confirmation (the session ended, or an
+	// older controller) it goes ahead anyway after a short wait.
+	Proceed       bool `protobuf:"varint,7,opt,name=proceed,proto3" json:"proceed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SelfUninstall) Reset() {
@@ -3078,6 +3084,13 @@ func (x *SelfUninstall) GetReason() string {
 		return x.Reason
 	}
 	return ""
+}
+
+func (x *SelfUninstall) GetProceed() bool {
+	if x != nil {
+		return x.Proceed
+	}
+	return false
 }
 
 type SelfUninstallResult struct {
@@ -3659,7 +3672,7 @@ const file_agent_proto_rawDesc = "" +
 	"\x05error\x18\x03 \x01(\tR\x05error\x12\x12\n" +
 	"\x04code\x18\x04 \x01(\tR\x04code\x121\n" +
 	"\x05state\x18\x05 \x01(\v2\x1b.drool.agent.v1.StateReportR\x05state\x12)\n" +
-	"\x10controller_epoch\x18\x06 \x01(\tR\x0fcontrollerEpoch\"\xe0\x01\n" +
+	"\x10controller_epoch\x18\x06 \x01(\tR\x0fcontrollerEpoch\"\xfa\x01\n" +
 	"\rSelfUninstall\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1f\n" +
@@ -3668,7 +3681,8 @@ const file_agent_proto_rawDesc = "" +
 	"\x10controller_epoch\x18\x03 \x01(\tR\x0fcontrollerEpoch\x12$\n" +
 	"\x0eissued_at_unix\x18\x04 \x01(\x03R\fissuedAtUnix\x12&\n" +
 	"\x0fexpires_at_unix\x18\x05 \x01(\x03R\rexpiresAtUnix\x12\x16\n" +
-	"\x06reason\x18\x06 \x01(\tR\x06reason\"\xc6\x01\n" +
+	"\x06reason\x18\x06 \x01(\tR\x06reason\x12\x18\n" +
+	"\aproceed\x18\a \x01(\bR\aproceed\"\xc6\x01\n" +
 	"\x13SelfUninstallResult\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1a\n" +

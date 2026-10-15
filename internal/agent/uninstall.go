@@ -21,22 +21,36 @@ import (
 // authenticated session. The agent checks that it is meant for it (its
 // identity, the controller epoch, the time), starts the removal helper
 // (agentrm.Script, MODE=self) as root, detached so that it outlives the
-// agent, and answers. The helper waits until the answer has been sent (the
-// agent then creates the helper's GO file), stops and removes the Shepherd
-// (its service or supervisor, programs, ceiling, release keys, identity,
-// state and logs) and finally itself. No capability is needed: it removes
-// the Shepherd and nothing else. Requests that repeat are answered with
-// the removal already started.
+// agent, and answers. The helper waits until the controller has the answer:
+// the controller confirms it (SelfUninstall with proceed), and the agent
+// then creates the helper's GO file. Without the confirmation (the session
+// ended, or an older controller) the agent creates it after proceedWait,
+// and the helper doesn't wait more than 20 seconds either. The helper then
+// stops and removes the Shepherd (its service or supervisor, programs,
+// ceiling, release keys, identity, state and logs) and finally itself. No
+// capability is needed: it removes the Shepherd and nothing else. Requests
+// that repeat are answered with the removal already started.
 
 // removal is the removal this agent started.
 type removal struct {
 	requestID, how, dir string
+	proceed             chan struct{} // closed when the controller confirms it has the answer
+	confirmed, signaled bool
 }
+
+// proceedWait is how long the agent waits for the controller's
+// confirmation before letting its removal helper go ahead anyway (the
+// helper itself waits at most 20 seconds).
+const proceedWait = 15 * time.Second
 
 var requestIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 // handleSelfUninstall answers a SelfUninstall request.
 func (a *Agent) handleSelfUninstall(s *session, m *pb.SelfUninstall) {
+	if m.Proceed {
+		a.confirmRemoval()
+		return
+	}
 	res := a.selfUninstall(m)
 	ev := OpEvent{Event: "uninstall", OpID: m.RequestId, Controller: s.controller, Summary: "remove this Shepherd from the host", Outcome: "ok"}
 	if !res.Accepted {
@@ -49,12 +63,44 @@ func (a *Agent) handleSelfUninstall(s *session, m *pb.SelfUninstall) {
 	}
 	if err != nil {
 		a.log.Warn("couldn't tell the controller that this Shepherd removes itself; the removal goes ahead", "err", err)
-	} else {
-		a.log.Info("removing this Shepherd from the host, as the controller asked", "helper", res.Helper, "reason", m.Reason)
+		a.signalRemoval()
+		return
 	}
-	// The answer is out (or can't go out): the helper may go ahead.
+	a.log.Info("removing this Shepherd from the host, as the controller asked", "helper", res.Helper, "reason", m.Reason)
+	// Stopped right after sending, the answer could be lost in flight: the
+	// helper goes ahead once the controller confirms it has it, when this
+	// session ends without that, or after proceedWait.
 	a.mu.Lock()
-	dir := a.removal.dir
+	proceed := a.removal.proceed
+	a.mu.Unlock()
+	select {
+	case <-proceed:
+	case <-s.stream.Context().Done():
+	case <-time.After(proceedWait):
+	}
+	a.signalRemoval()
+}
+
+// confirmRemoval: the controller has this agent's accepting answer.
+func (a *Agent) confirmRemoval() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if r := a.removal; r != nil && !r.confirmed {
+		r.confirmed = true
+		close(r.proceed)
+	}
+}
+
+// signalRemoval lets the removal helper go ahead (its GO file), once.
+func (a *Agent) signalRemoval() {
+	a.mu.Lock()
+	r := a.removal
+	if r == nil || r.signaled {
+		a.mu.Unlock()
+		return
+	}
+	r.signaled = true
+	dir := r.dir
 	a.mu.Unlock()
 	if err := os.WriteFile(filepath.Join(dir, "go"), nil, 0o600); err != nil {
 		a.log.Warn("couldn't signal the removal helper; it goes ahead on its own shortly", "err", err)
@@ -121,7 +167,7 @@ func (a *Agent) selfUninstall(m *pb.SelfUninstall) *pb.SelfUninstallResult {
 		os.RemoveAll(dir)
 		return refuse("start", "couldn't start the removal helper: "+err.Error())
 	}
-	a.removal = &removal{requestID: m.RequestId, how: how, dir: dir}
+	a.removal = &removal{requestID: m.RequestId, how: how, dir: dir, proceed: make(chan struct{})}
 	res.Accepted, res.Helper = true, how
 	return res
 }

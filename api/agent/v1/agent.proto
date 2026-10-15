@@ -370,6 +370,12 @@ message SelfUninstall {
   int64 issued_at_unix = 4;
   int64 expires_at_unix = 5;
   string reason = 6;               // for the agent's log
+  // proceed: not a new request but the controller's confirmation that it
+  // has the agent's accepting answer to request_id: the removal helper may
+  // go ahead now. A Shepherd stopped right after sending its answer could
+  // lose it in flight. Without the confirmation (the session ended, or an
+  // older controller) it goes ahead anyway after a short wait.
+  bool proceed = 7;
 }
 
 message SelfUninstallResult {

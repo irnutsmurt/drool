@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc"
 
 	"drool/internal/agentcaps"
 	"drool/internal/agentrm"
@@ -133,5 +136,68 @@ func TestRemovalScript(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Errorf("the script lacks %q", want)
 		}
+	}
+}
+
+// fakeStream is the controller side of one session: it keeps what the
+// agent sends, and its context ending ends the session.
+type fakeStream struct {
+	grpc.ClientStream
+	ctx  context.Context
+	sent chan *pb.AgentMessage
+}
+
+func (f *fakeStream) Context() context.Context { return f.ctx }
+
+func (f *fakeStream) Send(m *pb.AgentMessage) error {
+	f.sent <- m
+	return nil
+}
+
+func (f *fakeStream) Recv() (*pb.ControllerMessage, error) {
+	<-f.ctx.Done()
+	return nil, f.ctx.Err()
+}
+
+// The removal helper goes ahead only once the controller confirms it has
+// the Shepherd's accepting answer, or once the session ends without that.
+// Stopped right after sending, the answer could be lost in flight (seen in
+// CI under the race detector: "the Shepherd disconnected before
+// answering").
+func TestSelfRemovalWaitsForTheController(t *testing.T) {
+	full, _ := agentcaps.Preset(agentcaps.PresetFull)
+	for _, end := range []string{"confirmed", "session ended"} {
+		a := testAgent(t, full)
+		a.opt.RemovalDir = t.TempDir()
+		a.opt.StartRemoval = func(string) (string, error) { return "test helper", nil }
+		ctx, cancel := context.WithCancel(context.Background())
+		fs := &fakeStream{ctx: ctx, sent: make(chan *pb.AgentMessage, 4)}
+		s := &session{stream: fs}
+		req := &pb.SelfUninstall{RequestId: "rm_1", IdentityId: "aid_1", ControllerEpoch: "epoch-A",
+			IssuedAtUnix: time.Now().Unix(), ExpiresAtUnix: time.Now().Add(time.Minute).Unix()}
+		done := make(chan struct{})
+		go func() {
+			a.handleSelfUninstall(s, req)
+			close(done)
+		}()
+		if answer := (<-fs.sent).GetSelfUninstall(); !answer.GetAccepted() {
+			t.Fatalf("%s: %+v", end, answer)
+		}
+		a.mu.Lock()
+		goFile := filepath.Join(a.removal.dir, "go")
+		a.mu.Unlock()
+		if _, err := os.Stat(goFile); err == nil {
+			t.Fatalf("%s: the helper may go ahead before the controller has the answer", end)
+		}
+		if end == "confirmed" {
+			a.handleSelfUninstall(s, &pb.SelfUninstall{RequestId: "rm_1", Proceed: true})
+		} else {
+			cancel()
+		}
+		<-done
+		if _, err := os.Stat(goFile); err != nil {
+			t.Fatalf("%s: the helper wasn't let go ahead: %v", end, err)
+		}
+		cancel()
 	}
 }

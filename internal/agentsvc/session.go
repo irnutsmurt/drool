@@ -54,6 +54,7 @@ type Session struct {
 	pong        chan struct{}
 	opWait      map[string]chan *pb.OpStatus
 	removeWait  map[string]chan *pb.SelfUninstallResult
+	removeReqs  map[string]*pb.SelfUninstall // removal requests sent in this session (to confirm an answer)
 	done        chan struct{}
 	closeReason string
 }

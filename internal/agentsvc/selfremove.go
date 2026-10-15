@@ -9,6 +9,8 @@ import (
 	"slices"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"drool/internal/agentrpc/pb"
 )
 
@@ -53,8 +55,10 @@ func (s *Service) RequestSelfUninstall(ctx context.Context, hostID, reason strin
 	se.mu.Lock()
 	if se.removeWait == nil {
 		se.removeWait = map[string]chan *pb.SelfUninstallResult{}
+		se.removeReqs = map[string]*pb.SelfUninstall{}
 	}
 	se.removeWait[req.RequestId] = ch
+	se.removeReqs[req.RequestId] = req
 	se.mu.Unlock()
 	defer func() {
 		se.mu.Lock()
@@ -84,9 +88,21 @@ func (s *Service) RequestSelfUninstall(ctx context.Context, hostID, reason strin
 	}
 }
 
+// onSelfUninstallResult hands the Shepherd's answer to the request waiting
+// for it and, when the Shepherd accepted, confirms that DROOL has it: only
+// then does the Shepherd let its removal helper stop it, so its answer
+// can't be lost in flight. A late answer (DROOL stopped waiting) is
+// confirmed too: DROOL asked for the removal, and its outcome is reported
+// as unknown already.
 func (se *Session) onSelfUninstallResult(r *pb.SelfUninstallResult) {
 	se.mu.Lock()
 	ch := se.removeWait[r.RequestId]
+	req := se.removeReqs[r.RequestId]
+	if r.Accepted {
+		// Confirmed once: a Shepherd from before "proceed" answers the
+		// confirmation again, as a repeated request.
+		delete(se.removeReqs, r.RequestId)
+	}
 	se.mu.Unlock()
 	if ch != nil {
 		select {
@@ -94,4 +110,12 @@ func (se *Session) onSelfUninstallResult(r *pb.SelfUninstallResult) {
 		default:
 		}
 	}
+	if !r.Accepted || req == nil {
+		return
+	}
+	// The request's own fields: a Shepherd from before "proceed" takes it as
+	// a repeat of the request and answers it again, harmlessly.
+	p := proto.Clone(req).(*pb.SelfUninstall)
+	p.Proceed = true
+	go se.send(&pb.ControllerMessage{Msg: &pb.ControllerMessage_SelfUninstall{SelfUninstall: p}})
 }
