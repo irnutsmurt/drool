@@ -93,6 +93,20 @@ func TestCompareVersions(t *testing.T) {
 		{"v0.2.0+abc", "v0.2.0", 0},
 		{"v1.0.0", "v0.99.99", 1},
 		{"v0.2.0-rc2", "v0.2.0-rc1", 1},
+		// Pre-releases part by part, numbers as numbers: release
+		// candidates past 9, and development builds git describe names
+		// past 100 commits since the tag (CI's release qualification found
+		// Shepherds refusing alpha-102 as older than alpha-22).
+		{"v1.0.0-rc.10", "v1.0.0-rc.9", 1},
+		{"v1.0.0-rc.2", "v1.0.0-rc.10", -1},
+		{"v1.0.0-rc10", "v1.0.0-rc9", 1},
+		{"v0.1.0-alpha-102-g87a8202", "v0.1.0-alpha-22-g75f2f41", 1},
+		{"v0.1.0-alpha-102-g87a8202", "v0.1.0-alpha-97-g1449509", 1},
+		{"v0.1.0-alpha-3-gabc1234", "v0.1.0-alpha", 1},
+		{"v0.1.0-alpha-102-g87a8202", "v0.1.0-alpha-102-g87a8202", 0},
+		{"v1.0.0-1", "v1.0.0-alpha", -1}, // a number before a word
+		{"v1.0.0-beta", "v1.0.0-alpha-500-gffffff", 1},
+		{"v1.0.0-rc.1", "v1.0.0", -1},
 	}
 	for _, c := range cases {
 		if got := CompareVersions(c.a, c.b); got != c.want {

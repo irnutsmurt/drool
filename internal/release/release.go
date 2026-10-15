@@ -8,6 +8,7 @@ package release
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
@@ -244,8 +245,8 @@ func CheckBinary(m *Manifest, r io.Reader) error {
 // --- versions ---
 
 // CompareVersions compares "v1.2.3[-pre][+build]" versions: numeric
-// fields first, then a release sorts after its pre-releases. Build
-// metadata is ignored.
+// fields first, then a release sorts after its pre-releases, and
+// pre-releases by their parts (comparePre). Build metadata is ignored.
 func CompareVersions(a, b string) int {
 	pa, prea := splitVersion(a)
 	pb, preb := splitVersion(b)
@@ -264,10 +265,62 @@ func CompareVersions(a, b string) int {
 		return 1
 	case preb == "":
 		return -1
-	case prea < preb:
-		return -1
 	}
-	return 1
+	return comparePre(prea, preb)
+}
+
+// comparePre orders pre-releases part by part, the parts separated by '.',
+// '-' and the change from letters to digits: numbers numerically, words as
+// text, a number before a word, and a prefix before what continues it. So
+// "rc.10" is after "rc.9", and a development build git describe names
+// "alpha-102-g…" after "alpha-97-g…" (comparing the whole text had it
+// before once main passed 100 commits since the tag, and Shepherds refused
+// the update as a downgrade).
+func comparePre(a, b string) int {
+	pa, pb := preParts(a), preParts(b)
+	for i := 0; i < len(pa) && i < len(pb); i++ {
+		x, y := pa[i], pb[i]
+		nx, errx := strconv.ParseUint(x, 10, 64)
+		ny, erry := strconv.ParseUint(y, 10, 64)
+		switch {
+		case errx == nil && erry == nil:
+			if nx != ny {
+				return cmp.Compare(nx, ny)
+			}
+		case errx == nil:
+			return -1
+		case erry == nil:
+			return 1
+		case x != y:
+			return strings.Compare(x, y)
+		}
+	}
+	return cmp.Compare(len(pa), len(pb))
+}
+
+// preParts splits a pre-release at '.', '-' and where letters change to
+// digits or back: "alpha-102-g87a8202" → alpha 102 g 87 a 8202.
+func preParts(s string) []string {
+	var out []string
+	start := -1
+	digit := func(c byte) bool { return c >= '0' && c <= '9' }
+	for i := 0; i <= len(s); i++ {
+		if i == len(s) || s[i] == '.' || s[i] == '-' {
+			if start >= 0 {
+				out = append(out, s[start:i])
+				start = -1
+			}
+			continue
+		}
+		if start >= 0 && digit(s[i]) != digit(s[i-1]) {
+			out = append(out, s[start:i])
+			start = i
+		}
+		if start < 0 {
+			start = i
+		}
+	}
+	return out
 }
 
 func splitVersion(v string) ([3]int, string) {
