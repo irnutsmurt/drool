@@ -3369,6 +3369,14 @@ TestMixedVersionShepherds (the M16 Shepherd now *reduced*).
   `pending` keeps the drift as it was; a clock set back further, or a host restored to an older
   revision, still reports. Found by CI's race-detector run of TestFirewallAgentTransaction (*explain
   (drift)*); regression test TestFirewallStatusOrder.
+- Versions compare pre-releases part by part, numbers as numbers (`release.CompareVersions`). Comparing
+  the whole pre-release as text put `v0.1.0-alpha-102-g87a8202` before `alpha-22`, `alpha-33` and
+  `alpha-97` once `main` passed 100 commits since the `v0.1.0-alpha` tag: Shepherds refused the update
+  as a downgrade, and CI's release qualification (TestMixedVersionShepherds, TestReleaseUpgrade:
+  Shepherds of M15 and M16 updating to the build) failed. It would also have put `rc.10` before `rc.9`.
+  Shepherds already installed compare with their own code, so they keep refusing development builds
+  from `alpha-100` on until a tag newer than `v0.1.0-alpha` exists (the next release candidate's, or a
+  development tag): the owner's decision.
 - The browser suite's health tests removed every health override between tests, the fixture's
   monitored services (host overrides since the previous batch) included; they now remove only their
   own.
