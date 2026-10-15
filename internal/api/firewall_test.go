@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -756,4 +757,73 @@ func TestFirewallJSONArrays(t *testing.T) {
 			}
 		}
 	}
+}
+
+// Firewall status reports that arrive out of order, or that were taken
+// while a transaction was open on the host, never read as drift (seen in
+// CI under the race detector: the hello of the session a transaction
+// verified over, carrying the status from before the commit, was handled
+// after the commit and recorded "drift", with a firewall.drift audit
+// record). A report collected before the recorded one (by the host's
+// clock, then its committed revision) is ignored; one with a transaction
+// pending keeps the drift as it was. Real drift is still found, and so is
+// a host whose clock was set back.
+func TestFirewallStatusOrder(t *testing.T) {
+	h := newHarness(t)
+	h.mkUser("admin", auth.RoleAdmin)
+	c := h.login("admin")
+	var host hostJSON
+	c.do("POST", "/api/v1/hosts", map[string]any{"name": "fw-order", "address": "192.0.2.81", "port": 22, "user": "deploy"}).json(t, &host)
+	report := func(now, rev int, journal, expected, live string) {
+		t.Helper()
+		st := map[string]string{"tool_version": "1", "now": fmt.Sprint(now), "journal_state": journal, "expected_live": expected, "live_hash": live}
+		if rev > 0 {
+			st["committed_revision"] = fmt.Sprint(rev)
+		}
+		b, _ := json.Marshal(map[string]any{"status": st})
+		h.fw.OnTelemetry(host.ID, "firewall", b)
+	}
+	stored := func() (drift string, st map[string]string) {
+		t.Helper()
+		var js string
+		if err := h.st.Reader.QueryRow(`SELECT drift, status_json FROM fw_host_state WHERE host_id = ?`, host.ID).Scan(&drift, &js); err != nil {
+			t.Fatal(err)
+		}
+		json.Unmarshal([]byte(js), &st)
+		return drift, st
+	}
+	check := func(what, wantDrift, wantNow string) {
+		t.Helper()
+		if d, st := stored(); d != wantDrift || st["now"] != wantNow {
+			t.Fatalf("%s: drift %q, recorded status from %s (want %q, %s)", what, d, st["now"], wantDrift, wantNow)
+		}
+	}
+	// The first transaction commits: revision 1, its rules live.
+	report(1000, 1, "committed", "h1", "h1")
+	check("committed", "", "1000")
+	// The verification session's hello, collected mid-transaction (the
+	// candidate live, nothing committed yet), handled late: stale.
+	report(1000, 0, "pending", "", "h1")
+	check("the same second, before the commit", "", "1000")
+	report(998, 0, "pending", "", "h1")
+	check("seconds before", "", "1000")
+	// The next transaction, in order: open on the host, its candidate live.
+	report(1001, 1, "pending", "h1", "h2")
+	check("a transaction open on the host", "", "1001")
+	// Changed outside DROOL: drift.
+	report(1002, 1, "committed", "h1", "h3")
+	check("rules changed on the host", "drift", "1002")
+	if n := auditCount(t, h, "firewall.drift"); n != 1 {
+		t.Fatalf("%d firewall.drift records", n)
+	}
+	// The host's clock set back by an hour: its reports count again.
+	report(1002-3600, 1, "committed", "h1", "h1")
+	check("a clock set back", "", fmt.Sprint(1002-3600))
+}
+
+func auditCount(t *testing.T, h *harness, action string) int {
+	t.Helper()
+	var n int
+	h.st.Reader.QueryRow(`SELECT count(*) FROM audit_events WHERE action = ?`, action).Scan(&n)
+	return n
 }

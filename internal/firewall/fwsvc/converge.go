@@ -99,9 +99,18 @@ func (s *Service) recordStatus(ctx context.Context, hostID string, st map[string
 	if st["tool_version"] == "" || st["tool_version"] == "none" {
 		return
 	}
+	s.state(ctx, hostID)
+	prev, _ := s.d.Store.R.GetFwHostState(ctx, hostID)
+	if staleStatus(st, prev.StatusJson) {
+		return
+	}
 	drift := ""
 	expected, live := st["expected_live"], st["live_hash"]
 	switch {
+	case st["journal_state"] == "pending":
+		// A transaction is open on the host: its candidate is live and not
+		// committed yet. That's not drift; the transaction settles it.
+		drift = prev.Drift
 	case expected != "" && expected != "none" && live == "none":
 		drift = "missing"
 	case expected != "" && live != expected:
@@ -111,8 +120,6 @@ func (s *Service) recordStatus(ctx context.Context, hostID string, st map[string
 	}
 	b, _ := json.Marshal(st)
 	now := s.now().UnixMilli()
-	s.state(ctx, hostID)
-	prev, _ := s.d.Store.R.GetFwHostState(ctx, hostID)
 	s.d.Store.W.SetFwHostStatus(ctx, db.SetFwHostStatusParams{StatusJson: string(b), StatusAt: sql.NullInt64{Int64: now, Valid: true},
 		Drift: drift, UpdatedAt: now, HostID: hostID})
 	if drift != "" && prev.Drift == "" {
@@ -130,6 +137,36 @@ func (s *Service) recordStatus(ctx context.Context, hostID string, st map[string
 			s.markState(ctx, hostID, "host_ahead", s.epoch, crev, st["committed_hash"])
 		}
 	}
+}
+
+// staleStatus reports whether status st was collected before the recorded
+// one (prevJSON). Reports can arrive out of order: the hello of the session
+// a transaction verifies over carries a status collected before the commit,
+// and can be handled after the commit's own report. By the host's clock
+// (seconds) within two minutes, then, in the same second, by the committed
+// revision and whether a transaction was still open. A clock set back
+// further, or a host restored to an older revision, reports as new.
+func staleStatus(st map[string]string, prevJSON string) bool {
+	var prev map[string]string
+	if prevJSON == "" || json.Unmarshal([]byte(prevJSON), &prev) != nil {
+		return false
+	}
+	num := func(m map[string]string, k string) int64 {
+		n, _ := strconv.ParseInt(m[k], 10, 64)
+		return n
+	}
+	at, prevAt := num(st, "now"), num(prev, "now")
+	if at == 0 || prevAt == 0 {
+		return false
+	}
+	switch {
+	case prevAt > at:
+		return prevAt-at <= 120
+	case prevAt < at:
+		return false
+	}
+	rev, prevRev := num(st, "committed_revision"), num(prev, "committed_revision")
+	return rev < prevRev || (rev == prevRev && st["journal_state"] == "pending" && prev["journal_state"] != "pending")
 }
 
 // resolveHost settles transactions whose outcome DROOL doesn't know yet.
