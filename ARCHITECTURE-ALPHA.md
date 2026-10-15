@@ -3291,14 +3291,20 @@ then checks the container).
 `AgentMessage.self_uninstall` `SelfUninstallResult` {request_id, accepted, error, code, helper,
 removes, already}. Shepherds announce `uninstall-1`; the controller never sends the request to one
 that doesn't, and its compatibility status says *works, without removing itself when DROOL asks*.
+`SelfUninstall.proceed` (added after CI found the race below) is the controller's confirmation that
+it has an accepting answer.
 No capability and no shell are needed: it removes the Shepherd and nothing else.
 
 **The Shepherd** (`internal/agent/uninstall.go`) checks that the request is meant for it (well formed,
 not expired or issued in the future, its identity, its controller epoch), starts the helper —
 `agentrm.Script` with `MODE=self`, the same script the SSH path runs — from a root-only directory in
-`/run` (or `/var/tmp`), detached (a transient systemd unit, or its own session), answers, and then
-creates the helper's GO file. The helper waits for GO (at most 20 s: an accepted removal goes ahead
-without it), stops and disables the service or kills the supervisor and agent (and update helpers),
+`/run` (or `/var/tmp`), detached (a transient systemd unit, or its own session), answers, and creates
+the helper's GO file once the controller confirms it has the answer (`proceed`), sent for every
+accepting answer, a late one included. Without it (the session ended, or an older controller) it
+creates GO after 15 s. Creating GO right after sending, as first written, could lose the answer: a
+gRPC `Send` returns once the message is queued, and a Shepherd stopped at once can drop it, which CI's
+race-detector run showed as *the Shepherd disconnected before answering*. The helper waits for GO (at
+most 20 s: an accepted removal goes ahead without it), stops and disables the service or kills the supervisor and agent (and update helpers),
 removes the unit, programs, ceiling, release keys, identity, state and logs, and its own directory. A
 repeated request is answered with the removal already started; while it goes, operations are refused.
 Only a Shepherd running as root from the standard paths starts the real helper; anything else refuses
@@ -3354,6 +3360,15 @@ TestMixedVersionShepherds (the M16 Shepherd now *reduced*).
   *not found*. The host page stays behind the removal dialog while it shows the result, and kept
   asking. Test: `internal/api` TestRemovedHostReads (every host-scoped GET route, the host-filtered
   lists and both plans, for a removed host).
+- Firewall status reports that arrive out of order, or were collected while a transaction was open on
+  the host, no longer read as drift (`fwsvc.recordStatus`, `staleStatus`). The hello of the session a
+  transaction verifies over carries a status from before the commit; handled after the commit's own
+  report, it recorded *drift*. Handled before it, it did so too, with a `firewall.drift` audit record,
+  on every first enforce. A report collected before the recorded one (by the host's clock within two
+  minutes, then its committed revision and open journal) is ignored, and one with the host's journal
+  `pending` keeps the drift as it was; a clock set back further, or a host restored to an older
+  revision, still reports. Found by CI's race-detector run of TestFirewallAgentTransaction (*explain
+  (drift)*); regression test TestFirewallStatusOrder.
 - The browser suite's health tests removed every health override between tests, the fixture's
   monitored services (host overrides since the previous batch) included; they now remove only their
   own.
