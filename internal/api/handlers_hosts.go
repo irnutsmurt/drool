@@ -15,6 +15,7 @@ import (
 	"drool/internal/audit"
 	"drool/internal/auth"
 	"drool/internal/driver"
+	"drool/internal/hostrefs"
 	"drool/internal/inventory"
 	"drool/internal/model"
 	"drool/internal/packdeps"
@@ -374,37 +375,75 @@ func (s *Server) forgetSetupCredentials(ctx context.Context, q *db.Queries, host
 	return names, emits, nil
 }
 
-// handleDeleteHost removes a host from DROOL. Setup-only credentials it
-// signed in with (typed while adding it, before DROOL's own account took
-// over) go with it, unless another host uses them; stored credentials stay.
+// handleDeleteHost removes a host from DROOL (forgetHostTx): nothing on
+// the host changes.
 func (s *Server) handleDeleteHost(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := r.PathValue("id")
 	var emits []func()
-	err := s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
-		h, err := s.d.Inventory.DeleteHostTx(ctx, q, id)
-		if err != nil {
-			return audit.Event{}, err
-		}
-		forgot, emit, err := s.forgetSetupCredentials(ctx, q, h.Name, "it was removed from DROOL", h.SshCredentialID.String, h.BecomeCredentialID.String)
+	err := s.inRawTxAudited(ctx, func(tx *sql.Tx, q *db.Queries) (audit.Event, error) {
+		details, emit, err := s.forgetHostTx(ctx, tx, q, id)
 		if err != nil {
 			return audit.Event{}, err
 		}
 		emits = emit
-		details := map[string]any{"name": h.Name, "address": h.ConnectAddress}
-		if len(forgot) > 0 {
-			details["setup_credentials_deleted"] = forgot
-		}
 		return audit.Event{Action: "host.delete", TargetType: "host", TargetID: id, Details: details}, nil
 	})
 	if err != nil {
 		writeProblem(w, r, s.inventoryError(err))
 		return
 	}
+	s.afterHostRemoved(emits)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// forgetHostTx removes a host from DROOL in the caller's transaction: the
+// host and everything that belongs to it (foreign keys), the setup-only
+// credentials it signed in with (typed while adding it, before DROOL's own
+// account took over) unless another host uses them, and its id in the
+// schedules and firewall policies that name it (hostrefs: each one changed
+// is audited on its own). Stored credentials stay. It returns the
+// host.delete audit details and what to emit after the commit.
+func (s *Server) forgetHostTx(ctx context.Context, tx *sql.Tx, q *db.Queries, id string) (map[string]any, []func(), error) {
+	h, err := s.d.Inventory.DeleteHostTx(ctx, q, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	forgot, emits, err := s.forgetSetupCredentials(ctx, q, h.Name, "it was removed from DROOL", h.SshCredentialID.String, h.BecomeCredentialID.String)
+	if err != nil {
+		return nil, nil, err
+	}
+	var by hostrefs.Actor
+	if p := principalFrom(ctx); p != nil {
+		by = hostrefs.Actor{UserID: p.UserID, Name: p.Username}
+	}
+	changes, err := hostrefs.ReleaseTx(ctx, tx, id, h.Name, by, time.Now())
+	if err != nil {
+		return nil, nil, err
+	}
+	refEmits, err := hostrefs.RecordTx(ctx, s.d.Audit, q, nil, h.Name, changes)
+	if err != nil {
+		return nil, nil, err
+	}
+	details := map[string]any{"name": h.Name, "address": h.ConnectAddress}
+	if len(forgot) > 0 {
+		details["setup_credentials_deleted"] = forgot
+	}
+	if len(changes) > 0 {
+		details["taken_out_of"] = hostrefs.Summaries(changes)
+	}
+	return details, append(emits, refEmits...), nil
+}
+
+// afterHostRemoved runs once a host's removal committed: the audit records
+// go out, and the firewall's converger sees the change.
+func (s *Server) afterHostRemoved(emits []func()) {
 	for _, e := range emits {
 		e()
 	}
-	w.WriteHeader(http.StatusNoContent)
+	if s.d.Firewall != nil {
+		s.d.Firewall.Kick()
+	}
 }
 
 func (s *Server) handleListHostKeys(w http.ResponseWriter, r *http.Request) {

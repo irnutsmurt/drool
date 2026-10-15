@@ -464,6 +464,10 @@ func (s *Service) SetEnabled(ctx context.Context, id string, on bool, onTx func(
 	}
 	now := s.now()
 	var next *int64
+	if on && cur.Config.Targets.Empty() {
+		// Its only host was removed from DROOL (hostrefs).
+		return nil, invalid("it has no targets: choose its hosts, Packs or tags first")
+	}
 	if on {
 		if next = s.nextAfter(cur.Config, now); next == nil {
 			return nil, invalid("this one-time schedule's time has passed; edit it to run again")

@@ -729,6 +729,9 @@ paths:
     delete:
       operationId: deleteHost
       tags: [hosts]
+      description: >-
+        Removes the host from DROOL only: nothing on the host changes. It's taken out of the schedules and firewall
+        policies that name it (see RemovalPlan.changes), each change audited.
       responses:
         '204': { description: Deleted. }
         '404': { $ref: '#/components/responses/Problem' }
@@ -4184,7 +4187,7 @@ components:
         verify_error: { type: string }
     RemovalPlan:
       type: object
-      required: [host_id, host_name, parts, can_clean_up, after, stays]
+      required: [host_id, host_name, parts, can_clean_up, after, stays, changes]
       properties:
         host_id: { type: string }
         host_name: { type: string }
@@ -4205,6 +4208,23 @@ components:
         blocked: { type: string, description: Why the host can't be removed now. }
         after: { type: string }
         stays: { type: array, items: { type: string }, description: What DROOL leaves on the host either way. }
+        changes:
+          type: array
+          description: >-
+            Schedules and firewall policies that name the host, and what removing it (either way) does to each:
+            it's taken out of their targets, exclusions, canary hosts, sources and destinations. A schedule left
+            without targets is disabled; a firewall policy left without a source or destination is deleted.
+          items:
+            type: object
+            required: [kind, id, name, detail, path]
+            properties:
+              kind: { type: string, enum: [schedule, firewall_policy] }
+              id: { type: string }
+              name: { type: string }
+              detail: { type: string }
+              path: { type: string }
+              disabled: { type: boolean, description: A schedule left without targets is disabled. }
+              deleted: { type: boolean, description: A firewall policy left without a source or destination is deleted. }
     RemovalResult:
       type: object
       required: [outcome, host_deleted, steps, message]

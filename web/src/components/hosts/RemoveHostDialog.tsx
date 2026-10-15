@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
+import { plainLink } from "@/components/ui/links";
 import { errorMessage } from "@/lib/format";
 
 /** Removing a host (dogfooding correction batch): from DROOL only (nothing
@@ -37,6 +39,7 @@ export function RemoveHostDialog({ hostId, hostName, onRemoved, onClose }: { hos
   const busy = cleanup.isPending || forget.isPending;
   const hasParts = (p?.parts.length ?? 0) > 0;
   const stepWord: Record<string, string> = { shepherd: "Shepherd", account: "SSH account" };
+  const changeWord: Record<string, string> = { schedule: "Schedule", firewall_policy: "Firewall policy" };
   return (
     <Dialog title={`Remove ${hostName} from DROOL?`} onClose={res?.host_deleted ? onRemoved : onClose}>
       <div className="space-y-4 text-sm" data-testid="remove-host">
@@ -77,6 +80,18 @@ export function RemoveHostDialog({ hostId, hostName, onRemoved, onClose }: { hos
               </label>
             </fieldset>
             <p className="text-xs text-muted">Either way, {p.stays.join("; ")} stay on the host.</p>
+            {p.changes.length > 0 && (
+              <div className="space-y-1 text-xs" data-testid="remove-host-changes">
+                <p className="font-medium">Either way, in DROOL:</p>
+                <ul className="space-y-1">
+                  {p.changes.map((c) => (
+                    <li key={c.kind + c.id}>
+                      <Link className={plainLink} to={c.path}>{changeWord[c.kind] ?? c.kind} “{c.name}”</Link>: {c.detail}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </>
         )}
         {cleanup.error && <Alert>{errorMessage(cleanup.error)}</Alert>}

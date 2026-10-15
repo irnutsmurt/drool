@@ -11,6 +11,7 @@ import (
 
 	"drool/internal/agentsvc"
 	"drool/internal/audit"
+	"drool/internal/hostrefs"
 	"drool/internal/model"
 	"drool/internal/store/db"
 )
@@ -57,6 +58,9 @@ type removalPlan struct {
 	Blocked string   `json:"blocked,omitempty"`
 	After   string   `json:"after"` // what the cleanup can and can't confirm
 	Stays   []string `json:"stays"` // what DROOL leaves on the host either way
+	// Changes: the schedules and firewall policies that name the host,
+	// and what removing it (either way) does to each.
+	Changes []hostrefs.Change `json:"changes"`
 }
 
 func (s *Server) planRemoval(ctx context.Context, id string) (*removalPlan, error) {
@@ -64,7 +68,11 @@ func (s *Server) planRemoval(ctx context.Context, id string) (*removalPlan, erro
 	if err != nil {
 		return nil, err
 	}
-	p := &removalPlan{HostID: h.ID, HostName: h.Name, Parts: []removalPart{},
+	changes, err := hostrefs.Plan(ctx, s.d.Store.Reader, id, h.Name)
+	if err != nil {
+		return nil, err
+	}
+	p := &removalPlan{HostID: h.ID, HostName: h.Name, Parts: []removalPart{}, Changes: append([]hostrefs.Change{}, changes...),
 		Stays: []string{"files DROOL deployed, packages it installed and services it changed",
 			"DROOL's firewall rules and firewall tooling (remove them from the host's Firewall page first if you want them gone)"}}
 	if deps, err := s.d.Store.R.ListHostsViaHop(ctx, id); err == nil && len(deps) > 0 {
@@ -244,29 +252,20 @@ func (s *Server) handleRemoveWithCleanup(w http.ResponseWriter, r *http.Request)
 	}
 	// Everything started: DROOL forgets the host.
 	var emits []func()
-	err = s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
-		h, err := s.d.Inventory.DeleteHostTx(ctx, q, id)
-		if err != nil {
-			return audit.Event{}, err
-		}
-		forgot, emit, err := s.forgetSetupCredentials(ctx, q, h.Name, "it was removed from DROOL", h.SshCredentialID.String, h.BecomeCredentialID.String)
+	err = s.inRawTxAudited(ctx, func(tx *sql.Tx, q *db.Queries) (audit.Event, error) {
+		details, emit, err := s.forgetHostTx(ctx, tx, q, id)
 		if err != nil {
 			return audit.Event{}, err
 		}
 		emits = emit
-		details := map[string]any{"name": h.Name, "address": h.ConnectAddress, "cleanup": steps}
-		if len(forgot) > 0 {
-			details["setup_credentials_deleted"] = forgot
-		}
+		details["cleanup"] = steps
 		return audit.Event{Action: "host.delete", TargetType: "host", TargetID: id, Details: details}, nil
 	})
 	if err != nil {
 		stop(fmt.Sprintf("%s But DROOL couldn't forget the host (%v): remove it from DROOL only to finish.", done(), err))
 		return
 	}
-	for _, e := range emits {
-		e()
-	}
+	s.afterHostRemoved(emits)
 	writeJSON(w, http.StatusOK, map[string]any{"outcome": "removed", "host_deleted": true, "steps": steps,
 		"message": plan.HostName + " is removed from DROOL. " + done()})
 }

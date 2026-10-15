@@ -6,7 +6,7 @@
 // DROOL_E2E_ACCOUNT_PASSWORD: pwuser signs in with it and sudo asks for it).
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { base, launch, session, text, waitText, waitFor, field, fill, click, shot, sleep } from "./lib.mjs";
+import { api, base, launch, session, text, waitText, waitFor, field, fill, click, shot, sleep } from "./lib.mjs";
 
 const spec = process.env.DROOL_E2E_ACCOUNT_HOST;
 const setupPassword = process.env.DROOL_E2E_ACCOUNT_PASSWORD ?? "";
@@ -88,6 +88,11 @@ test("removing that host cleans up DROOL's account on it", { skip: !spec && "nee
   const hosts = await page.evaluate(async () => (await (await fetch("/api/v1/hosts")).json()).items);
   const h = hosts.find((x) => x.name === "acct-browser");
   assert.ok(h, "acct-browser was added");
+  // A schedule that runs only on it: removing the host takes it out, and
+  // the schedule, left with nothing to run on, is disabled and says why.
+  const sch = await api(page, "POST", "/schedules", { name: "acct-browser updates", time_zone: "UTC",
+    recurrence: { kind: "weekly", time: "03:00", weekdays: ["sun"] }, targets: { hosts: [h.id] }, steps: [{ type: "command", command: "true" }] });
+  assert.equal(sch.status, 201, JSON.stringify(sch.body));
   await page.goto(`${base}/hosts/${h.id}`, { waitUntil: "networkidle0" });
   await click(page, "main button", "Remove host…");
   const dialog = () => page.$eval('[data-testid="remove-host"]', (e) => e.innerText).catch(() => "");
@@ -97,6 +102,8 @@ test("removing that host cleans up DROOL's account on it", { skip: !spec && "nee
     "Remove from DROOL only", "Nothing on acct-browser changes", "can't watch the end of it", "firewall rules"]) {
     assert.ok(plan.includes(want), "removal plan lacks: " + want);
   }
+  const changes = await page.$eval('[data-testid="remove-host-changes"]', (e) => e.innerText);
+  assert.match(changes, /Either way, in DROOL:\s*Schedule “acct-browser updates”: acct-browser is taken out of its targets\. It has nothing left that it runs on, so it's disabled until its targets are chosen again\./);
   // The recommended choice is chosen.
   assert.equal(await page.$eval('[data-testid="remove-host"] input[type="radio"]:checked', (r) => r.closest("label").innerText.split("\n")[0]),
     "Clean up DROOL access and remove the host (recommended)");
@@ -115,5 +122,10 @@ test("removing that host cleans up DROOL's account on it", { skip: !spec && "nee
   await click(page, '[data-testid="remove-host"] button', "Done");
   await waitFor(page, async () => new URL(page.url()).pathname === "/hosts", "back on the host list");
   assert.ok(!(await text(page)).includes("acct-browser"), "the host is still listed");
+  const after = (await api(page, "GET", `/schedules/${sch.body.id}`)).body;
+  assert.equal(after.enabled, false);
+  assert.deepEqual(after.config.targets.hosts, []);
+  assert.equal(after.attention, "Disabled: its only target, acct-browser, was removed from DROOL. Choose its targets, then enable it.");
+  await api(page, "DELETE", `/schedules/${sch.body.id}`);
   assert.deepEqual(page.errors, []);
 });

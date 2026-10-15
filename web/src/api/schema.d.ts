@@ -619,6 +619,7 @@ export interface paths {
         get: operations["getHost"];
         put?: never;
         post?: never;
+        /** @description Removes the host from DROOL only: nothing on the host changes. It's taken out of the schedules and firewall policies that name it (see RemovalPlan.changes), each change audited. */
         delete: operations["deleteHost"];
         options?: never;
         head?: never;
@@ -4552,6 +4553,19 @@ export interface components {
             after: string;
             /** @description What DROOL leaves on the host either way. */
             stays: string[];
+            /** @description Schedules and firewall policies that name the host, and what removing it (either way) does to each: it's taken out of their targets, exclusions, canary hosts, sources and destinations. A schedule left without targets is disabled; a firewall policy left without a source or destination is deleted. */
+            changes: {
+                /** @enum {string} */
+                kind: "schedule" | "firewall_policy";
+                id: string;
+                name: string;
+                detail: string;
+                path: string;
+                /** @description A schedule left without targets is disabled. */
+                disabled?: boolean;
+                /** @description A firewall policy left without a source or destination is deleted. */
+                deleted?: boolean;
+            }[];
         };
         RemovalResult: {
             /** @enum {string} */

@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
+	"database/sql"
 	"encoding/base64"
 	"errors"
 	"flag"
@@ -41,6 +42,7 @@ import (
 	"drool/internal/engine"
 	"drool/internal/filedeploy"
 	"drool/internal/firewall/fwsvc"
+	"drool/internal/hostrefs"
 	"drool/internal/inventory"
 	"drool/internal/logging"
 	"drool/internal/mgmt"
@@ -558,6 +560,27 @@ func cmdServe(path string, explicit bool) error {
 		return err
 	}); err != nil {
 		log.Warn("deleting unused setup-only credentials", "err", err)
+	}
+	// Schedules and firewall policies that still name a host removed
+	// before DROOL took removed hosts out of them: taken out now, as a
+	// removal does (a schedule left without targets is disabled, a policy
+	// left without a source or destination deleted), audited.
+	var repaired []func()
+	if err := st.InRawTx(ctx, func(tx *sql.Tx) error {
+		gone, changes, emits, err := hostrefs.RepairTx(ctx, tx, auditW, time.Now())
+		for i, h := range gone {
+			for _, c := range changes[i] {
+				log.Info("took a removed host out of a "+strings.ReplaceAll(c.Kind, "_", " "), "host", h.ID, "name", c.Name, "change", c.Detail)
+			}
+		}
+		repaired = emits
+		return err
+	}); err != nil {
+		log.Warn("taking removed hosts out of schedules and firewall policies", "err", err)
+	} else {
+		for _, e := range repaired {
+			e()
+		}
 	}
 	dialer := &sshx.Dialer{}
 	pool := sshx.NewPool(dialer)
