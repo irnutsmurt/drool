@@ -7,7 +7,7 @@ Jordan a viewer.
 | Role | For | Can |
 |---|---|---|
 | **admin** (administrator) | The people who run DROOL | Everything: hosts and their trust, credentials, users, settings, firewall policy and modes, notification destinations, baselines |
-| **operator** | People who look after the machines day to day | Run commands, scripts, packages, updates, services and reboots; files; schedules and workflows; acknowledge alerts and start maintenance; send test notifications; watch services and make health checks stricter; restore desired state; take network snapshots. **Can't** add or remove hosts, approve host keys, manage credentials, users or settings, change the firewall, or change notification destinations |
+| **operator** | People who look after the machines day to day | Run commands, scripts, packages, updates, services and reboots; files; schedules and workflows; acknowledge alerts and start maintenance; send test notifications; set services' expected state (running or stopped) and make health checks stricter; restore desired state; take network snapshots and classify network traffic. **Can't** add or remove hosts, approve host keys, manage credentials, users or settings, change the firewall, or change notification destinations |
 | **auditor** | Reviewing what happened | Look at everything (including the audit log, settings and network activity), change nothing |
 | **viewer** | Keeping an eye on things | Look at hosts, runs, monitoring, alerts, firewall policy, schedules, workflows and desired state. Not the audit log, settings, notification destinations or network activity |
 
@@ -28,7 +28,7 @@ Managing users needs **users.manage** (administrators), and you'll be asked to
 Tell them the initial password through a safe channel. They can change it under **Settings → Account →
 Change password**, and should turn on [two-factor authentication](Two-Factor-Authentication.md).
 
-![Settings → Users: the Add user form, and the users alex (admin, you), sam (operator) and jordan (viewer) with their role, status and two-factor state, and the Disable and Delete buttons](images/users.png)
+![Settings → Users: the Add user form, and the users alex (admin, you), jordan (viewer) and sam (operator) with their role, status, two-factor state and last login, Set password… for the others, the Disable and Delete buttons, and where to change your own password or recover a locked-out installation](images/users.png)
 
 ## Change someone's account
 
@@ -43,20 +43,40 @@ Change password**, and should turn on [two-factor authentication](Two-Factor-Aut
 or remove a permission the steps need, those schedules stop and are marked *needs attention* until an
 administrator gives them a new owner ([Schedules](Schedules.md#who-a-scheduled-run-runs-as)).
 
+## Setting someone's password
+
+For someone who forgot their password, or a colleague's first one:
+
+1. Open **Settings → Users** and click **Set password…** on their row. (Your own password is on
+   **Settings → Account**.)
+2. Type the new password twice (at least 12 characters) and click **Set password**.
+3. DROOL asks you to [confirm it's you](Re-authentication.md) with your own password, unless you did
+   so in the last 15 minutes.
+
+They are **signed out of every session** at once and sign in with the new password; their
+two-factor authentication stays as it is. Give them the password through a channel you trust: they
+can change it under **Settings → Account**. The audit log records who set whose password, never the
+password itself.
+
 ## If someone forgets their password
 
-There is no button to set another user's password in this version. An administrator can delete the
-account and add it again with a new initial password (reassign any schedules they owned). If the
-**only administrator** is locked out, create a new administrator on the controller:
+An administrator sets a new one ([above](#setting-someones-password)). If no administrator can sign
+in (the **only administrator** forgot their password), set it on the controller:
 
 ```sh
-# Native installation (prompts for the password)
-sudo -u drool drool user create --username alex2 --role admin
+# Native installation (prompts for the password twice)
+sudo -u drool drool user set-password --username alex
 # Docker Compose (run cd ~/drool first)
-docker compose exec drool drool user create --username alex2 --role admin
+docker compose exec drool drool user set-password --username alex
 # Podman
-podman exec -it drool drool user create --username alex2 --role admin
+podman exec -it drool drool user set-password --username alex
 ```
+
+It signs them out everywhere, keeps their two-factor authentication (if they lost that too, also run
+`drool user mfa-reset --username alex`, see
+[Two-Factor Authentication](Two-Factor-Authentication.md#if-you-lose-your-authenticator)) and is
+recorded in the audit log as done from the command line. `drool user create --username alex2 --role
+admin` still makes a new administrator instead.
 
 ## Good to know
 

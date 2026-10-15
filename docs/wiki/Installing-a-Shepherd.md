@@ -185,4 +185,4 @@ image is still an old one.
 
 [Shepherd Capability Presets](Shepherd-Capability-Presets.md) · [SSH Fallback](SSH-Fallback.md) ·
 [Updating Shepherds](Updating-Shepherds.md) · [Shepherd PKI](Shepherd-PKI.md) ·
-[Removing a Host](Removing-a-Host.md#removing-a-shepherd-from-a-machine)
+[Uninstalling a Shepherd](Removing-a-Host.md#uninstalling-a-shepherd)

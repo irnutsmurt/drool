@@ -107,6 +107,25 @@ the setup (`host.ssh_account`): the host, the account, the setup account, whethe
 and each credential's name and what happened to it. Each deleted credential gets its own
 `credential.delete` record.
 
+### If the setup is never finished
+
+You added a host with **Create a dedicated DROOL SSH account**, and then left it: closed the page, the
+setup failed and you haven't fixed it yet, or you changed your mind.
+
+- **The setup credentials stay** while the host signs in with them, marked **for setup only**, so the
+  setup can be finished later from the host's page. DROOL never deletes them because time passed.
+- **Removing the host** (a half-added host you gave up on) deletes them with it.
+- **Editing the host** to sign in another way (another credential, another account, a jump host's
+  credential) deletes the setup credentials it no longer uses.
+- Either way, a setup credential another host uses by then (a jump host included) is kept, and stored
+  credentials you created yourself under **Credentials** are never deleted.
+- When DROOL starts, it deletes setup-only credentials no host uses any more (left behind by an older
+  version of DROOL).
+
+Each deletion is recorded in the audit log as `credential.delete`, with the credential's name and why
+(the host was removed, or signs in another way), never with its value; the host's own record
+(`host.delete` or `host.update`) lists the setup credentials that went with it.
+
 ## An account with that name already exists
 
 DROOL checks before it changes anything. An account with the name you chose counts as DROOL's own

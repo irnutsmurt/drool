@@ -105,4 +105,4 @@ More: [Notification Failed](Notification-Failed.md).
 ## Related
 
 [Notification Routing](Notification-Routing.md) · [Understanding Alerts](Understanding-Alerts.md) ·
-[Discord](Discord-Notifications.md) · [Slack](Slack-Notifications.md) · [Webhooks](Webhooks.md)
+[Discord](Discord-Notifications.md) · [Slack](Slack-Notifications.md) · [Telegram](Telegram-Notifications.md) · [Webhooks](Webhooks.md)

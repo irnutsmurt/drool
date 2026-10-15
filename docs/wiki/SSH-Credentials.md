@@ -63,8 +63,9 @@ setup's result says which hosts still use it. Stored credentials you chose for t
 deleted by it. Details: [DROOL's Own SSH Account](Dedicated-SSH-Account.md#what-happens-to-the-setup-credentials).
 
 If you don't finish the setup, the host keeps signing in with them, and its page says so. Finish it
-there with **Set up a dedicated DROOL SSH account**, or give the host permanent credentials with
-**Edit** and delete the setup ones here once nothing uses them.
+there with **Set up a dedicated DROOL SSH account** whenever you come back to it: DROOL never deletes
+them because time passed. Or give the host other credentials with **Edit**, or remove the host: DROOL
+then deletes the setup credentials nothing uses any more ([details](Dedicated-SSH-Account.md#if-the-setup-is-never-finished)).
 
 ## Using an account you set up yourself
 

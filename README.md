@@ -89,7 +89,7 @@ key apart from them).
   services and network, with history and plain-English health issues, out of the box: no Grafana, no
   exporters. ([Fleet Monitoring](https://github.com/irnutsmurt/drool/wiki/Fleet-Monitoring))
 - **Alerts that don't nag.** One message when a problem starts and one when it's fixed, by email,
-  Discord, Slack or webhook, plus acknowledgements and maintenance mode.
+  Discord, Slack, Telegram or webhook, plus acknowledgements and maintenance mode.
   ([Understanding Alerts](https://github.com/irnutsmurt/drool/wiki/Understanding-Alerts))
 - **Runs on many hosts at once.** Commands, scripts, packages, system updates, services and reboots,
   with each host's output live, package changes simulated first, and careful rollouts: one host first,
@@ -164,7 +164,9 @@ Shepherds the port you chose. **On a Synology NAS**, paste the same file into Co
 no terminal: [Install on a Synology NAS](https://github.com/irnutsmurt/drool/wiki/Install-On-a-Synology-NAS).
 
 `:main` is a **development image, not a stable release**: it's rebuilt from the newest code that passed
-DROOL's tests, so `docker compose pull` always gets whatever is newest. Keep backups.
+DROOL's tests, so `docker compose pull` always gets whatever is newest. Keep backups. Replacing a
+`compose.yaml` from before 2026-10-14? Check your data volume's name first:
+[Compose Data Volume](https://github.com/irnutsmurt/drool/wiki/Compose-Data-Volume).
 
 **[Full installation guide →](https://github.com/irnutsmurt/drool/wiki/Installing-DROOL)** Every way to
 install DROOL (Docker Compose, a Synology NAS, Podman, `.deb` and `.rpm` packages, the release

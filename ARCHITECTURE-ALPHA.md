@@ -2249,7 +2249,7 @@ DESIGN §10.3, which M14 implemented only partly. A restore is *restore durable 
 
 ### 33.3 Re-authentication and two-factor sign-in
 
-Migration 0017. `sessions.reauth_at`: signing in counts as confirming; `POST /auth/reauth` (password, plus a TOTP or recovery code when two-factor is on; failures count toward the sign-in limit) sets it. Routes flagged `reauth` (and handlers that need it only sometimes) answer `403 reauth_required` with the window when it is older than `auth.reauth_window` (5 min); API tokens never pass. The UI's request layer shows the prompt and repeats the request once confirmed. Re-authentication guards: users (create, change, delete, two-factor reset), API tokens, two-factor enroll/disable/new recovery codes, audit break acknowledgement and remote copy settings, the SSH CA (create, rotate, activate, retire) and a host's SSH sign-in mode, the agent CA (export/remove the root key, rotate, import a manifest), Shepherd revocation and quarantine release, release-signing keys, the controller-address commit, restore decisions (accept a host's state, finish), and conditionally: replacing an in-use credential's value, firewall overrides, approving a changed host key, removing a certificate host's last credential.
+Migration 0017. `sessions.reauth_at`: signing in counts as confirming; `POST /auth/reauth` (password, plus a TOTP or recovery code when two-factor is on; failures count toward the sign-in limit) sets it. Routes flagged `reauth` (and handlers that need it only sometimes) answer `403 reauth_required` with the window when it is older than `auth.reauth_window` (5 min; 15 min since the final After-M17 batch, §38.11); API tokens never pass. The UI's request layer shows the prompt and repeats the request once confirmed. Re-authentication guards: users (create, change, delete, two-factor reset), API tokens, two-factor enroll/disable/new recovery codes, audit break acknowledgement and remote copy settings, the SSH CA (create, rotate, activate, retire) and a host's SSH sign-in mode, the agent CA (export/remove the root key, rotate, import a manifest), Shepherd revocation and quarantine release, release-signing keys, the controller-address commit, restore decisions (accept a host's state, finish), and conditionally: replacing an in-use credential's value, firewall overrides, approving a changed host key, removing a certificate host's last credential.
 
 Two-factor (`internal/auth/mfa.go`): one RFC 6238 TOTP authenticator per user (SHA-1, 6 digits, 30 s, ±1 step, each step usable once), the secret sealed with the master key and shown once (QR code drawn in the browser, and the key to type), active only after a code confirms it; ten single-use recovery codes stored as SHA-256, regenerating replaces them; sign-in becomes a two-step challenge held in memory; an administrator (re-authenticated) or `drool user mfa-reset` on the controller turns it off. Nothing about the secret reaches logs or the audit log. No SSO/OIDC/SAML.
 
@@ -2531,23 +2531,30 @@ Where a row says "then", the first run failed only in what a test fix or an emul
 
 ## 35. Dogfooding backlog (after M17)
 
-Product issues the user guide exposed (2026-10-12). They are recorded here instead of being explained
-away in the documentation; none is started. Size and risk are estimates from the code.
+Product issues the user guide and dogfooding exposed (from 2026-10-12), recorded here instead of being
+explained away in the documentation. Size and risk were estimates from the code. Every item is done:
+the last ones in the final batch before the 1.0 freeze (§38).
 
 | # | Finding | Assessment | Proposed |
 |---|---|---|---|
-| 1 | Deleting a Pack leaves broken references: firewall rules (`group:` in the policy) and schedule targets point at a Pack that no longer exists, and foreign keys silently delete what hangs off it (Desired State assignments, health overrides, enrollment tokens, helper approvals) | Medium. References live in several places: JSON in policy revisions, schedule and workflow targets, alert routes (`group_ids_json`); cascades in five tables. Needs a reference query per subsystem, a `409` with the list from `DELETE /groups/{id}`, and an impact dialog with explicit confirmation | Backlog, before 1.0 |
-| 2 | Removing a Shepherd from a host is a manual sequence (`systemctl`, `rm`) | Medium to large: a supported uninstall touches the controller (an action that revokes the identity and switches the host to SSH), the host (a `drool-agent uninstall` or an SSH script removing the unit, `/usr/libexec/drool-agent`, `/etc/drool`, `/var/lib/drool-agent`, `/var/log/drool-agent`) and, done through the Shepherd itself, the protocol and its compatibility rules | Backlog |
-| 3 | An administrator can't reset another user's password in the UI; deleting and recreating the user loses owned schedules | Small: `PATCH /users/{id}` already accepts `password` (users.manage, re-authentication, audited as `user.update` with `password_changed`, the user's sessions revoked). Missing: a **Set password…** action on Settings → Users, and a `drool user set-password` command for a locked-out controller | Fix soon; small and contained |
-| 4 | CLI output predates the M15 names: *Agents → Trust*, *Agents → Updates*, *the Agents page*, "agents take it", "groups", "jobs" in `drool backup`, `restore`, `agent-ca` and one security log line | Small: about ten human-facing strings in `cmd/drool`, `internal/agentsvc` and `internal/desired`; the API, JSON fields and log keys keep their names. The user guide quotes some of this output and changes with it; tests that match the text change too | Fix soon; small |
-| 5 | Docker Compose names the data volume after the project folder (`<folder>_drool-data`): renaming or copying the folder makes DROOL look new | Small change, real migration risk: `volumes: drool-data: {name: …}` makes the name stable, but existing installations use `<folder>_drool-data`, and the integration tests run several projects at once. A default that keeps the documented folder's volume (`drool_drool-data`) plus an override in `.env` avoids moving anyone's data; it changes a release artifact, so it belongs before 1.0 | Decide before 1.0 |
-| 6 | `internal/recovery` TestHostDecisions fails now and then under full-suite load: `MachineChanged` for the cloned host is called after the service has started, so the host can be reconciled before the conflict is noticed | A test-harness race, not seen in the product; it passes on its own (8 of 8). Fix the ordering in the test without skipping it, weakening the assertion or adding sleeps | Fix before final 1.0 qualification |
-| 7 | Three UI hints still say *see the README* (the remote audit copy's format, *Configuration* on the security checklist, the restore commands on Settings → System) although those details moved to the user guide | Small: three strings; the README links each place, so nothing is unreachable meanwhile. The wiki's `system-backup-commands.png` shows one of them and needs capturing again with the change | Fix with the next UI change |
+| 1 | Deleting a Pack leaves broken references: firewall rules (`group:` in the policy) and schedule targets point at a Pack that no longer exists, and foreign keys silently delete what hangs off it (Desired State assignments, health overrides, enrollment tokens, helper approvals) | Medium. References live in several places: JSON in policy revisions, schedule and workflow targets, alert routes (`group_ids_json`); cascades in five tables. Needs a reference query per subsystem, a `409` with the list from `DELETE /groups/{id}`, and an impact dialog with explicit confirmation | Done: refused while anything depends on the Pack (§38.4) |
+| 2 | Removing a Shepherd from a host is a manual sequence (`systemctl`, `rm`) | Medium to large: a supported uninstall touches the controller (an action that revokes the identity and switches the host to SSH), the host (a `drool-agent uninstall` or an SSH script removing the unit, `/usr/libexec/drool-agent`, `/etc/drool`, `/var/lib/drool-agent`, `/var/log/drool-agent`) and, done through the Shepherd itself, the protocol and its compatibility rules | Done: **Uninstall Shepherd…** over SSH (§38.1) |
+| 3 | An administrator can't reset another user's password in the UI; deleting and recreating the user loses owned schedules | Small: `PATCH /users/{id}` already accepts `password` (users.manage, re-authentication, audited as `user.update` with `password_changed`, the user's sessions revoked). Missing: a **Set password…** action on Settings → Users, and a `drool user set-password` command for a locked-out controller | Done (§38.5) |
+| 4 | CLI output predates the M15 names: *Agents → Trust*, *Agents → Updates*, *the Agents page*, "agents take it", "groups", "jobs" in `drool backup`, `restore`, `agent-ca` and one security log line | Small: about ten human-facing strings in `cmd/drool`, `internal/agentsvc` and `internal/desired`; the API, JSON fields and log keys keep their names. The user guide quotes some of this output and changes with it; tests that match the text change too | Done (§38.5) |
+| 5 | Docker Compose names the data volume after the project folder (`<folder>_drool-data`): renaming or copying the folder makes DROOL look new | Small change, real migration risk: `volumes: drool-data: {name: …}` makes the name stable, but existing installations use `<folder>_drool-data`, and the integration tests run several projects at once. A default that keeps the documented folder's volume (`drool_drool-data`) plus an override in `.env` avoids moving anyone's data; it changes a release artifact, so it belongs before 1.0 | Done: that default, `DROOL_INSTANCE`, a warning on an empty volume (§38.6) |
+| 6 | `internal/recovery` TestHostDecisions fails now and then under full-suite load: `MachineChanged` for the cloned host is called after the service has started, so the host can be reconciled before the conflict is noticed | A test-harness race, not seen in the product; it passes on its own (8 of 8). Fix the ordering in the test without skipping it, weakening the assertion or adding sleeps | Done (§38.10) |
+| 7 | Three UI hints still say *see the README* (the remote audit copy's format, *Configuration* on the security checklist, the restore commands on Settings → System) although those details moved to the user guide | Small: three strings; the README links each place, so nothing is unreachable meanwhile. The wiki's `system-backup-commands.png` shows one of them and needs capturing again with the change | Done (§38.8) |
 | 8 | Adding a host required preparing an account on it by hand (`useradd`, a sudoers file, pasting DROOL's key), and the administrator's own password or key otherwise stayed in DROOL | Done: DROOL's own SSH account (§36) | Done (after M17) |
-| 9 | `internal/sshx` TestPoolCertificateJumpPaths fails now and then under `-race -count=10`: its clock is real time plus an offset, and the test leaves the jump certificate one second of validity, so a slow run (1.03 s observed) sees it expire and the path re-dialled | A timing margin in the test, not a product fault; it passes on its own and in the normal suite. Fix by freezing the test clock rather than by sleeps or a looser assertion | Fix before final 1.0 qualification |
+| 9 | `internal/sshx` TestPoolCertificateJumpPaths fails now and then under `-race -count=10`: its clock is real time plus an offset, and the test leaves the jump certificate one second of validity, so a slow run (1.03 s observed) sees it expire and the path re-dialled | A timing margin in the test, not a product fault; it passes on its own and in the normal suite. Fix by freezing the test clock rather than by sleeps or a looser assertion | Done (§38.10) |
 | 10 | With Compose publishing the Shepherd endpoint under another port (`2043:9443` on a Synology NAS), Shepherds were told the port inside the container, and installation failed with *connection refused* | Done: a public port separate from the listen port, set once in `compose.yaml` (§37) | Done (after M17) |
 | 11 | Creating a Pack required picking hosts at once; a Pack felt like a one-time grouping | Done: a Pack is created empty and gets its own page, where hosts are added and removed afterwards (§22) | Done (after M17) |
 | 12 | DROOL's own SSH account wrote `Defaults:<user> !requiretty` everywhere; sudo-rs's visudo rejects it | Done: a minimal sudo rule, the exception only where the host's sudo needs and accepts it (§36.2) | Done (after M17) |
+| 13 | Re-authentication asked from inside a dialog opened *behind* it, so switching a host to DROOL's own account looked hung | Every dialog shared one z-index; a modal layer stack fixes it everywhere (§38.9) | Done (§38.9) |
+| 14 | A DietPi host over SSH was reported as "no systemd", with no services | systemctl without D-Bus fails for non-root accounts and was read as "no systemd"; detection from PID 1, permission-limited reported as such (§38.12) | Done (§38.12) |
+| 15 | Services could only be started and restarted from the Services tab; intentionally stopped services kept alerting | Seven service actions fitted to the unit's state; expected state Running, Stopped or Ignored per host, Pack or every host (§38.2, §38.12) | Done |
+| 16 | Network Activity couldn't say what traffic is, or recognize DROOL's own | Classification from DROOL's evidence and user classifications (§38.3) | Done (§38.3) |
+| 17 | Setup-only credentials of an abandoned Add host stayed forever | Deleted with the host or when it signs in another way, swept at start; kept while a setup can be resumed (§38.7) | Done (§38.7) |
+| 18 | No Telegram notifications | A first-class provider; the bot token treated as secret in every path (§38.13) | Done (§38.13) |
 
 ---
 
@@ -2748,3 +2755,349 @@ integration `TestComposeFilePorts` (the shipped `compose.yaml` rendered by Docke
 Shepherd port published as 2043, unprivileged containers on a test network: the startup log, the PKI
 answer, the browser test `web/e2e/shepherd-endpoint.test.mjs`, a Shepherd installed over SSH that
 connects through 2043, and the endpoint stored on the host).
+
+---
+
+## 38. Final 1.0 dogfooding batch (after M17)
+
+The last dogfooding pass before the 1.0 functionality freeze (2026-10-14), not a milestone. It closes
+the §35 backlog and what further use found. After it, 1.0 functionality is frozen: what follows is
+release work (a licence, the offline release-signing key, `v1.0.0-rc.N`, qualification against the RC
+artifacts, release blockers only, `v1.0.0`). The product boundary is unchanged: DROOL operates
+existing infrastructure; it doesn't provision it. Migrations 0023 (service expectations), 0024
+(network classifications) and 0025 (Telegram destinations).
+
+### 38.1 Shepherd uninstall
+
+`internal/agentsvc/uninstall.go`; `POST /hosts/{id}/agent/uninstall/plan` (agents.manage) and
+`POST /hosts/{id}/agent/uninstall` (agents.manage and hosts.write, re-authentication
+`shepherd_management`, the host's exclusive lock `agent-uninstall`); **Uninstall Shepherd…** on the
+Management card whenever DROOL knows an identity for the host (**Remove Shepherd leftovers…** when it
+isn't live).
+
+1. **SSH is the path, before and after.** The removal runs over SSH as root (one script on stdin,
+   `MODE=check` for the plan, `MODE=remove` for the removal), because SSH is what manages the host
+   afterwards. A host DROOL can't manage over SSH is refused: `last_management_path` (no SSH access
+   configured: the Shepherd is the only way in) or `ssh_unavailable` (SSH configured but not working
+   as root now); `nothing_to_remove` when no file, process, service or trusted identity is left. A
+   refusal changes nothing and is audited as denied.
+2. **The plan is read from the host.** Each item (the unit file, `/usr/libexec/drool-agent`,
+   `/etc/drool/agent.yaml`, `/etc/drool/release-keys.d`, `/var/lib/drool-agent` with the identity's
+   private key, `/var/log/drool-agent`) with whether it's there, whether systemd runs, how many
+   Shepherd processes run (found by `/proc/*/exe` and cmdline, never by name alone), and the
+   controller-side steps, in words.
+3. **Host first, controller in one transaction.** The script stops and disables the service (or the
+   supervisor on a host without systemd), kills what's left, removes the items and reports what
+   remains. Unless the outcome is unknown (the script didn't answer), one transaction then revokes
+   the identity, revokes unused enrollment tokens for the host, sets management to SSH, clears the
+   requested capability narrowing and records `agent.uninstall` (with what was removed and what
+   remains, the revoked identity, `unused_enrollments_revoked`; never a secret). DROOL then drops the
+   session and waits (bounded, 15 s) for no session to remain.
+4. **Honest outcomes.** `uninstalled` only when the host reported nothing left and no connection
+   remains; `partial` (what remains is listed; identity revoked, SSH management; **Try again**
+   repeats it, idempotently); `unknown` (no answer from the host: nothing changed in DROOL); `nothing`.
+   The wiki's manual removal stays for hosts DROOL can't reach ([Removing a Host](docs/wiki/Removing-a-Host.md)).
+
+Tests: `internal/api` TestShepherdUninstall (a simulated host: plan, removal, revocation, SSH
+afterwards, each refusal, partial and unknown outcomes, retry, roles, no enrollment token in the audit log),
+integration TestShepherdUninstallOnHost (a real Shepherd under its supervisor in an unprivileged
+container, removed from the browser by `web/e2e/shepherd-uninstall.test.mjs`; nothing left on the
+host; SSH runs afterwards; a second removal finds nothing).
+
+### 38.2 Acknowledge, snooze, expected state
+
+Three answers to an alert, now distinct in the product and the guide:
+
+| | Means | Mechanism |
+|---|---|---|
+| Acknowledge | I've seen it | M12 acknowledgement: reminders stop, the alert stays open |
+| Snooze | Not now | Maintenance (host or Pack, until a time): notifications held, health still recorded, what remains is notified when it ends. No separate snooze mechanism |
+| Expected / Ignored | This is on purpose | The service's expected state, or a health override: the condition isn't a problem, so nothing alerts |
+
+The alert page's **Quieter, for a while or for good** card offers all three.
+
+**Expected service state** is a field of the M12.1 override model (§29), not a new inheritance
+system: `service_expected` with a choice field `expected` (1 running, 2 stopped, 3 ignored;
+serialized by name) at host, Pack and global scope with a `unit:` subject (migration 0023 relaxes the
+subject check for service subjects at Pack and global scope, and converts M11's `watched_services`
+into host-scope `service_expected: running`). Resolution: the unit's subject on the host, the host,
+the subject in its Packs (Pack priority and conflicts as before), the Pack, the global subject,
+global, recommended. Semantics, evaluated in `monsvc/health.go`:
+
+| Expected | stopped | running | failed |
+|---|---|---|---|
+| (automatic) | ok | ok | `service_failed` (a failed unit is always in the default view) |
+| running | `service_stopped` (2 min) | ok | `service_failed` |
+| stopped | ok (*expected*) | `service_unexpected` (new check, recommended on, 2 min) | ok |
+| ignored | never a problem | never a problem | never a problem |
+
+State is collected whatever the expectation. Rows carry `expected`, `expected_source` (kind, label:
+*set on this host*, *from pack X*, *set for every host*, override id), `health` and `health_note`,
+so the Services tab says why something does or doesn't alert. Running and Stopped need
+monitoring.manage; Ignored (switching checks off) needs monitoring.settings, and becoming ignored
+counts as weakening. Pack pages and Monitoring → Settings have an **Expected services** card.
+
+Tests: `internal/api` TestExpectedServiceState (each state, inheritance from a Pack and global,
+alerts opening and clearing as *cleared by configuration*, state still collected), TestHealthLegacyMigration.
+
+### 38.3 Network traffic classification
+
+`internal/netmon/netsvc/classify.go`. Every flow carries `classification` {kind, label, source,
+rule_id, detail}; kinds `drool`, `approved`, `user`, `service`, `unknown`; sources `drool`, `rule`,
+`manual`, `port`, `none`. It is computed when flows are read (`newView` builds one classifier per
+request), so a classification applies to traffic already observed and observed later, and nothing is
+stored per flow. The `class` filter (`drool|approved|user|service|unknown|classified`) runs in Go
+after the database filters, like the policy filter.
+
+**DROOL's own traffic, from evidence only** (never a port alone; ambiguous stays unknown):
+
+| Evidence (already owned by DROOL) | Flow classified `drool` |
+|---|---|
+| `fw_mgmt_observations` `ssh_in`: the address a host sees DROOL's SSH come from (SSH_CONNECTION, measured over SSH) and its sshd port | inbound TCP on that host to that port from that address; on the host whose address that is (where DROOL runs, if managed): outbound TCP to the managed host's addresses on that port |
+| `fw_mgmt_observations` `agent_out`: the controller endpoint a Shepherd reported at hello | outbound TCP from that host to that address and port, by `drool-agent` or an unknown process; on the controller's host: inbound from the managed host's addresses |
+| `host_hops`: hosts DROOL reaches through a jump host | outbound TCP from the jump host to the target's sshd port and addresses |
+
+**User classifications** (`net_flow_rules`, migration 0024): label (1–120), note, expected, origin
+`rule` or `flow` (made from one observed connection: *manually labeled*), and a match on host or Pack,
+direction, protocol, service port and one remote side (a DROOL host, a Pack's hosts, or an address or
+CIDR); empty fields match anything; a rule names at least a port or a remote side; at most 1000.
+DROOL's evidence comes first and can't be overridden; then the most specific rule (flow origin +100;
+host 8, Pack 4; remote host or single address 8, CIDR or Pack 4; port 4; protocol 1; direction 1);
+then the port's service name; then unknown. Rules referencing a removed host go with it (cascade); a
+Pack named in a rule blocks the Pack's deletion (§38.4). API: `GET /network/classifications`
+(network.read), `POST`, `PUT /{id}`, `DELETE /{id}` (new permission `network.classify`:
+administrators and operators; no re-authentication: labels change nothing on a host), audited
+`network.classification.create|update|delete` with what the rule matches in words. No firewall rule
+is ever created from a classification; nothing inspects packets.
+
+UI: a **What it is · policy** column (the classification above the policy status) and a **What it
+is** filter, the quick filters **DROOL's own traffic** and **Unknown traffic**, the flow dialog's evidence with **Classify…** (prefilled with exactly that connection;
+widening it makes a `rule`), and a **Classifications** tab. The firewall policy status labels became
+**Management path** and **Not in policy** (API values unchanged) so they don't read as
+classifications.
+
+Tests: `internal/api` TestNetworkClassification (each evidence path; port-22 and 9443 traffic from
+other peers, other processes and over UDP stays unclassified; rule matching by host, Pack, remote
+host, CIDR, port, direction and protocol; specificity; a rule never overriding DROOL's evidence;
+filters; new observations classified at once; update and delete; validation; roles; audit; the Pack
+deletion block; host removal; the firewall policy untouched), `web/e2e/network.test.mjs` (a label
+for one connection over the details dialog, widened on the Classifications tab, filtered, deleted).
+
+### 38.4 Pack deletion
+
+`internal/packdeps`: one authoritative query, in the deletion's own transaction, of everything that
+references a Pack: firewall policies (from/to JSON), schedules' targets (not archived), notification
+routes' `group_ids_json`, active maintenance, Desired State assignments (non-archived baselines),
+Pack-scope health overrides (expected services included), live enrollment tokens and network
+classifications. Any of them **blocks** deletion: `DELETE /groups/{id}` answers `409 pack_in_use` with
+`dependencies` (kind, id, name, a path to fix it, what to do), and `GET /groups/{id}/dependencies`
+shows the same before asking. With nothing blocking, the dialog lists exactly what deletion removes
+(memberships: the hosts stay; the Pack's own monitoring and Desired State priorities, its firewall
+rollback timeout, standing helper approvals; the Pack id on used/revoked/expired tokens, released to
+NULL). Removing a host from a Pack never deletes the host. Tests: `internal/api`
+TestPackDeletionDependencies (each reference kind blocks, the list, a clean delete, no dangling
+references), `web/e2e/packs.test.mjs`.
+
+### 38.5 Administrator password reset and CLI wording
+
+**Set password…** on Settings → Users (users.manage): `PATCH /users/{id}` with `password`, which now
+asks for re-authentication with reason `user_password` (role and disable: `user_access`); the user's
+sessions are revoked; audited `user.update` with `changes: ["password"]` and `sessions_revoked`, never
+the password. On the controller, `drool user set-password --username NAME [--password-stdin]` does the
+same for a locked-out installation (audited with `via: cli`). The CLI's human-facing text says
+Shepherd(s), Pack(s) and Run(s) (`drool backup`, `restore`, `agent-ca`, `version`, update messages);
+`drool shepherd-ca` is an alias of `agent-ca`; commands, flags, JSON and API names are unchanged.
+Tests: `cmd/drool` TestUserSetPassword, `internal/api` user tests.
+
+### 38.6 Compose data volume
+
+Decision: `compose.yaml` names the volume, `name: ${DROOL_INSTANCE:-drool}_drool-data` (through the
+`x-drool-data` anchor), so it no longer depends on the folder or Synology project. The default is
+the name every documented installation already has (folder `~/drool`, project `drool`), so they keep
+their data with no migration; a global `drool-data` was rejected because it would have given every
+existing installation an empty database and made two instances share one by default.
+
+- **Multiple instances**: each sets `DROOL_INSTANCE` (in `.env`) and gets `<name>_drool-data`. Two
+  given the same name can't run on one database at once: the data directory lock (`drool.lock`,
+  flock on the shared volume) stops the second (*in use by a running DROOL controller*).
+- **No silent empty database**: `DROOL_DATA_VOLUME` (config `data_volume`, messages only) tells DROOL
+  the volume's name; a DROOL that starts without data says *This DROOL has no data yet: it starts new
+  in the volume …* in its startup banner and on the setup page (`setup/status` `data_volume`), with a
+  pointer to the guide. The Podman unit sets `drool-data`.
+- **Migration** (explicit, documented in [Compose Data Volume](docs/wiki/Compose-Data-Volume.md),
+  backup first): check the current volume's name; `drool_drool-data` needs nothing; another name sets
+  `DROOL_INSTANCE` to its prefix (Synology: edit the default in the YAML line). The guide covers
+  finding the old volume after a mistaken start and removing only the empty one.
+
+Tests: integration TestComposeDataVolume (rendered for several project names, `DROOL_INSTANCE`,
+`.env`; this tree's image: an installation from before in a folder not called drool keeps its data
+through the documented migration in a moved folder; a wrong name starts empty and says so in the log
+and the setup status; two instances side by side; the same name refused while the first runs), the
+existing compose tests now give every test project its own `DROOL_INSTANCE`.
+
+### 38.7 Setup-only credentials
+
+Credentials typed into Add host for DROOL's own account (`setup-<host>-login|key|sudo`, `temporary`)
+live exactly as long as a host signs in with them. They stay while a setup is unfinished (resumable,
+no TTL); removing the host, or editing it to sign in another way, deletes the ones it no longer uses
+(`secrets.ForgetTemporaryTx`, in the host transaction; `setup_credentials_deleted` on `host.delete`
+and `host.update`); one another host uses (a jump host included) is kept; stored credentials are
+never deleted. DROOL's start sweeps temporary credentials no host references (`ForgetUnusedTemporaryTx`),
+for ones left by older versions. Every deletion is a `credential.delete` with the name and the reason,
+never a value. Tests: `internal/api` TestSetupCredentialLifecycle.
+
+### 38.8 Stale README pointers
+
+The three UI hints that said *see the README* (the remote audit copy's format, *Configuration* on the
+security checklist, the restore commands on Settings → System) link to the user guide (`GuideLink`).
+
+### 38.9 Dialog stacking (the hidden re-authentication prompt)
+
+Cause, confirmed in the browser: every dialog used the same `z-50`, so stacking followed DOM order,
+and `ReauthPrompt` is mounted before the router's content; a re-authentication prompt raised from
+the SSH-account dialog was painted underneath it while focus moved into it, so the action looked
+hung. Fix (`web/src/components/ui/modal.ts`): one modal layer stack. Every dialog (and the command
+palette) renders in a portal on `document.body`, registers a layer, and gets `z-index 100 + its
+position`; the newest is on top whatever the DOM order. Only the top layer reacts to Escape, the
+backdrop and Tab (focus trapped inside it); `#root` and every lower layer are `inert`; focus moves into
+the new top layer and returns, when it closes, to what had it (or the next layer's dialog). Tests:
+`web/e2e/reauth-dialog.test.mjs` (desktop and mobile: the prompt above the dialog that raised it,
+focus, Escape and backdrop affecting only the top, the underlying dialog inert, focus returning,
+cancel, retry once), `web/src/api/client.test.ts`.
+
+### 38.10 Flaky tests
+
+- **TestHostDecisions** (`internal/recovery`): the cloned host's view was registered before `Start`,
+  so the service could decide on it before the test's `MachineChanged` marked the clone; under load
+  it sometimes did. The test now adds the clone after `Start`, calls `MachineChanged` first, then
+  registers the view and the sessions. Deterministic: `-race -count=50` passes.
+- **TestPoolCertificateJumpPaths** (`internal/sshx`): certificates' `ValidBefore` is whole seconds
+  and the test clock was real time plus an offset, so whether the jump certificate had expired
+  depended on the fraction of a second at issue plus the elapsed time (about 3 failures in 40 runs
+  reproduced). The test clock is now frozen and moved explicitly, and the test SSH servers check
+  validity against the same clock (`SetClockSkew`). Deterministic: `-race -count=50` passes.
+- **TestBoundedReconnect** (`internal/recovery`, found in this batch's full-suite run): the test read
+  the restore's status right after the last host was reconciled, while the service marks the restore
+  finished in its next step. It now waits for both conditions (every host reconciled and the restore
+  finished), keeping the assertion. Deterministic: `-race -count=20` passes.
+
+### 38.11 Re-authentication policy review
+
+Every route and handler that asks was reviewed against one rule: trust, access, privilege or
+irreversible destruction asks; everyday administration doesn't. Reasons are typed
+(`internal/api/reauth.go`): `account_security`, `user_access`, `user_password`, `host_access`,
+`host_key`, `credential_in_use`, `ssh_ca`, `shepherd_management`, `shepherd_trust`,
+`firewall_override`, `audit`, `recovery`; the server sends a fixed explanation the dialog shows.
+
+- **Added**: installing a Shepherd (one host, and bulk conversions) and uninstalling one
+  (`shepherd_management`); switching an established host's sign-in (a host whose key DROOL pins, to
+  another credential or account, or dropping its credential in certificate mode: `host_access`, in the
+  update handler); setting another user's password got its own reason (`user_password`).
+- **Removed**: none. Ordinary firewall applies still don't ask (management-path guard plus automatic
+  rollback); only overrides do. Expected service states, network classifications, Packs and
+  metadata never ask.
+- **Window**: 5 → 15 minutes (`auth.reauth_window`, `auth.DefaultReauthWindow`). Five minutes made a
+  normal sequence of high-impact steps (switching several hosts to DROOL's own account, an install
+  then a key approval) ask repeatedly; fifteen keeps one confirmation per task while a stolen session
+  still needs the password for anything high-impact soon after. The server decides; the browser keeps
+  no timer, and a refused request is repeated once after confirming.
+- Switching an established host to DROOL's dedicated account still asks (route
+  `POST /hosts/{id}/ssh-account`, `host_access`); with the stacking fix the prompt is visible, and
+  within the window the following hosts don't ask again.
+
+Tests: `internal/api` TestReauthRouteTable (the reviewed route set and reasons pinned), TestReauthWindowPolicy
+(the harness clock moved, never waited for: inside, at the edge, expired; signing in counts; every
+listed action refused with its reason and not performed; metadata never asks; confirming once covers
+the rest; two-factor users confirm with a code), TestReauthForHighImpactActions.
+
+### 38.12 systemd detection and service management
+
+**Cause** (DietPi over SSH): DietPi runs systemd without D-Bus, so `systemctl` run by a non-root
+account fails with *Failed to connect to bus*, which the scripts read as "no systemd"; and the old
+check `[ -d /run/systemd/system ]` also fails for an account that can't traverse `/run/systemd`.
+The Shepherd (root, which talks to systemd over its private socket) saw everything.
+
+**Detection** (`discovery.SystemdProbe`, shared by `DiscoverScript`, `StatusScript`, the monitor's
+service collector, the connection probe and the uninstall script): PID 1's name (`/proc/1/comm`)
+decides (`systemd` → running, anything else → none); only when it can't be read, `/run/systemd/system`
+(present → running; `/run/systemd` closed → unknown; else none). `systemctl` existing proves nothing.
+A failing `systemctl` with systemd running is *permission-limited* (`@@sd-error permission …`) or a
+failure, never "no systemd". SSH and Shepherd run the same script and reach the same facts.
+Diagnostics distinguish *PID 1 is X, not systemd*, *systemd runs, but systemctl can't reach it as the
+account DROOL signs in with*, and *systemctl failed*. On such hosts the hourly SSH pass reads the
+services as root through the host's sudo (routine polls never use sudo), and the tab says so.
+
+**Service actions** (Services tab **Actions…**): Start, Stop, Restart, Enable, Disable, Enable &
+Start, Disable & Stop, as the typed `service` operation (over SSH or the Shepherd, the same
+`hostops.Host.Service`; RBAC `jobs.execute`, Shepherd capability ceilings, audited as runs). Runtime
+state and unit-file state are separate facts; `services.Actions` offers only what applies (no
+Enable/Disable for static, indirect, generated, alias or unknown unit-file states, with the reason;
+nothing that starts or enables a masked unit; only Stop for transient ones). After each operation the
+unit is read back from the host and the result is what the host says (a start must still run after
+two seconds; a stop or disable that didn't take is an error). Actions never change the expected state:
+the confirmation warns when an action goes against it, and the result offers **Mark it expected
+stopped/running on this host** as a separate step.
+
+Tests: `internal/discovery` TestSystemdDetection (12 cases with the real scripts: PID 1 systemd with
+and without a readable `/run/systemd`, systemctl without systemd, no systemd, D-Bus refused),
+TestSystemdSameOverSSHAndShepherd, TestSystemdOldScriptOutput; integration TestSystemdOverUnprivilegedSSH
+(the DietPi condition reproduced: an unprivileged container with PID 1 named systemd, `/run/systemd`
+closed, no D-Bus, a real `systemctl` failing for the login account, a root-only fake systemd behind
+sudo: detection, services read as root, Disable & Stop, Enable & Start, static and masked refusals);
+`internal/monitor/services` (which actions each unit state gets); `internal/hostops`
+TestServiceActionMatrix (every action, static, indirect, masked, not found, a failing command,
+systemctl claiming success the host contradicts); `internal/api` TestServiceActionsLeaveExpectedState
+(roles, audit, expected state unchanged by actions, the explicit follow-up); `internal/agent`
+TestAdmissionCapabilities (a monitor-only Shepherd refuses service operations);
+`web/e2e/monitoring.test.mjs` (expected states, health notes, the offered actions, the warning).
+
+### 38.13 Telegram notifications
+
+`notify.KindTelegram` (`internal/notify/telegram.go`): a bot posts with the Bot API's `sendMessage`.
+Configuration: `chat_id` (a number such as -1001234567890, or `@channel`) and an optional
+`thread_id` (a topic), the existing timeout; the bot token is a sealed, write-only secret
+(`secrets_set.bot_token`). Messages reuse `Message`, the outbox, retries and rate limiting (20 a
+minute per destination): HTML with only a bold headline, every other character escaped (clipped before
+escaping), mentions neutralized, no link previews. 429 waits `retry_after` (or `Retry-After`, at most
+an hour); 401/404 are the token, 403 the bot's membership, 400 the chat, the topic or a supergroup
+migration (with the new id), all permanent; 5xx, 408 and network errors transient.
+
+The request URL contains the token, so it exists only inside `sendTelegram`: never configuration (no
+`url_display`), never followed through a redirect, never in an error (`url.Error` is reduced to its
+cause, and every result is scrubbed of the token as is, `bot`+token, URL-escaped, and its secret half
+alone), never logged; the API base URL is fixed (`Sender.TelegramAPI` exists for tests only).
+Migration 0025 rebuilds `notify_destinations` for the new kind, keeping route memberships and delivery
+links (a rebuild inside the migration's transaction would otherwise cascade). Tests: `internal/notify`
+TestTelegram (validation, the request, chat ids, topics, conservative text, each answer, and the
+token absent from every result after refused connections, untrusted certificates, plain HTTP, a
+timeout, an echoing server, a redirect and a quoted URL), `internal/api` TestTelegramDestination (a
+fake Bot API every API test's sender uses: write-only token, test notifications saved and unsaved,
+deliveries, 429, a permanent failure, the token absent from responses, history, events, audit log,
+the worker's log and the database except the sealed blob), the upgrade test (route and delivery links
+survive 0025), `web/e2e/alerts.test.mjs` (the picker, setup steps, a masked token, the summary).
+
+### 38.14 Scope
+
+Nothing of 1.1 was started: no Docker/Podman, Synology or Proxmox monitoring, no Proxmox firewall, no
+provisioning of any kind, no M18 DRIPS, DROPS or SPLASH, no Windows, no new navigation areas.
+
+---
+
+## 39. Direction after 1.0 (design note, not implemented)
+
+Recorded so 1.1 starts from the agreed scope; nothing here exists in 1.0.
+
+**Theme: observing and operating workloads and virtualization DROOL's hosts already run.** Likely:
+
+- Docker and Podman: containers, their state, resources and logs on managed hosts; basic operational
+  controls (start, stop, restart) as typed, audited operations like services.
+- Synology: container and storage visibility on a NAS DROOL already manages.
+- Proxmox: nodes, VMs and LXC containers, their state and resources.
+- Proxmox's own firewall: awareness, and management where it can be done as safely as DROOL's host
+  firewall (preview, management-path protection, automatic rollback).
+
+**The boundary stays: DROOL operates existing infrastructure; it doesn't provision it.** No core
+"Create VM", "Deploy LXC", "Create Docker stack" or "Provision cluster". Provisioning workflows, if
+ever, belong to plugins or integrations outside the core. Monitoring and controls for workloads
+follow the 1.0 rules: data collected over SSH or by the Shepherd within its capability ceiling,
+honest about what each path can see, typed operations, RBAC, audit, no rules language.

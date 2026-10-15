@@ -11,7 +11,7 @@ of who was told, who is dealing with it, and how long it lasted.
    page.
 3. If the issue is **Warning** or **Critical**, DROOL opens an **alert** and sends a notification
    to the destinations you set up ([Email](Email-Notifications.md), [Discord](Discord-Notifications.md),
-   [Slack](Slack-Notifications.md) or a [webhook](Webhooks.md)).
+   [Slack](Slack-Notifications.md), [Telegram](Telegram-Notifications.md) or a [webhook](Webhooks.md)).
 4. When monitoring sees the condition go away, the alert **resolves** by itself, and DROOL sends one
    more message saying it recovered and how long it lasted.
 
@@ -130,7 +130,7 @@ that is supposed to be busy.
 
 ## Next
 
-**Get alerts delivered** to where you'll see them: [Email](Email-Notifications.md) · [Discord](Discord-Notifications.md) · [Slack](Slack-Notifications.md) · [Webhooks](Webhooks.md).
+**Get alerts delivered** to where you'll see them: [Email](Email-Notifications.md) · [Discord](Discord-Notifications.md) · [Slack](Slack-Notifications.md) · [Telegram](Telegram-Notifications.md) · [Webhooks](Webhooks.md).
 
 ## Related
 

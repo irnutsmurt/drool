@@ -12,6 +12,7 @@ With Docker Compose, run every `docker compose` command in your DROOL folder: `c
 | No setup code anywhere | [I don't see a setup code](#i-dont-see-a-setup-code) |
 | *invalid or expired setup code*; *No valid setup code*; *too many failed setup attempts* | [My setup code expired](#my-setup-code-expired) |
 | *setup is already complete*; `/setup` shows **Sign in to DROOL** | [DROOL says setup is already complete](#drool-says-setup-is-already-complete) |
+| **Set up DROOL** after an update or a move; *This DROOL has no data yet* | [DROOL asks for setup after an update or a move](#drool-asks-for-setup-after-an-update-or-a-move) |
 | `<this-host's-address>`, or no idea what to type in the browser | [I don't know what address to open](#i-dont-know-what-address-to-open) |
 | The browser can't reach DROOL; *Client sent an HTTP request to an HTTPS server* | [The browser can't connect](#the-browser-cant-connect) |
 | *no configuration file provided: not found* | [docker compose says it can't find a compose file](#docker-compose-says-it-cant-find-a-compose-file) |
@@ -105,9 +106,9 @@ that came about decides what to do:
   [Create a new administrator from the command line](First-Login.md#if-you-forget-your-password).
 - **You restored a backup**: the accounts come from the backup. Sign in with one of them.
 - **You're reusing an earlier installation's data.** DROOL's data outlives the program on purpose:
-  - Docker keeps the volume (`drool_drool-data` for a folder called `drool`) through
-    `docker compose down`, and a new installation in a folder with the same name uses it again. Only
-    `docker compose down -v` deletes it.
+  - Docker keeps the volume `drool_drool-data` through `docker compose down`, and a new installation
+    from DROOL's `compose.yaml` uses it again, in any folder ([Compose Data Volume](Compose-Data-Volume.md)).
+    Only removing the volume deletes it.
   - Podman keeps the `drool-data` volume until you remove it.
   - Removing the package (even `apt purge`) or the archive's files keeps `/var/lib/drool`.
 
@@ -116,7 +117,7 @@ that came about decides what to do:
 
   | Installation | Start over |
   |---|---|
-  | Docker Compose | `cd ~/drool`, then `docker compose down -v`, then `docker compose up -d` |
+  | Docker Compose | `cd ~/drool`, then `docker compose down`, `docker volume rm drool_drool-data`, `docker compose up -d` |
   | Podman | `systemctl --user stop drool`, `podman volume rm drool-data`, `systemctl --user start drool` |
   | Package or archive | `sudo systemctl stop drool`, `sudo rm -rf /var/lib/drool`, `sudo systemctl start drool` |
 
@@ -124,6 +125,16 @@ that came about decides what to do:
 - **You don't know who created it.** Someone else reached the setup page with a valid code first.
   Don't use this installation: start fresh as shown above, and finish setup straight after DROOL
   starts.
+
+## DROOL asks for setup after an update or a move
+
+You updated DROOL, replaced its `compose.yaml`, or moved its folder, and instead of **Sign in to
+DROOL** you see **Set up DROOL**, with *This DROOL has no data yet: it starts new in the volume …*
+on the page and in the startup message.
+
+Your data is still there, in another Docker volume: DROOL was started with a new, empty one. **Don't
+set it up.** [Compose Data Volume](Compose-Data-Volume.md#drool-asks-for-setup-after-an-update-or-a-move)
+shows how to find your volume and point DROOL back at it.
 
 ## I don't know what address to open
 

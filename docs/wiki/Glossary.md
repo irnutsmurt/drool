@@ -14,7 +14,7 @@ The words DROOL uses, in plain English.
 | **Controller epoch** | An identity for "this controller since its last restore". Hosts only take commands from the current epoch once reconciled ([What Happens After Restore](What-Happens-After-Restore.md)) |
 | **Credential** | Something DROOL signs in with: an SSH key, a password, or a sudo password ([SSH Credentials](SSH-Credentials.md)) |
 | **Desired State** | DROOL's feature for keeping hosts the way baselines say ([What Desired State Is](What-Desired-State-Is.md)) |
-| **Destination** | Where notifications go: email, Discord, Slack, a webhook ([Notification Routing](Notification-Routing.md)) |
+| **Destination** | Where notifications go: email, Discord, Slack, Telegram, a webhook ([Notification Routing](Notification-Routing.md)) |
 | **Development image** | The container image `ghcr.io/irnutsmurt/drool:main`, built automatically from the newest DROOL code that passed its tests. Not a release ([Installing DROOL](Installing-DROOL.md#development-image-or-release)) |
 | **Drift** | A host no longer matches its baselines ([Drift](Drift.md)), or DROOL's firewall rules were changed outside DROOL ([Firewall Drift](Firewall-Drift.md)) |
 | **DROOL's own SSH account** | The account DROOL creates on a host (named `drool` unless you choose another name; `drooladmin` in the examples), signing in with DROOL's key and using passwordless sudo, so root-equivalent ([DROOL's Own SSH Account](Dedicated-SSH-Account.md)) |
@@ -45,7 +45,7 @@ The words DROOL uses, in plain English.
 | **Startup message** | The short message DROOL prints each time it starts, between two rows of `=`: the address to open and, until setup is done, the setup code ([Where do I get the setup code?](First-Login.md#where-do-i-get-the-setup-code)) |
 | **Tag** | A label on a host, such as `role:web`, used to pick targets ([Tags](Tags.md)) |
 | **Transaction** (firewall) | One protected firewall change on one host ([Automatic Rollback Protection](Automatic-Rollback-Protection.md)) |
-| **Volume** | Where a Docker or Podman container keeps data that outlives the container. DROOL's is `drool_drool-data` with Docker Compose, `drool-data` with Podman ([Where your data is](Install-With-Docker-Compose.md#where-your-data-is)) |
+| **Volume** | Where a Docker or Podman container keeps data that outlives the container. DROOL's is `drool_drool-data` with Docker Compose ([Compose Data Volume](Compose-Data-Volume.md)), `drool-data` with Podman |
 | **Workflow** | A saved list of steps that runs in order on each host ([Workflows](Workflows.md)) |
 
 ## Supported distributions

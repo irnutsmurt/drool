@@ -70,4 +70,4 @@ More: [Notification Failed](Notification-Failed.md).
 ## Related
 
 [Notification Routing](Notification-Routing.md) · [Understanding Alerts](Understanding-Alerts.md) ·
-[Email](Email-Notifications.md) · [Discord](Discord-Notifications.md) · [Webhooks](Webhooks.md)
+[Email](Email-Notifications.md) · [Discord](Discord-Notifications.md) · [Telegram](Telegram-Notifications.md) · [Webhooks](Webhooks.md)

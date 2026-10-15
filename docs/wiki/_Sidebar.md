@@ -12,6 +12,7 @@
 - [Installing DROOL](Installing-DROOL.md)
   - [Docker Compose](Install-With-Docker-Compose.md)
   - [Synology NAS](Install-On-a-Synology-NAS.md)
+  - [Compose Data Volume](Compose-Data-Volume.md)
   - [Podman](Install-With-Podman.md)
   - [Package (.deb, .rpm)](Install-From-a-Package.md)
   - [Release Archive](Install-From-the-Release-Archive.md)
@@ -71,6 +72,7 @@
 - [Email Notifications](Email-Notifications.md)
 - [Discord Notifications](Discord-Notifications.md)
 - [Slack Notifications](Slack-Notifications.md)
+- [Telegram Notifications](Telegram-Notifications.md)
 - [Webhooks](Webhooks.md)
 - [Notification Routing](Notification-Routing.md)
 - [Recovered vs Cleared](Recovered-vs-Cleared-by-Configuration.md)
@@ -167,6 +169,7 @@
 - [Connection Details](Connection-Details.md)
 - [Internal vs External](Internal-vs-External.md)
 - [GeoIP and ASN](GeoIP-and-ASN.md)
+- [Classifying Traffic](Classifying-Traffic.md)
 - [Policy Classification](Policy-Classification.md)
 - [Policy From Observed Traffic](Creating-a-Policy-From-Observed-Traffic.md)
 

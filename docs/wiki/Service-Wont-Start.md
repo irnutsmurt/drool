@@ -28,8 +28,8 @@ log.
      `sshd -t`); use that as a [validation command](Validation-Before-Deployment.md) next time.
    - **Address already in use**: another program uses the port (`ss -tlnp | grep 8096`).
    - A missing directory, wrong permissions, or a full disk (`df -h`).
-4. Start it again when fixed: the service's **Start…** on the host's monitoring **Services** tab, or a
-   service run ([Managing Services](Managing-Services.md)).
+4. Start it again when fixed: **Actions… → Start** on the service's row of the host's monitoring
+   **Services** tab, or a service run ([Managing Services](Managing-Services.md)).
 
 ## Keeps coming back?
 

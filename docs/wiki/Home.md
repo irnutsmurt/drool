@@ -16,7 +16,7 @@ every machine is doing and change things on them, safely and with a record of wh
 
 - **See every machine's health**: CPU, memory, disks and their health, temperatures, GPUs, services,
   with history and plain-English problems ([Fleet Monitoring](Fleet-Monitoring.md)).
-- **Tell you when something's wrong**, by email, Discord, Slack or webhook, and when it's fixed
+- **Tell you when something's wrong**, by email, Discord, Slack, Telegram or webhook, and when it's fixed
   ([Understanding Alerts](Understanding-Alerts.md)).
 - **Run work on many machines at once**: commands, scripts, packages, updates, reboots, services, with
   each machine's output and careful rollouts ([Running a Command](Running-a-Command.md)).

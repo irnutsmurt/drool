@@ -25,7 +25,7 @@ for the example network:
 
 ```text
 Backup written to /var/lib/drool/backups/drool-backup-20261012-213603.tar.gz
-  DROOL v0.1.0-alpha-73-ge3c0c58, schema 20, 3 users, 6 hosts, 1 credentials, 17 jobs, 186 audit events
+  DROOL v0.1.0-alpha-73-ge3c0c58, schema 20, 3 users, 6 hosts, 1 credentials, 17 runs, 186 audit events
 
 This backup does NOT include the master key, so it is NOT a complete
 disaster-recovery backup on its own. Its 3 stored credential(s) can only be
@@ -35,18 +35,19 @@ Keep a copy of that file somewhere safe and separate from this backup, or run
 "drool backup --include-master-key" for a self-contained backup.
 
 The Agent Root CA private key is still on this controller, so it is in this backup (sealed with the
-master key). Export it to offline storage and remove it from the controller (Agents → Trust in the web UI).
+master key). Export it to offline storage and remove it from the controller (Shepherds → Trust (PKI) in the web UI).
 
 The backup is inside the data directory; copy it to another machine for it to be useful after a disk failure.
 ```
 
-Your version, counts and key id will differ. Two things to know when reading it:
+Your version, counts and key id will differ. One thing to know when reading it:
 
 - The first line counts credentials as you see them under **Credentials**; the master-key warning
   counts every **stored secret** the key protects (credentials, but also the SSH certificate
   authority's key and similar), so the two numbers can differ.
-- *Agents → Trust* is the page called **Shepherds → Trust (PKI)** in the menu
-  ([Taking the Agent Root CA Offline](Taking-the-Agent-Root-CA-Offline.md)).
+
+To take the Agent Root CA key off the controller, see
+[Taking the Agent Root CA Offline](Taking-the-Agent-Root-CA-Offline.md).
 
 ## Related
 

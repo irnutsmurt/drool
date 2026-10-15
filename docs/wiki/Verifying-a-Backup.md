@@ -44,7 +44,7 @@ This is the result for the example network's backup:
 
 ```text
 Backup made 2026-10-12T21:36:03Z on drool by DROOL v0.1.0-alpha-73-ge3c0c58 (schema 20).
-  Archive: intact (10 files, checksums match); 3 users, 6 hosts, 1 credentials, 17 jobs, 186 audit events
+  Archive: intact (10 files, checksums match); 3 users, 6 hosts, 1 credentials, 17 runs, 186 audit events
   Database: integrity check passed; same schema as this DROOL
   Audit history: 186 records verified (not sealed by a checkpoint yet)
   Note: its 7 stored credential(s) and keys open only with master key id 12a1738bb919c12b, which the backup doesn't include: restore it with that key file (--master-key), or without credentials (--discard-credentials).

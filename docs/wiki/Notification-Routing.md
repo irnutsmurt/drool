@@ -15,7 +15,7 @@ setting, "send gpu-01's critical alerts only to Discord" is a route.
 - Everyone with **notifications.read** (administrators, operators, auditors) can see routes and the
   delivery history. Changing them needs **notifications.manage** (administrators).
 - Add your destinations first ([Email](Email-Notifications.md), [Discord](Discord-Notifications.md),
-  [Slack](Slack-Notifications.md), [Webhooks](Webhooks.md)).
+  [Slack](Slack-Notifications.md), [Telegram](Telegram-Notifications.md), [Webhooks](Webhooks.md)).
 
 ## Where to find it
 

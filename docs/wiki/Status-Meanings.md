@@ -52,7 +52,8 @@ Every status word DROOL shows, in one place. Each links to the page that explain
 | Environment **supported**, **refused**, **not checked** | [Before Enabling Enforcement](Before-Enabling-Enforcement.md) |
 | Hosts **not enforced**, **in sync**, **changes not applied**, **addresses propagating**, **transaction pending**, **drift**, **blocked: management path** | [Applying the Firewall Policy](Applying-the-Firewall-Policy.md#what-you-see-afterwards) |
 | Transactions **preparing**, **pending**, **committed**, **rolled back**, **failed**, **unknown** | [Automatic Rollback Protection](Automatic-Rollback-Protection.md#transaction-states) |
-| Connections **Covered by policy**, **DROOL management**, **Unclassified**, **Denied**, **would be denied**, **not applied yet** | [Policy Classification](Policy-Classification.md) |
+| Connections **Covered by policy**, **Management path**, **Not in policy**, **Denied**, **would be denied**, **not applied yet** | [Policy Classification](Policy-Classification.md) |
+| Connections **DROOL management**, **Expected**, **Classified**, **Known service**, **Unknown** | [Classifying Traffic](Classifying-Traffic.md) |
 
 ## After a restore
 

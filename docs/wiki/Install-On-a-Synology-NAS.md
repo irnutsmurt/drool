@@ -42,8 +42,8 @@ A window opens to describe the new project. Keep it open for steps 2 to 4.
 
 ## Step 2: Name the project and choose its folder
 
-- **Project name:** `drool`. Container Manager names DROOL's container and its data after the
-  project, so don't rename the project later.
+- **Project name:** `drool`. Container Manager names DROOL's container after the project
+  (`drool-drool-1`).
 - **Path:** the folder where Container Manager keeps the project's YAML file. Choose a new, empty
   folder named `drool` inside the **docker** shared folder (Container Manager created **docker** when
   it was installed). If `drool` doesn't exist yet, create it in **File Station** (open **docker**,
@@ -52,7 +52,8 @@ A window opens to describe the new project. Keep it open for steps 2 to 4.
 
 DROOL's own data (its database, keys and settings) doesn't go into that folder: Container Manager
 keeps it in a Docker volume named `drool_drool-data`, which stays when the container is stopped,
-rebuilt or updated.
+rebuilt or updated. DROOL's YAML gives the volume that name whatever the project is called
+([Compose Data Volume](Compose-Data-Volume.md)).
 
 ## Step 3: Paste DROOL's YAML
 
@@ -207,7 +208,8 @@ For example, to make Shepherds use port 2043 on a DROOL that's already running:
    If your YAML doesn't start with `x-drool-ports:` (after its comments), it's from before
    2026-10-13. Replace all of it with the current file ([step 3](#step-3-paste-drools-yaml)) first,
    then change the number. Copy any other changes you made, such as `DROOL_AGENT_ADVERTISE`, into
-   the new one.
+   the new one. If your project isn't called `drool`, read [Compose Data Volume](Compose-Data-Volume.md#synology-container-manager)
+   before you build it: the current YAML would otherwise start DROOL with a new, empty volume.
 4. Choose **Action → Build**. Container Manager creates DROOL's container again with the new ports.
    If the project doesn't show as running afterwards, choose **Action → Start**.
 

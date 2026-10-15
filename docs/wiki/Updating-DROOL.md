@@ -14,6 +14,9 @@ Update the controller first; see [Updating Shepherds](Updating-Shepherds.md) for
 - **Make a backup** and make sure you have a copy of the **master key** ([Backup and Recovery](Backup-and-Recovery.md),
   [The Master Key](Master-Key.md)). DROOL makes its own backup before changing the database (see
   below), but that copy stays on the same disk.
+- **Docker Compose and Synology:** replacing a `compose.yaml` (or a project's YAML) from before
+  2026-10-14 with the current one? Check your data volume's name first
+  ([Compose Data Volume](Compose-Data-Volume.md#updating-from-an-older-composeyaml)).
 - **Check nothing important is running**: an update restarts DROOL, and runs in progress at that
   moment end as *interrupted* with an unknown outcome on the hosts they were running on
   ([why](Failed-Interrupted-and-Unknown-Outcomes.md)).
@@ -22,7 +25,7 @@ Update the controller first; see [Updating Shepherds](Updating-Shepherds.md) for
 
 | Installation | How |
 |---|---|
-| Docker Compose, release image | `docker load -i drool_1.0.1_image.oci.tar`, put the new release's `compose.yaml` in **the same folder** as before, `~/drool` (the data volume is named after the folder), then, in that folder, `docker compose up -d` |
+| Docker Compose, release image | `docker load -i drool_1.0.1_image.oci.tar`, put the new release's `compose.yaml` in place of the old one, in `~/drool`, then, in that folder, `docker compose up -d`. Replacing a `compose.yaml` from before 2026-10-14? Check your data volume's name first ([Compose Data Volume](Compose-Data-Volume.md#updating-from-an-older-composeyaml)) |
 | Docker Compose, development image | In your DROOL folder: `cd ~/drool`, then `docker compose pull && docker compose up -d`. This gets the newest `main` |
 | Synology Container Manager | In Container Manager: stop the project, delete its container and DROOL's image, then **Action → Build** ([step by step](Install-On-a-Synology-NAS.md#update-drool)). Never **Action → Clean**: it can remove DROOL's data volume |
 | Rootless Podman, release image | `podman load -i drool_1.0.1_image.oci.tar`, copy the new `drool.container` to `~/.config/containers/systemd/`, then `systemctl --user daemon-reload && systemctl --user restart drool` |

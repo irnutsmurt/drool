@@ -87,7 +87,7 @@ This is the restore of the example network's backup:
 
 ```text
 Restored backup from 2026-10-12T21:40:18Z (DROOL v0.1.0-alpha-73-ge3c0c58, made on drool).
-  3 users, 6 hosts, 1 credentials, 17 jobs, 208 audit events
+  3 users, 6 hosts, 1 credentials, 17 runs, 208 audit events
   7 credential(s) verified with the master key already installed here.
   TLS certificate restored.
   All users must sign in again (5 session(s) cleared).
@@ -98,10 +98,10 @@ still answer to the backup's: once DROOL is started, it compares each host
 with the restored data and moves it to the new epoch when nothing would be
 lost or rolled back; hosts changed after the backup wait for you
 (Settings → System → Restore). Set aside, never repeated automatically:
-  0 unfinished job(s) marked interrupted (outcome unknown)
+  0 unfinished run(s) marked interrupted (outcome unknown)
   0 open firewall transaction(s) closed as unknown
   0 unsent notification(s) dropped, 0 queued scheduled run(s) skipped
-  0 job schedule(s) held, 0 automatic Desired State restore(s) paused, 0 Shepherd rollout(s) paused
+  0 schedule(s) held, 0 automatic Desired State restore(s) paused, 0 Shepherd rollout(s) paused
 
 Start DROOL again (systemctl start drool, or docker compose start drool).
 ```

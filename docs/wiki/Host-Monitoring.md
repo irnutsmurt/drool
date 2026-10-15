@@ -25,7 +25,7 @@ Everyone can view it (**monitoring.read**). Buttons that change something say wh
 |---|---|---|
 | **Overview** | Tiles for CPU, Memory, Storage, Temperature, Network, Services and Storage devices, and the host's **Active health issues** | — |
 | **Metrics** | Charts for the last hour, 6 hours, 24 hours, 7 days or 30 days | [CPU, Memory and Load](CPU-Memory-and-Load.md), [Filesystems and Disk Space](Filesystems-and-Disk-Space.md) |
-| **Services** | Every systemd service, its state and history; **Watch** a service | [Service Monitoring](Service-Monitoring.md) |
+| **Services** | Every systemd service, its state and history; its expected state (running, stopped, ignored); **Actions…** to start, stop, enable or disable it | [Service Monitoring](Service-Monitoring.md) |
 | **Storage health** | Each disk's own health report, its partitions, and kernel storage errors | [Storage Health](Storage-Health.md) |
 | **Sensors & GPU** | Temperatures with the hardware's own limits; GPU use, memory, temperature, power | [Temperatures](Temperatures.md), [GPUs](GPUs.md) |
 | **Health settings** | Which checks run on this host, their thresholds, and where each setting comes from; **Customize** | [Health Overrides](Health-Overrides.md) |

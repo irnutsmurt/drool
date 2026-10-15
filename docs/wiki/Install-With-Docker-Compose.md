@@ -71,8 +71,8 @@ cd ~/drool
 - This folder will hold DROOL's configuration file, `compose.yaml`. **Run every `docker compose` command
   for DROOL from this folder**, today and later: Docker Compose looks for its files in the folder
   you're in. In a new terminal, run `cd ~/drool` first.
-- Docker names DROOL's data after this folder, so keep the folder where it is and keep its name
-  ([Where your data is](#where-your-data-is)).
+- DROOL's data doesn't go into this folder: it's in a Docker volume, which keeps its name wherever
+  the folder is ([Where your data is](#where-your-data-is)).
 
 ## Step 2: Download compose.yaml
 
@@ -314,15 +314,15 @@ Run these in `~/drool` (`cd ~/drool` first):
 ## Where your data is
 
 Everything DROOL stores (hosts, credentials, history, its keys) is in a Docker **volume** called
-**`drool_drool-data`**: Docker's storage, not a file in `~/drool`. The name comes from the folder:
-`<folder name>_drool-data`.
+**`drool_drool-data`**: Docker's storage, not a file in `~/drool`. `compose.yaml` names it, so the
+name stays the same if you move or rename the folder.
 
 - `docker compose stop`, `restart`, `down`, updates and reboots all keep it.
 - **`docker compose down -v` deletes it**, and with it everything DROOL knows. Don't add `-v` unless
   you mean to [start over](#starting-over).
-- If you rename `~/drool` (or put the files in a folder with another name), Docker looks for a
-  volume named after the new folder, doesn't find one, and gives DROOL a new, empty one: DROOL looks
-  brand-new and asks for setup again. Your data is still in the old volume; rename the folder back.
+- A second DROOL on the same machine needs a name of its own, and an installation made with a
+  `compose.yaml` from before 2026-10-14 may have its data under another name: see
+  [Compose Data Volume](Compose-Data-Volume.md).
 - DROOL's [master key](Master-Key.md) is in the volume too. Once you're set up, keep a copy of it
   somewhere safe ([Secure Your Installation](Secure-Your-Installation.md#a-copy-of-the-master-key-kept-apart-from-your-backups)).
 
@@ -459,15 +459,18 @@ build may refuse to open the database that build has upgraded.
 
 ## Starting over
 
-To throw away a test installation completely, with all its hosts, credentials and history:
+To throw away a test installation completely, with all its hosts, credentials and history, remove
+its volume:
 
 ```sh
 cd ~/drool
-docker compose down -v
+docker compose down
+docker volume rm drool_drool-data
 docker compose up -d
 ```
 
-DROOL then starts as if new, with a new setup code (step 6).
+DROOL then starts as if new, with a new setup code (step 6). (With `DROOL_INSTANCE` set, the volume
+is `<DROOL_INSTANCE>_drool-data`: [Compose Data Volume](Compose-Data-Volume.md#starting-over).)
 
 ## Something went wrong?
 

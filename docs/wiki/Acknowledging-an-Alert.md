@@ -6,6 +6,15 @@ fixing the same disk, and how you stop reminders while you work.
 Acknowledging does **not** close the alert and doesn't change anything on the host. The alert stays
 open until monitoring sees the condition go away ([Understanding Alerts](Understanding-Alerts.md#nobody-can-close-an-alert)).
 
+Acknowledging is one of three answers; the alert's page offers all of them under **Quieter, for a
+while or for good**:
+
+| You mean | Do |
+|---|---|
+| *I've seen it, I'm on it* | **Acknowledge** (this page): no more reminders |
+| *Not now* (planned work, a reboot) | **Snooze**: [maintenance](Maintenance-Mode.md) for the host or its Pack, until a time you choose. No notifications meanwhile; what's still wrong when it ends is notified then |
+| *This is on purpose* | Make it not a problem: for a service, its [expected state](Service-Monitoring.md#expected-state) (Stopped, or Ignored); for anything else, the [health check](Health-Overrides.md) for that host. Nothing alerts then, now or later |
+
 ## Before you start
 
 - You need **alerts.acknowledge** (administrators and operators).

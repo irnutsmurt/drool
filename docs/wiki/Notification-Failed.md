@@ -31,7 +31,7 @@ shows the error and **Attempts** for each try. Then:
 | *rate limited by the receiver (HTTP 429)* | Too many messages at once | Nothing: DROOL waits as long as asked |
 
 Per destination: [Email](Email-Notifications.md#if-the-test-fails) · [Discord](Discord-Notifications.md#if-the-test-fails) ·
-[Slack](Slack-Notifications.md#if-the-test-fails) · [Webhook Reference](Webhook-Reference.md#how-drool-treats-the-receivers-answer).
+[Slack](Slack-Notifications.md#if-the-test-fails) · [Telegram](Telegram-Notifications.md#if-the-test-fails) · [Webhook Reference](Webhook-Reference.md#how-drool-treats-the-receivers-answer).
 
 ## After fixing it
 

@@ -38,7 +38,7 @@ the webhook in Discord and create a new one.
    and the form shows *✓ Test delivered: delivered (HTTP 204)*.
 7. Click **Save**.
 
-![Choosing a destination: Discord, Slack, Email or Webhook, each with a one-line hint on what you need](images/notification-kinds.png)
+![Choosing a destination: Discord, Slack, Telegram, Email or Webhook, each with a one-line hint on what you need](images/notification-kinds.png)
 
 DROOL stores the URL encrypted with its [master key](Master-Key.md) and never shows it again: the list
 shows only `https://discord.com/…•••••••`. To change it, **Edit** the destination and paste the new
@@ -74,4 +74,4 @@ More: [Notification Failed](Notification-Failed.md).
 ## Related
 
 [Notification Routing](Notification-Routing.md) · [Understanding Alerts](Understanding-Alerts.md) ·
-[Email](Email-Notifications.md) · [Slack](Slack-Notifications.md) · [Webhooks](Webhooks.md)
+[Email](Email-Notifications.md) · [Slack](Slack-Notifications.md) · [Telegram](Telegram-Notifications.md) · [Webhooks](Webhooks.md)

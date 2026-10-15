@@ -1,7 +1,8 @@
 # Backing up DROOL in Docker
 
 For DROOL running with Docker Compose ([Install with Docker Compose](Install-With-Docker-Compose.md)). All
-data lives in DROOL's Docker volume (`drool_drool-data` for the folder `~/drool`).
+data lives in DROOL's Docker volume, `drool_drool-data` (or `<DROOL_INSTANCE>_drool-data`:
+[Compose Data Volume](Compose-Data-Volume.md)).
 
 ## Before you start
 

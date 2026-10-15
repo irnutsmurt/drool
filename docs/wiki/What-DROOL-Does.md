@@ -29,7 +29,7 @@ explains the difference in detail.
 |---|---|---|
 | **Hosts** | Add machines, check DROOL can reach them, see what they are (OS, disks, network, services) | [Your First Host](Your-First-Host.md) |
 | **Monitoring** | CPU, memory, disks, temperatures, GPUs, services and disk health, with history | [Fleet Monitoring](Fleet-Monitoring.md) |
-| **Alerts** | Be told when something is wrong (email, Discord, Slack, webhook), and keep quiet during maintenance | [Understanding Alerts](Understanding-Alerts.md) |
+| **Alerts** | Be told when something is wrong (email, Discord, Slack, Telegram, webhook), and keep quiet during maintenance | [Understanding Alerts](Understanding-Alerts.md) |
 | **Runs** | Run a command or script on many machines, install and remove packages, install updates, restart services, reboot | [Running a Command](Running-a-Command.md) |
 | **Files** | Browse, edit, upload and download files; send one file to many machines with a preview and a rollback | [Browsing Files](Browsing-Files.md) |
 | **Automation** | Schedules ("every Sunday at 3:00") and workflows ("update, reboot if needed, check the service is running") | [Schedules](Schedules.md) |

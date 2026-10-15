@@ -24,6 +24,7 @@ see [Restoring a Controller](Restoring-a-Controller.md) and [Key Rotation](Key-R
 | `drool restore --recover` | Put the previous installation back after an interrupted restore | [Restore Needs Attention](Restore-Needs-Attention.md#drool-wont-start) |
 | `drool setup code` | Issue a new one-time setup code for creating the first administrator (the previous code stops working; refused once an administrator exists) | [Where do I get the setup code?](First-Login.md#where-do-i-get-the-setup-code) |
 | `drool user create --username NAME [--role admin]` | Create a user (asks for the password): the way back in if every administrator is locked out | [Users and Roles](Users-and-Roles.md) |
+| `drool user set-password --username NAME` | Set a user's password (asks for it twice; `--password-stdin` reads one line) and sign them out everywhere: the way back in for a forgotten password. Two-factor stays as it is | [Users and Roles](Users-and-Roles.md#setting-someones-password) |
 | `drool user mfa-reset --username NAME` | Turn off a user's two-factor authentication | [Two-Factor Authentication](Two-Factor-Authentication.md#if-you-lose-your-authenticator) |
 | `drool secrets rotate-key` | Replace the master key (DROOL stopped) | [Key Rotation](Key-Rotation.md) |
 | `drool agent-ca status` | The Shepherd PKI: root (online or offline), intermediate, trust manifest | [Shepherd PKI](Shepherd-PKI.md) |
@@ -38,6 +39,7 @@ see [Restoring a Controller](Restoring-a-Controller.md) and [Key Rotation](Key-R
 | `drool serve` | Run the controller (the service does this for you) | |
 
 `drool --config FILE <command>` uses another configuration file ([Configuration](Configuration.md)).
+`drool shepherd-ca` is another name for `drool agent-ca`: both work, and scripts keep working.
 
 ## On a host with a Shepherd
 

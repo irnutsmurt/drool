@@ -50,11 +50,12 @@ from. The release installs a commented example as `/usr/share/drool/config.examp
 | `agent.bind` | same as `server.bind` | The address the Shepherd endpoint listens on |
 | `agent.advertise` | the address you open DROOL with, on `agent.public_port` (else `agent.port`) | The addresses Shepherds connect to (put into enrollment tokens and given to Shepherds when they're installed). Names or addresses, for example `drool.example.net`; one without a port gets `agent.public_port` (else `agent.port`), and `name:port` is used exactly as written. Set it when your hosts reach DROOL by another name than the one you open it with |
 | `data_dir` | `/var/lib/drool` (containers: `/data`) | Where DROOL keeps its database and files |
+| `data_volume` | empty (`compose.yaml`: `drool_drool-data`) | Only for messages: the container volume `data_dir` is, which a DROOL starting without data names ([Compose Data Volume](Compose-Data-Volume.md)) |
 | `secrets.master_key_file` | `<data_dir>/master.key` | Where the [master key](Master-Key.md) is |
 | `network.geoip_dir` | `<data_dir>/geoip` | Where the [GeoIP and ASN](GeoIP-and-ASN.md) databases are |
 | `auth.session_idle_timeout` | `12h` | Sign out after this long without activity |
 | `auth.session_absolute_timeout` | `168h` (7 days) | Sign out after this long in any case |
-| `auth.reauth_window` | `5m` | How long [confirming it's you](Re-authentication.md) lasts |
+| `auth.reauth_window` | `15m` | How long [confirming it's you](Re-authentication.md) lasts |
 | `ssh_ca.cert_ttl`, `ssh_ca.clock_skew` | `10m`, `5m` | [Short-lived SSH certificates](Short-Lived-SSH-Certificates.md)' validity |
 | `poller.status_interval` | `5m` | How often DROOL checks every host's status |
 | `poller.updates_interval` | `6h` | How often DROOL checks for available updates |
