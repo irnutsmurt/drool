@@ -14,7 +14,7 @@ Everyone who can sign in can see monitoring (**monitoring.read**). The buttons t
 
 ## The page
 
-![The Monitoring page: 6 of 6 hosts reporting, alert counts, filter buttons (Needs attention 3, CPU 1, Low disk space 1, Storage health 1, Service failures 2…), the host table with health, alerts, monitoring method, CPU, memory, disk, temperature, services and storage devices, and the list of active health issues](images/monitoring-fleet.png)
+![The Monitoring page: 6 of 6 hosts reporting, alert counts, filter buttons (Needs attention 1, Low disk space 1, Storage health 1, Service failures 0…), the host table with health, alerts, monitoring method, CPU, memory, disk, temperature, services (nas-01 and database-01: 1 failed, not alerting) and storage devices, and the list of active health issues](images/monitoring-fleet.png)
 
 From the top:
 
@@ -25,7 +25,7 @@ From the top:
 - **Alerts:** open alerts by severity, how many are acknowledged, and how many hosts are in
   maintenance. Click to open [Alerts](Understanding-Alerts.md).
 - **Filter buttons** with counts: **Needs attention**, **Unreachable / stale**, **CPU**, **Memory**,
-  **Low disk space**, **Storage health**, **Service failures**, **Interfaces**, **Temperature**,
+  **Low disk space**, **Storage health**, **Service failures** (of services you monitor), **Interfaces**, **Temperature**,
   **Reduced fidelity**, **Missing helpers**, **No data yet**, **All hosts**. Click one to list just
   those hosts.
 - **The host table:** search by name (**Host**), choose **Sort by** (*Needs attention first*, *Name*,
@@ -35,8 +35,9 @@ From the top:
   - **Monitoring** — *Shepherd · continuous* or *SSH · polled*, plus notes such as *reduced
     fidelity* or *helpers would help: nvme-cli*;
   - **CPU**, **Memory**, **Disk** (the fullest filesystem, e.g. *96% /srv/media*), **Temp.**
-    (the hottest sensor), **Services** (*50 ok*, or *1 failed*), **Storage devices** (disk health:
-    *Warning*, *Health unknown*…);
+    (the hottest sensor), **Services** (*50 listed*, or *✕ 1 monitored problem*; a service that failed
+    but nobody monitors shows as *1 failed, not alerting* and doesn't make the host unhealthy),
+    **Storage devices** (disk health: *Warning*, *Health unknown*…);
   - **Updated** — how old the data is.
 - **Active health issues:** every problem across the fleet, most severe first, with when it started,
   for example *Critical — nas-01 — /srv/media is over 95% full — 327.7 GiB free of 8.0 TiB*.
@@ -57,7 +58,7 @@ Tick hosts in the table, then:
 ## What "health issue" means
 
 A **health issue** is a problem that has lasted long enough to count: CPU above 95% for 5 minutes, a
-filesystem over 85% on two checks in a row, a service that stayed failed for a minute. Short spikes
+filesystem over 85% on two checks in a row, a monitored service that stayed failed for a minute. Short spikes
 never become issues, and an issue clears only once the condition has properly recovered, so issues
 don't flap. Warning and Critical issues become [alerts](Understanding-Alerts.md); *Info* issues (such
 as reduced monitoring fidelity) are shown here only.

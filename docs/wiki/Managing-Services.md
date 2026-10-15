@@ -18,8 +18,8 @@ After each change it checks on the host that the service really is in the state 
 ## From a host's Services tab
 
 On the host's monitoring page, **Services** tab, click **Actions…** on a service's row. The dialog
-shows the service as it is (**Now**: running or not; **At boot**: its unit-file state; **Expected**:
-what DROOL expects of it) and offers only the actions that make sense for it:
+shows the service as it is (**Now**: running or not; **At boot**: its unit-file state; **Monitored**:
+whether DROOL monitors it, and what it expects) and offers only the actions that make sense for it:
 
 | The service is | Actions offered |
 |---|---|
@@ -42,9 +42,9 @@ afterwards, for example *Stop: done. DROOL checked on media-01: jellyfin.service
 
 ### The expected state stays as it is
 
-Stopping, disabling or starting a service never changes what DROOL [expects](Service-Monitoring.md#expected-state)
-of it. Running and expectation are separate on purpose: a service you stop for a minute shouldn't
-quietly stop being watched.
+Stopping, disabling or starting a service never changes whether DROOL [monitors](Service-Monitoring.md#monitor) it or what it
+[expects](Service-Monitoring.md#customize-the-expected-state) of it. Running and expectation are separate on purpose: a service you
+stop for a minute shouldn't quietly stop being monitored.
 
 - Before **Stop**, **Disable** or **Disable & Stop** on a service expected to run, the confirmation
   warns: *jellyfin.service is expected to run (set on this host). Stopping it raises a health issue,

@@ -42,7 +42,7 @@ Every card links to the full page for that area.
 | **Recent runs** | The last runs that included this host | **View runs →** |
 | **Deployed files** | Files DROOL deployed here, with their state | **Open file manager →** ([Rolling Back a File](Rolling-Back-a-File.md)) |
 | **System** | OS, kernel, hostname, CPU, memory, package manager, init system, virtualization, when it was discovered, and (expandable) filesystems, addresses and interfaces | — |
-| **Danger zone** | **Remove host** | [Removing a Host](Removing-a-Host.md) |
+| **Danger zone** | **Remove host…**: from DROOL only, or cleaning up what DROOL installed there first | [Removing a Host](Removing-a-Host.md) |
 
 A Shepherd host's **Management** card also has **Shepherd details**: the Shepherd's version and
 compatibility, its certificate, when it was last seen and from where, and **What DROOL may do on this

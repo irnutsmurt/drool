@@ -206,9 +206,16 @@ later.
 
 ## Removing the account
 
-DROOL never deletes its account by itself; removing the host from DROOL leaves it on the host. To
-remove it, first make sure DROOL no longer signs in with it (remove the host from DROOL, or edit it to
-use another account), then on the host:
+**With the host:** **Remove host…** → **Clean up DROOL access and remove the host** removes the account
+for you: DROOL proves it created it (its record in `/var/lib/drool/ssh-accounts/`, with DROOL's key
+and the account's user ID), starts a helper on the host that removes the sudo rule, the account, its
+home and group, and the record once DROOL's session has ended, and then forgets the host
+([Removing a Host](Removing-a-Host.md#what-the-cleanup-does-on-the-host)). DROOL can't watch that
+helper finish (it removed its own way in) and says so.
+
+**By hand** (DROOL never deletes its account in any other case; **Remove from DROOL only** leaves it
+on the host): first make sure DROOL no longer signs in with it (remove the host from DROOL, or edit it
+to use another account), then on the host:
 
 ```sh
 sudo rm /etc/sudoers.d/drool-account-drooladmin

@@ -36,7 +36,12 @@ Above the tabs, one line sums up what's open, for example *6 open: 1 critical, 5
 suppressed by maintenance*. It also tells you when *no notification destination* is set up yet, or
 when a destination is failing.
 
-![The Alerts page: 6 open (1 critical, 5 warning, 1 suppressed by maintenance), the Active tab with filters for Severity, Host, Pack, Category and Maintenance, and five alerts with their severity, host, problem, age, state and notification status](images/alerts-list.png)
+Each open alert has **Actions…** on its row: **Acknowledge…** (*I'm on it*), **Snooze…** (maintenance
+for its host until a time you choose) and **Ignore…** (*this is on purpose*: change the setting behind
+it, for that host only), without opening the alert ([Acknowledging an Alert](Acknowledging-an-Alert.md)).
+Closed alerts have none.
+
+![The Alerts page: 3 open (2 critical, 1 warning) and a destination failing, the Active tab with filters for Severity, Host, Pack, Category and Maintenance, and two alerts on nas-01, backup.service failed and /srv/media is over 95% full, with their severity, host, problem, age, state, notification status and an Actions… button](images/alerts-list.png)
 
 Filter by **Severity**, **Host**, **Pack**, **Category** (CPU, Memory, Disk space, Storage health,
 Services, Interfaces, Temperature, GPU, Unreachable / stale) and **Maintenance** (whether the alert
@@ -105,9 +110,11 @@ condition go away**, or when its check is changed so the condition no longer cou
 ([Recovered vs Cleared by Configuration](Recovered-vs-Cleared-by-Configuration.md)). This way, a
 failing system can never be marked healthy by mistake. To say "I'm on it", acknowledge it.
 
-To stop being alerted about something that isn't a problem for you, change the health check
+To stop being alerted about something that isn't a problem for you, **Ignore…** on the alert's row
+changes the setting behind it for that host (ignore a service, or turn that check off for that disk or
+filesystem), and the alert closes as *cleared by configuration*. Or change the health check yourself
 ([Health Overrides](Health-Overrides.md)), for example turn off *High CPU utilization* on a machine
-that is supposed to be busy.
+that is supposed to be busy. Services alert only when you monitor them ([Service Monitoring](Service-Monitoring.md)).
 
 ## Before you start
 

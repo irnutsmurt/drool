@@ -21,6 +21,7 @@ Only for actions that change trust, access or privilege, or destroy something yo
   disabling them, resetting someone's two-factor authentication, and setting another user's password
   (they're signed out everywhere).
 - **How DROOL gets into a host**: setting up and switching to [DROOL's own SSH account](Dedicated-SSH-Account.md),
+  removing a host with **Clean up DROOL access** (DROOL removes its own account and Shepherd there),
   switching a host between a credential and certificates, switching an established host (one whose
   host key DROOL already trusts) to another account or credential, replacing a credential hosts use,
   and accepting a changed SSH host key.

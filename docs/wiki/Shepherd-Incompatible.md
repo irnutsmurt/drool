@@ -6,7 +6,7 @@ The **Shepherds** page and each host's Shepherd card show how well that Shepherd
 |---|---|---|
 | **compatible** | All good | Nothing |
 | **update available** | A newer Shepherd is available | [Update it](Updating-Shepherds.md) when convenient |
-| **reduced capabilities** | It works, but lacks an optional capability (firewall management, network activity, system monitoring, Desired State checks, …) | Update it to get them |
+| **reduced capabilities** | It works, but lacks an optional capability (firewall management, network activity, system monitoring, Desired State checks, removing itself when DROOL asks, …) | Update it to get them. A Shepherd that can't remove itself is removed over SSH, or by hand ([Removing a Host](Removing-a-Host.md#uninstalling-a-shepherd)) |
 | **update required** | It lacks something this host's configuration needs, for example firewall management on a host in Enforce mode | Update it |
 | **incompatible** | It speaks a protocol version this DROOL doesn't | Update it. Meanwhile DROOL doesn't use it, and hosts with [SSH fallback](SSH-Fallback.md) keep working over SSH |
 | **identity / trust problem** | Revoked, in an identity conflict, or its certificate expired too long ago to renew | [Shepherd PKI](Shepherd-PKI.md) |

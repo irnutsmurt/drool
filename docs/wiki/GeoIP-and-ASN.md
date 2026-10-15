@@ -5,7 +5,8 @@ Hosting*) of external addresses in Network Activity. It looks them up **locally*
 you put on the controller. It never sends addresses to an online service, and never looks up private,
 loopback, link-local, multicast or documentation addresses.
 
-**It's optional.** Without databases everything works; country and network show as *Unknown*.
+**It's optional.** Without databases everything works: connections show no country or network owner
+(**—**), and Network Activity says why once, at the top ([below](#what-network-activity-shows)).
 
 > Country and network owner are **context, not a verdict**. They can be wrong or out of date, and
 > DROOL never blocks, scores or flags traffic because of them.
@@ -64,6 +65,23 @@ replacement is ignored, and the previous copy stays in use.
 
 **Show country and network owner for public addresses (local databases only)**, on the same page, turns
 the enrichment off or on.
+
+## What Network Activity shows
+
+DROOL tells three cases apart, for the country and the network owner separately:
+
+| Case | A connection shows | Network Activity says |
+|---|---|---|
+| Enrichment turned off | **—** (*country lookups are off*) | *Country and network-owner lookups are turned off. Collection and enrichment →* |
+| On, but no database of that kind (missing, or unreadable) | **—** (*no country database is configured*, *no ASN database is configured*) | *Country and network-owner information is unavailable because GeoIP/ASN databases are not configured. Configure enrichment →*, or only the side that's missing (*Network-owner information is unavailable because no ASN database is configured; countries are shown.*) |
+| A database is loaded, and has no answer for the address | *country unknown*, *network unknown* | nothing: the address is genuinely unknown |
+
+**Unknown** therefore always means the database was asked and had no answer. The reason behind a
+**—** is on the connection's details (*Not looked up: no ASN database is configured*) and in its
+tooltip. Private, internal and special addresses are never looked up, whatever the setting:
+*internal*, or nothing.
+
+![Network Activity without GeoIP/ASN databases: one note at the top, "Country and network-owner information is unavailable because GeoIP/ASN databases are not configured. Configure enrichment →", above the summary of connections](images/network-enrichment-missing.png)
 
 ## Related
 

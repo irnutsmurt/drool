@@ -2533,7 +2533,8 @@ Where a row says "then", the first run failed only in what a test fix or an emul
 
 Product issues the user guide and dogfooding exposed (from 2026-10-12), recorded here instead of being
 explained away in the documentation. Size and risk were estimates from the code. Every item is done:
-the last ones in the final batch before the 1.0 freeze (§38).
+most in the final batch before the 1.0 freeze (§38), the rest in the correction batch that reopened it
+once (§40).
 
 | # | Finding | Assessment | Proposed |
 |---|---|---|---|
@@ -2555,6 +2556,11 @@ the last ones in the final batch before the 1.0 freeze (§38).
 | 16 | Network Activity couldn't say what traffic is, or recognize DROOL's own | Classification from DROOL's evidence and user classifications (§38.3) | Done (§38.3) |
 | 17 | Setup-only credentials of an abandoned Add host stayed forever | Deleted with the host or when it signs in another way, swept at start; kept while a setup can be resumed (§38.7) | Done (§38.7) |
 | 18 | No Telegram notifications | A first-class provider; the bot token treated as secret in every path (§38.13) | Done (§38.13) |
+| 19 | Every failed unit alerted (`rtl433.service`, `smartmontools.service`, `varnish.service`…) and every service row was a policy editor | Automatic judged any failed unit a problem; the expected-state dropdown sat on every row | Done: monitoring a service is opt-in, one **Monitor** box per row, the rest under **Customize…**; old automatic issues closed as reconfigured (§40.1) |
+| 20 | Alerts could only be acted on from an alert's own page | Acknowledge, maintenance and health settings existed; the list had no way to them | Done: **Actions…** per open alert (§40.2) |
+| 21 | Network Activity said *country unknown / network unknown* for every public address when no GeoIP/ASN database was installed | The page didn't tell "not looked up" from "no answer" | Done: per-kind enrichment state, one explanation, "unknown" only for a real miss (§40.3) |
+| 22 | Removing a host left DROOL's own SSH account, with passwordless sudo, on it | Only "remove from DROOL" existed; the guide listed manual commands | Done: **Clean up DROOL access and remove the host**, proven by the account's marker (§40.4) |
+| 23 | Uninstalling a Shepherd required a working SSH path | The removal ran only over SSH | Done: a typed self-uninstall request; SSH only to verify, or as the fallback (§40.5) |
 
 ---
 
@@ -2760,14 +2766,19 @@ connects through 2043, and the endpoint stored on the host).
 
 ## 38. Final 1.0 dogfooding batch (after M17)
 
-The last dogfooding pass before the 1.0 functionality freeze (2026-10-14), not a milestone. It closes
-the §35 backlog and what further use found. After it, 1.0 functionality is frozen: what follows is
-release work (a licence, the offline release-signing key, `v1.0.0-rc.N`, qualification against the RC
-artifacts, release blockers only, `v1.0.0`). The product boundary is unchanged: DROOL operates
-existing infrastructure; it doesn't provision it. Migrations 0023 (service expectations), 0024
-(network classifications) and 0025 (Telegram destinations).
+The dogfooding pass meant to be the last before the 1.0 functionality freeze (2026-10-14), not a
+milestone. It closed the §35 backlog and what further use found, and 1.0 functionality was frozen.
+Real use of that build reopened the freeze once, the next day, for a correction batch (§40): parts of
+§38.1 (the uninstall needed SSH) and §38.2 (an automatic failure alerted) are superseded there. 1.0 is
+frozen again after §40; what follows is release work (a licence, the offline release-signing key,
+`v1.0.0-rc.N`, qualification against the RC artifacts, release blockers only, `v1.0.0`). The product
+boundary is unchanged: DROOL operates existing infrastructure; it doesn't provision it. Migrations 0023
+(service expectations), 0024 (network classifications) and 0025 (Telegram destinations).
 
 ### 38.1 Shepherd uninstall
+
+*Since §40.5 a connected Shepherd removes itself (no SSH needed); the SSH path below remains the way
+when it can't be asked, and SSH verifies a self-removal when it works.*
 
 `internal/agentsvc/uninstall.go`; `POST /hosts/{id}/agent/uninstall/plan` (agents.manage) and
 `POST /hosts/{id}/agent/uninstall` (agents.manage and hosts.write, re-authentication
@@ -2805,6 +2816,10 @@ container, removed from the browser by `web/e2e/shepherd-uninstall.test.mjs`; no
 host; SSH runs afterwards; a second removal finds nothing).
 
 ### 38.2 Acknowledge, snooze, expected state
+
+*Superseded in part by §40.1: without an expected state a service is inventory only (a failed unit no
+longer alerts), and the Services tab has a Monitor box per row instead of an expected-state dropdown.
+§40.2 puts all three answers on the Alerts list.*
 
 Three answers to an alert, now distinct in the product and the guide:
 
@@ -3101,3 +3116,254 @@ Recorded so 1.1 starts from the agreed scope; nothing here exists in 1.0.
 ever, belong to plugins or integrations outside the core. Monitoring and controls for workloads
 follow the 1.0 rules: data collected over SSH or by the Shepherd within its capability ceiling,
 honest about what each path can see, typed operations, RBAC, audit, no rules language.
+
+---
+
+## 40. Dogfooding correction batch (after the freeze)
+
+Real use of the frozen build (2026-10-15) found five things worth reopening the freeze for, once:
+simpler day-to-day behaviour, not a redesign, and no 1.1 work. 1.0 functionality is frozen again after
+it. No migration (the expected-state model, its storage and the agent protocol version stay); one
+additive protocol message pair and the Shepherd feature `uninstall-1`.
+
+### 40.1 Service monitoring is opt-in
+
+**Cause.** `automatic` (no expected state) still judged a failed unit a problem, so every unit systemd
+reports failed (`rtl433.service`, `smartmontools.service`, `varnish.service`…) raised `service_failed`
+and an alert, and the Services tab put an expected-state dropdown on every row.
+
+**Semantics** (`monsvc/health.go` `services`). Inventory, state, history, enablement and actions are
+collected and shown for every unit, as before. What DROOL alerts on is what someone asked it to
+monitor:
+
+| Expected (effective, after host/Pack/global inheritance) | stopped or missing | running | failed |
+|---|---|---|---|
+| automatic (no setting) | inventory only | inventory only | inventory only (shown as failed) |
+| running (**Monitor** ticked) | `service_stopped` (critical; not installed: warning) | ok | `service_failed` (critical) |
+| stopped (Customize…) | ok (*expected*) | `service_unexpected` (warning) | ok (*expected*) |
+| ignored (Customize…) | never an issue | never an issue | never an issue |
+
+Monitored means expected running or stopped. A unit whose state isn't known (its host stopped
+reporting) and every unit while the host reports no inventory keep their issues: an evaluation without
+data was a fake recovery before (an issue resolved as *recovered* when a stale host's policy changed).
+
+**The Monitor box** (`PUT /hosts/{id}/monitoring/services/{unit}/monitor` `{monitor}`,
+monitoring.manage; `monsvc.MonitorPlan`). It changes the host's own `service_expected` for the unit:
+ticking sets running, or removes a host exception when a Pack or every-host setting already monitors
+the unit; unticking removes the host's own setting, or, when a Pack or every-host setting monitors the
+unit, makes a host exception (`ignored`), never revealing the inherited setting again. The exception
+weakens detection, so it needs monitoring.settings (the existing `Weakens` rule); ticking and
+unticking the host's own setting are an operator's, as watching was. Audited like any host override.
+Rows carry `monitored`, `inherited` and `inherited_source` (what the host gets without its own
+setting) and `customized` (overrides of the unit's checks: durations, turned off). The UI shows a small
+line only when it isn't the plain case (*from pack X*, *expected stopped*, *not monitored here (pack X
+monitors it)*, *ignored on this host*) and **⚙ Customized** only for check overrides or an expected
+state set here that is more than ticking Monitor. **Customize…** (a row action) has the advanced
+states (running, stopped, ignored), **Reset to inherited**, and the unit's check timing. The Pack
+page's card is **Monitored services**. `watched_services` (host settings) stays the host's own
+expected-running list (`SetWatchedTx`), so its clients and the fixture are unchanged.
+
+**Settling the old issues.** At start (and after an upgrade) the evaluator judges every host's active
+service issues against the configuration, reporting or not (`hasServiceIssue` in `reconfigure`):
+an issue the expected state no longer allows ends as `reconfigured` (*isn't monitored: DROOL shows
+its state, and alerts on a service only when it's monitored. This is a configuration change, not a
+recovery.*), its alert as *cleared*; explicit Running/Stopped/Ignored settings are untouched.
+
+**Higher-level UI.** A failed unit nobody monitors is never a health warning, alert, recent-events
+warning or "Needs attention" item: the host's Services tile counts monitored services and their
+problems (*None monitored*, *2 failed, not monitored* as a neutral note), the fleet row has
+`service_issues` beside the factual `failed_services`, `attentionReasons` no longer lists failed units
+(a monitored one is an open alert there), the Overview's *failed units* line and the inventory cards
+are neutral facts, and the Services tab shows an unmonitored failure as a grey *Failed* with *Failed,
+but not monitored, so it doesn't alert*. `service_unexpected` belongs to the services category.
+
+Tests: `internal/api` TestServiceMonitoringOptIn (automatic failed and stopped units produce no issues
+on SSH and Shepherd hosts alike; monitored running units failing and stopping; expected stopped
+running; ignored; Pack and every-host expectations; host overrides and exceptions; checkbox
+transitions, no-ops, operator refusals, validation; tile and fleet; `watched_services`; issue parity
+between transports), TestServiceIssuesSettleAfterUpgrade (old automatic issues cleared at start, a
+reporting and a stale host, explicit expectations kept, no fake recovery), TestExpectedServiceState,
+TestHealthOverridesThresholdChanges (updated); web `monitor.test.ts`; `web/e2e/monitoring.test.mjs`
+(the Monitor box, an unmonitored failure, Customize…, the Monitored filter, the actions' warnings).
+
+### 40.2 Alert quick actions
+
+**Actions…** on every open alert row (Active and Acknowledged; none on history), one button, a dialog:
+**Acknowledge…** (active only; the note), **Snooze…** (the maintenance dialog preselected to the
+alert's host, reason *Snoozed: <title>*), **Ignore…**, and a link to the alert. The alert page's
+*Quieter* card opens the same Ignore dialog. The list holds the dialog, not the row, so it stays open
+with its result when what it did takes the alert out of the list.
+
+**Ignore** never closes an alert by hand. `GET /alerts/{id}/ignore-options` (alerts.read;
+`monsvc.QuietOptions`) lists health settings that make the condition stop being a problem, each with
+its effect, where it's undone, the override it writes and whether the caller may (the rules of `PUT
+/monitoring/health/overrides`, which applies it with its own audit):
+
+- a service: *Ignore <unit> on <host>* (host `ignored`, monitoring.settings); *Stop monitoring
+  <unit> on <host>* only when the host's own setting is all that monitors it; the intentional
+  opposite, *Expect <unit> to be stopped* (failed or stopped while expected running) or *to run*
+  (running while expected stopped), never guessed;
+- any other check: turn that check off for the subject, by its stable identity (`subjectOf`), keeping
+  the subject's other fields; with no subject identity, for the host, said so.
+
+The issue then ends as `reconfigured` or `disabled` and the alert as *cleared*, not recovered.
+Permissions are the existing ones: alerts.acknowledge, maintenance.manage, monitoring.manage (and
+monitoring.settings where detection weakens); a viewer sees no Actions…. Audit records now write an
+expected state by name and *enabled* as a boolean (`monsvc.Diff`).
+
+Tests: `internal/api` TestAlertIgnoreOptions (service and non-service options, operator and viewer,
+acknowledged alerts, a Pack-monitored service, applying each kind, cleared not recovered, audit,
+a closed alert, 404); `web/e2e/alerts.test.mjs` (acknowledge, snooze and ignore from the list, the list
+refreshing, operator and viewer, a phone, the keyboard).
+
+### 40.3 GeoIP/ASN: not configured vs unknown
+
+**Cause.** A public address showed *country unknown / network unknown* whenever its `geo` was empty,
+which was also the case for every address when no database was installed (or lookups were off); the
+page's notice keyed on a single boolean that couldn't tell either side apart.
+
+Every network view (summary, flow pages, a flow's details, a host's network) carries
+`enrichment_state` `{country, asn}`, each `off` (lookups turned off), `unavailable` (on, but no usable
+database of that kind: nothing was looked up; a broken replacement keeps the copy loaded before, which
+stays `on`) or `on` (a database is loaded: a public address it has no answer for is genuinely
+unknown). Rows show **—** (with the reason for screen readers and on hover) unless the state is `on`;
+*unknown* is said only then. Network Activity shows one note at the top (*Country and network-owner
+information is unavailable because GeoIP/ASN databases are not configured. Configure enrichment →*,
+or the side that is missing, or *lookups are turned off*) linking to **Collection and enrichment**,
+whose empty state no longer promises "Unknown". The flow dialog says *Not looked up: no ASN database is
+configured*, or *Unknown (the GeoIP country database has no answer for this address)*. Enrichment stays
+local; nothing is looked up online.
+
+Tests: `internal/api` TestNetworkEnrichmentStates (off, no database, country only, ASN only, both, a
+genuine miss, private and documentation addresses, a broken replacement, only an unreadable file, every
+view agreeing); web `enrichment.test.ts`; `web/e2e/network.test.mjs` (a genuine miss with both
+databases, no note); `web/e2e/network-enrichment.test.mjs`, run by TestBrowser after it removes the ASN
+database and then the country one (the note, dashes, the details, the settings link, lookups off).
+
+### 40.4 Cleaning up DROOL's SSH account when a host is removed
+
+The host's **Remove host…** dialog (`POST /hosts/{id}/removal/plan`, hosts.write) offers **Clean up
+DROOL access and remove the host** (recommended when there's something to clean up), **Remove from
+DROOL only** (`DELETE /hosts/{id}`, unchanged: nothing on the host changes) and Cancel, and says what
+stays either way (deployed files, packages, DROOL's firewall rules and tooling).
+
+**Ownership** is proven on the host exactly as the setup proves it (§36): the host signs in with an
+account DROOL created (`ssh_account_at`), and the marker `/var/lib/drool/ssh-accounts/<user>` exists
+with DROOL's key fingerprint and the account's user ID. A name proves nothing. The setup now also
+records the group useradd created with the account (`gid=`; for older markers the helper records the
+account's own group before removing the account).
+
+**The cleanup** (`sshaccount.Cleanup`, `POST /hosts/{id}/removal`, hosts.write, re-authentication
+`host_access`, the host's exclusive lock). The account's last session (as root through its sudo) checks
+ownership, stages a root-only helper in `/run/drool-account-cleanup.*` (or `/var/tmp`) and starts it
+detached: a transient systemd unit when PID 1 is systemd (it outlives the session even with logind's
+KillUserProcesses), else a process in its own session. DROOL then drops its pooled connections. The
+helper waits for the account's processes to end (then ends what's left: DROOL's own), checks
+ownership again, removes the sudo rule (only DROOL's file for this account, by its header) and the
+policy's own leftovers, the home and mail spool when the account owns them, the account, the group only
+when the marker proves it and nobody else uses it, the marker last (until then a rerun can prove what
+is DROOL's), the empty marker directories, and itself. It leaves a marker written by another DROOL
+alone. Interrupted, a rerun finishes; with nothing left, it changes nothing.
+
+**Outcomes.** DROOL removed its own way in and says so: *Cleanup initiated; DROOL intentionally removed
+its own management access and can't verify the final state through that account.* Every part is
+checked before anything changes; a part that can't start (not provably DROOL's, the host unreachable,
+`userdel` missing) refuses the whole cleanup with the reason, and the host stays (the user can still
+choose Remove from DROOL only). If a part fails after another ran, the host stays and the result lists
+what was done and what wasn't. Audited as `host.remove_cleanup` (refused or stopped) and `host.delete`
+with the steps; never a key or password.
+
+Tests: `internal/sshaccount` TestCleanupScripts (parsed only: they remove accounts); `internal/api`
+TestHostRemovalCleanup (a fake host answering the scripts: forged, replaced and missing markers
+refused with nothing changed, roles, re-authentication, the initiated result, Remove from DROOL only,
+nothing to clean up, a Shepherd and the account with the account's cleanup failing after the Shepherd
+went, then finishing; no secret in the audit log); integration TestSSHAccountCleanupOnRemoval (a real
+account in an unprivileged container: the marker's group, forged markers refused, the cleanup through
+the account's own session, everything gone on the container and unrelated users, groups, sudo rules
+and files kept; the helper by hand: a foreign marker left alone, an interrupted run finished, a rerun
+harmless), TestHostRemovalCleansUpBoth, and the browser test in `web/e2e/addhost.test.mjs` (TestBrowser
+then checks the container).
+
+### 40.5 Shepherd self-uninstall
+
+**Protocol** (additive; protocol stays 1): `ControllerMessage.self_uninstall` `SelfUninstall`
+{request_id, identity_id, controller_epoch, issued_at, expires_at (2 min), reason} and
+`AgentMessage.self_uninstall` `SelfUninstallResult` {request_id, accepted, error, code, helper,
+removes, already}. Shepherds announce `uninstall-1`; the controller never sends the request to one
+that doesn't, and its compatibility status says *works, without removing itself when DROOL asks*.
+No capability and no shell are needed: it removes the Shepherd and nothing else.
+
+**The Shepherd** (`internal/agent/uninstall.go`) checks that the request is meant for it (well formed,
+not expired or issued in the future, its identity, its controller epoch), starts the helper —
+`agentrm.Script` with `MODE=self`, the same script the SSH path runs — from a root-only directory in
+`/run` (or `/var/tmp`), detached (a transient systemd unit, or its own session), answers, and then
+creates the helper's GO file. The helper waits for GO (at most 20 s: an accepted removal goes ahead
+without it), stops and disables the service or kills the supervisor and agent (and update helpers),
+removes the unit, programs, ceiling, release keys, identity, state and logs, and its own directory. A
+repeated request is answered with the removal already started; while it goes, operations are refused.
+Only a Shepherd running as root from the standard paths starts the real helper; anything else refuses
+before writing anything (see the incident below).
+
+**The controller** (`agentsvc.Uninstall`, `POST /hosts/{id}/agent/uninstall` `{method}`, the existing
+permissions, re-authentication `shepherd_management` and lock). The plan says which ways work:
+`shepherd` (connected, `uninstall-1`), `ssh` (SSH configured and working as root), and takes the
+Shepherd's way when it can. Accepted: one transaction revokes the identity and unused enrollment
+tokens, forgets the capability narrowing and sets management to SSH (with no SSH access, nothing is
+invented: the host shows *DROOL has no way to manage this host…*), audited `agent.uninstall` with
+`method`, `helper` and `outcome: initiated`; DROOL waits for the Shepherd to disconnect (or closes the
+revoked identity's connection). Outcomes: `initiated` (*Self-removal initiated*, disconnected as
+expected; DROOL can't look), `uninstalled` (*Verified removed*: SSH, used afterwards only to look,
+shows nothing left), `partial` (what SSH still finds), `unknown` (no answer: nothing changed in
+DROOL), `refused`. Offline but SSH works: the §38.1 removal. Neither: refused with the manual steps,
+and **Forget the Shepherd** (`method: forget`) revokes and forgets it without touching the host. An
+older Shepherd: *update it, or remove it over SSH or by hand*; SSH is offered only when it works.
+**Remove host…** (§40.4) removes the Shepherd first this way, then DROOL's account.
+
+**Incident while building it.** An in-process test Shepherd (running as the developer, not root)
+received the new request and started the real helper on the workstation; its `systemctl` calls raised
+two polkit password prompts (cancelled; nothing changed: the paths don't exist there and nothing
+matched). Fixed by the root-and-standard-paths guard in the agent and a stand-in starter for every
+in-process test agent (`StartRemoval`, `RemovalDir`); the real helper runs only in the container tests.
+
+Tests: `internal/agent` TestSelfUninstallRequest (each refusal, the helper written root-only and
+started once, repeats, operations refused meanwhile, a failed start leaving nothing, the guard),
+TestRemovalScript; `internal/api` TestShepherdSelfUninstall (with SSH: verified; without: initiated, no
+management path; a lost answer: unknown, nothing changed, then finished over SSH; a Shepherd without
+`uninstall-1`: refused, SSH instead; partial; refused), TestShepherdUninstall (the SSH path, no path,
+forget); `internal/agentsvc` TestJudge; integration TestShepherdSelfUninstallWithoutSSH (a real
+Shepherd with no SSH path: accepted, disconnected, revoked, everything gone on the container),
+TestShepherdUninstallOlderShepherd (the previous build: refused, removed over SSH),
+TestShepherdUninstallOnHost (self-removal from the browser, verified over SSH), TestHostRemovalCleansUpBoth,
+TestMixedVersionShepherds (the M16 Shepherd now *reduced*).
+
+### 40.6 Smaller corrections found on the way
+
+- `internal/engine` TestRestartMarksInterrupted raced under full-suite load (the first engine could
+  write a host's state after the simulated restart recorded it); it now waits until both hosts are
+  blocked in their operation.
+- A service subject must be a systemd unit name (no spaces or slashes, with its type suffix).
+- Service evaluation of one host is serialized and always uses the newest loaded configuration
+  (`monsvc` `services`, a per-host lock). A tick loads the configuration once and walks every host;
+  a change made meanwhile re-judges the host at once, and the tick, still holding the rules it started
+  with, then undid that: monitoring a failed service opened its issue and the tick closed it as *isn't
+  monitored*, so it re-opened as a new alert (an acknowledgement in between was refused). The old
+  "every failure alerts" default had hidden this. Test: `internal/api` TestServicePassAfterAChange
+  (a pass with the earlier configuration, after monitoring and after ignoring).
+- Reads about a host that was removed meanwhile answer 404, never 500: the management router's
+  file-manager, dry-run and package-version paths and the removal plan now map a missing host to
+  *not found*. The host page stays behind the removal dialog while it shows the result, and kept
+  asking. Test: `internal/api` TestRemovedHostReads (every host-scoped GET route, the host-filtered
+  lists and both plans, for a removed host).
+- The browser suite's health tests removed every health override between tests, the fixture's
+  monitored services (host overrides since the previous batch) included; they now remove only their
+  own.
+- Integration TestDedicatedSSHAccount had failed since the previous batch (§38): it gave a host
+  back its setup-only sudo password after switching it to another one, but the setup-credential
+  lifecycle forgets that password at the switch, as designed. The test now checks it was forgotten
+  and gives the host a stored sudo password instead.
+
+### 40.7 Scope
+
+Nothing of 1.1 was started: no dashboards, Docker/Podman, Synology or Proxmox work, no systemd logs,
+no scheduled-service rules, no provisioning, no M18 DRIPS, DROPS or SPLASH, no Windows. 1.0
+functionality is frozen again, pending the next RC's qualification.

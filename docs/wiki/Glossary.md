@@ -27,6 +27,7 @@ The words DROOL uses, in plain English.
 | **Maintenance** | A period during which DROOL sends no notifications for some hosts ([Maintenance Mode](Maintenance-Mode.md)) |
 | **Management path** | DROOL's own way into a host (SSH from the controller, or the Shepherd's connection), protected by the firewall ([Management Path Protection](Management-Path-Protection.md)) |
 | **Master key** | The file that encrypts DROOL's secrets ([The Master Key](Master-Key.md)) |
+| **Monitored service** | A service DROOL alerts on: **Monitor** ticked (expected to run), or expected to be stopped. Others are listed with their state and never alert ([Service Monitoring](Service-Monitoring.md)) |
 | **Operator** | A user role: runs things, can't change security settings ([Users and Roles](Users-and-Roles.md)) |
 | **Pack** | A named group of hosts, such as `media-servers` ([Packs](Packs.md)). Called *groups* in the API and `group:` in firewall YAML |
 | **Policy** (firewall) | The rules for who may reach whom ([Firewall Policy](Firewall-Policy.md)) |

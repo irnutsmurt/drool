@@ -10,7 +10,7 @@ at the top of _Sidebar.md (RELEASING.md lists this step). -->
 office, a club's servers. You install it once, open it in a browser, and from there you can see how
 every machine is doing and change things on them, safely and with a record of who did what.
 
-![DROOL's Overview for the example network: 6 hosts, 6 open alerts, 2 hosts drifted from their Desired State, the firewall in sync; what needs attention, the latest alerts and runs, updates, security advice and recent events](images/overview-fleet.png)
+![DROOL's Overview for the example network: 6 hosts, 2 open alerts (1 critical, 1 warning, acknowledged), 4 hosts drifted from their Desired State, the firewall in sync; what needs attention, the latest alerts and runs, updates and reboots (a failed systemd unit as a fact: only monitored services alert), security advice and recent events](images/overview-fleet.png)
 
 ## What it can do
 

@@ -7,7 +7,7 @@ Jordan a viewer.
 | Role | For | Can |
 |---|---|---|
 | **admin** (administrator) | The people who run DROOL | Everything: hosts and their trust, credentials, users, settings, firewall policy and modes, notification destinations, baselines |
-| **operator** | People who look after the machines day to day | Run commands, scripts, packages, updates, services and reboots; files; schedules and workflows; acknowledge alerts and start maintenance; send test notifications; set services' expected state (running or stopped) and make health checks stricter; restore desired state; take network snapshots and classify network traffic. **Can't** add or remove hosts, approve host keys, manage credentials, users or settings, change the firewall, or change notification destinations |
+| **operator** | People who look after the machines day to day | Run commands, scripts, packages, updates, services and reboots; files; schedules and workflows; acknowledge alerts and start maintenance; send test notifications; monitor services (and set their expected state to running or stopped) and make health checks stricter; restore desired state; take network snapshots and classify network traffic. **Can't** add or remove hosts, approve host keys, manage credentials, users or settings, change the firewall, or change notification destinations |
 | **auditor** | Reviewing what happened | Look at everything (including the audit log, settings and network activity), change nothing |
 | **viewer** | Keeping an eye on things | Look at hosts, runs, monitoring, alerts, firewall policy, schedules, workflows and desired state. Not the audit log, settings, notification destinations or network activity |
 

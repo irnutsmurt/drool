@@ -18,7 +18,7 @@ It's **monitoring only**: nothing here blocks traffic, scores addresses or raise
 
 Open **Network Activity** in the menu.
 
-![Network Activity: 51 connections (25 inbound, 26 outbound), 0 external, 25 not in policy, 1 denied or would be denied; how hosts are observed; quick filters and the filter fields; and the connections with their direction, host, process, local and remote address, protocol, network, first and last seen, number of connections, what each is and its policy status](images/network-overview.png)
+![Network Activity: a note that country and network-owner information is unavailable because GeoIP/ASN databases are not configured, with a link to configure enrichment; 51 connections (25 inbound, 26 outbound), 0 external, 25 not in policy, 1 denied or would be denied; how hosts are observed; quick filters and the filter fields; and the connections with their direction, host, process, local and remote address, protocol, country and network, first and last seen, number of connections, what each is and its policy status](images/network-overview.png)
 
 At the top:
 
@@ -30,6 +30,8 @@ At the top:
   enforced (**Show**).
 - **How hosts are observed**: how many hosts are watched continuously (*conntrack* or *socket
   sampling*), how many by SSH snapshot, and how many SSH hosts have no snapshot yet.
+- Without GeoIP/ASN databases, one line above all this says country and network-owner information is
+  unavailable, with **Configure enrichment →** ([GeoIP and ASN](GeoIP-and-ASN.md#what-network-activity-shows)).
 
 Below, quick filters (**External connections**, **Unknown traffic**, **Not in policy**, **New
 external destinations (24 h)**, **Denied or would be denied**, **DROOL's own traffic**, **Inbound**)
@@ -46,7 +48,7 @@ for its details ([Connection Details](Connection-Details.md)).
 | **Direction** | ↘ **Inbound** (someone connected to the host) or ↗ **Outbound** (the host connected out), and whether the other end is **Internal**, **External** or **Special** ([Internal vs External](Internal-vs-External.md)) |
 | **Process / service** | The program, such as `nginx` or `postgres`, or *Unknown*, and the service name for the port |
 | **Local**, **Remote** | Both ends. A remote address that is a DROOL host, Pack member or named network says so (*database-01*, *network: home-lan*) |
-| **Country · Network (ASN)** | For external addresses, when a database is installed ([GeoIP and ASN](GeoIP-and-ASN.md)) |
+| **Country · Network (ASN)** | For external addresses, from the local databases. **—** when nothing was looked up (no database of that kind, or lookups off: the page says which, once, at the top); *unknown* only when a database had no answer ([GeoIP and ASN](GeoIP-and-ASN.md#what-network-activity-shows)) |
 | **What it is · policy** | What the connection is: DROOL's own management traffic, a classification you made, a known service, or unknown ([Classifying Traffic](Classifying-Traffic.md)); and under it what the firewall policy says ([Policy Classification](Policy-Classification.md)) |
 
 ## Each host's view
