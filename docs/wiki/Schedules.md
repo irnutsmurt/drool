@@ -117,6 +117,15 @@ person's changes with someone else's rights.
   schedule**: its next run happens as planned. Both pages remind you.
 - **Archive** stops the schedule for good and keeps its history and past runs.
 
+## When a host it runs on is removed
+
+Removing a host from DROOL takes it out of every schedule that names it: its targets, its exclusions
+and its canary hosts, in a new revision of each schedule ([Removing a Host](Removing-a-Host.md)). The
+schedule keeps running on its other hosts. If that host was its only target, the schedule is
+**disabled** and marked **Needs attention** (*Disabled: its only target, nas-01, was removed from
+DROOL. Choose its targets, then enable it.*). If you add the host back later, it's a new host: choose
+it in the schedule again.
+
 ## Daylight saving time
 
 - If the time doesn't exist that day (clocks jump from 02:00 to 03:00 and you chose 02:30), that

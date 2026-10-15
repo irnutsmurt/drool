@@ -74,6 +74,17 @@ Removing a host, either way, deletes for that host:
   credentials you created yourself on **Credentials** are never deleted with a host;
 - its Shepherd identity, if it has one.
 
+It's also **taken out of the schedules and firewall policies that name it**. The dialog lists each one
+before you click (*Either way, in DROOL: …*), and each change is in the [audit log](Audit-Log.md):
+
+- **Schedules** keep running on their other hosts. A schedule that ran only on this host is
+  **disabled** and says why ([Schedules](Schedules.md#when-a-host-it-runs-on-is-removed)).
+- **Firewall policies** lose it from their sources and destinations. A policy whose only source or only
+  destination was this host is **deleted**: it could never match again. Nothing allowed or blocked
+  changes, because a removed host already matched nothing.
+- **Notification routes** keep it in their filters on purpose: dropping it could widen a route to
+  every host. It just matches nothing any more.
+
 **What stays:** the **run history** (past runs keep showing the host by name) and the **audit log**
 (which records the removal itself, and the cleanup's steps).
 

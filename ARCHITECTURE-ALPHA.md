@@ -3362,7 +3362,43 @@ TestMixedVersionShepherds (the M16 Shepherd now *reduced*).
   lifecycle forgets that password at the switch, as designed. The test now checks it was forgotten
   and gives the host a stored sudo password instead.
 
-### 40.7 Scope
+### 40.7 A removed host leaves schedules and firewall policies
+
+**Found in use, after the batch was pushed:** a host removed (to test the cleanup) and added back
+couldn't be put back into its update schedule: *host host_… not found*, naming the removed host's id.
+Foreign keys clean up what belongs to a host, but two kinds of configuration name hosts inside JSON
+and kept the removed id: a schedule's targets (every later save of the schedule failed, and so did
+every run: *The last run could not start: host … not found*), and a firewall policy's sources and
+destinations (every later save of the policy failed with *unknown host*; the YAML view, which names
+hosts, couldn't show it).
+
+**Now** (`internal/hostrefs`), removing a host, either way (`DELETE /hosts/{id}` and the cleanup
+removal, through `forgetHostTx`), takes it out of both in the removing transaction:
+
+- **schedules** (not archived): out of the targets, the exclusions and the canary hosts, in a new
+  revision by the remover. A schedule left without targets is disabled with *Disabled: its only
+  target, X, was removed from DROOL. Choose its targets, then enable it.*; enabling a schedule without
+  targets is refused. A schedule whose only canary was the host keeps a canary (a count of 1), as a
+  run already did when its chosen canaries weren't among its targets.
+- **firewall policies**: out of the sources and destinations. A policy left without a source or a
+  destination is deleted (it could never match again, and a policy needs both). Compiling already
+  ignored a removed host, so nothing allowed or blocked changes; the firewall's converger is kicked.
+
+Nothing widens: a host taken out of a list only narrows it. Notification routes are deliberately not
+changed: they keep a removed host (M12), because dropping it could widen a route to every host. The
+removal plan lists each change (`changes`: *Either way, in DROOL: …* in the dialog); each change is
+audited on its own (`schedule.update`, `firewall.policy.update` / `.delete`, with the reason) and listed
+in `host.delete` (`taken_out_of`). At start, `hostrefs.RepairTx` does the same for hosts removed
+before this (named from their `host.delete` audit record), as DROOL's own audited changes, and clears
+a schedule's *The last run could not start: host … not found*.
+
+Tests: `internal/api` TestRemovedHostLeavesSchedulesAndPolicies (five schedules, four policies and a
+route; the plan; the removal; revisions, attention, enabling refused, audit; then the host added back
+into the schedule, saved, and run on both hosts), TestRemovedHostRepairAtStart (the reported failure
+reproduced, repaired, idempotent); `web/e2e/addhost.test.mjs` (the dialog lists the schedule, which is
+then disabled).
+
+### 40.8 Scope
 
 Nothing of 1.1 was started: no dashboards, Docker/Podman, Synology or Proxmox work, no systemd logs,
 no scheduled-service rules, no provisioning, no M18 DRIPS, DROPS or SPLASH, no Windows. 1.0
