@@ -89,6 +89,12 @@ func printBanner(w io.Writer, cfg *config.Loaded, scheme, fingerprint string, st
 			fmt.Fprintln(w, " Setup code: the setup secret you provided")
 			fmt.Fprintln(w, " (DROOL_SETUP_SECRET or DROOL_SETUP_SECRET_FILE).")
 		}
+		if cfg.DataVolume != "" {
+			fmt.Fprintln(w)
+			fmt.Fprintf(w, " This DROOL has no data yet: it starts new in the volume %s.\n", cfg.DataVolume)
+			fmt.Fprintln(w, " Expected your existing DROOL? Don't set up a new one: its data is")
+			fmt.Fprintln(w, " in another volume. See \"Compose data volume\" in DROOL's guide.")
+		}
 	}
 	if scheme == "https" && cfg.Server.TLS.Mode == "self_signed" {
 		fmt.Fprintln(w)

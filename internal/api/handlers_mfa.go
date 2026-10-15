@@ -13,28 +13,6 @@ import (
 // Re-authentication and two-factor authentication (ARCHITECTURE-ALPHA
 // §33.3).
 
-// requireReauth writes reauth_required and returns false unless the
-// request's session confirmed who it is recently. High-impact handlers that
-// only sometimes need it (replacing a credential that hosts use, a firewall
-// override) call it themselves.
-func (s *Server) requireReauth(w http.ResponseWriter, r *http.Request) bool {
-	p := principalFrom(r.Context())
-	if p == nil || p.Kind != auth.KindSession {
-		writeProblem(w, r, errForbidden("this action requires an interactive session, not an API token"))
-		return false
-	}
-	if s.d.Auth.RecentlyAuthenticated(p) {
-		return true
-	}
-	st, _ := s.d.Auth.MFAStatus(r.Context(), nil, p.UserID)
-	pr := problem(http.StatusForbidden, "reauth_required",
-		"Confirm it's you: this action needs your password again"+map[bool]string{true: " and a code from your authenticator", false: ""}[st.Enabled]+".")
-	pr.Title = "Confirm it's you"
-	pr.Reauth = &reauthInfo{MFA: st.Enabled, WindowS: int(s.d.Auth.ReauthWindow() / time.Second)}
-	writeProblem(w, r, pr)
-	return false
-}
-
 type loginMFARequest struct {
 	Challenge    string `json:"challenge"`
 	Code         string `json:"code"`

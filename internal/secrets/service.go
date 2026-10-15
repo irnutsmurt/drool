@@ -225,6 +225,63 @@ func (s *Service) DeleteTx(ctx context.Context, q *db.Queries, id string) (db.Se
 	return cur, q.DeleteSecret(ctx, id)
 }
 
+// ForgetTemporaryTx deletes, among ids, the setup-only (temporary)
+// credentials that no host signs in with any more: what a host added with a
+// password or key typed for its setup leaves behind once it is removed or
+// signs in another way (final After-M17 batch). A normal stored credential
+// is never deleted here, whatever it was used for, and a temporary one that
+// another host still uses (shared, or a jump host's) stays. It returns what
+// it deleted, for the audit record: names and kinds, never values.
+func (s *Service) ForgetTemporaryTx(ctx context.Context, q *db.Queries, ids ...string) ([]db.Secret, error) {
+	var out []db.Secret
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		cur, err := q.GetSecret(ctx, id)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return out, err
+		}
+		if cur.Temporary == 0 {
+			continue
+		}
+		users, err := q.ListHostsUsingSecret(ctx, id)
+		if err != nil {
+			return out, err
+		}
+		if len(users) > 0 {
+			continue
+		}
+		if err := q.DeleteSecret(ctx, id); err != nil {
+			return out, err
+		}
+		out = append(out, cur)
+	}
+	return out, nil
+}
+
+// ForgetUnusedTemporaryTx deletes every setup-only credential no host signs
+// in with: left behind by hosts removed or edited before DROOL forgot them by
+// itself. Nothing can need one: a setup runs with the credentials its host
+// is assigned, which keeps them; adding a host stores and assigns them in
+// one transaction.
+func (s *Service) ForgetUnusedTemporaryTx(ctx context.Context, q *db.Queries) ([]db.Secret, error) {
+	rows, err := q.ListUnusedTemporarySecrets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ID
+	}
+	return s.ForgetTemporaryTx(ctx, q, ids...)
+}
+
 // Reveal decrypts a credential for use by the controller (never for API
 // responses).
 func (s *Service) Reveal(ctx context.Context, q *db.Queries, id string) (db.Secret, []byte, error) {

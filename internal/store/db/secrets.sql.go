@@ -179,6 +179,49 @@ func (q *Queries) ListSecrets(ctx context.Context) ([]Secret, error) {
 	return items, nil
 }
 
+const listUnusedTemporarySecrets = `-- name: ListUnusedTemporarySecrets :many
+SELECT id, name, kind, ciphertext, nonce, key_version, public_part, description, created_by, created_at, updated_at, "temporary" FROM secrets s WHERE s.temporary = 1
+AND NOT EXISTS (SELECT 1 FROM hosts h WHERE h.ssh_credential_id = s.id OR h.become_credential_id = s.id)
+ORDER BY s.name
+`
+
+// Setup-only credentials no host signs in with any more.
+func (q *Queries) ListUnusedTemporarySecrets(ctx context.Context) ([]Secret, error) {
+	rows, err := q.db.QueryContext(ctx, listUnusedTemporarySecrets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Secret{}
+	for rows.Next() {
+		var i Secret
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Kind,
+			&i.Ciphertext,
+			&i.Nonce,
+			&i.KeyVersion,
+			&i.PublicPart,
+			&i.Description,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Temporary,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateSecretMeta = `-- name: UpdateSecretMeta :exec
 UPDATE secrets SET name = ?, description = ?, updated_at = ? WHERE id = ?
 `

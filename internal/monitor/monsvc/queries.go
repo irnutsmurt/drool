@@ -19,20 +19,84 @@ import (
 
 // --- host settings ---
 
-// HostSettings returns a host's monitoring settings.
+// HostSettings returns a host's monitoring settings. WatchedServices are
+// the units this host's own settings expect to run (expected state is a
+// health setting since the final After-M17 batch; the list stays for API
+// clients).
 func (s *Service) HostSettings(ctx context.Context, hostID string) HostSettings {
 	h := HostSettings{WatchedServices: []string{}, ProbeMounts: []string{}, ProbeS: agentmon.DefaultProbeS}
 	var j string
 	if err := s.d.Store.Reader.QueryRowContext(ctx, `SELECT settings_json FROM mon_host_settings WHERE host_id = ?`, hostID).Scan(&j); err == nil {
 		json.Unmarshal([]byte(j), &h)
 	}
+	h.WatchedServices = s.ownExpectedRunning(s.eval.current(ctx), hostID)
 	return h
 }
 
-// SaveHostSettingsTx stores a host's settings (the caller audits). The
-// watched services are part of the health configuration: the evaluator
-// notices the change.
+// ownExpectedRunning lists the units a host's own settings expect to run.
+func (s *Service) ownExpectedRunning(p *policy, hostID string) []string {
+	out := []string{}
+	for k, f := range p.subj[hostID][CheckServiceExpected] {
+		if f.has(FieldExpected) && f[FieldExpected] == ExpectRunning {
+			out = append(out, strings.TrimPrefix(k, "unit:"))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// SetWatchedTx makes want the units a host's own settings expect to run,
+// for clients of watched_services: units added become expected running on
+// the host, units taken out lose that setting (whatever else is set for
+// them stays). It returns whether anything changed.
+func (s *Service) SetWatchedTx(ctx context.Context, tx *sql.Tx, hostID string, want []string, by string, now int64) (bool, error) {
+	have := map[string]bool{}
+	for _, u := range s.ownExpectedRunning(s.eval.peek(ctx), hostID) {
+		have[u] = true
+	}
+	wanted := map[string]bool{}
+	for _, u := range want {
+		wanted[u] = true
+	}
+	changed := false
+	for u := range wanted {
+		if have[u] {
+			continue
+		}
+		k := OverrideKey{Scope: ScopeHost, HostID: hostID, Check: CheckServiceExpected, Subject: "unit:" + u}
+		f := Fields{}
+		if o, ok := findTx(ctx, tx, k); ok {
+			f = o.Fields.clone()
+		}
+		f[FieldExpected] = ExpectRunning
+		if _, _, err := s.PutOverrideTx(ctx, tx, k, f, u, by, now); err != nil {
+			return changed, err
+		}
+		changed = true
+	}
+	for u := range have {
+		if wanted[u] {
+			continue
+		}
+		k := OverrideKey{Scope: ScopeHost, HostID: hostID, Check: CheckServiceExpected, Subject: "unit:" + u}
+		o, ok := findTx(ctx, tx, k)
+		if !ok {
+			continue
+		}
+		f := o.Fields.clone()
+		delete(f, FieldExpected)
+		if _, _, err := s.PutOverrideTx(ctx, tx, k, f, "", by, now); err != nil {
+			return changed, err
+		}
+		changed = true
+	}
+	return changed, nil
+}
+
+// SaveHostSettingsTx stores a host's settings (the caller audits; expected
+// states go through SetWatchedTx).
 func SaveHostSettingsTx(ctx context.Context, tx *sql.Tx, hostID string, h HostSettings, by string, now int64) error {
+	h.WatchedServices = nil
 	b, _ := json.Marshal(h)
 	var byv any
 	if by != "" {
@@ -66,7 +130,29 @@ type ServiceRow struct {
 	// Derived for the UI.
 	State   string `json:"state"`   // running | stopped | failed | unknown
 	Notable bool   `json:"notable"` // in the default view
-	Watched bool   `json:"watched"`
+	Watched bool   `json:"watched"` // expected to run (the old "watched")
+	// Expected is the unit's expected state ("running", "stopped",
+	// "ignored"; "" automatic), and ExpectedSource where it comes from.
+	Expected       string          `json:"expected"`
+	ExpectedSource *ExpectedSource `json:"expected_source,omitempty"`
+	// Health says whether its state is a health problem now (problem |
+	// expected | ignored | ok | unknown) and HealthNote why it alerts or
+	// doesn't.
+	Health     string `json:"health"`
+	HealthNote string `json:"health_note,omitempty"`
+	// Actions DROOL offers for it now (services.Actions), and why others
+	// aren't.
+	Actions    []string `json:"actions"`
+	ActionNote string   `json:"action_note,omitempty"`
+}
+
+// ExpectedSource is where a unit's expected state comes from.
+type ExpectedSource struct {
+	Kind  string `json:"kind"`  // subject (this host) | group | global | unset
+	Label string `json:"label"` // "set on this host", "from pack media", …
+	// OverrideID is this host's own setting for the unit, if any (what
+	// "Use the inherited setting" deletes).
+	OverrideID string `json:"override_id,omitempty"`
 }
 
 // Services returns a host's units.
@@ -128,10 +214,10 @@ func (s *Service) ServiceList(ctx context.Context, hostID, filter string, allUni
 	var src string
 	s.d.Store.Reader.QueryRowContext(ctx, `SELECT services_note, services_supported, services_at, source FROM mon_current WHERE host_id = ?`, hostID).Scan(&note, &sup, &at, &src)
 	v.Note, v.Supported, v.UpdatedAt, v.Source = note, sup == 1, at, src
-	hs := s.HostSettings(ctx, hostID)
+	pol := s.eval.current(ctx)
 	for _, u := range units {
-		u.Watched = hs.Watched(u.Name)
-		if !allUnits && !u.Notable && !u.Watched {
+		s.judgeService(pol, hostID, &u)
+		if !allUnits && !u.Notable && u.Expected == "" {
 			v.Hidden++
 			continue
 		}
@@ -160,6 +246,57 @@ func (s *Service) ServiceList(ctx context.Context, hostID, filter string, allUni
 		}
 	}
 	return v, nil
+}
+
+// judgeService fills a row's expected state, whether it alerts and why,
+// and the actions that make sense for it: the same rules as the evaluator
+// (health.go, services), in words.
+func (s *Service) judgeService(pol *policy, hostID string, u *ServiceRow) {
+	exp, src := pol.expected(hostID, u.Name)
+	u.Expected, u.Watched = ExpectName(exp), exp == ExpectRunning
+	from := ExpectSource(src)
+	if exp != ExpectAuto || src.Conflict != nil {
+		es := &ExpectedSource{Kind: src.Source.Kind, Label: from}
+		if src.Source.Kind == "subject" {
+			if o, ok := (OverrideKey{Scope: ScopeHost, HostID: hostID, Check: CheckServiceExpected, Subject: "unit:" + u.Name}).find(pol); ok {
+				es.OverrideID = o.ID
+			}
+		}
+		u.ExpectedSource = es
+	}
+	su := services.Unit{Name: u.Name, Active: u.Active, Sub: u.Sub, FileState: u.FileState, Load: u.Load, Transient: u.Transient}
+	u.Actions, u.ActionNote = services.Actions(su)
+	on := func(check string) bool { return pol.rule(hostID, check, unitCtx(u.Name), nil).on }
+	switch {
+	case u.State == "unknown":
+		u.Health = "unknown"
+	case exp == ExpectIgnored:
+		u.Health, u.HealthNote = "ignored", "Ignored ("+from+"): its state is shown, never a health issue or alert."
+	case exp == ExpectRunning && u.State == "running":
+		u.Health, u.HealthNote = "ok", "Expected to run ("+from+")."
+	case exp == ExpectRunning && u.State == "failed":
+		u.Health, u.HealthNote = alerting(on(CheckServiceFailed), "Failed, though expected to run ("+from+"): a critical health issue.")
+	case exp == ExpectRunning:
+		u.Health, u.HealthNote = alerting(on(CheckServiceStopped), "Not running, though expected to run ("+from+"): a health issue once that lasts.")
+	case exp == ExpectStopped && u.State == "running":
+		u.Health, u.HealthNote = alerting(on(CheckServiceUnexpected), "Running, though expected to be stopped ("+from+"): a health issue once that lasts.")
+	case exp == ExpectStopped:
+		u.Health, u.HealthNote = "expected", "Not alerting: expected to be stopped ("+from+")."
+	case u.State == "failed" && u.Notable:
+		u.Health, u.HealthNote = alerting(on(CheckServiceFailed), "Failed: a health issue. If it's meant to stay off, set its expected state to Stopped.")
+	case src.Conflict != nil:
+		u.Health, u.HealthNote = "ok", "Packs disagree about its expected state, so DROOL judges it automatically: set it on this host, or give one pack a higher priority."
+	default:
+		u.Health = "ok"
+	}
+}
+
+// alerting is "problem" with the note, or "ok" when the check is off.
+func alerting(on bool, note string) (string, string) {
+	if !on {
+		return "ok", "Its health check is turned off, so it doesn't alert."
+	}
+	return "problem", note
 }
 
 // ServiceEvent is one recorded transition.
@@ -470,8 +607,9 @@ func (s *Service) Overview(ctx context.Context, hostID string) (*HostOverview, e
 	// Services.
 	units, _ := s.Services(ctx, hostID)
 	notable, failed := 0, 0
+	pol := s.eval.current(ctx)
 	for _, u := range units {
-		if u.Notable || o.Settings.Watched(u.Name) {
+		if u.Notable || pol.isWatched(hostID, u.Name) {
 			notable++
 			if u.State == "failed" {
 				failed++

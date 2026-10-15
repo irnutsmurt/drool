@@ -20,6 +20,12 @@ import (
 //	subject (one filesystem, disk, GPU, sensor, interface, service or
 //	probe target of one host) → host → group → global → Recommended
 //
+// A service (a unit name means the same on every host) can also be set
+// for a group's hosts or every host, and within each scope the service's
+// own setting comes before the scope's check-wide one: service on the host
+// → host → service in a group → group → service everywhere → global
+// (final After-M17 batch: the expected state of services).
+//
 // An override stores only the fields it changes; everything else is
 // inherited from the next scope. When a host is in several groups that set
 // the same field, the group with the higher monitoring priority wins;
@@ -44,9 +50,35 @@ const (
 	FieldClear         = "clear"
 	FieldClearDuration = "clear_duration_min"
 	FieldIntervals     = "missed_intervals"
+	// FieldExpected is a unit's expected state (Expect*), in JSON by name.
+	FieldExpected = "expected"
 )
 
-var fieldOrder = []string{FieldEnabled, FieldWarning, FieldCritical, FieldDuration, FieldClear, FieldClearDuration, FieldIntervals}
+var fieldOrder = []string{FieldExpected, FieldEnabled, FieldWarning, FieldCritical, FieldDuration, FieldClear, FieldClearDuration, FieldIntervals}
+
+// Expected service states (FieldExpected). Without a setting a unit is
+// judged automatically: failed is a problem, and stopped is fine.
+const (
+	ExpectAuto    = 0
+	ExpectRunning = 1 // stopped (or not installed) is a problem; failed is critical
+	ExpectStopped = 2 // running is a problem; stopped or failed is what was wanted
+	ExpectIgnored = 3 // shown as it is, never a health issue
+)
+
+var expectNames = map[float64]string{ExpectRunning: "running", ExpectStopped: "stopped", ExpectIgnored: "ignored"}
+
+// ExpectName is an expected state's name ("" for automatic).
+func ExpectName(v float64) string { return expectNames[v] }
+
+// ExpectValue parses an expected state's name.
+func ExpectValue(name string) (float64, bool) {
+	for v, n := range expectNames {
+		if n == name {
+			return v, true
+		}
+	}
+	return 0, false
+}
 
 // Subject kinds: what a subject override of a check binds to.
 const (
@@ -68,6 +100,15 @@ type FieldSpec struct {
 	Min   float64 `json:"min"`
 	Max   float64 `json:"max"`
 	Help  string  `json:"help,omitempty"`
+	// Options are a choice field's values (type "choice").
+	Options []FieldOption `json:"options,omitempty"`
+}
+
+// FieldOption is one value of a choice field.
+type FieldOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+	Help  string `json:"help,omitempty"`
 }
 
 // CheckSpec is one health check and the fields it honestly supports (a
@@ -98,6 +139,13 @@ func fMin(name, label string) FieldSpec {
 func fTemp(name, label string) FieldSpec {
 	return FieldSpec{Name: name, Label: label, Type: "celsius", Unit: "°C", Min: 1, Max: 200}
 }
+func fExpected() FieldSpec {
+	return FieldSpec{Name: FieldExpected, Label: "Expected state", Type: "choice", Min: ExpectRunning, Max: ExpectIgnored, Options: []FieldOption{
+		{Value: "running", Label: "Running", Help: "Stopped or missing is a problem; failed is critical."},
+		{Value: "stopped", Label: "Stopped", Help: "Running is a problem; stopped or failed is what you want."},
+		{Value: "ignored", Label: "Ignored", Help: "Its state stays visible but never raises a health issue or alert."},
+	}}
+}
 
 var checkSpecs = []CheckSpec{
 	{ID: CheckCPU, Label: "High CPU utilization", Category: "cpu", Description: "All CPUs busy for a sustained time; momentary spikes never count.",
@@ -122,10 +170,15 @@ var checkSpecs = []CheckSpec{
 	{ID: CheckKernelStorage, Label: "Kernel storage errors", Category: "storage", Description: "IO errors, resets and timeouts the kernel logs.", Fields: []FieldSpec{fEnabled()}},
 	{ID: CheckProbe, Label: "Write/read probe", Category: "storage", Subject: SubjectProbe, Description: "The active write/read probe of a filesystem failed.",
 		Fields: []FieldSpec{fEnabled()}},
+	{ID: CheckServiceExpected, Label: "Expected state", Category: "services", Subject: SubjectService,
+		Description: "Whether a service should run. Without a setting DROOL judges it automatically: failed is a problem, stopped is fine. Set per host, or for a pack's hosts or every host.",
+		Fields:      []FieldSpec{fExpected()}},
 	{ID: CheckServiceFailed, Label: "Service failed", Category: "services", Subject: SubjectService,
-		Description: "A notable or watched systemd unit stayed failed.", Fields: []FieldSpec{fEnabled(), fMin(FieldDuration, "Failed for at least")}},
-	{ID: CheckServiceStopped, Label: "Watched service stopped", Category: "services", Subject: SubjectService,
-		Description: "A watched unit stayed stopped (or isn't installed).", Fields: []FieldSpec{fEnabled(), fMin(FieldDuration, "Stopped for at least")}},
+		Description: "A unit that starts at boot, or is expected to run, stayed failed (not one expected stopped or ignored).", Fields: []FieldSpec{fEnabled(), fMin(FieldDuration, "Failed for at least")}},
+	{ID: CheckServiceStopped, Label: "Service not running", Category: "services", Subject: SubjectService,
+		Description: "A unit expected to run stayed stopped (or isn't installed).", Fields: []FieldSpec{fEnabled(), fMin(FieldDuration, "Stopped for at least")}},
+	{ID: CheckServiceUnexpected, Label: "Service running unexpectedly", Category: "services", Subject: SubjectService,
+		Description: "A unit expected to be stopped is running.", Fields: []FieldSpec{fEnabled(), fMin(FieldDuration, "Running for at least")}},
 	{ID: CheckInterfaceDown, Label: "Network interface down", Category: "network", Subject: SubjectInterface,
 		Description: "A physical interface that was up earlier in this boot went down.", Fields: []FieldSpec{fEnabled(), fMin(FieldDuration, "Down for at least")}},
 	{ID: CheckTemperature, Label: "Temperature", Category: "temperature", Subject: SubjectSensor,
@@ -172,23 +225,24 @@ func (c *CheckSpec) field(name string) (FieldSpec, bool) {
 // numeric defaults: the hardware's own limits apply. Clear levels are
 // derived from the warning level (clearMargin) unless set.
 var recommended = map[string]map[string]float64{
-	CheckCPU:            {FieldEnabled: 1, FieldWarning: 95, FieldDuration: 5, FieldClearDuration: 3},
-	CheckMemory:         {FieldEnabled: 1, FieldWarning: 90, FieldCritical: 97, FieldDuration: 5, FieldClearDuration: 3},
-	CheckFilesystem:     {FieldEnabled: 1, FieldWarning: 85, FieldCritical: 95},
-	CheckInodes:         {FieldEnabled: 1, FieldWarning: 90, FieldCritical: 97},
-	CheckFSReadOnly:     {FieldEnabled: 1},
-	CheckDeviceReadOnly: {FieldEnabled: 1},
-	CheckStorageHealth:  {FieldEnabled: 1},
-	CheckMediaErrors:    {FieldEnabled: 1},
-	CheckKernelStorage:  {FieldEnabled: 1},
-	CheckProbe:          {FieldEnabled: 1},
-	CheckServiceFailed:  {FieldEnabled: 1, FieldDuration: 1},
-	CheckServiceStopped: {FieldEnabled: 1, FieldDuration: 2},
-	CheckInterfaceDown:  {FieldEnabled: 1, FieldDuration: 1},
-	CheckTemperature:    {FieldEnabled: 1, FieldDuration: 2, FieldClearDuration: 2},
-	CheckGPUUtil:        {FieldEnabled: 0, FieldWarning: 95, FieldDuration: 30, FieldClearDuration: 5},
-	CheckStale:          {FieldEnabled: 1, FieldIntervals: 3},
-	CheckFidelity:       {FieldEnabled: 1},
+	CheckCPU:               {FieldEnabled: 1, FieldWarning: 95, FieldDuration: 5, FieldClearDuration: 3},
+	CheckMemory:            {FieldEnabled: 1, FieldWarning: 90, FieldCritical: 97, FieldDuration: 5, FieldClearDuration: 3},
+	CheckFilesystem:        {FieldEnabled: 1, FieldWarning: 85, FieldCritical: 95},
+	CheckInodes:            {FieldEnabled: 1, FieldWarning: 90, FieldCritical: 97},
+	CheckFSReadOnly:        {FieldEnabled: 1},
+	CheckDeviceReadOnly:    {FieldEnabled: 1},
+	CheckStorageHealth:     {FieldEnabled: 1},
+	CheckMediaErrors:       {FieldEnabled: 1},
+	CheckKernelStorage:     {FieldEnabled: 1},
+	CheckProbe:             {FieldEnabled: 1},
+	CheckServiceFailed:     {FieldEnabled: 1, FieldDuration: 1},
+	CheckServiceStopped:    {FieldEnabled: 1, FieldDuration: 2},
+	CheckServiceUnexpected: {FieldEnabled: 1, FieldDuration: 2},
+	CheckInterfaceDown:     {FieldEnabled: 1, FieldDuration: 1},
+	CheckTemperature:       {FieldEnabled: 1, FieldDuration: 2, FieldClearDuration: 2},
+	CheckGPUUtil:           {FieldEnabled: 0, FieldWarning: 95, FieldDuration: 30, FieldClearDuration: 5},
+	CheckStale:             {FieldEnabled: 1, FieldIntervals: 3},
+	CheckFidelity:          {FieldEnabled: 1},
 }
 
 var clearMargin = map[string]float64{CheckCPU: 10, CheckMemory: 5, CheckFilesystem: 2, CheckInodes: 2, CheckTemperature: 3, CheckGPUUtil: 10}
@@ -216,6 +270,8 @@ func (f Fields) MarshalJSON() ([]byte, error) {
 		fmt.Fprintf(&b, "%q:", k)
 		if k == FieldEnabled {
 			fmt.Fprint(&b, v != 0)
+		} else if k == FieldExpected {
+			fmt.Fprintf(&b, "%q", ExpectName(v))
 		} else {
 			nb, _ := json.Marshal(v)
 			b.Write(nb)
@@ -246,6 +302,18 @@ func (f *Fields) UnmarshalJSON(b []byte) error {
 			if on {
 				out[k] = 1
 			}
+			continue
+		}
+		if k == FieldExpected {
+			var name string
+			if err := json.Unmarshal(v, &name); err != nil {
+				return fmt.Errorf("%s must be running, stopped or ignored", k)
+			}
+			x, ok := ExpectValue(name)
+			if !ok {
+				return fmt.Errorf("%s must be running, stopped or ignored, not %q", k, name)
+			}
+			out[k] = x
 			continue
 		}
 		var n float64
@@ -285,7 +353,7 @@ func (f Fields) Validate(check string) error {
 			errs = append(errs, fmt.Errorf("%s: %s must be %g–%g%s", spec.Label, strings.ToLower(fs.Label), fs.Min, fs.Max, fs.Unit))
 			continue
 		}
-		if (fs.Type == "minutes" || fs.Type == "count") && v != math.Trunc(v) {
+		if (fs.Type == "minutes" || fs.Type == "count" || fs.Type == "choice") && v != math.Trunc(v) {
 			errs = append(errs, fmt.Errorf("%s: %s must be a whole number", spec.Label, strings.ToLower(fs.Label)))
 		}
 	}
@@ -339,14 +407,16 @@ type policy struct {
 	members map[string][]string          // host → groups
 	host    map[string]map[string]Fields
 	subj    map[string]map[string]map[string]Fields // host → check → subject → fields
-	watched map[string]map[string]bool              // host → watched units
-	rows    []Override
+	// Services set for a group's hosts or every host.
+	groupSubj  map[string]map[string]map[string]Fields // group → check → subject → fields
+	globalSubj map[string]map[string]Fields            // check → subject → fields
+	rows       []Override
 }
 
 func emptyPolicy() *policy {
 	return &policy{global: map[string]Fields{}, groups: map[string]*groupInfo{}, groupOv: map[string]map[string]Fields{},
 		members: map[string][]string{}, host: map[string]map[string]Fields{}, subj: map[string]map[string]map[string]Fields{},
-		watched: map[string]map[string]bool{}}
+		groupSubj: map[string]map[string]map[string]Fields{}, globalSubj: map[string]map[string]Fields{}}
 }
 
 const maxOverrides = 20000
@@ -409,24 +479,6 @@ func loadPolicy(ctx context.Context, db *sql.DB) (*policy, error) {
 		p.add(o)
 	}
 	rows.Close()
-	rows, err = db.QueryContext(ctx, `SELECT host_id, settings_json FROM mon_host_settings`)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var h, j string
-		if rows.Scan(&h, &j) != nil {
-			continue
-		}
-		var hs HostSettings
-		if json.Unmarshal([]byte(j), &hs) == nil && len(hs.WatchedServices) > 0 {
-			p.watched[h] = map[string]bool{}
-			for _, u := range hs.WatchedServices {
-				p.watched[h][u] = true
-			}
-		}
-	}
-	rows.Close()
 	return p, nil
 }
 
@@ -435,15 +487,28 @@ func (p *policy) add(o Override) {
 		return // a check this version doesn't know (kept, ignored)
 	}
 	p.rows = append(p.rows, o)
-	switch o.Scope {
-	case ScopeGlobal:
+	switch {
+	case o.Scope == ScopeGlobal && o.Subject != "":
+		if p.globalSubj[o.Check] == nil {
+			p.globalSubj[o.Check] = map[string]Fields{}
+		}
+		p.globalSubj[o.Check][o.Subject] = o.Fields
+	case o.Scope == ScopeGlobal:
 		p.global[o.Check] = o.Fields
-	case ScopeGroup:
+	case o.Scope == ScopeGroup && o.Subject != "":
+		if p.groupSubj[o.GroupID] == nil {
+			p.groupSubj[o.GroupID] = map[string]map[string]Fields{}
+		}
+		if p.groupSubj[o.GroupID][o.Check] == nil {
+			p.groupSubj[o.GroupID][o.Check] = map[string]Fields{}
+		}
+		p.groupSubj[o.GroupID][o.Check][o.Subject] = o.Fields
+	case o.Scope == ScopeGroup:
 		if p.groupOv[o.GroupID] == nil {
 			p.groupOv[o.GroupID] = map[string]Fields{}
 		}
 		p.groupOv[o.GroupID][o.Check] = o.Fields
-	case ScopeHost:
+	case o.Scope == ScopeHost:
 		if o.Subject == "" {
 			if p.host[o.HostID] == nil {
 				p.host[o.HostID] = map[string]Fields{}
@@ -549,9 +614,16 @@ func (p *policy) resolve(host, check string, sc subjectCtx, hw *hwLimits, field 
 		var cands []GroupRef
 		top := math.MinInt
 		for _, g := range p.members[host] {
-			f, ok := p.groupOv[g][check]
 			gi := p.groups[g]
-			if !ok || !f.has(field) || gi == nil {
+			if gi == nil {
+				continue
+			}
+			// The group's setting for the service, else its check-wide one.
+			f, ok := p.groupSubjFields(g, check, sc, field)
+			if !ok {
+				f, ok = p.groupOv[g][check]
+			}
+			if !ok || !f.has(field) {
 				continue
 			}
 			cands = append(cands, GroupRef{ID: g, Name: gi.Name, Priority: gi.Priority, Value: fp(f[field])})
@@ -587,7 +659,7 @@ func (p *policy) resolve(host, check string, sc subjectCtx, hw *hwLimits, field 
 			conflict = &Conflict{Priority: top, Groups: win}
 		}
 	}
-	r := p.resolveBase(check, field, hw, upto)
+	r := p.resolveBase(check, field, hw, upto, sc)
 	if conflict != nil {
 		r.Conflict = conflict
 		names := make([]string, len(conflict.Groups))
@@ -600,8 +672,23 @@ func (p *policy) resolve(host, check string, sc subjectCtx, hw *hwLimits, field 
 	return r
 }
 
-func (p *policy) resolveBase(check, field string, hw *hwLimits, upto int) Resolved {
+// groupSubjFields is a group's setting for the subject that has field.
+func (p *policy) groupSubjFields(group, check string, sc subjectCtx, field string) (Fields, bool) {
+	for _, k := range sc.keys {
+		if f, ok := p.groupSubj[group][check][k]; ok && f.has(field) {
+			return f, true
+		}
+	}
+	return nil, false
+}
+
+func (p *policy) resolveBase(check, field string, hw *hwLimits, upto int, sc subjectCtx) Resolved {
 	if upto > levelGlobal {
+		for _, k := range sc.keys {
+			if f, ok := p.globalSubj[check][k]; ok && f.has(field) {
+				return Resolved{Value: fp(f[field]), Source: Provenance{Kind: "global", Label: "Global custom setting"}}
+			}
+		}
 		if f, ok := p.global[check]; ok && f.has(field) {
 			return Resolved{Value: fp(f[field]), Source: Provenance{Kind: "global", Label: "Global custom setting"}}
 		}
@@ -717,18 +804,101 @@ func (p *policy) sig(host, check string) string {
 		b.WriteString(k)
 		w(p.subj[host][check][k])
 	}
-	if check == CheckServiceStopped || check == CheckServiceFailed {
-		us := make([]string, 0, len(p.watched[host]))
-		for u := range p.watched[host] {
-			us = append(us, u)
+	// Single services set for the host's groups and for every host.
+	subjects := func(m map[string]Fields) {
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
 		}
-		sort.Strings(us)
-		b.WriteString(strings.Join(us, ","))
+		sort.Strings(keys)
+		for _, k := range keys {
+			b.WriteString(k)
+			w(m[k])
+		}
+	}
+	for _, g := range gs {
+		if m := p.groupSubj[g][check]; len(m) > 0 {
+			fmt.Fprintf(&b, "gs%s:%d:", g, p.groups[g].Priority)
+			subjects(m)
+		}
+	}
+	b.WriteString("all:")
+	subjects(p.globalSubj[check])
+	// The service checks follow each unit's expected state.
+	if check == CheckServiceStopped || check == CheckServiceFailed || check == CheckServiceUnexpected {
+		b.WriteString("expected:")
+		b.WriteString(p.sig(host, CheckServiceExpected))
 	}
 	return b.String()
 }
 
-func (p *policy) isWatched(host, unit string) bool { return p.watched[host][unit] }
+// expected is a unit's expected state on a host (ExpectAuto without a
+// setting) and where it comes from.
+func (p *policy) expected(host, unit string) (float64, Resolved) {
+	r := p.resolve(host, CheckServiceExpected, unitCtx(unit), nil, FieldExpected, levelAll)
+	if r.Value == nil {
+		return ExpectAuto, r
+	}
+	return *r.Value, r
+}
+
+// isWatched reports whether a unit is expected to run on a host.
+func (p *policy) isWatched(host, unit string) bool {
+	v, _ := p.expected(host, unit)
+	return v == ExpectRunning
+}
+
+// expectedUnits lists the units with an expected state on a host (any
+// value but automatic), from any scope.
+func (p *policy) expectedUnits(host string) []string {
+	cand := map[string]bool{}
+	for k := range p.subj[host][CheckServiceExpected] {
+		cand[k] = true
+	}
+	for _, g := range p.members[host] {
+		for k := range p.groupSubj[g][CheckServiceExpected] {
+			cand[k] = true
+		}
+	}
+	for k := range p.globalSubj[CheckServiceExpected] {
+		cand[k] = true
+	}
+	out := []string{}
+	for k := range cand {
+		unit := strings.TrimPrefix(k, "unit:")
+		if v, _ := p.expected(host, unit); v != ExpectAuto {
+			out = append(out, unit)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// expectedRunning lists the units expected to run on a host, from any
+// scope (one the host doesn't report isn't installed).
+func (p *policy) expectedRunning(host string) []string {
+	cand := map[string]bool{}
+	for k := range p.subj[host][CheckServiceExpected] {
+		cand[k] = true
+	}
+	for _, g := range p.members[host] {
+		for k := range p.groupSubj[g][CheckServiceExpected] {
+			cand[k] = true
+		}
+	}
+	for k := range p.globalSubj[CheckServiceExpected] {
+		cand[k] = true
+	}
+	out := []string{}
+	for k := range cand {
+		unit := strings.TrimPrefix(k, "unit:")
+		if p.isWatched(host, unit) {
+			out = append(out, unit)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
 
 // counts summarises what applies to a host.
 type policyCounts struct {

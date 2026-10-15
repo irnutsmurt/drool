@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, unwrap } from "@/api/client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError, api, unwrap, type Schemas } from "@/api/client";
 import { qk, type Group, type Host } from "@/api/queries";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
 import { errorMessage } from "@/lib/format";
+import { plainLink } from "@/components/ui/links";
 
 /** Adding hosts to a pack and taking them out, one change at a time: from the
  * pack's page or from a host's. */
@@ -128,6 +129,79 @@ export function HostPacksDialog({ host, packs, onClose }: { host: Host; packs: G
         <p className="text-xs text-muted">Changes are saved as you tick. A pack's settings apply to the host while it's a member.</p>
         {(add.error ?? remove.error) && <Alert>{errorMessage(add.error ?? remove.error)}</Alert>}
         <div className="flex justify-end"><Button onClick={onClose}>Done</Button></div>
+      </div>
+    </Dialog>
+  );
+}
+
+const refKinds: Record<Schemas["PackDependencies"]["blocking"][number]["kind"], string> = {
+  firewall_policy: "Firewall policy", schedule: "Schedule", notification_route: "Notification route", maintenance: "Maintenance window",
+  desired_assignment: "Desired State baseline", health_override: "Monitoring setting", enrollment_token: "Shepherd enrollment token",
+  network_rule: "Network classification",
+};
+
+/** Deleting a pack: what still uses it comes first. While anything that
+ * changes what happens to its hosts names it (a firewall policy, a schedule,
+ * a monitoring setting…), DROOL doesn't delete it and says what to change and
+ * where; otherwise it shows exactly what goes with the pack. Its hosts always
+ * stay. The server checks again when deleting. */
+export function DeletePackDialog({ pack, onClose, onDeleted }: { pack: Group; onClose: () => void; onDeleted: () => void }) {
+  const qc = useQueryClient();
+  const deps = useQuery({
+    queryKey: [...qk.groups, pack.id, "dependencies"],
+    queryFn: () => unwrap(api.GET("/groups/{id}/dependencies", { params: { path: { id: pack.id } } })),
+    gcTime: 0,
+  });
+  const del = useMutation({
+    mutationFn: () => unwrap(api.DELETE("/groups/{id}", { params: { path: { id: pack.id } } })),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.groups });
+      void qc.invalidateQueries({ queryKey: qk.hosts });
+      onDeleted();
+    },
+    onError: () => void deps.refetch(), // something started using it meanwhile
+  });
+  const d = del.error instanceof ApiError && del.error.problem?.dependencies ? del.error.problem.dependencies : deps.data;
+  const blocked = !!d && d.blocking.length > 0;
+  return (
+    <Dialog title={`Delete pack ${pack.name}?`} onClose={onClose} wide={blocked}>
+      <div className="space-y-4 text-sm" data-testid="delete-pack">
+        {deps.error && <Alert>{errorMessage(deps.error)}</Alert>}
+        {!d && !deps.error && <p className="text-muted">Checking what uses {pack.name}…</p>}
+        {d && blocked && (
+          <>
+            <Alert tone="warn">
+              {pack.name} is still in use, so DROOL won't delete it: deleting it would silently change what happens to its hosts.
+              Change these first, then delete it.
+            </Alert>
+            <ul className="space-y-2" aria-label={`What uses ${pack.name}`}>
+              {d.blocking.map((b) => (
+                <li key={`${b.kind}:${b.id}`} className="rounded-ui border border-line p-2">
+                  <div className="font-medium">{refKinds[b.kind]}: {b.name}</div>
+                  <div className="text-muted">{b.detail}</div>
+                  <Link className={plainLink} to={b.path} onClick={onClose}>Open</Link>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {d && !blocked && (
+          <>
+            <p>Nothing else uses {pack.name}. Deleting it removes:</p>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>the pack itself{pack.description ? ` (“${pack.description}”)` : ""};</li>
+              {d.removed.map((x) => <li key={x.kind}>{x.detail}</li>)}
+            </ul>
+            <p className="text-muted">No host is deleted or changed on the host itself.</p>
+          </>
+        )}
+        {del.error && !(del.error instanceof ApiError && del.error.problem?.code === "pack_in_use") && <Alert>{errorMessage(del.error)}</Alert>}
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose}>{blocked ? "Close" : "Cancel"}</Button>
+          {!blocked && (
+            <Button variant="danger" disabled={!d || del.isPending} onClick={() => del.mutate()}>{del.isPending ? "Deleting…" : "Delete pack"}</Button>
+          )}
+        </div>
       </div>
     </Dialog>
   );

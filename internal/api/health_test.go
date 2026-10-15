@@ -794,7 +794,7 @@ func TestHealthLegacyMigration(t *testing.T) {
 	e.h.mon.Load(ctx) // idempotent
 	var ov struct{ Items []monsvc.Override }
 	e.c.do("GET", "/api/v1/monitoring/health/overrides", nil).json(t, &ov)
-	if len(ov.Items) != 4 { // global cpu + filesystem, host cpu + temperature
+	if len(ov.Items) != 5 { // global cpu + filesystem, host cpu + temperature, a.service expected running
 		t.Fatalf("overrides: %+v", ov.Items)
 	}
 }

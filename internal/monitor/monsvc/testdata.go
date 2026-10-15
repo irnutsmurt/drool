@@ -135,7 +135,14 @@ func (s *Service) loadTestHost(ctx context.Context, id string, th TestHost) erro
 		s.setWatermark(id, Tier1h, now.Unix()/3600*3600)
 	}
 	if th.Settings != nil {
-		if err := s.d.Store.InRawTx(ctx, func(tx *sql.Tx) error { return SaveHostSettingsTx(ctx, tx, id, *th.Settings, "", now.UnixMilli()) }); err != nil {
+		// watched_services are expected-running services on the host now.
+		if err := s.d.Store.InRawTx(ctx, func(tx *sql.Tx) error {
+			if err := SaveHostSettingsTx(ctx, tx, id, *th.Settings, "", now.UnixMilli()); err != nil {
+				return err
+			}
+			_, err := s.SetWatchedTx(ctx, tx, id, th.Settings.WatchedServices, "", now.UnixMilli())
+			return err
+		}); err != nil {
 			return err
 		}
 	}

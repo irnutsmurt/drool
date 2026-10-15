@@ -40,6 +40,12 @@ type Report struct {
 	Supported bool   `json:"supported"`
 	Note      string `json:"note,omitempty"`
 	Units     []Unit `json:"units"`
+	// Limited: systemd runs, but the account couldn't ask it (no D-Bus
+	// system bus, or denied); the list is unknown, not empty.
+	Limited bool `json:"limited,omitempty"`
+	// ReadAsRoot: read as root because the account can't (over SSH, with
+	// the hourly root pass).
+	ReadAsRoot bool `json:"read_as_root,omitempty"`
 }
 
 // MaxUnits bounds the inventory.
@@ -53,20 +59,63 @@ var Commands = [][]string{
 	{"systemctl", "list-unit-files", "--type=service", "--no-legend", "--no-pager"},
 }
 
-// Spec for the SSH script.
+// Spec for the SSH script. PID 1's name says whether systemd runs (the
+// same evidence as discovery), never systemctl's exit status.
 var Spec = source.Spec{
-	Files:    []string{"/proc/stat"},
+	Files:    []string{"/proc/stat", "/proc/1/comm"},
 	Commands: Commands,
 	Tools:    []string{"systemctl"},
 }
 
-// Collect reads the inventory. Without systemd it reports unsupported.
+// Limited reports whether systemctl's error says the account can't reach
+// systemd (no D-Bus system bus, or denied) rather than that it failed. With
+// PID 1 known to be systemd, "not booted with systemd" means the same: the
+// account can't see /run/systemd, where systemctl looks.
+func Limited(stderr string, pid1Systemd bool) bool {
+	return strings.Contains(stderr, "Failed to connect to bus") || strings.Contains(stderr, "ccess denied") ||
+		strings.Contains(stderr, "ermission denied") || strings.Contains(stderr, "uthentication required") ||
+		pid1Systemd && strings.Contains(stderr, "not been booted with systemd")
+}
+
+// NeedsRoot reports whether the first read failed only because the account
+// can't ask systemd (it would work as root), and systemctl's message.
+func NeedsRoot(ctx context.Context, src source.Source) (bool, string) {
+	pid1 := ""
+	if b, err := src.ReadFile("/proc/1/comm"); err == nil {
+		pid1 = strings.TrimSpace(string(b))
+	}
+	if pid1 != "" && pid1 != "systemd" {
+		return false, ""
+	}
+	r, err := src.Run(ctx, Commands[0][0], Commands[0][1:]...)
+	if err != nil || r.Exit == 0 || len(r.Stdout) > 0 {
+		return false, ""
+	}
+	msg := firstLine(r.Stderr)
+	return Limited(msg, pid1 == "systemd"), msg
+}
+
+func firstLine(b []byte) string {
+	l, _, _ := strings.Cut(strings.TrimSpace(string(b)), "\n")
+	return strings.TrimSpace(l)
+}
+
+// Collect reads the inventory. Without systemd it reports unsupported;
+// when the account can't ask systemd, Limited.
 // files=false skips the unit-file listing (between full refreshes) and
 // keeps fileStates from before.
 func Collect(ctx context.Context, src source.Source, btime int64, fileStates map[string]string) (*Report, map[string]string, error) {
 	rep := &Report{Units: []Unit{}}
+	pid1 := ""
+	if b, err := src.ReadFile("/proc/1/comm"); err == nil {
+		pid1 = strings.TrimSpace(string(b))
+	}
+	if pid1 != "" && pid1 != "systemd" {
+		rep.Note = "PID 1 is " + pid1 + ", not systemd: no service inventory."
+		return rep, fileStates, nil
+	}
 	if !src.Has("systemctl") {
-		rep.Note = "systemd is not available on this host: no service inventory."
+		rep.Note = "systemctl isn't installed on this host: no service inventory."
 		return rep, fileStates, nil
 	}
 	r, err := src.Run(ctx, Commands[0][0], Commands[0][1:]...)
@@ -78,7 +127,17 @@ func Collect(ctx context.Context, src source.Source, btime int64, fileStates map
 		return rep, fileStates, nil
 	}
 	if r.Exit != 0 && len(r.Stdout) == 0 {
-		rep.Note = "systemd is not running on this host (systemctl exited " + strconv.Itoa(r.Exit) + "): no service inventory."
+		msg := firstLine(r.Stderr)
+		switch {
+		case Limited(msg, pid1 == "systemd"):
+			rep.Limited = true
+			rep.Note = "systemd runs, but systemctl can't reach it as the account DROOL signs in with (" + msg + "): on a host without a D-Bus system bus only root can. " +
+				"DROOL reads the services as root with the hourly storage check where the host's sign-in allows root; installing dbus on the host, or a Shepherd, gives live service status."
+		case pid1 == "systemd":
+			rep.Note = "systemd runs, but systemctl failed (exit " + strconv.Itoa(r.Exit) + orColon(msg) + "): no service inventory."
+		default:
+			rep.Note = "systemctl failed (exit " + strconv.Itoa(r.Exit) + orColon(msg) + "): no service inventory."
+		}
 		return rep, fileStates, nil
 	}
 	if fileStates == nil {
@@ -90,6 +149,13 @@ func Collect(ctx context.Context, src source.Source, btime int64, fileStates map
 	rep.Supported = true
 	rep.Units = Merge(ParseShow(r.Stdout, btime), fileStates)
 	return rep, fileStates, nil
+}
+
+func orColon(msg string) string {
+	if msg == "" {
+		return ""
+	}
+	return ": " + msg
 }
 
 // ParseShow parses `systemctl show -p ...` output: blocks of KEY=VALUE
@@ -250,4 +316,77 @@ func Diff(prev, cur []Unit) []Change {
 		}
 	}
 	return out
+}
+
+// Service actions DROOL offers for a unit (final After-M17 batch). Each is
+// one typed service operation (model.ServiceOp), verified on the host
+// afterwards like any other.
+const (
+	ActStart       = "start"        // state: running
+	ActStop        = "stop"         // state: stopped
+	ActRestart     = "restart"      // state: restarted
+	ActEnable      = "enable"       // enabled: true
+	ActDisable     = "disable"      // enabled: false
+	ActEnableStart = "enable_start" // both
+	ActDisableStop = "disable_stop" // both
+)
+
+// Actions are what makes sense for a unit as it is now, and a note on
+// why others aren't offered. Runtime state (active, inactive, failed, …)
+// and boot-time state (the unit-file state: enabled, disabled, static,
+// masked, …) are separate facts: a running unit can be disabled at boot,
+// a stopped one enabled. Only enabled and disabled unit files can be
+// switched; static, indirect, generated, transient and alias units are
+// started by something else, so Enable/Disable would mislead. A masked
+// unit can't be started or enabled at all (DROOL doesn't unmask).
+func Actions(u Unit) ([]string, string) {
+	if u.Load == "not-found" {
+		return []string{}, "systemd doesn't find this unit any more."
+	}
+	running := u.Active == "active" || u.Active == "reloading" || u.Active == "activating"
+	masked := u.Load == "masked" || strings.HasPrefix(u.FileState, "masked")
+	acts := []string{}
+	if masked {
+		if running {
+			acts = append(acts, ActStop)
+		}
+		return acts, "Masked: systemd won't start or enable it until it's unmasked on the host (systemctl unmask); DROOL doesn't unmask units."
+	}
+	if u.Transient || u.FileState == "transient" {
+		if running {
+			acts = append(acts, ActStop)
+		}
+		return acts, "Transient: created at runtime, so there's nothing to start again, enable or disable."
+	}
+	if running {
+		acts = append(acts, ActStop, ActRestart)
+	} else {
+		acts = append(acts, ActStart)
+	}
+	note := ""
+	switch u.FileState {
+	case "enabled", "enabled-runtime":
+		acts = append(acts, ActDisable)
+		if running {
+			acts = append(acts, ActDisableStop)
+		}
+	case "disabled":
+		acts = append(acts, ActEnable)
+		if !running {
+			acts = append(acts, ActEnableStart)
+		}
+	case "static":
+		note = "Static: started by other units, sockets or timers, not at boot by itself, so it can't be enabled or disabled."
+	case "indirect":
+		note = "Indirect: enabled through another unit (Also= or a template), so it isn't enabled or disabled on its own."
+	case "generated":
+		note = "Generated at boot (from fstab, an init script, …): enabling or disabling it doesn't apply."
+	case "alias":
+		note = "An alias of another unit: enable or disable that unit instead."
+	case "":
+		note = "systemd reports no unit-file state, so DROOL doesn't offer Enable or Disable."
+	default:
+		note = "Unit-file state “" + u.FileState + "”: DROOL doesn't offer Enable or Disable for it."
+	}
+	return acts, note
 }

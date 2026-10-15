@@ -184,7 +184,7 @@ func TestSSHAccountSetupThroughTheAPI(t *testing.T) {
 	if r := c.do("POST", "/api/v1/hosts/"+host.ID+"/ssh-account", map[string]any{"user": "root"}); r.status != 409 || r.problemCode(t) != "ssh_account_blocked" {
 		t.Fatalf("root: %d %s", r.status, r.body)
 	}
-	h.clock.Store(int64(10 * time.Minute))
+	h.clock.Store(int64(16 * time.Minute))
 	if r := c.do("POST", "/api/v1/hosts/"+host.ID+"/ssh-account", map[string]any{}); r.status != 403 || r.problemCode(t) != "reauth_required" {
 		t.Fatalf("setup without a recent sign-in: %d %s", r.status, r.body)
 	}

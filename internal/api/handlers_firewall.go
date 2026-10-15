@@ -587,7 +587,7 @@ func (s *Server) handleFirewallApply(w http.ResponseWriter, r *http.Request) {
 		}
 		// An override can cut DROOL off from the host: a stolen session
 		// alone isn't enough (M16).
-		if !s.requireReauth(w, r) {
+		if !s.requireReauth(w, r, reauthFirewall) {
 			return
 		}
 		s.d.Audit.Record(ctx, audit.Event{Action: "firewall.override", TargetType: "hosts", TargetID: fmt.Sprint(in.HostIDs),

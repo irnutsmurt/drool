@@ -25,6 +25,7 @@ import { categoryLabel, checkLabel } from "@/components/alerts/ui";
 const kinds = [
   { key: "discord", label: "Discord", hint: "Channel settings → Integrations → Webhooks → copy the URL." },
   { key: "slack", label: "Slack", hint: "An incoming webhook URL from a Slack app (https://hooks.slack.com/services/…)." },
+  { key: "telegram", label: "Telegram", hint: "A bot you create with @BotFather posts to your group, channel or chat." },
   { key: "email", label: "Email", hint: "Any SMTP server or provider: your mail host, a relay, or an app password." },
   { key: "webhook", label: "Webhook", hint: "POSTs JSON (schema drool.notification.v1) to any URL, including services on your own network." },
 ] as const;
@@ -90,7 +91,7 @@ function Destinations() {
     <Card title="Notifications" actions={manage && rows.length > 0 && <Button size="sm" variant="primary" onClick={() => setEdit("new")}>Add destination</Button>}>
       {ds.error && <Notice>{errorMessage(ds.error)}</Notice>}
       {rows.length === 0 && !ds.isLoading ? (
-        <EmptyState title="No destinations configured" body="Add Discord, Slack, email or a webhook, and DROOL tells you when something needs attention — and when it's fixed."
+        <EmptyState title="No destinations configured" body="Add Discord, Slack, Telegram, email or a webhook, and DROOL tells you when something needs attention — and when it's fixed."
           action={manage && <Button variant="primary" onClick={() => setEdit("new")}>Add destination</Button>} />
       ) : (
         <ul className="divide-y divide-line">
@@ -103,7 +104,9 @@ function Destinations() {
                   {health(d)}
                 </div>
                 <div className="mt-0.5 text-muted">
-                  {d.kind === "email" ? `${d.config.to?.join(", ")} via ${d.config.host}` : `URL: ${d.config.url_display ?? ""}•••••••`}
+                  {d.kind === "email" ? `${d.config.to?.join(", ")} via ${d.config.host}`
+                    : d.kind === "telegram" ? `Chat ${d.config.chat_id ?? ""}${d.config.thread_id ? `, topic ${d.config.thread_id}` : ""} · bot token •••••••`
+                    : `URL: ${d.config.url_display ?? ""}•••••••`}
                   {" · "}Notify for: {d.notify_for === "recommended" ? "Recommended (Warnings + Critical, with recoveries)" : d.routes.length ? `routes: ${d.routes.join(", ")}` : "no route yet"}
                 </div>
                 <div className="text-xs text-muted">
@@ -161,6 +164,7 @@ function DestinationDialog({ dest, onClose }: { dest?: Destination; onClose: () 
   const [url, setUrl] = useState("");
   const [headerValue, setHeaderValue] = useState("");
   const [password, setPassword] = useState("");
+  const [botToken, setBotToken] = useState("");
   const [to, setTo] = useState((dest?.config.to ?? []).join(", "));
   const [notifyFor, setNotifyFor] = useState(dest?.notify_for ?? "recommended");
   const [enabled, setEnabled] = useState(dest?.enabled ?? true);
@@ -171,6 +175,7 @@ function DestinationDialog({ dest, onClose }: { dest?: Destination; onClose: () 
     if (url) s.url = url;
     if (headerValue) s.header_value = headerValue;
     if (password) s.password = password;
+    if (botToken) s.bot_token = botToken;
     return Object.keys(s).length ? s : undefined;
   };
   const config = (): DestinationConfig => ({ ...cfg, to: kind === "email" ? to.split(/[,\s]+/).filter(Boolean) : undefined });
@@ -202,7 +207,31 @@ function DestinationDialog({ dest, onClose }: { dest?: Destination; onClose: () 
     <Dialog title={dest ? `Edit ${dest.name}` : `Add ${kindLabel[kind]}`} onClose={onClose}>
       <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); save.mutate({ id: dest?.id, body: body() }, { onSuccess: onClose }); }}>
         <Field label="Name"><Input value={name} placeholder={kindLabel[kind]} onChange={(e) => setName(e.target.value)} data-autofocus /></Field>
-        {kind !== "email" ? (
+        {kind === "telegram" ? (
+          <>
+            <ol className="list-decimal space-y-1 rounded-ui border border-line bg-surface-2 p-3 pl-7 text-xs" data-testid="telegram-steps">
+              <li>In Telegram, open <strong>@BotFather</strong>, send <code>/newbot</code>, and copy the token it gives you.</li>
+              <li>Add the bot to your group, or to your channel as an administrator. For a chat with just you, send the bot a message.</li>
+              <li>
+                The chat ID: <code>@channelname</code> for a public channel. Otherwise send a message in the chat, open
+                {" "}<code>https://api.telegram.org/bot&lt;token&gt;/getUpdates</code> in a browser with your token in place of &lt;token&gt;, and copy the
+                {" "}<code>&quot;chat&quot;:{"{"}&quot;id&quot;:…</code> number (groups and channels start with -100). That address contains the token: don&apos;t share it.
+              </li>
+            </ol>
+            <Field label="Bot token" hint="Stored encrypted. DROOL never shows it again, and it never appears in logs, the audit log or delivery history.">
+              <Input type="password" autoComplete="off" value={botToken} placeholder={dest?.secrets_set.bot_token ? "••••••• (unchanged)" : "123456789:AA…"}
+                onChange={(e) => setBotToken(e.target.value)} required={!dest} />
+            </Field>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <Field label="Chat ID"><Input value={cfg.chat_id ?? ""} placeholder="-1001234567890 or @channelname" onChange={(e) => set("chat_id", e.target.value)} required /></Field>
+              </div>
+              <Field label="Topic ID (optional)" hint="Groups with topics">
+                <Input type="number" min={1} inputMode="numeric" value={cfg.thread_id ?? ""} onChange={(e) => set("thread_id", e.target.value ? Number(e.target.value) : undefined)} />
+              </Field>
+            </div>
+          </>
+        ) : kind !== "email" ? (
           <>
             <Field label={kind === "webhook" ? "URL" : "Webhook URL"} hint={hint}>
               <Input type="password" autoComplete="off" value={url} placeholder={secretPlaceholder || (kind === "discord" ? "https://discord.com/api/webhooks/…" : kind === "slack" ? "https://hooks.slack.com/services/…" : "https://…")}

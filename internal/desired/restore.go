@@ -414,7 +414,7 @@ func (s *Service) hostBlockers(ctx context.Context, h db.Host) (string, string, 
 		case pi.Blocked:
 			hostBlock = "DROOL can't change this host: " + pi.Reason
 		case pi.AgentState == "epoch_mismatch":
-			hostBlock = "the host's agent belongs to another controller epoch (a restored or different controller); reconcile it on the Agents page first"
+			hostBlock = "the host's Shepherd belongs to another controller epoch (a restored or different controller); reconcile it on the Shepherds page first"
 		}
 	}
 	var st string

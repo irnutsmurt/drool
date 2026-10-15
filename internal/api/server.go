@@ -115,9 +115,10 @@ type route struct {
 	perm        auth.Permission // required permission ("" = none beyond auth mode)
 	sessionOnly bool            // reject bearer-token principals
 	// reauth: a high-impact action that a stolen session alone must not be
-	// enough for. Needs a browser session whose user confirmed who they are
-	// within the re-authentication window (implies sessionOnly).
-	reauth bool
+	// enough for, and why (reauth.go). Needs a browser session whose user
+	// confirmed who they are within the re-authentication window (implies
+	// sessionOnly).
+	reauth reauthReason
 	h      http.HandlerFunc
 }
 
@@ -136,50 +137,51 @@ func (s *Server) routes() []route {
 		{method: "POST", path: APIPrefix + "/auth/password", auth: authed, sessionOnly: true, h: s.handleChangeOwnPassword},
 		{method: "POST", path: APIPrefix + "/auth/reauth", auth: authed, sessionOnly: true, h: s.handleReauth},
 		{method: "GET", path: APIPrefix + "/auth/mfa", auth: authed, sessionOnly: true, h: s.handleGetMFA},
-		{method: "POST", path: APIPrefix + "/auth/mfa/enroll", auth: authed, reauth: true, h: s.handleEnrollMFA},
+		{method: "POST", path: APIPrefix + "/auth/mfa/enroll", auth: authed, reauth: reauthAccount, h: s.handleEnrollMFA},
 		{method: "POST", path: APIPrefix + "/auth/mfa/confirm", auth: authed, sessionOnly: true, h: s.handleConfirmMFA},
-		{method: "POST", path: APIPrefix + "/auth/mfa/recovery-codes", auth: authed, reauth: true, h: s.handleRegenerateRecoveryCodes},
-		{method: "DELETE", path: APIPrefix + "/auth/mfa", auth: authed, reauth: true, h: s.handleDisableMFA},
+		{method: "POST", path: APIPrefix + "/auth/mfa/recovery-codes", auth: authed, reauth: reauthAccount, h: s.handleRegenerateRecoveryCodes},
+		{method: "DELETE", path: APIPrefix + "/auth/mfa", auth: authed, reauth: reauthAccount, h: s.handleDisableMFA},
 
 		{method: "GET", path: APIPrefix + "/users", auth: authed, perm: auth.PermUsersManage, h: s.handleListUsers},
-		{method: "POST", path: APIPrefix + "/users", auth: authed, perm: auth.PermUsersManage, reauth: true, h: s.handleCreateUser},
+		{method: "POST", path: APIPrefix + "/users", auth: authed, perm: auth.PermUsersManage, reauth: reauthUsers, h: s.handleCreateUser},
 		{method: "GET", path: APIPrefix + "/users/{id}", auth: authed, perm: auth.PermUsersManage, h: s.handleGetUser},
-		{method: "PATCH", path: APIPrefix + "/users/{id}", auth: authed, perm: auth.PermUsersManage, reauth: true, h: s.handleUpdateUser},
-		{method: "DELETE", path: APIPrefix + "/users/{id}", auth: authed, perm: auth.PermUsersManage, reauth: true, h: s.handleDeleteUser},
-		{method: "POST", path: APIPrefix + "/users/{id}/mfa/reset", auth: authed, perm: auth.PermUsersManage, reauth: true, h: s.handleResetUserMFA},
+		// Always high-impact; the handler confirms with the reason its fields give (a password, or access).
+		{method: "PATCH", path: APIPrefix + "/users/{id}", auth: authed, perm: auth.PermUsersManage, sessionOnly: true, h: s.handleUpdateUser},
+		{method: "DELETE", path: APIPrefix + "/users/{id}", auth: authed, perm: auth.PermUsersManage, reauth: reauthUsers, h: s.handleDeleteUser},
+		{method: "POST", path: APIPrefix + "/users/{id}/mfa/reset", auth: authed, perm: auth.PermUsersManage, reauth: reauthUsers, h: s.handleResetUserMFA},
 
 		{method: "GET", path: APIPrefix + "/tokens", auth: authed, h: s.handleListTokens},
-		{method: "POST", path: APIPrefix + "/tokens", auth: authed, reauth: true, h: s.handleCreateToken},
+		{method: "POST", path: APIPrefix + "/tokens", auth: authed, reauth: reauthAccount, h: s.handleCreateToken},
 		{method: "DELETE", path: APIPrefix + "/tokens/{id}", auth: authed, h: s.handleDeleteToken},
 
 		{method: "GET", path: APIPrefix + "/audit", auth: authed, perm: auth.PermAuditRead, h: s.handleListAudit},
 		{method: "GET", path: APIPrefix + "/audit/integrity", auth: authed, perm: auth.PermAuditRead, h: s.handleAuditIntegrity},
 		{method: "POST", path: APIPrefix + "/audit/integrity/verify", auth: authed, perm: auth.PermAuditRead, h: s.handleVerifyAudit},
-		{method: "POST", path: APIPrefix + "/audit/integrity/acknowledge", auth: authed, perm: auth.PermSettingsWrite, reauth: true, h: s.handleAcknowledgeAuditBreak},
+		{method: "POST", path: APIPrefix + "/audit/integrity/acknowledge", auth: authed, perm: auth.PermSettingsWrite, reauth: reauthAudit, h: s.handleAcknowledgeAuditBreak},
 		{method: "GET", path: APIPrefix + "/audit/sink", auth: authed, perm: auth.PermSettingsRead, h: s.handleGetAuditSink},
-		{method: "PUT", path: APIPrefix + "/audit/sink", auth: authed, perm: auth.PermSettingsWrite, reauth: true, h: s.handlePutAuditSink},
+		{method: "PUT", path: APIPrefix + "/audit/sink", auth: authed, perm: auth.PermSettingsWrite, reauth: reauthAudit, h: s.handlePutAuditSink},
 		{method: "POST", path: APIPrefix + "/audit/sink/test", auth: authed, perm: auth.PermSettingsWrite, h: s.handleTestAuditSink},
 
 		{method: "GET", path: APIPrefix + "/system/info", auth: authed, h: s.handleSystemInfo},
 		{method: "GET", path: APIPrefix + "/system/security", auth: authed, perm: auth.PermSettingsRead, h: s.handleSecurityFacts},
 		{method: "GET", path: APIPrefix + "/system/restore", auth: authed, perm: auth.PermSettingsRead, h: s.handleRestoreStatus},
-		{method: "POST", path: APIPrefix + "/system/restore/finish", auth: authed, perm: auth.PermSettingsWrite, reauth: true, h: s.handleFinishRestore},
+		{method: "POST", path: APIPrefix + "/system/restore/finish", auth: authed, perm: auth.PermSettingsWrite, reauth: reauthRecovery, h: s.handleFinishRestore},
 		{method: "GET", path: APIPrefix + "/hosts/{id}/reconciliation", auth: authed, perm: auth.PermHostsRead, h: s.handleHostReconciliation},
-		{method: "POST", path: APIPrefix + "/hosts/{id}/reconciliation/accept", auth: authed, perm: auth.PermSettingsWrite, reauth: true, h: s.handleAcceptHostState},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/reconciliation/accept", auth: authed, perm: auth.PermSettingsWrite, reauth: reauthRecovery, h: s.handleAcceptHostState},
 		{method: "POST", path: APIPrefix + "/hosts/{id}/reconciliation/retry", auth: authed, perm: auth.PermSettingsWrite, h: s.handleRetryHostReconciliation},
 
 		{method: "GET", path: APIPrefix + "/secrets", auth: authed, perm: auth.PermCredentialsUse, h: s.handleListSecrets},
 		{method: "POST", path: APIPrefix + "/secrets", auth: authed, perm: auth.PermCredentialsManage, h: s.handleCreateSecret},
 		{method: "GET", path: APIPrefix + "/secrets/controller-ssh-key", auth: authed, perm: auth.PermHostsRead, h: s.handleControllerKey},
 		{method: "GET", path: APIPrefix + "/ssh-ca", auth: authed, perm: auth.PermCredentialsUse, h: s.handleGetSSHCA},
-		{method: "POST", path: APIPrefix + "/ssh-ca", auth: authed, perm: auth.PermCredentialsManage, reauth: true, h: s.handleCreateSSHCA},
-		{method: "POST", path: APIPrefix + "/ssh-ca/rotate", auth: authed, perm: auth.PermCredentialsManage, reauth: true, h: s.handleRotateSSHCA},
-		{method: "POST", path: APIPrefix + "/ssh-ca/{id}/activate", auth: authed, perm: auth.PermCredentialsManage, reauth: true, h: s.handleActivateSSHCA},
-		{method: "POST", path: APIPrefix + "/ssh-ca/{id}/retire", auth: authed, perm: auth.PermCredentialsManage, reauth: true, h: s.handleRetireSSHCA},
+		{method: "POST", path: APIPrefix + "/ssh-ca", auth: authed, perm: auth.PermCredentialsManage, reauth: reauthSSHCA, h: s.handleCreateSSHCA},
+		{method: "POST", path: APIPrefix + "/ssh-ca/rotate", auth: authed, perm: auth.PermCredentialsManage, reauth: reauthSSHCA, h: s.handleRotateSSHCA},
+		{method: "POST", path: APIPrefix + "/ssh-ca/{id}/activate", auth: authed, perm: auth.PermCredentialsManage, reauth: reauthSSHCA, h: s.handleActivateSSHCA},
+		{method: "POST", path: APIPrefix + "/ssh-ca/{id}/retire", auth: authed, perm: auth.PermCredentialsManage, reauth: reauthSSHCA, h: s.handleRetireSSHCA},
 		{method: "GET", path: APIPrefix + "/hosts/{id}/ssh-auth", auth: authed, perm: auth.PermHostsRead, h: s.handleGetHostSSHAuth},
-		{method: "PUT", path: APIPrefix + "/hosts/{id}/ssh-auth", auth: authed, perm: auth.PermCredentialsManage, reauth: true, h: s.handleSetHostSSHAuth},
+		{method: "PUT", path: APIPrefix + "/hosts/{id}/ssh-auth", auth: authed, perm: auth.PermCredentialsManage, reauth: reauthHostAccess, h: s.handleSetHostSSHAuth},
 		{method: "POST", path: APIPrefix + "/hosts/{id}/ssh-account/plan", auth: authed, perm: auth.PermCredentialsManage, h: s.handlePlanSSHAccount},
-		{method: "POST", path: APIPrefix + "/hosts/{id}/ssh-account", auth: authed, perm: auth.PermCredentialsManage, reauth: true, h: s.handleSetUpSSHAccount},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/ssh-account", auth: authed, perm: auth.PermCredentialsManage, reauth: reauthHostAccess, h: s.handleSetUpSSHAccount},
 		{method: "GET", path: APIPrefix + "/secrets/{id}", auth: authed, perm: auth.PermCredentialsUse, h: s.handleGetSecret},
 		{method: "PATCH", path: APIPrefix + "/secrets/{id}", auth: authed, perm: auth.PermCredentialsManage, h: s.handleUpdateSecret},
 		{method: "DELETE", path: APIPrefix + "/secrets/{id}", auth: authed, perm: auth.PermCredentialsManage, h: s.handleDeleteSecret},
@@ -222,6 +224,7 @@ func (s *Server) routes() []route {
 		{method: "GET", path: APIPrefix + "/groups/{id}", auth: authed, perm: auth.PermHostsRead, h: s.handleGetGroup},
 		{method: "PATCH", path: APIPrefix + "/groups/{id}", auth: authed, perm: auth.PermHostsWrite, h: s.handleUpdateGroup},
 		{method: "DELETE", path: APIPrefix + "/groups/{id}", auth: authed, perm: auth.PermHostsWrite, h: s.handleDeleteGroup},
+		{method: "GET", path: APIPrefix + "/groups/{id}/dependencies", auth: authed, perm: auth.PermHostsRead, h: s.handleGroupDependencies},
 		{method: "POST", path: APIPrefix + "/groups/{id}/members", auth: authed, perm: auth.PermHostsWrite, h: s.handleAddGroupMembers},
 		{method: "DELETE", path: APIPrefix + "/groups/{id}/members/{host_id}", auth: authed, perm: auth.PermHostsWrite, h: s.handleRemoveGroupMember},
 
@@ -288,23 +291,23 @@ func (s *Server) routes() []route {
 		{method: "GET", path: APIPrefix + "/agents", auth: authed, perm: auth.PermAgentsRead, h: s.handleListAgents},
 		{method: "GET", path: APIPrefix + "/agents/pki", auth: authed, perm: auth.PermAgentsRead, h: s.handleAgentPKI},
 		{method: "GET", path: APIPrefix + "/agents/pki/root.crt", auth: authed, perm: auth.PermAgentsRead, h: s.handleAgentRootCert},
-		{method: "POST", path: APIPrefix + "/agents/pki/export-root", auth: authed, perm: auth.PermAgentsPKI, sessionOnly: true, reauth: true, h: s.handleAgentExportRoot},
-		{method: "POST", path: APIPrefix + "/agents/pki/remove-root", auth: authed, perm: auth.PermAgentsPKI, sessionOnly: true, reauth: true, h: s.handleAgentRemoveRoot},
-		{method: "POST", path: APIPrefix + "/agents/pki/rotate", auth: authed, perm: auth.PermAgentsPKI, sessionOnly: true, reauth: true, h: s.handleAgentRotate},
-		{method: "POST", path: APIPrefix + "/agents/pki/manifests", auth: authed, perm: auth.PermAgentsPKI, reauth: true, h: s.handleAgentImportManifest},
+		{method: "POST", path: APIPrefix + "/agents/pki/export-root", auth: authed, perm: auth.PermAgentsPKI, sessionOnly: true, reauth: reauthShepherdPKI, h: s.handleAgentExportRoot},
+		{method: "POST", path: APIPrefix + "/agents/pki/remove-root", auth: authed, perm: auth.PermAgentsPKI, sessionOnly: true, reauth: reauthShepherdPKI, h: s.handleAgentRemoveRoot},
+		{method: "POST", path: APIPrefix + "/agents/pki/rotate", auth: authed, perm: auth.PermAgentsPKI, sessionOnly: true, reauth: reauthShepherdPKI, h: s.handleAgentRotate},
+		{method: "POST", path: APIPrefix + "/agents/pki/manifests", auth: authed, perm: auth.PermAgentsPKI, reauth: reauthShepherdPKI, h: s.handleAgentImportManifest},
 		{method: "GET", path: APIPrefix + "/agents/presets", auth: authed, perm: auth.PermAgentsRead, h: s.handleAgentPresets},
 		{method: "GET", path: APIPrefix + "/agents/unknown", auth: authed, perm: auth.PermAgentsRead, h: s.handleListUnknownAgents},
 		{method: "POST", path: APIPrefix + "/agents/unknown/{id}/dismiss", auth: authed, perm: auth.PermAgentsManage, h: s.handleDismissUnknownAgent},
 		{method: "GET", path: APIPrefix + "/agents/tokens", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleListAgentTokens},
 		{method: "POST", path: APIPrefix + "/agents/tokens", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleCreateAgentToken},
 		{method: "POST", path: APIPrefix + "/agents/tokens/{id}/revoke", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleRevokeAgentToken},
-		{method: "POST", path: APIPrefix + "/agents/{id}/revoke", auth: authed, perm: auth.PermAgentsManage, reauth: true, h: s.handleRevokeAgent},
-		{method: "POST", path: APIPrefix + "/agents/{id}/resolve-conflict", auth: authed, perm: auth.PermAgentsManage, reauth: true, h: s.handleResolveConflict},
+		{method: "POST", path: APIPrefix + "/agents/{id}/revoke", auth: authed, perm: auth.PermAgentsManage, reauth: reauthShepherd, h: s.handleRevokeAgent},
+		{method: "POST", path: APIPrefix + "/agents/{id}/resolve-conflict", auth: authed, perm: auth.PermAgentsManage, reauth: reauthShepherd, h: s.handleResolveConflict},
 		{method: "GET", path: APIPrefix + "/agents/updates/policy", auth: authed, perm: auth.PermAgentsRead, h: s.handleGetUpdatePolicy},
 		{method: "PUT", path: APIPrefix + "/agents/updates/policy", auth: authed, perm: auth.PermAgentsManage, h: s.handleSetUpdatePolicy},
 		{method: "GET", path: APIPrefix + "/agents/release-keys", auth: authed, perm: auth.PermAgentsRead, h: s.handleListReleaseKeys},
-		{method: "POST", path: APIPrefix + "/agents/release-keys", auth: authed, perm: auth.PermAgentsManage, reauth: true, h: s.handleAddReleaseKey},
-		{method: "DELETE", path: APIPrefix + "/agents/release-keys/{id}", auth: authed, perm: auth.PermAgentsManage, reauth: true, h: s.handleDeleteReleaseKey},
+		{method: "POST", path: APIPrefix + "/agents/release-keys", auth: authed, perm: auth.PermAgentsManage, reauth: reauthShepherdPKI, h: s.handleAddReleaseKey},
+		{method: "DELETE", path: APIPrefix + "/agents/release-keys/{id}", auth: authed, perm: auth.PermAgentsManage, reauth: reauthShepherdPKI, h: s.handleDeleteReleaseKey},
 		{method: "GET", path: APIPrefix + "/agents/releases", auth: authed, perm: auth.PermAgentsRead, h: s.handleListReleases},
 		{method: "POST", path: APIPrefix + "/agents/releases", auth: authed, perm: auth.PermAgentsManage, h: s.handleUploadRelease},
 		{method: "DELETE", path: APIPrefix + "/agents/releases/{id}", auth: authed, perm: auth.PermAgentsManage, h: s.handleDeleteRelease},
@@ -316,11 +319,13 @@ func (s *Server) routes() []route {
 		{method: "POST", path: APIPrefix + "/agents/rollouts/{id}/cancel", auth: authed, perm: auth.PermAgentsManage, h: s.handleRolloutAction("cancel")},
 		{method: "GET", path: APIPrefix + "/agents/endpoints", auth: authed, perm: auth.PermAgentsRead, h: s.handleListEndpointMigrations},
 		{method: "POST", path: APIPrefix + "/agents/endpoints", auth: authed, perm: auth.PermAgentsManage, h: s.handleProposeEndpoint},
-		{method: "POST", path: APIPrefix + "/agents/endpoints/{id}/commit", auth: authed, perm: auth.PermAgentsManage, reauth: true, h: s.handleCommitEndpoint},
+		{method: "POST", path: APIPrefix + "/agents/endpoints/{id}/commit", auth: authed, perm: auth.PermAgentsManage, reauth: reauthShepherdPKI, h: s.handleCommitEndpoint},
 		{method: "GET", path: APIPrefix + "/hosts/{id}/agent", auth: authed, perm: auth.PermHostsRead, h: s.handleHostAgent},
 		{method: "PUT", path: APIPrefix + "/hosts/{id}/management", auth: authed, perm: auth.PermHostsWrite, h: s.handleSetManagement},
 		{method: "PUT", path: APIPrefix + "/hosts/{id}/agent/caps", auth: authed, perm: auth.PermAgentsManage, h: s.handleSetAgentCaps},
-		{method: "POST", path: APIPrefix + "/hosts/{id}/agent/install", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleInstallAgent},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/agent/install", auth: authed, perm: auth.PermAgentsEnroll, reauth: reauthShepherd, h: s.handleInstallAgent},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/agent/uninstall/plan", auth: authed, perm: auth.PermAgentsManage, h: s.handlePlanUninstallAgent},
+		{method: "POST", path: APIPrefix + "/hosts/{id}/agent/uninstall", auth: authed, perm: auth.PermAgentsManage, reauth: reauthShepherd, h: s.handleUninstallAgent},
 		{method: "POST", path: APIPrefix + "/hosts/{id}/state/{domain}/adopt", auth: authed, perm: auth.PermAgentsManage, h: s.handleAdoptState},
 
 		// Firewall (M8).
@@ -363,6 +368,10 @@ func (s *Server) routes() []route {
 		{method: "GET", path: APIPrefix + "/network/settings", auth: authed, perm: auth.PermNetworkRead, h: s.handleNetworkSettings},
 		{method: "PUT", path: APIPrefix + "/network/settings", auth: authed, perm: auth.PermNetworkSettings, h: s.handleSetNetworkSettings},
 		{method: "GET", path: APIPrefix + "/network/enrichment", auth: authed, perm: auth.PermNetworkRead, h: s.handleNetworkEnrichment},
+		{method: "GET", path: APIPrefix + "/network/classifications", auth: authed, perm: auth.PermNetworkRead, h: s.handleListClassifications},
+		{method: "POST", path: APIPrefix + "/network/classifications", auth: authed, perm: auth.PermNetworkClassify, h: s.handlePutClassification},
+		{method: "PUT", path: APIPrefix + "/network/classifications/{id}", auth: authed, perm: auth.PermNetworkClassify, h: s.handlePutClassification},
+		{method: "DELETE", path: APIPrefix + "/network/classifications/{id}", auth: authed, perm: auth.PermNetworkClassify, h: s.handleDeleteClassification},
 		{method: "POST", path: APIPrefix + "/network/enrichment/reload", auth: authed, perm: auth.PermNetworkSettings, h: s.handleReloadNetworkEnrichment},
 		{method: "GET", path: APIPrefix + "/hosts/{id}/network", auth: authed, perm: auth.PermNetworkRead, h: s.handleHostNetwork},
 		{method: "GET", path: APIPrefix + "/monitoring/summary", auth: authed, perm: auth.PermMonitoringRead, h: s.handleMonitoringSummary},
@@ -398,7 +407,7 @@ func (s *Server) routes() []route {
 		{method: "GET", path: APIPrefix + "/hosts/{id}/monitoring/diagnostics", auth: authed, perm: auth.PermMonitoringManage, h: s.handleHostDiagnostics},
 		{method: "POST", path: APIPrefix + "/hosts/{id}/monitoring/diagnostics", auth: authed, perm: auth.PermMonitoringManage, h: s.handleHostDiagnostics},
 		{method: "POST", path: APIPrefix + "/agents/conversions/preview", auth: authed, perm: auth.PermAgentsEnroll, h: s.handlePreviewConversion},
-		{method: "POST", path: APIPrefix + "/agents/conversions", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleStartConversion},
+		{method: "POST", path: APIPrefix + "/agents/conversions", auth: authed, perm: auth.PermAgentsEnroll, reauth: reauthShepherd, h: s.handleStartConversion},
 		{method: "POST", path: APIPrefix + "/hosts/{id}/network/snapshot", auth: authed, perm: auth.PermNetworkSnapshot, h: s.handleHostNetworkSnapshot},
 		{method: "GET", path: APIPrefix + "/firewall/propagation", auth: authed, perm: auth.PermFirewallRead, h: s.handleFirewallPropagation},
 
@@ -495,7 +504,7 @@ func (s *Server) wrapRoute(rt route) http.Handler {
 			writeProblem(w, r, errCSRF)
 			return
 		}
-		if (rt.sessionOnly || rt.reauth) && p.Kind != auth.KindSession {
+		if (rt.sessionOnly || rt.reauth != "") && p.Kind != auth.KindSession {
 			writeProblem(w, r, errForbidden("this endpoint requires an interactive session, not an API token"))
 			return
 		}
@@ -509,7 +518,7 @@ func (s *Server) wrapRoute(rt route) http.Handler {
 			return
 		}
 		r = r.WithContext(withPrincipal(r.Context(), p))
-		if rt.reauth && !s.requireReauth(w, r) {
+		if rt.reauth != "" && !s.requireReauth(w, r, rt.reauth) {
 			return
 		}
 		rt.h(w, r)

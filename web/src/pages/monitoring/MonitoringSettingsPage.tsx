@@ -14,6 +14,7 @@ import { HealthChecksCard, HealthOverridesCard } from "@/components/health/Globa
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ReadOnlyNote } from "@/components/ui/ReadOnlyNote";
 import { MonitoringTabs } from "./MonitoringTabs";
+import { ExpectedServicesCard } from "@/components/monitoring/ExpectedServices";
 
 export function MonitoringSettingsPage() {
   const { can } = useAuth();
@@ -46,6 +47,7 @@ export function MonitoringSettingsPage() {
         </ReadOnlyNote>
       )}
       <HealthChecksCard />
+      <ExpectedServicesCard scope="global" />
       <HealthOverridesCard />
       <h2 className="pt-2 text-sm font-semibold">Collection</h2>
       <Card title="Monitoring">

@@ -36,19 +36,25 @@ const EnvPrefix = "DROOL_"
 const DefaultPath = "/etc/drool/config.yaml"
 
 type Config struct {
-	Server    Server    `yaml:"server"`
-	DataDir   string    `yaml:"data_dir"`
-	Auth      Auth      `yaml:"auth"`
-	Setup     Setup     `yaml:"setup"`
-	Secrets   Secrets   `yaml:"secrets"`
-	Engine    Engine    `yaml:"engine"`
-	Poller    Poller    `yaml:"poller"`
-	Retention Retention `yaml:"retention"`
-	Logging   Logging   `yaml:"logging"`
-	Agent     Agent     `yaml:"agent"`
-	Network   Network   `yaml:"network"`
-	SSHCA     SSHCA     `yaml:"ssh_ca"`
-	Backup    Backup    `yaml:"backup"`
+	Server  Server `yaml:"server"`
+	DataDir string `yaml:"data_dir"`
+	// DataVolume names where data_dir comes from when it is a container
+	// volume (compose.yaml sets drool_drool-data), for messages only: a
+	// DROOL that starts without data says which volume it started in, so an
+	// installation pointed at a new, empty volume by mistake is noticed
+	// before anyone sets it up again. DROOL never looks data up by it.
+	DataVolume string    `yaml:"data_volume"`
+	Auth       Auth      `yaml:"auth"`
+	Setup      Setup     `yaml:"setup"`
+	Secrets    Secrets   `yaml:"secrets"`
+	Engine     Engine    `yaml:"engine"`
+	Poller     Poller    `yaml:"poller"`
+	Retention  Retention `yaml:"retention"`
+	Logging    Logging   `yaml:"logging"`
+	Agent      Agent     `yaml:"agent"`
+	Network    Network   `yaml:"network"`
+	SSHCA      SSHCA     `yaml:"ssh_ca"`
+	Backup     Backup    `yaml:"backup"`
 }
 
 // Backup configures backups DROOL makes by itself (M16).
@@ -151,7 +157,9 @@ type Auth struct {
 	SessionIdleTimeout     time.Duration `yaml:"session_idle_timeout"`
 	SessionAbsoluteTimeout time.Duration `yaml:"session_absolute_timeout"`
 	// ReauthWindow: how long confirming your password (and code) again
-	// lasts for high-impact actions (M16).
+	// lasts for high-impact actions (M16). 15 minutes since the final
+	// After-M17 batch: one confirmation covers a short administrative
+	// session instead of nagging every 5 minutes; the server stays the judge.
 	ReauthWindow time.Duration `yaml:"reauth_window"`
 }
 
@@ -233,7 +241,7 @@ func Defaults() Config {
 		Auth: Auth{
 			SessionIdleTimeout:     12 * time.Hour,
 			SessionAbsoluteTimeout: 7 * 24 * time.Hour,
-			ReauthWindow:           5 * time.Minute,
+			ReauthWindow:           15 * time.Minute,
 		},
 		Setup:  Setup{CodeTTL: time.Hour},
 		SSHCA:  SSHCA{CertTTL: 10 * time.Minute, ClockSkew: 5 * time.Minute},

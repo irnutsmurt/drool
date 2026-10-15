@@ -1,9 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/auth/AuthContext";
 import { searchDestinations, type SearchResult } from "@/lib/navsearch";
 import { SearchIcon } from "@/components/ui/icons";
 import { cx } from "@/components/ui/cx";
+import { isTopLayer, useModalLayer } from "@/components/ui/modal";
 import { destinations } from "./destinations";
 
 export const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
@@ -27,15 +29,12 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
+  const layer = useRef<HTMLDivElement>(null);
   const id = useId();
   const results = useMemo(() => searchDestinations(q, destinations, can), [q, can]);
 
   useEffect(() => setActive(0), [q]);
-  useEffect(() => {
-    const before = document.activeElement as HTMLElement | null;
-    input.current?.focus();
-    return () => before?.focus?.();
-  }, []);
+  useModalLayer(layer, () => input.current);
   useEffect(() => {
     list.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active]);
@@ -65,11 +64,11 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   };
 
   const optionId = (i: number) => `${id}-opt-${i}`;
-  return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-[var(--ui-backdrop)] p-2 sm:p-4 sm:pt-[10vh]" onMouseDown={onClose}>
+  return createPortal(
+    <div ref={layer} data-modal-layer="" className="fixed inset-0 flex items-start justify-center bg-[var(--ui-backdrop)] p-2 sm:p-4 sm:pt-[10vh]"
+      onMouseDown={(e) => { if (e.target === e.currentTarget && isTopLayer(layer.current)) onClose(); }}>
       <div role="dialog" aria-modal="true" aria-label="Go to a page or setting" data-testid="command-palette"
-        className="flex max-h-[calc(100dvh-1rem)] w-full max-w-xl flex-col overflow-hidden rounded-ui border border-line bg-surface shadow-lg sm:max-h-[70vh]"
-        onMouseDown={(e) => e.stopPropagation()}>
+        className="flex max-h-[calc(100dvh-1rem)] w-full max-w-xl flex-col overflow-hidden rounded-ui border border-line bg-surface shadow-lg sm:max-h-[70vh]">
         <div className="flex items-center gap-2 border-b border-line px-3">
           <SearchIcon className="shrink-0 text-muted" />
           <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey}
@@ -106,6 +105,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           ↑ ↓ to move · Enter to open · Esc to close · searches pages and settings, not hosts or runs
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

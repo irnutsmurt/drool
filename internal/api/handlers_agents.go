@@ -17,6 +17,7 @@ import (
 	"drool/internal/agentpki"
 	"drool/internal/agentsvc"
 	"drool/internal/audit"
+	"drool/internal/auth"
 	"drool/internal/model"
 	"drool/internal/release"
 	"drool/internal/store/db"
@@ -685,6 +686,66 @@ func (s *Server) handleInstallAgent(w http.ResponseWriter, r *http.Request) {
 		res.Error = err.Error()
 		s.d.Audit.Record(context.WithoutCancel(r.Context()), audit.Event{Action: "agent.install", TargetType: "host", TargetID: id,
 			Result: audit.Failure, Details: map[string]any{"preset": req.Preset, "error": err.Error()}})
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// handlePlanUninstallAgent says what removing the host's Shepherd would do,
+// read from the host over SSH as root; it changes nothing.
+func (s *Server) handlePlanUninstallAgent(w http.ResponseWriter, r *http.Request) {
+	if !s.agentsEnabled(w, r) {
+		return
+	}
+	plan, err := s.d.Agents.PlanUninstall(r.Context(), r.PathValue("id"))
+	if errors.Is(err, sql.ErrNoRows) {
+		writeProblem(w, r, errNotFound("host"))
+		return
+	}
+	if err != nil {
+		writeProblem(w, r, s.internalError(r, err))
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
+}
+
+// handleUninstallAgent removes the host's Shepherd over its SSH path, which
+// manages the host afterwards (agentsvc.UninstallViaSSH): agents.manage and
+// hosts.write (the management path changes), confirmed by a recent sign-in,
+// under the host's exclusive lock. A refusal (no SSH to fall back on, SSH
+// not working as root) changes nothing.
+func (s *Server) handleUninstallAgent(w http.ResponseWriter, r *http.Request) {
+	if !s.agentsEnabled(w, r) {
+		return
+	}
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if !principalFrom(ctx).Can(auth.PermHostsWrite) {
+		writeProblem(w, r, errForbidden("removing a Shepherd changes how DROOL manages the host, which also requires hosts.write"))
+		return
+	}
+	if _, err := s.d.Store.R.GetHost(ctx, id); err != nil {
+		writeProblem(w, r, errNotFound("host"))
+		return
+	}
+	release, ok := s.d.Engine.Locks().TryAcquire(id, "agent-uninstall", model.LockExclusive)
+	if !ok {
+		writeProblem(w, r, errConflict("host_busy", "a job is using this host right now; try again when it has finished"))
+		return
+	}
+	defer release()
+	uctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+	res, err := s.d.Agents.UninstallViaSSH(uctx, id, principalFrom(ctx).UserID)
+	var refused *agentsvc.ErrUninstallRefused
+	switch {
+	case errors.As(err, &refused):
+		s.d.Audit.Record(context.WithoutCancel(ctx), audit.Event{Action: "agent.uninstall", Result: audit.Denied, TargetType: "host", TargetID: id,
+			Details: map[string]any{"refused": refused.Code, "reason": refused.Msg}})
+		writeProblem(w, r, errConflict(refused.Code, refused.Msg))
+		return
+	case err != nil:
+		writeProblem(w, r, s.internalError(r, err))
+		return
 	}
 	writeJSON(w, http.StatusOK, res)
 }

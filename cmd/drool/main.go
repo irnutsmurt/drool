@@ -76,17 +76,18 @@ Commands:
   restore --recover     Put the previous installation back after an interrupted restore
   setup code            Issue a new one-time setup code for first-admin setup
   user create           Create a local user (prompts for password); recovery path
+  user set-password     Set a user's password and end their sessions (forgotten password); recovery path
   user mfa-reset        Turn off a user's two-factor authentication (lost authenticator); recovery path
   secrets rotate-key    Replace the master key: re-seal every stored secret with a new key version
-  agent-ca status       Agent PKI: root (online/offline), intermediate, trust manifest
-  agent-ca export-root  Write the Agent Root CA key and certificate for offline storage
+  agent-ca status       Shepherd PKI: Agent Root CA (online/offline), intermediate, trust manifest
+  agent-ca export-root  Write the Agent Root CA key and certificate for offline storage (shepherd-ca: the same)
   agent-ca remove-root  Remove the root private key from the controller (and future backups)
   agent-ca rotate       New intermediate CA and trust manifest (--root-key FILE, --revoke-old)
   agent-ca sign-manifest / import-manifest   Sign a trust manifest offline / import it
-  release keygen        Create an agent release-signing key pair (keep the private key offline)
-  release sign          Sign an agent binary: writes BINARY.release.json
+  release keygen        Create a Shepherd release-signing key pair (keep the private key offline)
+  release sign          Sign a Shepherd binary (drool-agent): writes BINARY.release.json
   release verify        Check a signed release against a public key
-  version [--json]      Print version information (release channel, commit, schema, agent protocol)
+  version [--json]      Print version information (release channel, commit, schema, Shepherd protocol)
 
 Configuration is read from built-in defaults, then the config file
 (default ` + config.DefaultPath + ` if present), then DROOL_* environment variables.
@@ -136,7 +137,7 @@ func run(args []string) error {
 		return cmdSetupCode(*cfgPath, explicit, rest[2:])
 	case "release":
 		return cmdRelease(rest[1:])
-	case "agent-ca":
+	case "agent-ca", "shepherd-ca":
 		return cmdAgentCA(*cfgPath, explicit, rest[1:])
 	case "secrets":
 		return cmdSecrets(*cfgPath, explicit, rest[1:])
@@ -146,8 +147,10 @@ func run(args []string) error {
 			return cmdUserCreate(*cfgPath, explicit, rest[2:])
 		case len(rest) >= 2 && rest[1] == "mfa-reset":
 			return cmdUserMFAReset(*cfgPath, explicit, rest[2:])
+		case len(rest) >= 2 && rest[1] == "set-password":
+			return cmdUserSetPassword(*cfgPath, explicit, rest[2:])
 		}
-		return errors.New("usage: drool user create --username NAME [--role admin] | drool user mfa-reset --username NAME")
+		return errors.New("usage: drool user create --username NAME [--role admin] | drool user set-password --username NAME | drool user mfa-reset --username NAME")
 	default:
 		global.Usage()
 		return fmt.Errorf("unknown command %q", rest[0])
@@ -356,6 +359,65 @@ func cmdUserMFAReset(path string, explicit bool, args []string) error {
 	return nil
 }
 
+// cmdUserSetPassword sets a user's password from the command line: the way
+// back for an administrator who forgot theirs (or for anyone, when no other
+// administrator can sign in). Shell access to the controller is the
+// authorization, as for mfa-reset; the change is audited without the
+// password, and the user's sessions end. Two-factor authentication stays as
+// it is (drool user mfa-reset turns it off).
+func cmdUserSetPassword(path string, explicit bool, args []string) error {
+	fs := flag.NewFlagSet("user set-password", flag.ContinueOnError)
+	username := fs.String("username", "", "username (required)")
+	pwStdin := fs.Bool("password-stdin", false, "read the new password from the first line of stdin")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *username == "" {
+		return errors.New("--username is required")
+	}
+	cfg, err := loadConfig(path, explicit)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	st, _, err := openStore(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	u, err := st.R.GetUserByUsername(ctx, *username)
+	if err != nil {
+		return fmt.Errorf("no user %q", *username)
+	}
+	password, err := readPassword(*pwStdin)
+	if err != nil {
+		return err
+	}
+	up := auth.UserUpdate{Password: &password}
+	if err := up.Prepare(); err != nil {
+		return err
+	}
+	svc := newAuthService(cfg, st)
+	actor := audit.Actor{Type: audit.ActorSystem, Name: "cli:" + currentOSUser()}
+	w := audit.NewWriter(st, logging.Discard().Audit)
+	err = st.InTx(ctx, func(q *db.Queries) error {
+		if _, err := svc.UpdateUserTx(ctx, q, nil, u.ID, up); err != nil {
+			return err
+		}
+		_, err := w.RecordTx(ctx, q, audit.Event{Action: "user.update", Actor: &actor, TargetType: "user", TargetID: u.ID,
+			Details: map[string]any{"username": u.Username, "changes": []string{"password"}, "sessions_revoked": true, "via": "cli"}})
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Password set for %s; their sessions were ended.\n", u.Username)
+	if u.Disabled != 0 {
+		fmt.Printf("%s is disabled: an administrator enables the account under Settings → Users.\n", u.Username)
+	}
+	return nil
+}
+
 func readPassword(fromStdin bool) (string, error) {
 	if fromStdin || !term.IsTerminal(int(os.Stdin.Fd())) {
 		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
@@ -480,6 +542,23 @@ func cmdServe(path string, explicit bool) error {
 	} else if created {
 		log.Info("generated controller SSH key", "credential", secrets.ControllerKeyName)
 	}
+	// Setup-only credentials no host signs in with (left by hosts removed or
+	// edited before DROOL forgot them by itself) are deleted, audited; a
+	// setup in progress keeps its host's.
+	if err := st.InTx(ctx, func(q *db.Queries) error {
+		forgot, err := secretSvc.ForgetUnusedTemporaryTx(ctx, q)
+		for _, c := range forgot {
+			if _, err := auditW.RecordTx(ctx, q, audit.Event{Action: "credential.delete", Actor: &audit.System, TargetType: "credential", TargetID: c.ID,
+				Details: map[string]any{"name": c.Name, "kind": c.Kind, "temporary": true,
+					"reason": "entered to set up DROOL's own SSH account on a host; no host uses it any more"}}); err != nil {
+				return err
+			}
+			log.Info("deleted an unused setup-only credential", "credential", c.Name)
+		}
+		return err
+	}); err != nil {
+		log.Warn("deleting unused setup-only credentials", "err", err)
+	}
 	dialer := &sshx.Dialer{}
 	pool := sshx.NewPool(dialer)
 	defer pool.Close()
@@ -507,18 +586,18 @@ func cmdServe(path string, explicit bool) error {
 	if errors.Is(err, agentsvc.ErrPKIUnusable) {
 		// After a restore without the master key: SSH management keeps
 		// working; the agent endpoint waits for a new intermediate.
-		logs.Security.Error("agent endpoint disabled: " + err.Error())
+		logs.Security.Error("Shepherd endpoint disabled: " + err.Error())
 		agentsOK = false
 	} else if err != nil {
-		return fmt.Errorf("agent PKI: %w (if the master key was replaced, restore the original key file)", err)
+		return fmt.Errorf("Shepherd PKI: %w (if the master key was replaced, restore the original key file)", err)
 	}
 	if agentsOK && pkiCreated {
-		log.Info("created the DROOL Agent PKI (root and intermediate CA, trust manifest 1)", "root", pki.RootFingerprint())
+		log.Info("created the Shepherd PKI (Agent Root CA, intermediate CA, trust manifest 1)", "root", pki.RootFingerprint())
 		_ = auditW.Record(ctx, audit.Event{Action: "agent_ca.create", Actor: &audit.System,
 			Details: map[string]any{"root_fingerprint": pki.RootFingerprint()}})
 	}
 	if agentsOK && pki.RootOnline() {
-		logs.Security.Warn("the Agent Root CA private key is stored on this controller; export it to offline storage and remove it (Agents → Trust in the web UI, or `drool agent-ca export-root` then `drool agent-ca remove-root`)")
+		logs.Security.Warn("the Agent Root CA private key is stored on this controller; export it to offline storage and remove it (Shepherds → Trust (PKI) in the web UI, or `drool agent-ca export-root` then `drool agent-ca remove-root`)")
 	}
 	var agents *agentsvc.Service
 	if agentsOK {
@@ -626,7 +705,7 @@ func cmdServe(path string, explicit bool) error {
 		if agents.EndpointsConfigured() {
 			connect = strings.Join(agents.Endpoints(""), ", ")
 		}
-		log.Info("agent endpoint listening", "listen", agentAddr, "shepherds_connect_to", connect, "root_ca", pki.RootFingerprint())
+		log.Info("Shepherd endpoint listening", "listen", agentAddr, "shepherds_connect_to", connect, "root_ca", pki.RootFingerprint())
 	}
 	go poll.Run(ctx)
 	go fw.Run(ctx)

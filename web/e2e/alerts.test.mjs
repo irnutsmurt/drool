@@ -7,7 +7,7 @@
 import { test, after, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { api, base, click, fill, launch, session, shot, sleep, tabTo, text, waitFor, waitText } from "./lib.mjs";
+import { api, base, click, field, fill, launch, session, shot, sleep, tabTo, text, waitFor, waitText } from "./lib.mjs";
 
 let browser;
 let page;
@@ -165,6 +165,40 @@ test("notifications: empty state, add a webhook, test it, save; advanced routing
   // The links in notifications point here (set from the browser).
   const s = (await api(page, "GET", "/notifications/settings")).body.settings;
   assert.equal(s.link_base_url, new URL(base).origin);
+  assert.deepEqual(page.errors, []);
+});
+
+test("notifications: a Telegram destination: setup steps, a write-only token, a safe summary", async () => {
+  // A made-up token. Nothing is sent from the browser tests (no Send test,
+  // no route to it): sending is covered against a fake Bot API in the API
+  // tests.
+  const token = "7012345678:example-only-not-a-real-bot-token-222222";
+  const secretPart = token.split(":")[1];
+  await go("/settings/notifications");
+  await click(page, "button", "Add destination");
+  await page.evaluate(() => [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.firstElementChild?.textContent === "Telegram").click());
+  await waitFor(page, async () => !!(await page.$('[data-testid="telegram-steps"]')), "setup steps");
+  assert.match(await page.$eval('[data-testid="telegram-steps"]', (e) => e.innerText), /@BotFather[\s\S]*\/newbot[\s\S]*chat ID[\s\S]*don.t share it/);
+  await fill(page, "Name", "Ops Telegram");
+  await fill(page, "Bot token", token);
+  await fill(page, "Chat ID", "-1001234567890");
+  await fill(page, "Topic ID (optional)", "7");
+  await (await field(page, "Notify for")).select("custom");
+  assert.equal(await (await field(page, "Bot token")).evaluate((x) => x.type), "password", "the token field is masked");
+  await shot(page, "destination-telegram");
+  await click(page, '[role="dialog"] button[type="submit"]', "Save");
+  await waitText(page, "Chat -1001234567890, topic 7 · bot token •••••••");
+  assert.ok(!(await text(page)).includes(secretPart), "the token is never shown");
+  const d = (await api(page, "GET", "/notifications/destinations")).body.destinations.find((x) => x.name === "Ops Telegram");
+  assert.ok(d.secrets_set.bot_token && !d.config.url_display && !JSON.stringify(d).includes(secretPart), JSON.stringify(d));
+  // Editing: the token is kept unless replaced, and never filled in.
+  await page.evaluate(() => [...document.querySelectorAll("li")].find((l) => l.innerText.includes("Ops Telegram"))?.querySelectorAll("button").forEach((b) => b.textContent === "Edit" && b.click()));
+  await waitFor(page, async () => !!(await page.$('[data-testid="telegram-steps"]')), "edit dialog");
+  const tokenField = await field(page, "Bot token");
+  assert.equal(await tokenField.evaluate((x) => x.value), "");
+  assert.match(await tokenField.evaluate((x) => x.placeholder), /unchanged/);
+  await page.keyboard.press("Escape");
+  await api(page, "DELETE", `/notifications/destinations/${d.id}`);
   assert.deepEqual(page.errors, []);
 });
 

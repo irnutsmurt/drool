@@ -78,7 +78,8 @@ export function SSHSignIn({ host }: { host: Host }) {
       {temporary.length > 0 && (
         <Alert tone="warn">
           DROOL still signs in to {host.name} as {host.user} with details entered only to set up its own account
-          ({temporary.map((c) => c.name).join(", ")}). Set up DROOL's account to finish: DROOL then forgets them.
+          ({temporary.map((c) => c.name).join(", ")}). Set up DROOL's account to finish: DROOL then forgets them. Not going to finish? Removing the host,
+          or choosing another credential for it, makes DROOL forget them too (unless another host uses them).
         </Alert>
       )}
       {canSetUp && (

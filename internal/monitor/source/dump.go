@@ -41,7 +41,7 @@ func Merge(specs ...Spec) Spec {
 // tests) prefixes every path.
 func (s Spec) Script(root string) string {
 	var b strings.Builder
-	b.WriteString("set +e\nexport LC_ALL=C\n")
+	b.WriteString("set +e\nexport LC_ALL=C\n" + errFile)
 	fmt.Fprintf(&b, "R=%s\n", hostops.ShQuote(root))
 	b.WriteString("printf '@@DROOL-MONITOR 1\\n'\n")
 	b.WriteString("printf '@@FILES\\n'\n")
@@ -72,9 +72,17 @@ func (s Spec) Script(root string) string {
 			writeCommand(&b, c[0], c[1:])
 		}
 	}
-	b.WriteString("printf '\\n@@END\\n'\n")
+	b.WriteString(errFileDone + "printf '\\n@@END\\n'\n")
 	return b.String()
 }
+
+// errFile: a temporary file for each command's error output, whose first
+// two lines travel as "@@ERR" (a command that failed says why, e.g. systemctl
+// on a host without a D-Bus system bus); without mktemp nothing is kept.
+const (
+	errFile     = "E=$(mktemp 2>/dev/null) || E=/dev/null\n"
+	errFileDone = "[ \"$E\" = /dev/null ] || rm -f \"$E\"\n"
+)
 
 func uniq(s []string) []string {
 	seen := map[string]bool{}
@@ -125,7 +133,9 @@ func writeCommand(b *strings.Builder, tool string, args []string) {
 	fmt.Fprintf(b, "printf '\\n@@CMD %%s\\n' %s\n", hostops.ShQuote(key))
 	// The helper's own exit status (smartctl's is a bit mask), not head's:
 	// it travels on fd 4 into rc while the output goes through head to fd 3.
-	fmt.Fprintf(b, "if command -v %s >/dev/null 2>&1; then { rc=$( { { timeout 60 %s %s 2>/dev/null; echo $? >&4; } | head -c %d >&3; } 4>&1 ); } 3>&1; printf '\\n@@EXIT %%s\\n' \"$rc\"; else printf '\\n@@EXIT 127\\n'; fi\n",
+	// The first two lines of its error output follow as "@@ERR".
+	fmt.Fprintf(b, "if command -v %s >/dev/null 2>&1; then { rc=$( { { timeout 60 %s %s 2>\"$E\"; echo $? >&4; } | head -c %d >&3; } 4>&1 ); } 3>&1; printf '\\n@@EXIT %%s\\n' \"$rc\"; "+
+		"if [ \"$E\" != /dev/null ] && [ -s \"$E\" ]; then printf '@@ERR %%s\\n' \"$(head -n 2 \"$E\" | tr '\\n' ' ' | cut -c 1-300)\"; : > \"$E\"; fi; else printf '\\n@@EXIT 127\\n'; fi\n",
 		tool, tool, strings.Join(q, " "), 1<<20)
 }
 
@@ -134,7 +144,7 @@ func writeCommand(b *strings.Builder, tool string, args []string) {
 // in Allowed with checked arguments; mounts are quoted.
 func SecondPass(cmds [][]string, mounts []string, root string) (string, error) {
 	var b strings.Builder
-	b.WriteString("set +e\nexport LC_ALL=C\nprintf '@@DROOL-MONITOR 1\\n'\n")
+	b.WriteString("set +e\nexport LC_ALL=C\n" + errFile + "printf '@@DROOL-MONITOR 1\\n'\n")
 	for _, c := range cmds {
 		if err := CheckArgs(c[0], c[1:]); err != nil {
 			return "", err
@@ -149,7 +159,7 @@ func SecondPass(cmds [][]string, mounts []string, root string) (string, error) {
 		// One stat for all mounts; %n last so names with spaces parse.
 		fmt.Fprintf(&b, "printf '\\n@@STATFS\\n'\ntimeout 20 stat -f -c '%%b %%f %%a %%S %%c %%d %%n' -- %s 2>/dev/null\n", strings.Join(q, " "))
 	}
-	b.WriteString("printf '\\n@@END\\n'\n")
+	b.WriteString(errFileDone + "printf '\\n@@END\\n'\n")
 	return b.String(), nil
 }
 
@@ -290,6 +300,10 @@ func (d *Dump) parseCommands(b []byte) {
 			if i+1 < len(parts) && bytes.HasPrefix(parts[i+1], []byte("EXIT ")) {
 				code, _ := strconv.Atoi(strings.TrimSpace(string(parts[i+1][5:])))
 				r.Exit = code
+				i++
+			}
+			if i+1 < len(parts) && bytes.HasPrefix(parts[i+1], []byte("ERR ")) {
+				r.Stderr = bytes.TrimSpace(parts[i+1][4:])
 				i++
 			}
 			if code := r.Exit; code == 124 {

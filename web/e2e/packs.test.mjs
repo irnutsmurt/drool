@@ -83,3 +83,40 @@ test("create an empty pack, then manage its hosts", async () => {
   await waitText(page, `${name} (0 hosts)`);
   assert.deepEqual(page.errors, []);
 });
+
+// Deleting a pack something still uses (final After-M17 batch): the dialog
+// lists what uses it and where to change it, and offers no Delete; once that
+// is changed, it says what goes with the pack, and deleting keeps the hosts.
+test("deleting a pack that is still in use", async () => {
+  const hosts = (await api(page, "GET", "/hosts")).body.items;
+  const nas = hosts.find((h) => h.name === "nas-01").id;
+  const pack = (await api(page, "POST", "/groups", { name: `${name}-del`, description: "to delete" })).body;
+  await api(page, "POST", `/groups/${pack.id}/members`, { host_ids: [nas] });
+  const ov = (await api(page, "PUT", "/monitoring/health/overrides", { scope: "group", group_id: pack.id, check: "cpu", fields: { warning: 80 } })).body;
+  assert.ok(ov.override?.id, JSON.stringify(ov));
+
+  await page.goto(base + `/groups/${pack.id}`, { waitUntil: "networkidle0" });
+  await click(page, "main button", "Delete pack");
+  await page.waitForSelector('[data-testid="delete-pack"]');
+  await waitText(page, "is still in use, so DROOL won't delete it");
+  const blocked = await page.$eval('[data-testid="delete-pack"]', (d) => d.innerText);
+  assert.ok(blocked.includes("Monitoring setting: High CPU utilization") && blocked.includes("Reset it to inherited"), blocked);
+  assert.ok(!(await page.$$eval('[data-testid="delete-pack"] button', (bs) => bs.map((b) => b.textContent))).includes("Delete pack"), "no Delete while in use");
+  await shot(page, "pack-delete-in-use");
+  // The server refuses too, whatever the browser does.
+  assert.equal((await api(page, "DELETE", `/groups/${pack.id}`)).status, 409);
+  await click(page, '[data-testid="delete-pack"] button', "Close");
+
+  // Changed: now it can go, and the dialog says what goes with it.
+  await api(page, "DELETE", `/monitoring/health/overrides/${ov.override.id}`);
+  await click(page, "main button", "Delete pack");
+  await waitText(page, "Nothing else uses");
+  const free = await page.$eval('[data-testid="delete-pack"]', (d) => d.innerText);
+  assert.ok(free.includes("1 host leaves the Pack; the hosts stay in DROOL") && free.includes("No host is deleted"), free);
+  await shot(page, "pack-delete");
+  await click(page, '[data-testid="delete-pack"] button', "Delete pack");
+  await waitFor(page, async () => page.url().endsWith("/groups"), "back on the packs page");
+  assert.equal((await api(page, "GET", `/groups/${pack.id}`)).status, 404);
+  assert.equal((await api(page, "GET", `/hosts/${nas}`)).status, 200);
+  assert.deepEqual(page.errors, []);
+});

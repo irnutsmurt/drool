@@ -17,8 +17,8 @@ func linuxExec(cmd string, _ []byte) (string, string, int) {
 		return "", "", 0
 	case cmd == "uname -sr":
 		return "Linux 6.8.0-test\n", "", 0
-	case strings.HasPrefix(cmd, "test -d /run/systemd/system"):
-		return "systemd\n", "", 0
+	case strings.Contains(cmd, "sdstate()") && strings.HasSuffix(strings.TrimSpace(cmd), `"$(cat /proc/1/comm 2>/dev/null)"`):
+		return "running systemd\n", "", 0 // the init system step: PID 1 is systemd
 	}
 	return "", "unexpected: " + cmd, 127
 }

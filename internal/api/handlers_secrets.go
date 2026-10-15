@@ -160,7 +160,7 @@ func (s *Server) handleUpdateSecret(w http.ResponseWriter, r *http.Request) {
 					len(users), strings.Join(names, ", "))))
 				return
 			}
-			if !s.requireReauth(w, r) {
+			if !s.requireReauth(w, r, reauthCredential) {
 				return
 			}
 		}

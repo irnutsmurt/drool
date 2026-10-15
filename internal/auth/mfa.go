@@ -351,11 +351,15 @@ func (s *Service) RecentlyAuthenticated(p *Principal) bool {
 	return s.opts.Now().UnixMilli()-p.ReauthAt <= s.reauthWindow().Milliseconds()
 }
 
+// DefaultReauthWindow is how long a confirmation lasts unless configured
+// (auth.reauth_window).
+const DefaultReauthWindow = 15 * time.Minute
+
 func (s *Service) reauthWindow() time.Duration {
 	if s.opts.ReauthWindow > 0 {
 		return s.opts.ReauthWindow
 	}
-	return 5 * time.Minute
+	return DefaultReauthWindow
 }
 
 // ReauthWindow is how long a confirmation lasts.

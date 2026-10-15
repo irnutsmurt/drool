@@ -61,6 +61,9 @@ type composeProject struct {
 func newComposeProject(t *testing.T, image, composeFile, suffix string) *composeProject {
 	t.Helper()
 	p := &composeProject{t: t, dir: t.TempDir(), name: "drool-it-" + runID + "-" + suffix, image: image, webPort: freePort()}
+	// Every test installation has a data volume of its own, never the
+	// default drool_drool-data a real installation here could use.
+	p.env = []string{"DROOL_INSTANCE=" + p.name}
 	b, err := os.ReadFile(composeFile)
 	if err != nil {
 		t.Fatal(err)

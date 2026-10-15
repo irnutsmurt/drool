@@ -66,14 +66,21 @@ func (k OverrideKey) Validate() error {
 	if !ok {
 		return fmt.Errorf("%w: unknown check %q", ErrBadOverride, k.Check)
 	}
+	// A service (a unit name) means the same on every host, so a service
+	// may be set for a group's hosts or for every host too; other subjects
+	// are per host.
+	service := spec.Subject == SubjectService && strings.HasPrefix(k.Subject, "unit:") && validSubjectKey(k.Check, k.Subject)
+	if k.Check == CheckServiceExpected && k.Subject == "" {
+		return fmt.Errorf("%w: the expected state is set for one service (subject unit:NAME)", ErrBadOverride)
+	}
 	switch k.Scope {
 	case ScopeGlobal:
-		if k.GroupID != "" || k.HostID != "" || k.Subject != "" {
-			return fmt.Errorf("%w: a global override has no group, host or subject", ErrBadOverride)
+		if k.GroupID != "" || k.HostID != "" || k.Subject != "" && !service {
+			return fmt.Errorf("%w: a global override names no group or host, and only a service as its subject", ErrBadOverride)
 		}
 	case ScopeGroup:
-		if k.GroupID == "" || k.HostID != "" || k.Subject != "" {
-			return fmt.Errorf("%w: a group override names a group (subjects are per host)", ErrBadOverride)
+		if k.GroupID == "" || k.HostID != "" || k.Subject != "" && !service {
+			return fmt.Errorf("%w: a group override names a group, and only a service as its subject (other subjects are per host)", ErrBadOverride)
 		}
 	case ScopeHost:
 		if k.HostID == "" || k.GroupID != "" {
@@ -269,7 +276,6 @@ func (p *policy) with(k OverrideKey, fields Fields) *policy {
 		}
 		return np
 	}
-	np.watched = p.watched
 	found := false
 	for _, o := range p.rows {
 		if o.Scope == k.Scope && o.GroupID == k.GroupID && o.HostID == k.HostID && o.Check == k.Check && o.Subject == k.Subject {
@@ -476,6 +482,9 @@ func (s *Service) GlobalView(ctx context.Context) HealthView {
 	p := s.eval.current(ctx)
 	v := HealthView{Scope: ScopeGlobal, Checks: []EffectiveCheck{}}
 	for _, spec := range checkSpecs {
+		if spec.ID == CheckServiceExpected {
+			continue // set per service, never fleet-wide (ExpectedServices lists them)
+		}
 		var id string
 		if o, ok := (OverrideKey{Scope: ScopeGlobal, Check: spec.ID}).find(p); ok {
 			id = o.ID
@@ -503,6 +512,9 @@ func (s *Service) GroupView(ctx context.Context, groupID string) (HealthView, er
 	np.members[pseudo] = []string{groupID}
 	v := HealthView{Scope: ScopeGroup, GroupID: groupID, Checks: []EffectiveCheck{}}
 	for _, spec := range checkSpecs {
+		if spec.ID == CheckServiceExpected {
+			continue // set per service (ExpectedServices lists them)
+		}
 		var id string
 		if o, ok := (OverrideKey{Scope: ScopeGroup, GroupID: groupID, Check: spec.ID}).find(p); ok {
 			id = o.ID
@@ -543,7 +555,7 @@ func (s *Service) HostView(ctx context.Context, hostID, check, subject string) (
 	if subject == "" {
 		v.Subjects = subjects
 		for _, spec := range checkSpecs {
-			if check != "" && spec.ID != check {
+			if check != "" && spec.ID != check || spec.ID == CheckServiceExpected {
 				continue
 			}
 			var id string
@@ -566,8 +578,8 @@ func (s *Service) HostView(ctx context.Context, hostID, check, subject string) (
 	v.Subject = sub
 	sc, hw := s.subjectCtxFor(hostID, *sub)
 	for _, c := range sub.Checks {
-		if check != "" && c != check {
-			continue
+		if check != "" && c != check || c == CheckServiceExpected && check == "" {
+			continue // the expected state has its own control (Services, a pack's page)
 		}
 		var id string
 		if o, ok := (OverrideKey{Scope: ScopeHost, HostID: hostID, Check: c, Subject: subject}).find(p); ok {
@@ -619,7 +631,11 @@ func (s *Service) hostSubjectList(ctx context.Context, p *policy, hostID string)
 		active[k] = true
 	}
 	hs := s.HostSettings(ctx, hostID)
-	subs := hostSubjects(st, rep, units, p.watched[hostID], hs.ProbeMounts, active)
+	watched := map[string]bool{} // every unit with an expected state is a subject
+	for _, u := range p.expectedUnits(hostID) {
+		watched[u] = true
+	}
+	subs := hostSubjects(st, rep, units, watched, hs.ProbeMounts, active)
 	idx := map[string]int{}
 	for i, x := range subs {
 		idx[x.Key] = i
@@ -696,6 +712,13 @@ func weaker(a, b map[string]Resolved) bool {
 	}
 	if x, ok := val(a, FieldEnabled); ok {
 		if y, _ := val(b, FieldEnabled); x != 0 && y == 0 {
+			return true
+		}
+	}
+	// Ignoring a service turns its checks off; expecting it running or
+	// stopped (or nothing) is an operator's call, as watching was.
+	if x, _ := val(a, FieldExpected); x != ExpectIgnored {
+		if y, _ := val(b, FieldExpected); y == ExpectIgnored {
 			return true
 		}
 	}
@@ -1071,6 +1094,63 @@ func (s *Service) migrateLegacy(ctx context.Context) {
 		})
 		if err != nil {
 			s.log.Warn("move a host's disabled checks into overrides", "host", l.host, "err", err)
+		}
+	}
+	s.migrateWatched(ctx)
+}
+
+// migrateWatched turns watch lists left in host settings (written before
+// the final After-M17 batch, which migration 0023 converts on upgrade, or
+// restored from such a backup) into "expected running" settings.
+func (s *Service) migrateWatched(ctx context.Context) {
+	rows, err := s.d.Store.Reader.QueryContext(ctx, `SELECT host_id, settings_json FROM mon_host_settings WHERE settings_json LIKE '%"watched_services":%'`)
+	if err != nil {
+		return
+	}
+	type legacy struct {
+		host    string
+		raw     map[string]json.RawMessage
+		watched []string
+	}
+	var ls []legacy
+	for rows.Next() {
+		var h, j string
+		if rows.Scan(&h, &j) != nil {
+			continue
+		}
+		var raw map[string]json.RawMessage
+		var w struct {
+			Watched []string `json:"watched_services"`
+		}
+		if json.Unmarshal([]byte(j), &raw) != nil || json.Unmarshal([]byte(j), &w) != nil {
+			continue
+		}
+		ls = append(ls, legacy{h, raw, w.Watched})
+	}
+	rows.Close()
+	for _, l := range ls {
+		err := s.d.Store.InRawTx(ctx, func(tx *sql.Tx) error {
+			for _, u := range l.watched {
+				k := OverrideKey{Scope: ScopeHost, HostID: l.host, Check: CheckServiceExpected, Subject: "unit:" + u}
+				if k.Validate() != nil {
+					continue
+				}
+				f := Fields{}
+				if o, ok := findTx(ctx, tx, k); ok {
+					f = o.Fields.clone()
+				}
+				f[FieldExpected] = ExpectRunning
+				if _, _, err := s.PutOverrideTx(ctx, tx, k, f, u, "", s.now().UnixMilli()); err != nil {
+					return err
+				}
+			}
+			delete(l.raw, "watched_services")
+			b, _ := json.Marshal(l.raw)
+			_, err := tx.ExecContext(ctx, `UPDATE mon_host_settings SET settings_json = ? WHERE host_id = ?`, string(b), l.host)
+			return err
+		})
+		if err != nil {
+			s.log.Warn("move a host's watched services into expected states", "host", l.host, "err", err)
 		}
 	}
 }

@@ -35,6 +35,9 @@ PublishPort=9443:9443
 #Environment=DROOL_AGENT_PUBLIC_PORT=2043
 #Environment=DROOL_SERVER_PUBLIC_PORT=8443
 Volume=drool-data:/data
+# The volume's name, for DROOL's messages: a DROOL that starts without data
+# says which volume it started in.
+Environment=DROOL_DATA_VOLUME=drool-data
 ReadOnly=true
 Tmpfs=/tmp
 DropCapability=ALL

@@ -1,5 +1,6 @@
 // Package notify delivers alert notifications (M12): email over SMTP,
-// generic JSON webhooks, Discord and Slack incoming webhooks. It knows
+// generic JSON webhooks, Discord and Slack incoming webhooks, and Telegram
+// bots (final After-M17 batch). It knows
 // nothing about alert state: callers hand it a Message and a destination,
 // and it reports how the attempt ended, classified so the outbox can tell
 // a misconfiguration (permanent) from an outage (transient).
@@ -23,14 +24,15 @@ import (
 
 // Destination kinds.
 const (
-	KindEmail   = "email"
-	KindWebhook = "webhook"
-	KindDiscord = "discord"
-	KindSlack   = "slack"
+	KindEmail    = "email"
+	KindWebhook  = "webhook"
+	KindDiscord  = "discord"
+	KindSlack    = "slack"
+	KindTelegram = "telegram"
 )
 
 // Kinds lists the built-in providers.
-var Kinds = []string{KindEmail, KindWebhook, KindDiscord, KindSlack}
+var Kinds = []string{KindEmail, KindWebhook, KindDiscord, KindSlack, KindTelegram}
 
 // Email security modes.
 const (
@@ -62,7 +64,12 @@ type Config struct {
 	// Webhook: the header that carries the optional secret value.
 	HeaderName string `json:"header_name,omitempty"`
 	// Webhook, Discord, Slack: where the (secret) URL points, for display.
+	// Never set for Telegram: its request URL contains the bot token.
 	URLDisplay string `json:"url_display,omitempty"`
+	// Telegram: the chat (a number such as -1001234567890, or @channel)
+	// and, in a group with topics, the topic.
+	ChatID   string `json:"chat_id,omitempty"`
+	ThreadID int64  `json:"thread_id,omitempty"`
 	// Request timeout in seconds (all kinds; default 10, at most 30).
 	TimeoutS int `json:"timeout_s,omitempty"`
 }
@@ -73,6 +80,7 @@ type Secrets struct {
 	URL         string `json:"url,omitempty"`          // webhook, Discord, Slack
 	HeaderValue string `json:"header_value,omitempty"` // webhook (e.g. "Bearer …")
 	Password    string `json:"password,omitempty"`     // email
+	BotToken    string `json:"bot_token,omitempty"`    // Telegram
 }
 
 // values lists the non-empty secret strings (for redaction).
@@ -83,6 +91,7 @@ func (s Secrets) values() []string {
 			out = append(out, v)
 		}
 	}
+	out = append(out, tokenForms(s.BotToken)...)
 	if u, err := url.Parse(s.URL); err == nil && s.URL != "" {
 		// Parts of the URL show up separately in some errors.
 		for _, p := range []string{u.Path, u.RawQuery, u.EscapedPath()} {
@@ -117,8 +126,8 @@ func Normalize(kind string, c *Config, s *Secrets) (warnings []string, err error
 	}
 	switch kind {
 	case KindEmail:
-		c.HeaderName, c.URLDisplay = "", ""
-		s.URL, s.HeaderValue = "", ""
+		c.HeaderName, c.URLDisplay, c.ChatID, c.ThreadID = "", "", "", 0
+		s.URL, s.HeaderValue, s.BotToken = "", "", ""
 		c.Host = strings.TrimSpace(c.Host)
 		if c.Host == "" || strings.ContainsAny(c.Host, " /\r\n") || len(c.Host) > 253 {
 			return nil, cfgErr("SMTP server: enter a host name or address")
@@ -175,9 +184,17 @@ func Normalize(kind string, c *Config, s *Secrets) (warnings []string, err error
 			}
 		}
 		c.To = to
+	case KindTelegram:
+		c.Host, c.Port, c.Security, c.Username, c.From, c.To, c.AllowPlaintext = "", 0, "", "", "", nil, false
+		c.HeaderName, c.URLDisplay = "", ""
+		s.URL, s.HeaderValue, s.Password = "", "", ""
+		if err := normalizeTelegram(c, s); err != nil {
+			return nil, err
+		}
 	case KindWebhook, KindDiscord, KindSlack:
 		c.Host, c.Port, c.Security, c.Username, c.From, c.To, c.AllowPlaintext = "", 0, "", "", "", nil, false
-		s.Password = ""
+		c.ChatID, c.ThreadID = "", 0
+		s.Password, s.BotToken = "", ""
 		u, err := checkURL(s.URL)
 		if err != nil {
 			return nil, err
@@ -214,7 +231,7 @@ func Normalize(kind string, c *Config, s *Secrets) (warnings []string, err error
 		}
 		c.URLDisplay = u.Scheme + "://" + u.Host + "/…"
 	default:
-		return nil, cfgErr("kind must be email, webhook, discord or slack")
+		return nil, cfgErr("kind must be email, webhook, discord, slack or telegram")
 	}
 	return warnings, nil
 }

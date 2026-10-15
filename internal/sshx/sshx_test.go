@@ -413,27 +413,41 @@ func TestCancelKeepsHealthyConnection(t *testing.T) {
 
 // --- connections authenticated with certificates (JIT SSH) ---
 
-// testClock is the pool's clock in the certificate tests; the servers'
-// clocks follow it, so a certificate issued "now" is valid for them too.
+// testClock is the pool's and the certificate issuer's clock in the
+// certificate tests. It stands still and moves only by advance, and it
+// starts on a whole second: certificates carry their validity in whole
+// seconds, so the expiry boundaries the tests probe (one second either side
+// of the reuse margin) are exact however long a run takes. A clock that
+// followed real time lost up to a second to that rounding, and a slow run
+// (-race, load) crossed the boundary early (ARCHITECTURE-ALPHA §35 #9). The
+// servers judge certificates by real time shifted to the clock's instant.
 type testClock struct {
 	mu   sync.Mutex
-	off  time.Duration
+	t    time.Time
 	srvs []*sshtest.Server
 }
 
-func newTestClock(srvs ...*sshtest.Server) *testClock { return &testClock{srvs: srvs} }
+func newTestClock(srvs ...*sshtest.Server) *testClock {
+	c := &testClock{t: time.Now().Truncate(time.Second), srvs: srvs}
+	c.syncServers()
+	return c
+}
 
 func (c *testClock) now() time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return time.Now().Add(c.off)
+	return c.t
 }
 
 func (c *testClock) advance(d time.Duration) {
 	c.mu.Lock()
-	c.off += d
-	off := c.off
+	c.t = c.t.Add(d)
 	c.mu.Unlock()
+	c.syncServers()
+}
+
+func (c *testClock) syncServers() {
+	off := time.Until(c.now())
 	for _, s := range c.srvs {
 		s.SetClockSkew(off)
 	}

@@ -181,6 +181,18 @@ func poll(ctx context.Context, run, runRoot Runner, root string, nowMs int64, pr
 	if smart && runRoot != nil {
 		d.Forget(storage.JournalCommand[0], storage.JournalCommand[1:]...) // read the kernel log as root
 	}
+	// An account that can't ask systemd (no D-Bus system bus, e.g. DietPi)
+	// gets the services read as root with the hourly root pass; routine
+	// polls never use sudo, and keep the last list meanwhile (PollSSH).
+	servicesAsRoot, servicesWhy := false, ""
+	if smart && runRoot != nil {
+		if need, why := services.NeedsRoot(ctx, d); need {
+			for _, c := range services.Commands {
+				d.Forget(c[0], c[1:]...)
+			}
+			servicesAsRoot, servicesWhy = true, why
+		}
+	}
 	var res *Result
 	for pass := 0; pass < 3; pass++ {
 		if pass == 2 {
@@ -202,6 +214,11 @@ func poll(ctx context.Context, run, runRoot Runner, root string, nowMs int64, pr
 		if err := d.AddPass(more); err != nil {
 			return nil, err
 		}
+	}
+	if servicesAsRoot && res.Services != nil && res.Services.Supported {
+		res.Services.ReadAsRoot = true
+		res.Services.Note = "Read as root with the hourly storage check: as the account DROOL signs in with, systemctl can't reach systemd on this host (" +
+			servicesWhy + "). Installing dbus on the host, or a Shepherd, gives live service status."
 	}
 	return res, nil
 }

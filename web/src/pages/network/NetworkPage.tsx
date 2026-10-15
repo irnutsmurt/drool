@@ -13,12 +13,15 @@ import { cx } from "@/components/ui/cx";
 import { errorMessage, formatBytes, formatDateTime } from "@/lib/format";
 import { FlowFilters } from "@/components/network/FlowFilters";
 import { FlowTable } from "@/components/network/FlowTable";
+import { ClassifyDialog } from "@/components/network/ClassifyDialog";
 import {
-  filterFromParams, filterToParams, nk, useNetFacets, useNetSettings, useNetSummary, type NetFilter, type NetSettings,
+  filterFromParams, filterToParams, nk, useNetFacets, useNetRules, useNetSettings, useNetSummary, type NetFilter, type NetRule, type NetSettings,
 } from "@/components/network/queries";
+import { Dialog } from "@/components/ui/Dialog";
 
 const tabs = [
   { id: "activity", label: "Connections" },
+  { id: "classifications", label: "Classifications" },
   { id: "settings", label: "Collection and enrichment" },
 ] as const;
 
@@ -26,7 +29,7 @@ const tabs = [
 export function NetworkPage() {
   const { can } = useAuth();
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") === "settings" ? "settings" : "activity";
+  const tab = tabs.find((t) => t.id === params.get("tab"))?.id ?? "activity";
   const setTab = (t: string) => {
     const next = new URLSearchParams(params);
     next.set("tab", t);
@@ -35,7 +38,7 @@ export function NetworkPage() {
   return (
     <>
       <PageHeader title="Network Activity"
-        description="What your hosts are talking to: connections DROOL has observed, how the firewall policy classifies them, and where public addresses belong. Monitoring only: nothing here blocks traffic."
+        description="What your hosts are talking to: connections DROOL has observed, what they are, what the firewall policy says about them, and where public addresses belong. Monitoring only: nothing here blocks traffic."
         actions={can("firewall.read") && (
           <>
             <Link to="/firewall?tab=designer" className={secondaryLink}>Firewall policy</Link>
@@ -51,7 +54,7 @@ export function NetworkPage() {
         ))}
       </div>
       <div role="tabpanel" aria-label={tabs.find((t) => t.id === tab)!.label}>
-        {tab === "activity" ? <Activity /> : <SettingsTab />}
+        {tab === "activity" ? <Activity /> : tab === "classifications" ? <ClassificationsTab /> : <SettingsTab />}
       </div>
     </>
   );
@@ -71,8 +74,8 @@ function Activity() {
           <Stat label="Connections (flows)" value={s.counts.flows} detail={`${s.counts.inbound} inbound · ${s.counts.outbound} outbound`} />
           <Stat label="External" value={s.counts.external} detail={`${s.counts.new_external_24h} new destination(s) in the last 24 hours`}
             onClick={() => setFilter({ new: "host", since: "24h", direction: "out" })} action="Show new destinations" />
-          <Stat label="Unclassified" value={s.counts.unclassified} detail="no firewall policy describes them" tone={s.counts.unclassified ? "warn" : undefined}
-            onClick={() => setFilter({ policy: "unclassified" })} action="Show unclassified" />
+          <Stat label="Not in policy" value={s.counts.unclassified} detail="no firewall policy describes them" tone={s.counts.unclassified ? "warn" : undefined}
+            onClick={() => setFilter({ policy: "unclassified" })} action="Show them" />
           <Stat label="Denied or would be denied" value={s.counts.denied} detail="by a deny policy or an enforced default" tone={s.counts.denied ? "danger" : undefined}
             onClick={() => setFilter({ policy: "denied" })} action="Show" />
         </div>
@@ -127,6 +130,86 @@ function Fidelity({ s }: { s: NonNullable<ReturnType<typeof useNetSummary>["data
         {!s.enrichment && <> Country and network data are <strong>not available</strong>: no GeoIP/ASN database is installed (see Collection and enrichment).</>}
       </p>
     </div>
+  );
+}
+
+/** The classifications: what recurring traffic is, whether it's expected. */
+function ClassificationsTab() {
+  const { can } = useAuth();
+  const qc = useQueryClient();
+  const q = useNetRules();
+  const canEdit = can("network.classify");
+  const [edit, setEdit] = useState<NetRule | "new" | null>(null);
+  const [del, setDel] = useState<NetRule | null>(null);
+  const remove = useMutation({
+    mutationFn: (id: string) => unwrap(api.DELETE("/network/classifications/{id}", { params: { path: { id } } })),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: nk.all });
+      setDel(null);
+    },
+  });
+  const rules = q.data?.items ?? [];
+  return (
+    <Card title="Classifications" actions={canEdit ? <Button size="sm" variant="primary" onClick={() => setEdit("new")}>Add classification…</Button> : undefined}>
+      <div className="space-y-3 text-sm" data-testid="classifications">
+        <p className="text-xs text-muted">
+          Say what recurring traffic is (&ldquo;NFS media storage&rdquo;) and whether it is expected. A classification matches connections by host or Pack,
+          direction, protocol, port and remote side, and applies to traffic already observed and observed later; the most specific one wins. DROOL
+          recognizes its own management traffic from evidence (where its SSH connections come from, where Shepherds connect to), never from a port
+          alone. Labels only: nothing is blocked or allowed, and no firewall rule is created. You can also classify a connection from its details.
+        </p>
+        <p className="text-xs"><Link className="text-accent underline" to="/network?class=unknown">Show unknown traffic</Link></p>
+        {q.error && <Alert>{errorMessage(q.error)}</Alert>}
+        <div className="overflow-x-auto">
+          <table className="rtable w-full text-left text-sm">
+            <caption className="sr-only">Classifications</caption>
+            <thead>
+              <tr className="border-b border-line text-xs uppercase tracking-wide text-muted">
+                <th scope="col" className="px-2 py-2 font-medium">What it is</th>
+                <th scope="col" className="px-2 py-2 font-medium">Matches</th>
+                <th scope="col" className="px-2 py-2 font-medium">Expected</th>
+                <th scope="col" className="px-2 py-2 font-medium">Made from</th>
+                <th scope="col" className="px-2 py-2 font-medium">Changed</th>
+                {canEdit && <th scope="col" className="px-2 py-2"><span className="sr-only">Actions</span></th>}
+              </tr>
+            </thead>
+            <tbody>
+              {rules.length === 0 ? (
+                <tr><td colSpan={canEdit ? 6 : 5} className="rt-empty px-3 py-6 text-center text-muted">{q.isLoading ? "Loading…" : "No classifications yet."}</td></tr>
+              ) : rules.map((r) => (
+                <tr key={r.id} className="border-b border-line align-top last:border-0" data-rule-id={r.id}>
+                  <td className="px-2 py-2" data-primary=""><span className="font-medium">{r.label}</span>{r.note && <div className="text-xs text-muted">{r.note}</div>}</td>
+                  <td data-label="Matches" className="px-2 py-2 text-xs">{r.described}</td>
+                  <td data-label="Expected" className="px-2 py-2">{r.expected ? <Badge tone="ok"><span aria-hidden className="mr-1">✓</span>Expected</Badge> : <span className="text-xs text-muted">—</span>}</td>
+                  <td data-label="Made from" className="px-2 py-2 text-xs">{r.origin === "flow" ? "one connection" : "a classification"}</td>
+                  <td data-label="Changed" className="whitespace-nowrap px-2 py-2 text-xs">{formatDateTime(r.updated_at)}</td>
+                  {canEdit && (
+                    <td className="whitespace-nowrap px-2 py-2 text-right">
+                      <Button size="sm" variant="ghost" onClick={() => setEdit(r)} aria-label={`Edit ${r.label}`}>Edit</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setDel(r)} aria-label={`Delete ${r.label}`}>Delete</Button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!canEdit && <p className="text-xs text-muted" role="note">Read-only: classifying traffic needs the network.classify permission (administrators and operators).</p>}
+      </div>
+      {edit && <ClassifyDialog rule={edit === "new" ? undefined : edit} onClose={() => setEdit(null)} />}
+      {del && (
+        <Dialog title={`Delete “${del.label}”?`} onClose={() => setDel(null)}>
+          <div className="space-y-3 text-sm">
+            <p>The traffic it matches ({del.described}) goes back to how it was classified before: another classification, its port&apos;s name, or unknown.</p>
+            {remove.error && <Alert>{errorMessage(remove.error)}</Alert>}
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setDel(null)}>Cancel</Button>
+              <Button variant="danger" disabled={remove.isPending} onClick={() => remove.mutate(del.id)}>Delete classification</Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+    </Card>
   );
 }
 

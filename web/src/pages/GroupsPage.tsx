@@ -1,10 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, unwrap } from "@/api/client";
-import { qk, useGroups, useHosts, type Group } from "@/api/queries";
+import { useGroups, useHosts, type Group } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
-import { CreatePackDialog } from "@/components/packs/PackDialogs";
+import { CreatePackDialog, DeletePackDialog } from "@/components/packs/PackDialogs";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -20,22 +18,15 @@ import { GroupDesiredState } from "@/components/desired/GroupDesiredState";
  * level between global and per-host settings. A pack is created on its own,
  * possibly empty; its hosts are managed on its page. */
 export function GroupsPage() {
-  const qc = useQueryClient();
   const navigate = useNavigate();
   const { can } = useAuth();
   const groups = useGroups();
   const hosts = useHosts();
   const [creating, setCreating] = useState(false);
-  const remove = useMutation({
-    mutationFn: (id: string) => unwrap(api.DELETE("/groups/{id}", { params: { path: { id } } })),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: qk.groups });
-      void qc.invalidateQueries({ queryKey: qk.hosts });
-    },
-  });
+  const [deleting, setDeleting] = useState<Group | null>(null);
 
   const hostName = (id: string) => (hosts.data?.items ?? []).find((h) => h.id === id)?.name ?? id;
-  const err = groups.error ?? remove.error;
+  const err = groups.error;
   const items = groups.data?.items ?? [];
   const createButton = can("hosts.write") && <Button variant="primary" onClick={() => setCreating(true)}>Create pack</Button>;
 
@@ -63,10 +54,7 @@ export function GroupsPage() {
                   {can("hosts.write") ? "Manage hosts" : "Open"}
                 </Button>
                 {can("hosts.write") && (
-                  <Button size="sm" variant="danger"
-                    onClick={() => { if (confirm(`Delete pack ${g.name}? Its hosts are not affected.`)) remove.mutate(g.id); }}>
-                    Delete
-                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => setDeleting(g)} aria-label={`Delete pack ${g.name}`}>Delete</Button>
                 )}
               </div>
             )}>
@@ -89,6 +77,7 @@ export function GroupsPage() {
         ))}
       </div>
       {creating && <CreatePackDialog onClose={() => setCreating(false)} onCreated={(g) => navigate(`/groups/${g.id}`)} />}
+      {deleting && <DeletePackDialog pack={deleting} onClose={() => setDeleting(null)} onDeleted={() => setDeleting(null)} />}
     </>
   );
 }

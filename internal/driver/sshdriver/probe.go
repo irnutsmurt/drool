@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"drool/internal/discovery"
 	"drool/internal/driver"
 	"drool/internal/model"
 	"drool/internal/sshx"
@@ -118,17 +119,28 @@ func Probe(ctx context.Context, d *sshx.Dialer, t *sshx.Target, opt ProbeOptions
 		add("operating system", driver.StepOK, out, nil)
 	}
 
-	// Init system.
-	if r, err := run("test -d /run/systemd/system && echo systemd", nil, false); err != nil {
+	// Init system: the same evidence as discovery (PID 1 first), which an
+	// account without access to /run/systemd reads too.
+	if r, err := run(discovery.SystemdProbe+`printf '%s %s\n' "$(sdstate)" "$(cat /proc/1/comm 2>/dev/null)"`, nil, false); err != nil {
 		add("init system", driver.StepFailed, "", err)
 		failure = errors.Join(failure, err)
-	} else if strings.TrimSpace(string(r.Stdout)) != "systemd" {
-		e := &model.OpError{Class: model.ClassConfiguration, Message: "systemd is not running",
-			Hint: "Commands, scripts and package operations work; service management and reboots need systemd."}
-		add("init system", driver.StepFailed, "", e)
-		failure = errors.Join(failure, e)
 	} else {
-		add("init system", driver.StepOK, "systemd", nil)
+		state, pid1, _ := strings.Cut(strings.TrimSpace(string(r.Stdout)), " ")
+		switch state {
+		case discovery.SystemdRunning:
+			add("init system", driver.StepOK, "systemd", nil)
+		case discovery.SystemdUnknown:
+			add("init system", driver.StepOK, "probably systemd (PID 1 and /run/systemd are hidden from this account; DROOL asks systemctl)", nil)
+		default:
+			msg := "systemd is not running"
+			if pid1 != "" {
+				msg = "PID 1 is " + pid1 + ", not systemd"
+			}
+			e := &model.OpError{Class: model.ClassConfiguration, Message: msg,
+				Hint: "Commands, scripts and package operations work; service management and reboots need systemd."}
+			add("init system", driver.StepFailed, "", e)
+			failure = errors.Join(failure, e)
+		}
 	}
 
 	res.OK = failure == nil

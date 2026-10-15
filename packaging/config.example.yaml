@@ -36,6 +36,9 @@ agent:                      # the Shepherd (DROOL agent) endpoint
   # advertise: [drool.example.net]
 
 # data_dir: /var/lib/drool  # containers: /data
+# For messages only: the container volume data_dir is, which a DROOL that
+# starts without data names (compose.yaml sets it). Empty: not a volume.
+# data_volume: ""
 
 secrets:
   # The key that encrypts stored credentials. Default: <data_dir>/master.key,
@@ -54,7 +57,7 @@ ssh_ca:                     # short-lived SSH certificates (hosts in certificate
 auth:
   session_idle_timeout: 12h
   session_absolute_timeout: 168h
-  reauth_window: 5m         # how long confirming your password lasts for high-impact actions
+  reauth_window: 15m        # how long confirming your password lasts for high-impact actions
 
 poller:
   status_interval: 5m

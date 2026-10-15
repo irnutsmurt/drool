@@ -747,7 +747,7 @@ func (s *Service) PollSSH(ctx context.Context, hostID string, run, runRoot colle
 	if err := s.IngestPoints(ctx, hostID, []monitor.Point{p}, nil); err != nil {
 		return err
 	}
-	if res.Services != nil {
+	if res.Services != nil && !(res.Services.Limited && s.servicesReadRecently(ctx, hostID, now, 2*time.Duration(set.SSHSmartS)*time.Second)) {
 		res.Services.At = now.UnixMilli()
 		if err := s.IngestServices(ctx, hostID, res.Services, true); err != nil {
 			return err
@@ -771,6 +771,18 @@ func (s *Service) PollSSH(ctx context.Context, hostID string, run, runRoot colle
 		return s.IngestEvents(ctx, hostID, evs)
 	}
 	return nil
+}
+
+// servicesReadRecently reports whether the host has a service list read
+// within window: a routine poll whose account can't ask systemd keeps the
+// one the hourly root pass read rather than replacing it with "unknown".
+func (s *Service) servicesReadRecently(ctx context.Context, hostID string, now time.Time, window time.Duration) bool {
+	var sup int
+	var at int64
+	if err := s.d.Store.Reader.QueryRowContext(ctx, `SELECT services_supported, services_at FROM mon_current WHERE host_id = ?`, hostID).Scan(&sup, &at); err != nil {
+		return false
+	}
+	return sup == 1 && now.Sub(time.UnixMilli(at)) < window
 }
 
 // ForceStorage makes the host's next SSH poll include storage health.

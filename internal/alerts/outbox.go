@@ -29,14 +29,15 @@ type claimed struct {
 
 // rateBucket limits deliveries per destination per minute (the rest wait
 // in the queue rather than failing): Discord and Slack throttle incoming
-// webhooks to about one message every two seconds per channel.
+// webhooks to about one message every two seconds per channel, Telegram
+// bots to 20 messages a minute in a group.
 type rateBucket struct {
 	tokens float64
 	at     time.Time
 	rate   float64 // per minute
 }
 
-var kindRate = map[string]float64{notify.KindDiscord: 30, notify.KindSlack: 30, notify.KindEmail: 60, notify.KindWebhook: 120}
+var kindRate = map[string]float64{notify.KindDiscord: 30, notify.KindSlack: 30, notify.KindTelegram: 20, notify.KindEmail: 60, notify.KindWebhook: 120}
 
 func (s *Service) rateFor(kind string) float64 {
 	if s.cfg.RatePerMinute > 0 {

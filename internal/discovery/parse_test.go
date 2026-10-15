@@ -60,7 +60,7 @@ func TestParseDiscoverDistros(t *testing.T) {
 			if f.SystemdRunning || len(f.Services) != 0 {
 				t.Fatal("systemd facts reported without systemd")
 			}
-			if !hasWarning(f.Warnings, "systemd is not running") {
+			if !hasWarning(f.Warnings, "PID 1 is sshd, not systemd") || f.SystemdState != SystemdNone {
 				t.Fatalf("missing systemd warning: %v", f.Warnings)
 			}
 			if f.Virtualization != "docker" {

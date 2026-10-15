@@ -28,6 +28,9 @@ type Sender struct {
 	RootCAs *x509.CertPool
 	// HeloName is the name DROOL gives SMTP servers (default: the host name).
 	HeloName string
+	// TelegramAPI replaces https://api.telegram.org (tests only: it is
+	// never configurable, so a bot token only ever goes to Telegram).
+	TelegramAPI string
 
 	once      sync.Once
 	transport *http.Transport
@@ -79,6 +82,8 @@ func (s *Sender) Send(ctx context.Context, kind string, c Config, sec Secrets, m
 	case KindSlack:
 		body, _ := json.Marshal(slackBody(m))
 		r = s.post(ctx, c, sec, body, m, deliveryID)
+	case KindTelegram:
+		r = s.sendTelegram(ctx, c, sec, m)
 	default:
 		r = fail(OutcomePermanent, CategoryConfig, "unknown destination kind")
 	}

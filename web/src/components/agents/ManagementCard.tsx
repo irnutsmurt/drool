@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, unwrap, type Schemas } from "@/api/client";
 import { qk, type Host } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
@@ -29,7 +29,7 @@ export function ManagementCard({ host, children }: { host: Host; children?: Reac
   const { can } = useAuth();
   const qc = useQueryClient();
   const agent = useHostAgent(host.id);
-  const [dialog, setDialog] = useState<"install" | "revoke" | "caps" | "manual" | null>(null);
+  const [dialog, setDialog] = useState<"install" | "revoke" | "caps" | "manual" | "uninstall" | null>(null);
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ak.hostAgent(host.id) });
     void qc.invalidateQueries({ queryKey: qk.host(host.id) });
@@ -192,6 +192,9 @@ export function ManagementCard({ host, children }: { host: Host; children?: Reac
         {can("hosts.write") && live && m.preferred === "agent" && m.ssh_configured && (
           <Button size="sm" variant="ghost" onClick={() => setMgmt.mutate({ preferred: "ssh", fallback: "none" })}>Manage over SSH only</Button>
         )}
+        {id && can("agents.manage") && can("hosts.write") && (
+          <Button size="sm" variant="danger" onClick={() => setDialog("uninstall")}>{live ? "Uninstall Shepherd…" : "Remove Shepherd leftovers…"}</Button>
+        )}
         {live && id && can("agents.manage") && id.status !== "quarantined" && (
           <Button size="sm" variant="danger" onClick={() => setDialog("revoke")}>Revoke Shepherd identity</Button>
         )}
@@ -199,6 +202,7 @@ export function ManagementCard({ host, children }: { host: Host; children?: Reac
 
       {dialog === "install" && <InstallDialog host={host} onClose={() => { setDialog(null); invalidate(); }} />}
       {dialog === "manual" && <ManualInstallDialog host={host} onClose={() => setDialog(null)} />}
+      {dialog === "uninstall" && <UninstallDialog host={host} onClose={() => { setDialog(null); invalidate(); }} />}
       {dialog === "revoke" && id && <RevokeDialog identityId={id.id} hostName={host.name} onClose={() => { setDialog(null); invalidate(); }} />}
       {dialog === "caps" && id && capsReported(id.ceiling) && <CapsDialog hostId={host.id} ceiling={id.ceiling} requested={a?.requested_caps ?? null} onClose={() => { setDialog(null); invalidate(); }} />}
     </Card>
@@ -317,6 +321,75 @@ const compatLabels: Record<Schemas["AgentCompatibility"]["status"], [string, "ok
 export function CompatibilityBadge({ c }: { c: Schemas["AgentCompatibility"] }) {
   const [label, tone] = compatLabels[c.status];
   return <Badge tone={tone}>{label}</Badge>;
+}
+
+/** Removing a host's Shepherd: what DROOL will remove, read from the host
+ * over SSH as root first (that path manages the host afterwards, so a host
+ * without one is refused), then the removal, and what DROOL could confirm. */
+function UninstallDialog({ host, onClose }: { host: Host; onClose: () => void }) {
+  const plan = useQuery({
+    queryKey: ["hosts", host.id, "agent-uninstall-plan"],
+    queryFn: () => unwrap(api.POST("/hosts/{id}/agent/uninstall/plan", { params: { path: { id: host.id } } })),
+    gcTime: 0,
+    retry: false,
+  });
+  const run = useMutation({
+    mutationFn: () => unwrap(api.POST("/hosts/{id}/agent/uninstall", { params: { path: { id: host.id } } })),
+  });
+  const p = plan.data;
+  const res = run.data;
+  const tone = res?.outcome === "uninstalled" || res?.outcome === "nothing" ? "ok" : res?.outcome === "partial" ? "warn" : "danger";
+  return (
+    <Dialog title={`Uninstall the Shepherd from ${host.name}?`} onClose={onClose} wide>
+      <div className="space-y-4 text-sm" data-testid="uninstall-shepherd">
+        {plan.isPending && <p className="text-muted">Asking {host.name} over SSH what is there…</p>}
+        {plan.error && <Alert>{errorMessage(plan.error)}</Alert>}
+        {p && !res && !p.can_uninstall && <Alert tone={p.refusal_code === "nothing_to_remove" ? "ok" : "warn"}>{p.refusal}</Alert>}
+        {p && !res && p.can_uninstall && (
+          <>
+            <section>
+              <h3 className="mb-1 font-medium">On {host.name}, DROOL will (as root, over SSH)</h3>
+              <ul className="list-disc space-y-1 pl-5">
+                <li>stop the Shepherd{p.systemd === "running" ? ", and disable its service" : " (and the supervisor that restarts it on a host without systemd)"}{p.processes > 0 ? ` (${p.processes} process${p.processes === 1 ? "" : "es"} running now)` : ""};</li>
+                {p.items.map((it) => (
+                  <li key={it.path} className={it.present ? "" : "text-muted"}>
+                    remove {it.what}: <code className="font-mono text-xs">{it.path}</code>{it.present ? "" : " (not there)"}
+                  </li>
+                ))}
+              </ul>
+            </section>
+            <section>
+              <h3 className="mb-1 font-medium">In DROOL</h3>
+              <ul className="list-disc space-y-1 pl-5">{p.controller.map((c) => <li key={c}>{c}</li>)}</ul>
+            </section>
+            <p className="text-muted">Monitoring goes back to polling over SSH every few minutes, and operations run over SSH. To use a Shepherd again later,
+              install one as before. Files DROOL deployed, its firewall rules and DROOL's own SSH account stay as they are.</p>
+          </>
+        )}
+        {run.error && <Alert>{errorMessage(run.error)}</Alert>}
+        {res && (
+          <>
+            <Alert tone={tone}>{res.message}</Alert>
+            {res.removed.length > 0 && <p>Removed: <span className="font-mono text-xs">{res.removed.join(", ")}</span></p>}
+            {res.output && (
+              <details><summary className="cursor-pointer text-muted">What the host reported</summary>
+                <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-ui bg-surface-2 p-2 font-mono text-xs">{res.output}</pre>
+              </details>
+            )}
+          </>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose}>{res ? "Done" : "Cancel"}</Button>
+          {!res && p?.can_uninstall && (
+            <Button variant="danger" disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? "Uninstalling… (up to a minute)" : "Uninstall Shepherd"}</Button>
+          )}
+          {res && (res.outcome === "partial" || res.outcome === "unknown") && (
+            <Button variant="danger" disabled={run.isPending} onClick={() => run.mutate()}>Try again</Button>
+          )}
+        </div>
+      </div>
+    </Dialog>
+  );
 }
 
 function RevokeDialog({ identityId, hostName, onClose }: { identityId: string; hostName: string; onClose: () => void }) {

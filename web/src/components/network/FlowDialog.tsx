@@ -1,11 +1,13 @@
+import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { errorMessage, formatDateTime } from "@/lib/format";
-import { CollectionBadge, DirectionLabel, PolicyBadge, ScopeBadge, ep, policyText, when } from "./labels";
-import { useNetFlow } from "./queries";
+import { ClassifyDialog } from "./ClassifyDialog";
+import { ClassBadge, CollectionBadge, DirectionLabel, PolicyBadge, ScopeBadge, classSource, ep, policyText, when } from "./labels";
+import { useNetFlow, useNetRules } from "./queries";
 
 const enforcementText: Record<string, string> = {
   unmanaged: "DROOL does not manage this host's firewall",
@@ -25,6 +27,10 @@ export function FlowDialog({ id, onClose }: { id: number; onClose: () => void })
   const src = f && (f.direction === "out" ? { name: f.host.name, ep: ep(f.local_ip, f.local_port) } : { name: f.peer_host?.name ?? f.remote_ip, ep: ep(f.remote_ip, f.remote_port) });
   const dst = f && (f.direction === "out" ? { name: f.peer_host?.name ?? f.remote_ip, ep: ep(f.remote_ip, f.remote_port) } : { name: f.host.name, ep: ep(f.local_ip, f.local_port) });
   const t = f && (policyText[f.policy.status] ?? policyText.unclassified!);
+  const canClassify = can("network.classify");
+  const rules = useNetRules(canClassify && !!f?.classification.rule_id);
+  const rule = rules.data?.items.find((r) => r.id === f?.classification.rule_id);
+  const [classify, setClassify] = useState<"new" | "edit" | null>(null);
   return (
     <Dialog title="Observed connection" onClose={onClose} wide>
       {q.error && <Alert>{errorMessage(q.error)}</Alert>}
@@ -52,6 +58,19 @@ export function FlowDialog({ id, onClose }: { id: number; onClose: () => void })
             {f.peer_first_seen && <><dt className="text-muted">Address first seen</dt><dd>{when(f.peer_first_seen)} by {f.host.name}{f.fleet_first_seen && <>; {when(f.fleet_first_seen)} by any host</>}</dd></>}
             <dt className="text-muted">Observed by</dt><dd><CollectionBadge c={f.collection} /> {f.collection.detail && <span className="text-xs text-muted">{f.collection.detail}</span>}</dd>
           </dl>
+
+          <section className="rounded-ui border border-line p-3" aria-label="What it is" data-testid="flow-classification">
+            <h3 className="mb-2 font-semibold">What it is</h3>
+            <p className="flex flex-wrap items-center gap-2"><ClassBadge flow={f} /></p>
+            <p className="mt-1">{f.classification.detail}</p>
+            <p className="mt-1 text-xs text-muted">How DROOL knows: {classSource[f.classification.source] ?? f.classification.source}.</p>
+            {canClassify && f.classification.kind !== "drool" && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {rule && <Button size="sm" onClick={() => setClassify("edit")}>Edit “{rule.label}”…</Button>}
+                <Button size="sm" variant={rule ? "ghost" : "secondary"} onClick={() => setClassify("new")}>{rule ? "Classify differently…" : "Classify…"}</Button>
+              </div>
+            )}
+          </section>
 
           <section className="rounded-ui border border-line p-3" aria-label="Firewall">
             <h3 className="mb-2 font-semibold">Firewall</h3>
@@ -93,6 +112,7 @@ export function FlowDialog({ id, onClose }: { id: number; onClose: () => void })
             </section>
           )}
           <div className="flex justify-end"><Button onClick={onClose}>Close</Button></div>
+          {classify && <ClassifyDialog flow={f} rule={classify === "edit" ? rule : undefined} onClose={() => setClassify(null)} />}
         </div>
       )}
     </Dialog>

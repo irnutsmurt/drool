@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { errorMessage } from "@/lib/format";
-import { CountryLabel, DirectionLabel, Endpoint, NetworkLabel, PolicyBadge, ProcessLabel, RemoteLabel, ScopeBadge, when } from "./labels";
+import { ClassBadge, CountryLabel, DirectionLabel, Endpoint, NetworkLabel, PolicyBadge, ProcessLabel, RemoteLabel, ScopeBadge, when } from "./labels";
 import { useNetFlows, type NetFilter, type NetFlow } from "./queries";
 import { FlowDialog } from "./FlowDialog";
 
@@ -43,7 +43,7 @@ export function FlowTable({ filter, showHost = true, empty, pageSize = 50 }: {
               <th scope="col" className="px-2 py-2 font-medium">Country · network (ASN)</th>
               <th scope="col" className="px-2 py-2 font-medium">First · last seen</th>
               <th scope="col" className="px-2 py-2 text-right font-medium">Conn.</th>
-              <th scope="col" className="px-2 py-2 font-medium">Policy status</th>
+              <th scope="col" className="px-2 py-2 font-medium">What it is · policy</th>
             </tr>
           </thead>
           <tbody>
@@ -95,7 +95,7 @@ function Row({ f, showHost, onOpen }: { f: NetFlow; showHost: boolean; onOpen: (
       <td data-label="Country · network" className="px-2 py-2"><span className="flex flex-col"><CountryLabel flow={f} /><NetworkLabel flow={f} /></span></td>
       <td data-label="First · last seen" className="whitespace-nowrap px-2 py-2 text-xs"><span className="flex flex-col"><span>{when(f.first_seen)}</span><span className="text-muted">{when(f.last_seen)}</span></span></td>
       <td data-label="Connections" className="px-2 py-2 text-right tabular-nums">{f.count.toLocaleString()}</td>
-      <td data-label="Policy status" className="px-2 py-2"><PolicyBadge flow={f} /></td>
+      <td data-label="What it is · policy" className="px-2 py-2"><span className="flex flex-col items-start gap-1"><ClassBadge flow={f} /><PolicyBadge flow={f} /></span></td>
     </tr>
   );
 }

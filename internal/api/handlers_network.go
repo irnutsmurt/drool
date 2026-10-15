@@ -1,6 +1,8 @@
 package api
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -51,7 +53,7 @@ func networkFilter(r *http.Request) (netsvc.Filter, *Problem) {
 	q := r.URL.Query()
 	f := netsvc.Filter{Hosts: q["host"], Group: q.Get("group"), Direction: q.Get("direction"), Scope: q.Get("scope"),
 		Protocol: strings.ToLower(q.Get("protocol")), Process: q.Get("process"), Service: q.Get("service"), Country: q.Get("country"),
-		Org: q.Get("org"), Peer: q.Get("peer"), Policy: q.Get("policy"), Source: q.Get("source"), NewDest: q.Get("new"), Q: q.Get("q"),
+		Org: q.Get("org"), Peer: q.Get("peer"), Policy: q.Get("policy"), Source: q.Get("source"), NewDest: q.Get("new"), Q: q.Get("q"), Class: q.Get("class"),
 		Sort: q.Get("sort"), Cursor: q.Get("cursor")}
 	ints := map[string]*int{"port": &f.Port, "local_port": &f.LocalPort, "remote_port": &f.RemotePort, "limit": &f.Limit}
 	for k, dst := range ints {
@@ -272,4 +274,109 @@ func (s *Server) handleReloadNetworkEnrichment(w http.ResponseWriter, r *http.Re
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
+}
+
+// --- classifications of observed traffic (final After-M17 batch) ---
+
+func (s *Server) handleListClassifications(w http.ResponseWriter, r *http.Request) {
+	if !s.networkEnabled(w, r) {
+		return
+	}
+	rules, err := s.d.Network.Rules(r.Context())
+	if err != nil {
+		writeProblem(w, r, s.internalError(r, err))
+		return
+	}
+	if rules == nil {
+		rules = []netsvc.Rule{}
+	}
+	writeJSON(w, http.StatusOK, listResponse[netsvc.Rule]{Items: rules})
+}
+
+// handlePutClassification creates (POST) or replaces (PUT) a classification.
+// Labels only: nothing is enforced, and no firewall rule comes from it.
+func (s *Server) handlePutClassification(w http.ResponseWriter, r *http.Request) {
+	if !s.networkEnabled(w, r) {
+		return
+	}
+	var in netsvc.RuleInput
+	if p := decodeJSON(w, r, &in); p != nil {
+		writeProblem(w, r, p)
+		return
+	}
+	ctx := r.Context()
+	id := r.PathValue("id")
+	var before *netsvc.Rule
+	if id != "" {
+		b, err := s.d.Network.Rule(ctx, id)
+		if errors.Is(err, netsvc.ErrRuleNotFound) {
+			writeProblem(w, r, errNotFound("classification"))
+			return
+		}
+		if err != nil {
+			writeProblem(w, r, s.internalError(r, err))
+			return
+		}
+		before = &b
+	}
+	var rule netsvc.Rule
+	var emit func()
+	err := s.d.Store.InRawTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		if rule, err = s.d.Network.PutRuleTx(ctx, tx, id, in, principalFrom(ctx).UserID); err != nil {
+			return err
+		}
+		action, details := "network.classification.create", map[string]any{"label": rule.Label, "matches": rule.Described, "expected": rule.Expected, "origin": rule.Origin}
+		if before != nil {
+			action = "network.classification.update"
+			details["before"] = map[string]any{"label": before.Label, "matches": before.Described, "expected": before.Expected}
+		}
+		emit, err = s.d.Audit.RecordTx(ctx, db.New(tx), audit.Event{Action: action, TargetType: "network_classification", TargetID: rule.ID, Details: details})
+		return err
+	})
+	var ve *netsvc.ValidationError
+	switch {
+	case errors.As(err, &ve):
+		writeProblem(w, r, errValidation(ve.Msg))
+		return
+	case errors.Is(err, netsvc.ErrRuleNotFound):
+		writeProblem(w, r, errNotFound("classification"))
+		return
+	case err != nil:
+		writeProblem(w, r, s.internalError(r, err))
+		return
+	}
+	emit()
+	status := http.StatusOK
+	if id == "" {
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, rule)
+}
+
+func (s *Server) handleDeleteClassification(w http.ResponseWriter, r *http.Request) {
+	if !s.networkEnabled(w, r) {
+		return
+	}
+	ctx := r.Context()
+	var emit func()
+	err := s.d.Store.InRawTx(ctx, func(tx *sql.Tx) error {
+		rule, err := s.d.Network.DeleteRuleTx(ctx, tx, r.PathValue("id"))
+		if err != nil {
+			return err
+		}
+		emit, err = s.d.Audit.RecordTx(ctx, db.New(tx), audit.Event{Action: "network.classification.delete", TargetType: "network_classification", TargetID: rule.ID,
+			Details: map[string]any{"label": rule.Label}})
+		return err
+	})
+	if errors.Is(err, netsvc.ErrRuleNotFound) {
+		writeProblem(w, r, errNotFound("classification"))
+		return
+	}
+	if err != nil {
+		writeProblem(w, r, s.internalError(r, err))
+		return
+	}
+	emit()
+	w.WriteHeader(http.StatusNoContent)
 }

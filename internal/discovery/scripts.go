@@ -9,8 +9,49 @@ package discovery
 
 const header = `set +e
 s() { printf '\n@@DROOL:%s@@\n' "$1"; }
-sd() { [ -d /run/systemd/system ]; }
-dfp() { df -PTk -x tmpfs -x devtmpfs -x squashfs -x overlay -x efivarfs -x ramfs -x nsfs -x fuse.lxcfs 2>/dev/null || df -Pk 2>/dev/null; }
+` + SystemdProbe + `dfp() { df -PTk -x tmpfs -x devtmpfs -x squashfs -x overlay -x efivarfs -x ramfs -x nsfs -x fuse.lxcfs 2>/dev/null || df -Pk 2>/dev/null; }
+`
+
+// SystemdProbe is the one systemd detection DROOL runs on hosts (discovery,
+// the status check, the connection test, removing a Shepherd), the same
+// over SSH as the login user and through a Shepherd as root. sdstate prints
+// "running" when PID 1 is systemd, "none" when PID 1 is something else, and
+// when PID 1 can't be read (/proc mounted with hidepid) decides from
+// systemd's runtime directory: "running" if /run/systemd/system exists,
+// "unknown" if this account can't look into /run/systemd, else "none". It
+// needs no privileges. Neither systemctl's presence (a container can have
+// the binary under another init) nor its exit status (a degraded system, or
+// "Failed to connect to bus" for an account on a host without a D-Bus
+// system bus) says whether systemd runs.
+//
+// sdlist runs systemctl with its arguments and prints its output. When
+// systemctl fails it prints "@@sd-error permission MESSAGE" (it can't reach
+// systemd as this account: no D-Bus system bus, denied, or it can't see
+// /run/systemd, when systemctl even claims the system wasn't booted with
+// systemd although sdok found PID 1 to be systemd) or "@@sd-error failed
+// MESSAGE", so a list that couldn't be read is never taken for an empty one.
+// (DietPi and other minimal images run systemd without D-Bus: only root can
+// ask systemd there, through its private socket.)
+const SystemdProbe = `sdstate() {
+	_p1=$(cat /proc/1/comm 2>/dev/null)
+	case "$_p1" in
+	systemd) echo running; return 0 ;;
+	?*) echo none; return 0 ;;
+	esac
+	if [ -d /run/systemd/system ]; then echo running
+	elif [ -e /run/systemd ] && [ ! -x /run/systemd ]; then echo unknown
+	else echo none; fi
+}
+sdok() { [ "$(sdstate)" != none ]; }
+sdlist() {
+	if _o=$(systemctl "$@" 2>/dev/null); then [ -n "$_o" ] && printf '%s\n' "$_o"; return 0; fi
+	_e=$(systemctl "$@" 2>&1 >/dev/null | head -n 2 | tr '\n' ' ' | sed 's/ *$//')
+	case "$_e" in
+	*"Failed to connect to bus"*|*"ccess denied"*|*"ermission denied"*|*"uthentication required"*|*"not been booted with systemd"*) printf '@@sd-error permission %s\n' "$_e" ;;
+	*) printf '@@sd-error failed %s\n' "${_e:-systemctl failed}" ;;
+	esac
+	return 1
+}
 `
 
 // DiscoverScript gathers full inventory facts. It runs as the login user:
@@ -39,11 +80,11 @@ s pkg
 for c in apt-get dnf yum zypper pacman; do command -v "$c" >/dev/null 2>&1 && echo "$c"; done
 s init
 cat /proc/1/comm 2>/dev/null
-sd && echo systemd-running
+echo "systemd=$(sdstate)"
 s services
-sd && systemctl list-units --type=service --state=running --no-legend --plain --no-pager 2>/dev/null
+sdok && sdlist list-units --type=service --state=running --no-legend --plain --no-pager
 s failed
-sd && systemctl list-units --state=failed --no-legend --plain --no-pager 2>/dev/null
+sdok && sdlist list-units --state=failed --no-legend --plain --no-pager
 s ports
 ss -Htlnup 2>/dev/null
 s containers
@@ -65,7 +106,8 @@ grep -E '^(MemTotal|MemAvailable):' /proc/meminfo 2>/dev/null
 s df
 dfp
 s failed
-if sd; then echo systemd-running; systemctl list-units --state=failed --no-legend --plain --no-pager 2>/dev/null; fi
+echo "systemd=$(sdstate)"
+sdok && sdlist list-units --state=failed --no-legend --plain --no-pager
 s reboot-file
 if [ -f /var/run/reboot-required ]; then echo required; head -n 5 /var/run/reboot-required.pkgs 2>/dev/null; fi
 s kernels

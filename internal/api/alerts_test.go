@@ -22,13 +22,12 @@ import (
 )
 
 // testSender trusts httptest's TLS certificate (every httptest TLS server
-// uses the same one). Tests never reach real notification services.
+// uses the same one). Tests never reach real notification services: its
+// Telegram Bot API is fakeTelegram.
 var testSender = func() *notify.Sender {
-	srv := httptest.NewTLSServer(http.NotFoundHandler())
-	defer srv.Close()
 	pool := x509.NewCertPool()
-	pool.AddCert(srv.Certificate())
-	return &notify.Sender{RootCAs: pool, HeloName: "drool.test"}
+	pool.AddCert(fakeTelegram.srv.Certificate())
+	return &notify.Sender{RootCAs: pool, HeloName: "drool.test", TelegramAPI: fakeTelegram.srv.URL}
 }()
 
 type alertEnv struct {

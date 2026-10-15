@@ -34,6 +34,9 @@ type Filter struct {
 	Org        string // substring of the AS organization
 	Peer       string // an address or a CIDR
 	Policy     string // management | covered | unclassified | denied (incl. would be denied)
+	// Class: drool | approved | user | service | unknown, or classified
+	// (anything but unknown).
+	Class      string
 	Source     string // conntrack | sockets | snapshot
 	FirstAfter int64  // unix seconds
 	LastAfter  int64
@@ -91,6 +94,8 @@ type Flow struct {
 	// (any port, retained history).
 	PeerFirstSeen string            `json:"peer_first_seen,omitempty"`
 	Policy        fwsvc.Correlation `json:"policy"`
+	// Classification: what the flow is, and how DROOL knows (classify.go).
+	Classification Classification `json:"classification"`
 }
 
 // Page is a page of flows.
@@ -177,6 +182,11 @@ func (f *Filter) Validate() error {
 	case "", "conntrack", "sockets", "snapshot":
 	default:
 		return fmt.Errorf("source must be conntrack, sockets or snapshot")
+	}
+	switch f.Class {
+	case "", "classified", ClassDROOL, ClassApproved, ClassUser, ClassService, ClassUnknown:
+	default:
+		return fmt.Errorf("class must be drool, approved, user, service, unknown or classified")
 	}
 	switch f.NewDest {
 	case "", "host", "fleet":
@@ -319,7 +329,7 @@ func (f *Filter) goFilters() bool {
 			return true
 		}
 	}
-	return f.Policy != "" || f.Country != "" || f.ASN != 0 || f.Org != "" || f.Service != "" || f.Q != ""
+	return f.Policy != "" || f.Country != "" || f.ASN != 0 || f.Org != "" || f.Service != "" || f.Q != "" || f.Class != ""
 }
 
 const cols = `o.id, o.host_id, o.direction, o.protocol, o.local_ip, o.port, o.peer, o.local_port, o.remote_port, o.scope, o.source, o.process, o.pid, o.count, o.first_seen, o.last_seen`
@@ -338,6 +348,7 @@ type view struct {
 	internal []netip.Prefix
 	groups   map[string][]string // host id → group names
 	enrich   bool
+	classes  *classifier
 }
 
 func (s *Service) newView(ctx context.Context) (*view, error) {
@@ -346,6 +357,7 @@ func (s *Service) newView(ctx context.Context) (*view, error) {
 		return nil, err
 	}
 	v := &view{s: s, cl: cl, internal: cl.World().Internal, groups: map[string][]string{}, enrich: s.Settings(ctx).Enrichment}
+	defer func() { v.classes = v.newClassifier(ctx) }()
 	for _, g := range cl.World().Groups {
 		for _, m := range g.Members {
 			v.groups[m] = append(v.groups[m], g.Name)
@@ -411,6 +423,7 @@ func (v *view) flow(ctx context.Context, r db.FwObservation) Flow {
 	a, err := netip.ParseAddr(r.Peer)
 	if err != nil {
 		f.Scope = r.Scope
+		f.Classification = v.classify(v.classes, &f)
 		return f
 	}
 	cls := netmon.Classify(a, v.internal)
@@ -426,6 +439,7 @@ func (v *view) flow(ctx context.Context, r db.FwObservation) Flow {
 		f.Geo = v.geo(a)
 	}
 	f.Policy = v.cl.Classify(ctx, r.HostID, r.Direction, r.Protocol, int(r.Port), a)
+	f.Classification = v.classify(v.classes, &f)
 	return f
 }
 
@@ -451,6 +465,15 @@ func (v *view) matches(f *Filter, fl *Flow) bool {
 		return false
 	}
 	if f.Service != "" && fl.Service != f.Service {
+		return false
+	}
+	switch {
+	case f.Class == "":
+	case f.Class == "classified":
+		if fl.Classification.Kind == ClassUnknown {
+			return false
+		}
+	case fl.Classification.Kind != f.Class:
 		return false
 	}
 	if f.Peer != "" {

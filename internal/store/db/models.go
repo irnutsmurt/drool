@@ -961,6 +961,26 @@ type NetCollector struct {
 	SnapshotAt    sql.NullInt64
 }
 
+type NetFlowRule struct {
+	ID            string
+	Label         string
+	Note          string
+	Expected      int64
+	Origin        string
+	HostID        sql.NullString
+	HostGroupID   sql.NullString
+	Direction     string
+	Protocol      string
+	Port          int64
+	RemoteHostID  sql.NullString
+	RemoteGroupID sql.NullString
+	RemoteCidr    string
+	CreatedBy     sql.NullString
+	CreatedAt     int64
+	UpdatedBy     sql.NullString
+	UpdatedAt     int64
+}
+
 type NotifyAttempt struct {
 	DeliveryID string
 	N          int64

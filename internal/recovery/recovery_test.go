@@ -224,10 +224,15 @@ func TestBoundedReconnect(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	waitFor(t, 60*time.Second, "every host reconciled", func() bool {
+	// The restore finishes by itself once the last host is reconciled, in
+	// the service's next step: wait for both, not for the hosts alone (the
+	// status read right after the last host could still say reconciling).
+	waitFor(t, 60*time.Second, "every host reconciled and the restore finished", func() bool {
 		var left int
+		var status string
 		e.st.Reader.QueryRow(`SELECT count(*) FROM host_reconciliation WHERE state != 'reconciled'`).Scan(&left)
-		return left == 0
+		e.st.Reader.QueryRow(`SELECT status FROM controller_restores WHERE id = 'rst_1'`).Scan(&status)
+		return left == 0 && status == "finished"
 	})
 	if p := e.ag.peak.Load(); p > 8 || p < 2 {
 		t.Errorf("transitions in flight at once: %d (bound 8)", p)
@@ -267,7 +272,11 @@ func TestHostDecisions(t *testing.T) {
 	e.agentHost(t, "ahead", 2, 3)
 	e.agentHost(t, "old", 2, 2)
 	e.ag.views["old"] = func() agentsvc.AgentView { v := e.ag.views["old"]; v.Features = nil; v.AgentVersion = "0.9"; return v }()
+	// The clone's Shepherd connects only after the start (below): the
+	// second machine is noticed in its hello, before its session counts.
 	e.agentHost(t, "clone", 2, 2)
+	cloneView := e.ag.views["clone"]
+	delete(e.ag.views, "clone")
 	e.agentHost(t, "foreign", 2, 2)
 	e.ag.views["foreign"] = func() agentsvc.AgentView {
 		v := e.ag.views["foreign"]
@@ -302,9 +311,20 @@ func TestHostDecisions(t *testing.T) {
 	if err := e.svc.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	// The identity conflict is noticed when the second machine connects.
+	// The identity conflict is noticed when the second machine connects,
+	// in the order agentsvc reports it: MachineChanged during the hello,
+	// then the session, then OnSession. Until then the clone waits for its
+	// Shepherd, so no worker can decide it first (it once could, when its
+	// Shepherd counted as connected from the start).
 	e.svc.MachineChanged("clone", "machine-a", "machine-b")
+	e.ag.mu.Lock()
+	e.ag.views["clone"] = cloneView
+	ids := make([]string, 0, len(e.ag.views))
 	for id := range e.ag.views {
+		ids = append(ids, id)
+	}
+	e.ag.mu.Unlock()
+	for _, id := range ids {
 		e.svc.OnSession(id)
 	}
 	want := map[string]string{"same": StateReconciled, "behind": StateReconciled, "ahead": StateAhead, "old": StateIncompatible,

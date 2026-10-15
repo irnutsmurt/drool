@@ -5,8 +5,8 @@ import type { NetCollection, NetFlow } from "./queries";
 
 export const policyText: Record<string, { label: string; icon: string; tone: "ok" | "warn" | "danger" | "accent" | "neutral"; help: string }> = {
   covered: { label: "Covered by policy", icon: "✓", tone: "ok", help: "A configured firewall policy allows this connection." },
-  management: { label: "DROOL management", icon: "⛨", tone: "accent", help: "A protected DROOL management path (SSH from the controller or a jump host, or the agent's connection)." },
-  unclassified: { label: "Unclassified", icon: "?", tone: "warn", help: "No firewall policy says anything about this connection." },
+  management: { label: "Management path", icon: "⛨", tone: "accent", help: "A protected DROOL management path in the firewall policy (SSH from the controller or a jump host, or the Shepherd's connection)." },
+  unclassified: { label: "Not in policy", icon: "?", tone: "warn", help: "No firewall policy says anything about this connection." },
   denied: { label: "Denied", icon: "✕", tone: "danger", help: "A deny policy, or the default drop on an enforced host, blocks this connection." },
 };
 
@@ -18,6 +18,35 @@ export function PolicyBadge({ flow }: { flow: Pick<NetFlow, "policy"> }) {
       <Badge tone={t.tone}><span aria-hidden className="mr-1">{t.icon}</span>{t.label}</Badge>
       {p.status !== "denied" && p.would_deny && <Badge tone="danger"><span aria-hidden className="mr-1">✕</span>would be denied</Badge>}
       {p.applied_verdict && <Badge tone="warn"><span aria-hidden className="mr-1">↻</span>not applied yet</Badge>}
+    </span>
+  );
+}
+
+/** What a flow is (its classification), worded with a symbol. */
+export const classText: Record<string, { kind: string; icon: string; tone: "ok" | "warn" | "danger" | "accent" | "neutral"; help: string }> = {
+  drool: { kind: "DROOL management", icon: "⛨", tone: "accent", help: "DROOL's own traffic: DROOL has direct evidence it is its connection." },
+  approved: { kind: "Expected", icon: "✓", tone: "ok", help: "Classified, and marked as expected." },
+  user: { kind: "Classified", icon: "◆", tone: "neutral", help: "Classified by someone on your team." },
+  service: { kind: "Known service", icon: "≡", tone: "neutral", help: "Named after its port: nothing else says what it is." },
+  unknown: { kind: "Unknown", icon: "?", tone: "neutral", help: "Nothing says what this is yet." },
+};
+
+export const classSource: Record<string, string> = {
+  drool: "DROOL's own evidence",
+  rule: "a classification",
+  manual: "labeled from one connection",
+  port: "its port",
+  none: "nothing yet",
+};
+
+/** The classification: kind as a badge, the label under it. */
+export function ClassBadge({ flow }: { flow: Pick<NetFlow, "classification"> }) {
+  const c = flow.classification;
+  const t = classText[c.kind] ?? classText.unknown!;
+  return (
+    <span className="inline-flex flex-col items-start gap-0.5" title={`${t.help} How DROOL knows: ${classSource[c.source] ?? c.source}.`}>
+      <Badge tone={t.tone}><span aria-hidden className="mr-1">{t.icon}</span>{t.kind}</Badge>
+      {c.kind !== "unknown" && <span className="text-[11px] text-muted">{c.label}</span>}
     </span>
   );
 }

@@ -10,6 +10,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { errorMessage, formatAgo, formatDateTime } from "@/lib/format";
+import { GuideLink } from "@/components/ui/GuideLink";
 
 export const integrityKey = ["audit", "integrity"] as const;
 export const sinkKey = ["audit", "sink"] as const;
@@ -220,7 +221,7 @@ function SinkDialog({ current, onClose }: { current: Schemas["AuditSink"]; onClo
     <Dialog title="Remote copy of the audit history" onClose={onClose}>
       <form onSubmit={(e) => { e.preventDefault(); save.mutate(); }} className="space-y-4 text-sm">
         <Checkbox checked={enabled} onChange={setEnabled} label="Send audit records" />
-        <Field label="Receiver URL" hint="https only. Every record is sent as JSON with its chain hashes (see the README for the format).">
+        <Field label="Receiver URL" hint={<>https only. Every record is sent as JSON with its chain hashes (format: <GuideLink page="Remote-Audit-Copy-Reference">Remote Audit Copy Reference</GuideLink>).</>}>
           <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://logs.example.net/drool-audit" required data-autofocus />
         </Field>
         <Field label="Header name" hint="Sent with every request, e.g. Authorization.">

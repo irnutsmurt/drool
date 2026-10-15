@@ -51,17 +51,17 @@ func cmdRelease(args []string) error {
 			return err
 		}
 		fmt.Printf("Wrote %s.key (the release-signing PRIVATE key: keep it offline, never on the controller)\n", *out)
-		fmt.Printf("Wrote %s.pub (key id %s): register it under Agents → Updates and install it on hosts\n", *out, release.KeyID(pub))
+		fmt.Printf("Wrote %s.pub (key id %s): register it under Shepherds → Updates and install it on hosts\n", *out, release.KeyID(pub))
 		return nil
 	case "sign":
 		fs := flag.NewFlagSet("release sign", flag.ContinueOnError)
 		keyFile := fs.String("key", "", "release-signing private key (NAME.key)")
-		ver := fs.String("version", "", "agent version (default: the one stamped into the binary, which it must match)")
+		ver := fs.String("version", "", "Shepherd version (default: the one stamped into the binary, which it must match)")
 		channel := fs.String("channel", "stable", "release channel")
 		goos := fs.String("os", "", "default: the binary's")
 		arch := fs.String("arch", "", "default: the binary's")
-		pmin := fs.Uint("protocol-min", 1, "lowest agent protocol the binary speaks")
-		pmax := fs.Uint("protocol-max", 1, "highest agent protocol the binary speaks")
+		pmin := fs.Uint("protocol-min", 1, "lowest Shepherd protocol the binary speaks")
+		pmax := fs.Uint("protocol-max", 1, "highest Shepherd protocol the binary speaks")
 		minFrom := fs.String("min-upgrade-from", "", "oldest version that may upgrade straight to this one")
 		allowModified := fs.Bool("allow-modified", false, "sign a build made from source with uncommitted changes")
 		if err := fs.Parse(args[1:]); err != nil {
@@ -182,7 +182,7 @@ func cmdAgentCA(cfgPath string, explicit bool, args []string) error {
 		unlock, err := store.LockDataDir(cfg.DataDir)
 		if err != nil {
 			if errors.Is(err, store.ErrLocked) {
-				return fmt.Errorf("the controller is running; use Agents → Trust in the web UI, or stop it first")
+				return fmt.Errorf("the controller is running; use Shepherds → Trust (PKI) in the web UI, or stop it first")
 			}
 			return err
 		}
@@ -271,7 +271,7 @@ func cmdAgentCA(cfgPath string, explicit bool, args []string) error {
 			return err
 		}
 		aw.Record(ctx, audit.Event{Action: "agent_ca.rotate", Actor: &actor, TargetType: "agent_ca", Details: map[string]any{"manifest_version": v, "revoke_old": *revoke}})
-		fmt.Printf("New intermediate CA and trust manifest %d. Agents take it the next time they connect.\n", v)
+		fmt.Printf("New intermediate CA and trust manifest %d. Shepherds take it the next time they connect.\n", v)
 		return nil
 	case "import-manifest":
 		if len(args) != 2 {
@@ -315,7 +315,7 @@ func recoverIntermediate(ctx context.Context, st *store.Store, box *secrets.Box,
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Issued a new intermediate CA and trust manifest %d. Start the controller; agents move to the new intermediate on their own (certificate recovery).\n", v)
+	fmt.Printf("Issued a new intermediate CA and trust manifest %d. Start the controller; Shepherds move to the new intermediate on their own (certificate recovery).\n", v)
 	return nil
 }
 
@@ -368,7 +368,7 @@ func cmdSignManifest(args []string) error {
 	if err := os.WriteFile(*out, b, 0o644); err != nil {
 		return err
 	}
-	fmt.Printf("Wrote trust manifest %d to %s; import it with `drool agent-ca import-manifest` or Agents → Trust in the web UI.\n", *ver, *out)
+	fmt.Printf("Wrote trust manifest %d to %s; import it with `drool agent-ca import-manifest` or Shepherds → Trust (PKI) in the web UI.\n", *ver, *out)
 	return nil
 }
 

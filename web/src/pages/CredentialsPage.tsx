@@ -123,7 +123,7 @@ export function CredentialsPage() {
               <span className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{c.name}</span>
                 {c.temporary && (
-                  <span title="Entered only to set up DROOL's own SSH account on a host. DROOL deletes it once that account works, unless another host uses it.">
+                  <span title="Entered only to set up DROOL's own SSH account on a host. DROOL deletes it once that account works, or when the host is removed or stops signing in with it, unless another host uses it.">
                     <Badge tone="warn">for setup only</Badge>
                   </span>
                 )}

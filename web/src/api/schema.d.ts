@@ -896,11 +896,31 @@ export interface paths {
         get: operations["getGroup"];
         put?: never;
         post?: never;
+        /** @description Deletes the pack; its hosts stay. Refused with 409 `pack_in_use` (the problem's `dependencies` lists each reference) while anything that changes what happens to its hosts names it: firewall policies, schedules, notification routes, active maintenance, Desired State assignments, monitoring settings, live enrollment tokens, network classifications. What is harmless to drop (memberships, its priorities, its firewall rollback timeout, helper approvals) goes with it; enrollment token history is kept without it. */
         delete: operations["deleteGroup"];
         options?: never;
         head?: never;
         /** @description `host_ids`, when present, replaces the members. */
         patch: operations["updateGroup"];
+        trace?: never;
+    };
+    "/groups/{id}/dependencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** @description What depends on the pack, across every subsystem, and what deleting it would drop. */
+        get: operations["getGroupDependencies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/groups/{id}/members": {
@@ -2223,6 +2243,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/hosts/{id}/agent/uninstall/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description What removing the host's Shepherd would do, read from the host over SSH as root (which also checks that path, since it manages the host afterwards). Changes nothing. `can_uninstall` is false, with `refusal_code`, when DROOL won't remove it: last_management_path (no SSH access), ssh_unavailable (SSH doesn't work as root), nothing_to_remove. */
+        post: operations["planUninstallAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hosts/{id}/agent/uninstall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Remove the host's Shepherd over its SSH path: stop and disable it, remove its service, programs, configuration, identity (private key) and state, revoke its identity and the host's unused enrollment tokens, forget its capability narrowing, and manage the host over SSH; then check that nothing of it is left and no session remains. Needs agents.manage and hosts.write and a recent sign-in (high-impact). Refused (409, nothing changed) when the host has no working SSH path. `outcome` is uninstalled only when confirmed; partial lists what is left; unknown means the removal didn't report back and nothing changed in DROOL. Running it again continues. */
+        post: operations["uninstallAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/hosts/{id}/state/{domain}/adopt": {
         parameters: {
             query?: never;
@@ -2721,6 +2775,44 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/network/classifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The classifications of recurring traffic (what it is, whether it is expected). Requires network.read. */
+        get: operations["listNetworkClassifications"];
+        put?: never;
+        /** @description Say what recurring traffic is. A classification matches flows by host or pack, direction, protocol, service port and remote side (a DROOL host, a pack's hosts, or an address or CIDR); it names at least a port or a remote side. It applies to traffic already observed and observed later. Labels only: nothing is enforced and no firewall rule is created. Requires network.classify; audited (network.classification.create). */
+        post: operations["createNetworkClassification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/network/classifications/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Replace a classification. Requires network.classify; audited (network.classification.update, with what it matched before). */
+        put: operations["updateNetworkClassification"];
+        post?: never;
+        /** @description The traffic it matched is classified as before (DROOL's evidence, another classification, its port, or unknown). Requires network.classify; audited (network.classification.delete). */
+        delete: operations["deleteNetworkClassification"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4287,13 +4379,87 @@ export interface components {
             reauth?: {
                 /** @description Ask for an authenticator code too. */
                 mfa: boolean;
+                /** @description How long one confirmation lasts (seconds). */
                 window_s: number;
+                /**
+                 * @description Why this action needs a confirmation (a typed code; the browser shows `explanation`).
+                 * @enum {string}
+                 */
+                reason?: "account_security" | "user_access" | "user_password" | "host_access" | "host_key" | "credential_in_use" | "ssh_ca" | "shepherd_management" | "shepherd_trust" | "firewall_override" | "audit" | "recovery";
+                /** @description Fixed, server-written wording for `reason`. */
+                explanation?: string;
             };
+            /** @description Set on `pack_in_use`: what still names the pack. */
+            dependencies?: components["schemas"]["PackDependencies"];
+        };
+        UninstallPlan: {
+            host_id: string;
+            host_name: string;
+            can_uninstall: boolean;
+            /** @enum {string} */
+            refusal_code?: "last_management_path" | "ssh_unavailable" | "nothing_to_remove";
+            refusal?: string;
+            /** @description How DROOL manages the host afterwards (user@address and privilege escalation). */
+            sign_in: string;
+            identity: {
+                id: string;
+                fingerprint: string;
+                status: string;
+                connected: boolean;
+            } | null;
+            systemd: string;
+            /** @description systemd's state of drool-agent.service ('' without systemd). */
+            service: string;
+            processes: number;
+            items: {
+                path: string;
+                what: string;
+                present: boolean;
+            }[];
+            /** @description What changes in DROOL. */
+            controller: string[];
+        };
+        UninstallResult: {
+            /** @enum {string} */
+            outcome: "uninstalled" | "partial" | "unknown" | "nothing";
+            removed: string[];
+            remaining: string[];
+            still_running: number;
+            session_left: boolean;
+            identity_revoked: boolean;
+            tokens_revoked: number;
+            management: string;
+            message: string;
+            output: string;
+        };
+        PackDependencies: {
+            pack_id: string;
+            pack_name: string;
+            members: number;
+            /** @description References that must change before the pack can be deleted. */
+            blocking: {
+                /** @enum {string} */
+                kind: "firewall_policy" | "schedule" | "notification_route" | "maintenance" | "desired_assignment" | "health_override" | "enrollment_token" | "network_rule";
+                id: string;
+                name: string;
+                /** @description What to change. */
+                detail: string;
+                /** @description The UI page where it changes. */
+                path: string;
+            }[];
+            /** @description What deleting the pack drops with it, harmlessly. */
+            removed: {
+                kind: string;
+                count: number;
+                detail: string;
+            }[];
         };
         SetupStatus: {
             setup_required: boolean;
             /** @description An unexpired setup code exists. */
             code_available: boolean;
+            /** @description While setup is required: the container volume this new DROOL keeps its data in (data_volume), for a warning to someone who expected an existing installation. */
+            data_volume?: string;
         };
         SetupClaimRequest: {
             code: string;
@@ -5876,6 +6042,70 @@ export interface components {
             /** Format: date-time */
             peer_first_seen?: string;
             policy: components["schemas"]["NetCorrelation"];
+            classification: components["schemas"]["NetClassification"];
+        };
+        /** @description What a flow is and how DROOL knows. drool: DROOL's own management traffic, from direct evidence (the address a host sees DROOL's SSH come from, the controller endpoint a Shepherd reported, a connection a jump host forwards for DROOL), never from a familiar port alone; approved: a classification marked expected; user: a classification; service: named after its port; unknown. Computed when flows are read: nothing is enforced. */
+        NetClassification: {
+            /** @enum {string} */
+            kind: "drool" | "approved" | "user" | "service" | "unknown";
+            label: string;
+            /**
+             * @description drool: DROOL's evidence; rule: a matching classification; manual: labeled from one observed connection; port: named after its port; none: unknown.
+             * @enum {string}
+             */
+            source: "drool" | "rule" | "manual" | "port" | "none";
+            rule_id?: string;
+            /** @description The evidence */
+            detail: string;
+        };
+        /** @description A classification of recurring traffic. Empty match fields match anything. */
+        NetRule: {
+            id: string;
+            label: string;
+            note: string;
+            expected: boolean;
+            /**
+             * @description flow: made from one observed connection ("manually labeled").
+             * @enum {string}
+             */
+            origin: "rule" | "flow";
+            host_id?: string;
+            host_group_id?: string;
+            /** @enum {string} */
+            direction?: "in" | "out";
+            /** @enum {string} */
+            protocol?: "tcp" | "udp";
+            port?: number;
+            remote_host_id?: string;
+            remote_group_id?: string;
+            remote_cidr?: string;
+            /** @description What it matches, in words ("pack media → nas-01, TCP 2049"). */
+            described: string;
+            created_by?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        NetRuleInput: {
+            label: string;
+            note?: string;
+            expected?: boolean;
+            /** @enum {string} */
+            origin?: "rule" | "flow";
+            /** @description One host */
+            host_id?: string;
+            host_group_id?: string;
+            /** @enum {string} */
+            direction?: "" | "in" | "out";
+            /** @enum {string} */
+            protocol?: "" | "tcp" | "udp";
+            /** @description The service port; 0 for any. */
+            port?: number;
+            /** @description At most one remote side: a DROOL host, a pack's hosts, or an address or CIDR. */
+            remote_host_id?: string;
+            remote_group_id?: string;
+            remote_cidr?: string;
         };
         NetFlowPage: {
             items: components["schemas"]["NetFlow"][];
@@ -6562,7 +6792,32 @@ export interface components {
             /** @enum {string} */
             state: "running" | "stopped" | "failed" | "unknown";
             notable: boolean;
+            /** @description Expected to run (the expected state running). */
             watched: boolean;
+            /**
+             * @description The expected state ('' = automatic, judged by whether it starts at boot).
+             * @enum {string}
+             */
+            expected: "" | "running" | "stopped" | "ignored";
+            expected_source?: {
+                /** @description subject (this host), group, global; unset when packs disagree. */
+                kind: string;
+                /** @description Where it comes from, in words ("set on this host", "from pack media"). */
+                label: string;
+                /** @description This host's own setting for the unit */
+                override_id?: string;
+            };
+            /**
+             * @description Whether its state is a health problem now.
+             * @enum {string}
+             */
+            health: "problem" | "expected" | "ignored" | "ok" | "unknown";
+            /** @description Why it alerts or doesn't */
+            health_note?: string;
+            /** @description The service actions that make sense for it now. */
+            actions: ("start" | "stop" | "restart" | "enable" | "disable" | "enable_start" | "disable_stop")[];
+            /** @description Why other actions aren't offered (static */
+            action_note?: string;
         };
         MonServicesView: {
             supported: boolean;
@@ -6736,14 +6991,20 @@ export interface components {
         };
         HealthFieldSpec: {
             /** @enum {string} */
-            name: "enabled" | "warning" | "critical" | "duration_min" | "clear" | "clear_duration_min" | "missed_intervals";
+            name: "enabled" | "warning" | "critical" | "duration_min" | "clear" | "clear_duration_min" | "missed_intervals" | "expected";
             label: string;
             /** @enum {string} */
-            type: "bool" | "percent" | "celsius" | "minutes" | "count";
+            type: "bool" | "percent" | "celsius" | "minutes" | "count" | "choice";
             unit?: string;
             min: number;
             max: number;
             help?: string;
+            /** @description A choice field's values. */
+            options?: {
+                value: string;
+                label: string;
+                help?: string;
+            }[];
         };
         HealthCheckSpec: {
             id: string;
@@ -6770,6 +7031,11 @@ export interface components {
             clear?: number;
             clear_duration_min?: number;
             missed_intervals?: number;
+            /**
+             * @description A service's expected state (check service_expected only; absent = automatic).
+             * @enum {string}
+             */
+            expected?: "running" | "stopped" | "ignored";
         };
         HealthGroupRef: {
             id: string;
@@ -7398,7 +7664,12 @@ export interface components {
             to?: string[];
             allow_plaintext?: boolean;
             header_name?: string;
+            /** @description Webhook, Discord, Slack: scheme and host of the secret URL. Never set for Telegram (its request URL contains the bot token). */
             readonly url_display?: string;
+            /** @description Telegram: -1001234567890 (a group or channel), 123456789 (a person) or @channelname. */
+            chat_id?: string;
+            /** @description Telegram: the topic, in a group with topics. */
+            thread_id?: number;
             timeout_s?: number;
         };
         /** @description Write-only secret values. Omitted keeps the stored value; an empty string clears an optional one. */
@@ -7409,11 +7680,13 @@ export interface components {
             header_value?: string;
             /** @description SMTP password. */
             password?: string;
+            /** @description Telegram bot token from @BotFather (123456789:AA…). */
+            bot_token?: string;
         };
         DestinationInput: {
             name?: string;
             /** @enum {string} */
-            kind?: "email" | "webhook" | "discord" | "slack";
+            kind?: "email" | "webhook" | "discord" | "slack" | "telegram";
             enabled?: boolean;
             config?: components["schemas"]["DestinationConfig"];
             secrets?: components["schemas"]["DestinationSecrets"];
@@ -7427,13 +7700,14 @@ export interface components {
             id: string;
             name: string;
             /** @enum {string} */
-            kind: "email" | "webhook" | "discord" | "slack";
+            kind: "email" | "webhook" | "discord" | "slack" | "telegram";
             enabled: boolean;
             config: components["schemas"]["DestinationConfig"];
             secrets_set: {
                 url: boolean;
                 header_value: boolean;
                 password: boolean;
+                bot_token: boolean;
             };
             /** @enum {string} */
             notify_for: "recommended" | "custom";
@@ -9666,6 +9940,7 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
         };
     };
     updateGroup: {
@@ -9695,6 +9970,29 @@ export interface operations {
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
             422: components["responses"]["Problem"];
+        };
+    };
+    getGroupDependencies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Dependencies. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackDependencies"];
+                };
+            };
+            404: components["responses"]["Problem"];
         };
     };
     addGroupMembers: {
@@ -11997,6 +12295,54 @@ export interface operations {
             409: components["responses"]["Problem"];
         };
     };
+    planUninstallAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UninstallPlan"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    uninstallAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What happened. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UninstallResult"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
     adoptHostState: {
         parameters: {
             query?: never;
@@ -12834,6 +13180,8 @@ export interface operations {
                 peer?: string;
                 /** @description denied includes flows the desired policy would deny. */
                 policy?: "management" | "covered" | "unclassified" | "denied";
+                /** @description What the flow is (its classification); classified is anything not unknown. */
+                class?: "drool" | "approved" | "user" | "service" | "unknown" | "classified";
                 source?: "conntrack" | "sockets" | "snapshot";
                 /** @description Unix seconds */
                 first_seen_after?: string;
@@ -12895,6 +13243,8 @@ export interface operations {
                 peer?: string;
                 /** @description denied includes flows the desired policy would deny. */
                 policy?: "management" | "covered" | "unclassified" | "denied";
+                /** @description What the flow is (its classification); classified is anything not unknown. */
+                class?: "drool" | "approved" | "user" | "service" | "unknown" | "classified";
                 source?: "conntrack" | "sockets" | "snapshot";
                 /** @description Unix seconds */
                 first_seen_after?: string;
@@ -13005,6 +13355,102 @@ export interface operations {
                 };
             };
             422: components["responses"]["Problem"];
+        };
+    };
+    listNetworkClassifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Classifications. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["NetRule"][];
+                    };
+                };
+            };
+        };
+    };
+    createNetworkClassification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NetRuleInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetRule"];
+                };
+            };
+            422: components["responses"]["Problem"];
+        };
+    };
+    updateNetworkClassification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NetRuleInput"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetRule"];
+                };
+            };
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    deleteNetworkClassification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
         };
     };
     networkSettings: {
@@ -14399,7 +14845,7 @@ export interface operations {
             content: {
                 "application/json": {
                     /** @enum {string} */
-                    kind: "email" | "webhook" | "discord" | "slack";
+                    kind: "email" | "webhook" | "discord" | "slack" | "telegram";
                     config: components["schemas"]["DestinationConfig"];
                     secrets?: components["schemas"]["DestinationSecrets"];
                 };

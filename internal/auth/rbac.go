@@ -50,6 +50,9 @@ const (
 	PermNetworkRead     Permission = "network.read"     // observed connections, topology, enrichment status
 	PermNetworkSnapshot Permission = "network.snapshot" // take a connection snapshot of an SSH host
 	PermNetworkSettings Permission = "network.settings" // collection, retention, enrichment
+	// Classifying observed traffic (what a flow is, whether it's expected)
+	// is operator work, like acknowledging alerts: labels, never enforcement.
+	PermNetworkClassify Permission = "network.classify"
 
 	// System monitoring (M11). Reading metrics, services and hardware
 	// health is for everyone; watching services, the flash probe and
@@ -116,7 +119,7 @@ var rolePermissions = map[string][]Permission{
 		PermFilesRead, PermFilesWrite, PermFilesDeploy, PermFilesElevate,
 		PermAgentsRead, PermAgentsEnroll, PermAgentsManage, PermAgentsPKI,
 		PermFirewallRead, PermFirewallWrite, PermFirewallOverride,
-		PermNetworkRead, PermNetworkSnapshot, PermNetworkSettings,
+		PermNetworkRead, PermNetworkSnapshot, PermNetworkSettings, PermNetworkClassify,
 		PermMonitoringRead, PermMonitoringManage, PermMonitoringSettings,
 		PermAlertsRead, PermAlertsAcknowledge, PermMaintenanceManage, PermNotificationsRead, PermNotificationsManage, PermNotificationsTest,
 		PermSchedulesRead, PermSchedulesManage, PermSchedulesAdmin, PermWorkflowsRead, PermWorkflowsManage,
@@ -127,7 +130,7 @@ var rolePermissions = map[string][]Permission{
 	RoleOperator: {
 		PermHostsRead, PermJobsRead, PermJobsExecute, PermCredentialsUse,
 		PermFilesRead, PermFilesWrite, PermFilesDeploy, PermFilesElevate,
-		PermAgentsRead, PermFirewallRead, PermNetworkRead, PermNetworkSnapshot, PermMonitoringRead, PermMonitoringManage,
+		PermAgentsRead, PermFirewallRead, PermNetworkRead, PermNetworkSnapshot, PermNetworkClassify, PermMonitoringRead, PermMonitoringManage,
 		PermAlertsRead, PermAlertsAcknowledge, PermMaintenanceManage, PermNotificationsRead, PermNotificationsTest,
 		PermSchedulesRead, PermSchedulesManage, PermWorkflowsRead, PermWorkflowsManage,
 		PermDesiredRead, PermDesiredRestore,

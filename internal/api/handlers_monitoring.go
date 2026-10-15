@@ -397,6 +397,9 @@ func (s *Server) handleSetHostMonitoringSettings(w http.ResponseWriter, r *http.
 		if err := monsvc.SaveHostSettingsTx(ctx, tx, id, in, principalFrom(ctx).UserID, nowMs()); err != nil {
 			return err
 		}
+		if _, err := s.d.Monitor.SetWatchedTx(ctx, tx, id, in.WatchedServices, principalFrom(ctx).UserID, nowMs()); err != nil {
+			return err
+		}
 		var err error
 		emit, err = s.d.Audit.RecordTx(ctx, db.New(tx), audit.Event{Action: "monitoring.host_settings.update", TargetType: "host", TargetID: id,
 			Details: map[string]any{"before": before, "after": in}})

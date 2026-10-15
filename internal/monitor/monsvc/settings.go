@@ -181,8 +181,9 @@ func SaveSettingsTx(ctx context.Context, q *db.Queries, s Settings, by string, n
 
 // HostSettings are one host's monitoring choices.
 type HostSettings struct {
-	// WatchedServices must be running: stopped for longer than the watched
-	// duration is an issue (failed always is).
+	// WatchedServices are the units this host's own settings expect to run
+	// (expected state "running", a health setting since the final After-M17
+	// batch): reading lists them, writing sets or clears that setting.
 	WatchedServices []string `json:"watched_services"`
 	// ProbeMounts get the write/read flash probe every ProbeS seconds
 	// (default hourly; agent hosts only).

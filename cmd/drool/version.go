@@ -52,11 +52,11 @@ func cmdVersion(args []string) error {
 		return enc.Encode(b)
 	}
 	fmt.Printf("drool %s (commit %s, built %s)\n", b.Version, b.ShortCommit(), b.BuildDate)
-	fmt.Printf("  channel          %s\n", b.Channel)
-	fmt.Printf("  source           %s\n", b.Source())
-	fmt.Printf("  commit           %s\n", b.Commit)
-	fmt.Printf("  database schema  %d\n", b.SchemaVersion)
-	fmt.Printf("  agent protocol   %d–%d (Shepherd features: %s)\n", b.AgentProtocol.Min, b.AgentProtocol.Max, strings.Join(b.AgentFeatures, ", "))
-	fmt.Printf("  go               %s %s\n", b.GoVersion, b.Platform)
+	fmt.Printf("  channel           %s\n", b.Channel)
+	fmt.Printf("  source            %s\n", b.Source())
+	fmt.Printf("  commit            %s\n", b.Commit)
+	fmt.Printf("  database schema   %d\n", b.SchemaVersion)
+	fmt.Printf("  Shepherd protocol %d–%d (features: %s)\n", b.AgentProtocol.Min, b.AgentProtocol.Max, strings.Join(b.AgentFeatures, ", "))
+	fmt.Printf("  go                %s %s\n", b.GoVersion, b.Platform)
 	return nil
 }

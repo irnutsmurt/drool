@@ -24,3 +24,9 @@ DELETE FROM secrets WHERE id = ?;
 SELECT id, name FROM hosts
 WHERE ssh_credential_id = CAST(sqlc.arg(id) AS TEXT) OR become_credential_id = CAST(sqlc.arg(id) AS TEXT)
 ORDER BY name;
+
+-- name: ListUnusedTemporarySecrets :many
+-- Setup-only credentials no host signs in with any more.
+SELECT * FROM secrets s WHERE s.temporary = 1
+AND NOT EXISTS (SELECT 1 FROM hosts h WHERE h.ssh_credential_id = s.id OR h.become_credential_id = s.id)
+ORDER BY s.name;

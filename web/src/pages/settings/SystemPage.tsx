@@ -9,6 +9,7 @@ import { Alert } from "@/components/ui/Alert";
 import { RestoreReconciliationCard } from "@/components/system/RestoreReconciliation";
 import { errorMessage } from "@/lib/format";
 import type { Schemas } from "@/api/client";
+import { GuideLink } from "@/components/ui/GuideLink";
 
 type ConfigValue = Schemas["ConfigValue"];
 const sourceTone = { default: "neutral", file: "accent", env: "warn" } as const;
@@ -76,8 +77,8 @@ export function SystemPage() {
             Stored credentials are encrypted with the master key, which is not in the backup unless you add
             <code className="mx-1 font-mono text-xs">--include-master-key</code>. Without it, keep a copy of the master key file
             somewhere safe and separate from the backups (see Secure your installation above), or the credentials can't be
-            restored. Restoring needs DROOL stopped: <code className="mx-1 font-mono text-xs">drool restore FILE</code> (the README
-            has the commands for each kind of installation).
+            restored. Restoring needs DROOL stopped: <code className="mx-1 font-mono text-xs">drool restore FILE</code> (the commands for each
+            kind of installation: <GuideLink page="Restoring-a-Controller">Restoring a Controller</GuideLink>).
           </p>
           <p className="text-muted">
             <code className="mr-1 font-mono text-xs">drool backup verify FILE</code> checks that a backup can be restored without restoring it.

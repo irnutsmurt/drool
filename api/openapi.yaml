@@ -1089,8 +1089,29 @@ paths:
     delete:
       operationId: deleteGroup
       tags: [groups]
+      description: >-
+        Deletes the pack; its hosts stay. Refused with 409 `pack_in_use` (the problem's `dependencies` lists each
+        reference) while anything that changes what happens to its hosts names it: firewall policies, schedules,
+        notification routes, active maintenance, Desired State assignments, monitoring settings, live enrollment
+        tokens, network classifications. What is harmless to drop (memberships, its priorities, its firewall
+        rollback timeout, helper approvals) goes with it; enrollment token history is kept without it.
       responses:
         '204': { description: Deleted. }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /groups/{id}/dependencies:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getGroupDependencies
+      tags: [groups]
+      description: What depends on the pack, across every subsystem, and what deleting it would drop.
+      responses:
+        '200':
+          description: Dependencies.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PackDependencies' }
         '404': { $ref: '#/components/responses/Problem' }
   /groups/{id}/members:
     parameters:
@@ -2276,6 +2297,36 @@ paths:
       responses:
         '200': { description: Result., content: { application/json: { schema: { type: object, required: [ok, output], properties: { ok: { type: boolean }, output: { type: string }, error: { type: string } } } } } }
         '409': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/agent/uninstall/plan:
+    post:
+      operationId: planUninstallAgent
+      tags: [agents]
+      description: >-
+        What removing the host's Shepherd would do, read from the host over SSH as root (which also checks that path,
+        since it manages the host afterwards). Changes nothing. `can_uninstall` is false, with `refusal_code`, when DROOL
+        won't remove it: last_management_path (no SSH access), ssh_unavailable (SSH doesn't work as root),
+        nothing_to_remove.
+      parameters: [{ $ref: '#/components/parameters/HostId' }]
+      responses:
+        '200': { description: The plan., content: { application/json: { schema: { $ref: '#/components/schemas/UninstallPlan' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/agent/uninstall:
+    post:
+      operationId: uninstallAgent
+      tags: [agents]
+      description: >-
+        Remove the host's Shepherd over its SSH path: stop and disable it, remove its service, programs, configuration,
+        identity (private key) and state, revoke its identity and the host's unused enrollment tokens, forget its capability
+        narrowing, and manage the host over SSH; then check that nothing of it is left and no session remains. Needs
+        agents.manage and hosts.write and a recent sign-in (high-impact). Refused (409, nothing changed) when the host
+        has no working SSH path. `outcome` is uninstalled only when confirmed; partial lists what is left; unknown means the
+        removal didn't report back and nothing changed in DROOL. Running it again continues.
+      parameters: [{ $ref: '#/components/parameters/HostId' }]
+      responses:
+        '200': { description: What happened., content: { application/json: { schema: { $ref: '#/components/schemas/UninstallResult' } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
   /hosts/{id}/state/{domain}/adopt:
     post:
       operationId: adoptHostState
@@ -2599,6 +2650,7 @@ paths:
         - { name: org, in: query, description: Substring of the network organization., schema: { type: string } }
         - { name: peer, in: query, description: A remote address or CIDR., schema: { type: string } }
         - { name: policy, in: query, description: denied includes flows the desired policy would deny., schema: { type: string, enum: [management, covered, unclassified, denied] } }
+        - { name: class, in: query, description: 'What the flow is (its classification); classified is anything not unknown.', schema: { type: string, enum: [drool, approved, user, service, unknown, classified] } }
         - { name: source, in: query, schema: { type: string, enum: [conntrack, sockets, snapshot] } }
         - { name: first_seen_after, in: query, description: Unix seconds, RFC 3339 or a duration back from now (24h, 7d)., schema: { type: string } }
         - { name: last_seen_after, in: query, schema: { type: string } }
@@ -2662,6 +2714,51 @@ paths:
       responses:
         '200': { description: The observed graph., content: { application/json: { schema: { $ref: '#/components/schemas/NetTopology' } } } }
         '422': { $ref: '#/components/responses/Problem' }
+  /network/classifications:
+    get:
+      operationId: listNetworkClassifications
+      tags: [network]
+      description: The classifications of recurring traffic (what it is, whether it is expected). Requires network.read.
+      responses:
+        '200':
+          description: Classifications.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties: { items: { type: array, items: { $ref: '#/components/schemas/NetRule' } } }
+    post:
+      operationId: createNetworkClassification
+      tags: [network]
+      description: >-
+        Say what recurring traffic is. A classification matches flows by host or pack, direction, protocol, service port and
+        remote side (a DROOL host, a pack's hosts, or an address or CIDR); it names at least a port or a remote side. It applies
+        to traffic already observed and observed later. Labels only: nothing is enforced and no firewall rule is created.
+        Requires network.classify; audited (network.classification.create).
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/NetRuleInput' } } } }
+      responses:
+        '201': { description: Created., content: { application/json: { schema: { $ref: '#/components/schemas/NetRule' } } } }
+        '422': { $ref: '#/components/responses/Problem' }
+  /network/classifications/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    put:
+      operationId: updateNetworkClassification
+      tags: [network]
+      description: Replace a classification. Requires network.classify; audited (network.classification.update, with what it matched before).
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/NetRuleInput' } } } }
+      responses:
+        '200': { description: Saved., content: { application/json: { schema: { $ref: '#/components/schemas/NetRule' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: deleteNetworkClassification
+      tags: [network]
+      description: The traffic it matched is classified as before (DROOL's evidence, another classification, its port, or unknown). Requires network.classify; audited (network.classification.delete).
+      responses:
+        '204': { description: Deleted. }
+        '404': { $ref: '#/components/responses/Problem' }
   /network/settings:
     get:
       operationId: networkSettings
@@ -3268,7 +3365,7 @@ paths:
       description: Send a test notification to a destination that isn't saved yet. Audited. Requires `notifications.manage`.
       requestBody:
         required: true
-        content: { application/json: { schema: { type: object, required: [kind, config], properties: { kind: { type: string, enum: [email, webhook, discord, slack] }, config: { $ref: '#/components/schemas/DestinationConfig' }, secrets: { $ref: '#/components/schemas/DestinationSecrets' } } } } }
+        content: { application/json: { schema: { type: object, required: [kind, config], properties: { kind: { type: string, enum: [email, webhook, discord, slack, telegram] }, config: { $ref: '#/components/schemas/DestinationConfig' }, secrets: { $ref: '#/components/schemas/DestinationSecrets' } } } } }
       responses:
         '200': { description: The result., content: { application/json: { schema: { $ref: '#/components/schemas/TestResult' } } } }
         '429': { $ref: '#/components/responses/Problem' }
@@ -3934,7 +4031,81 @@ components:
           required: [mfa, window_s]
           properties:
             mfa: { type: boolean, description: Ask for an authenticator code too. }
-            window_s: { type: integer }
+            window_s: { type: integer, description: How long one confirmation lasts (seconds). }
+            reason:
+              type: string
+              description: Why this action needs a confirmation (a typed code; the browser shows `explanation`).
+              enum: [account_security, user_access, user_password, host_access, host_key, credential_in_use, ssh_ca, shepherd_management, shepherd_trust, firewall_override, audit, recovery]
+            explanation: { type: string, description: 'Fixed, server-written wording for `reason`.' }
+        dependencies:
+          description: 'Set on `pack_in_use`: what still names the pack.'
+          allOf: [{ $ref: '#/components/schemas/PackDependencies' }]
+
+    UninstallPlan:
+      type: object
+      required: [host_id, host_name, can_uninstall, sign_in, identity, systemd, service, processes, items, controller]
+      properties:
+        host_id: { type: string }
+        host_name: { type: string }
+        can_uninstall: { type: boolean }
+        refusal_code: { type: string, enum: [last_management_path, ssh_unavailable, nothing_to_remove] }
+        refusal: { type: string }
+        sign_in: { type: string, description: How DROOL manages the host afterwards (user@address and privilege escalation). }
+        identity:
+          type: [object, 'null']
+          required: [id, fingerprint, status, connected]
+          properties: { id: { type: string }, fingerprint: { type: string }, status: { type: string }, connected: { type: boolean } }
+        systemd: { type: string }
+        service: { type: string, description: "systemd's state of drool-agent.service ('' without systemd)." }
+        processes: { type: integer }
+        items:
+          type: array
+          items: { type: object, required: [path, what, present], properties: { path: { type: string }, what: { type: string }, present: { type: boolean } } }
+        controller: { type: array, items: { type: string }, description: What changes in DROOL. }
+    UninstallResult:
+      type: object
+      required: [outcome, removed, remaining, still_running, session_left, identity_revoked, tokens_revoked, management, message, output]
+      properties:
+        outcome: { type: string, enum: [uninstalled, partial, unknown, nothing] }
+        removed: { type: array, items: { type: string } }
+        remaining: { type: array, items: { type: string } }
+        still_running: { type: integer }
+        session_left: { type: boolean }
+        identity_revoked: { type: boolean }
+        tokens_revoked: { type: integer }
+        management: { type: string }
+        message: { type: string }
+        output: { type: string }
+
+    PackDependencies:
+      type: object
+      required: [pack_id, pack_name, members, blocking, removed]
+      properties:
+        pack_id: { type: string }
+        pack_name: { type: string }
+        members: { type: integer }
+        blocking:
+          type: array
+          description: References that must change before the pack can be deleted.
+          items:
+            type: object
+            required: [kind, id, name, detail, path]
+            properties:
+              kind: { type: string, enum: [firewall_policy, schedule, notification_route, maintenance, desired_assignment, health_override, enrollment_token, network_rule] }
+              id: { type: string }
+              name: { type: string }
+              detail: { type: string, description: What to change. }
+              path: { type: string, description: The UI page where it changes. }
+        removed:
+          type: array
+          description: What deleting the pack drops with it, harmlessly.
+          items:
+            type: object
+            required: [kind, count, detail]
+            properties:
+              kind: { type: string }
+              count: { type: integer }
+              detail: { type: string }
 
     SetupStatus:
       type: object
@@ -3942,6 +4113,7 @@ components:
       properties:
         setup_required: { type: boolean }
         code_available: { type: boolean, description: An unexpired setup code exists. }
+        data_volume: { type: string, description: 'While setup is required: the container volume this new DROOL keeps its data in (data_volume), for a warning to someone who expected an existing installation.' }
 
     SetupClaimRequest:
       type: object
@@ -5596,7 +5768,7 @@ components:
         notes: { type: array, items: { type: string } }
     NetFlow:
       type: object
-      required: [id, host, direction, protocol, local_ip, local_port, remote_ip, remote_port, port, service, process, source, count, first_seen, last_seen, scope, peer_host, geo, policy]
+      required: [id, host, direction, protocol, local_ip, local_port, remote_ip, remote_port, port, service, process, source, count, first_seen, last_seen, scope, peer_host, geo, policy, classification]
       properties:
         id: { type: integer }
         host: { $ref: '#/components/schemas/NetHostRef' }
@@ -5621,6 +5793,59 @@ components:
         geo: { oneOf: [{ $ref: '#/components/schemas/NetGeo' }, { type: 'null' }] }
         peer_first_seen: { type: string, format: date-time }
         policy: { $ref: '#/components/schemas/NetCorrelation' }
+        classification: { $ref: '#/components/schemas/NetClassification' }
+    NetClassification:
+      type: object
+      description: >-
+        What a flow is and how DROOL knows. drool: DROOL's own management traffic, from direct evidence (the address a host sees
+        DROOL's SSH come from, the controller endpoint a Shepherd reported, a connection a jump host forwards for DROOL), never
+        from a familiar port alone; approved: a classification marked expected; user: a classification; service: named after
+        its port; unknown. Computed when flows are read: nothing is enforced.
+      required: [kind, label, source, detail]
+      properties:
+        kind: { type: string, enum: [drool, approved, user, service, unknown] }
+        label: { type: string }
+        source: { type: string, enum: [drool, rule, manual, port, none], description: 'drool: DROOL''s evidence; rule: a matching classification; manual: labeled from one observed connection; port: named after its port; none: unknown.' }
+        rule_id: { type: string }
+        detail: { type: string, description: The evidence, in words. }
+    NetRule:
+      type: object
+      description: A classification of recurring traffic. Empty match fields match anything.
+      required: [id, label, note, expected, origin, described, created_at, updated_at]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        note: { type: string }
+        expected: { type: boolean }
+        origin: { type: string, enum: [rule, flow], description: 'flow: made from one observed connection ("manually labeled").' }
+        host_id: { type: string }
+        host_group_id: { type: string }
+        direction: { type: string, enum: [in, out] }
+        protocol: { type: string, enum: [tcp, udp] }
+        port: { type: integer }
+        remote_host_id: { type: string }
+        remote_group_id: { type: string }
+        remote_cidr: { type: string }
+        described: { type: string, description: 'What it matches, in words ("pack media → nas-01, TCP 2049").' }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    NetRuleInput:
+      type: object
+      required: [label]
+      properties:
+        label: { type: string, minLength: 1, maxLength: 120 }
+        note: { type: string, maxLength: 500 }
+        expected: { type: boolean }
+        origin: { type: string, enum: [rule, flow] }
+        host_id: { type: string, description: One host, or host_group_id for a pack's hosts, or neither for any host. }
+        host_group_id: { type: string }
+        direction: { type: string, enum: ['', in, out] }
+        protocol: { type: string, enum: ['', tcp, udp] }
+        port: { type: integer, minimum: 0, maximum: 65535, description: The service port; 0 for any. }
+        remote_host_id: { type: string, description: 'At most one remote side: a DROOL host, a pack''s hosts, or an address or CIDR.' }
+        remote_group_id: { type: string }
+        remote_cidr: { type: string }
     NetFlowPage:
       type: object
       required: [items, total, scanned, truncated]
@@ -6309,7 +6534,7 @@ components:
         truncated: { type: boolean }
     MonService:
       type: object
-      required: [name, description, load, active, sub, file_state, transient, known, changed_at, state, notable, watched]
+      required: [name, description, load, active, sub, file_state, transient, known, changed_at, state, notable, watched, expected, health, actions]
       properties:
         name: { type: string }
         description: { type: string }
@@ -6325,7 +6550,28 @@ components:
         changed_at: { type: integer }
         state: { type: string, enum: [running, stopped, failed, unknown] }
         notable: { type: boolean }
-        watched: { type: boolean }
+        watched: { type: boolean, description: Expected to run (the expected state running). }
+        expected:
+          type: string
+          enum: ['', running, stopped, ignored]
+          description: The expected state ('' = automatic, judged by whether it starts at boot).
+        expected_source:
+          type: object
+          required: [kind, label]
+          properties:
+            kind: { type: string, description: 'subject (this host), group, global; unset when packs disagree.' }
+            label: { type: string, description: 'Where it comes from, in words ("set on this host", "from pack media").' }
+            override_id: { type: string, description: This host's own setting for the unit, if any. }
+        health:
+          type: string
+          enum: [problem, expected, ignored, ok, unknown]
+          description: Whether its state is a health problem now.
+        health_note: { type: string, description: Why it alerts or doesn't, in words. }
+        actions:
+          type: array
+          description: The service actions that make sense for it now.
+          items: { type: string, enum: [start, stop, restart, enable, disable, enable_start, disable_stop] }
+        action_note: { type: string, description: Why other actions aren't offered (static, masked, …). }
     MonServicesView:
       type: object
       required: [supported, updated_at, source, counts, hidden, units]
@@ -6490,13 +6736,20 @@ components:
       type: object
       required: [name, label, type, min, max]
       properties:
-        name: { type: string, enum: [enabled, warning, critical, duration_min, clear, clear_duration_min, missed_intervals] }
+        name: { type: string, enum: [enabled, warning, critical, duration_min, clear, clear_duration_min, missed_intervals, expected] }
         label: { type: string }
-        type: { type: string, enum: [bool, percent, celsius, minutes, count] }
+        type: { type: string, enum: [bool, percent, celsius, minutes, count, choice] }
         unit: { type: string }
         min: { type: number }
         max: { type: number }
         help: { type: string }
+        options:
+          type: array
+          description: A choice field's values.
+          items:
+            type: object
+            required: [value, label]
+            properties: { value: { type: string }, label: { type: string }, help: { type: string } }
     HealthCheckSpec:
       type: object
       required: [id, label, category, description, fields]
@@ -6520,6 +6773,10 @@ components:
         clear: { type: number }
         clear_duration_min: { type: integer }
         missed_intervals: { type: integer }
+        expected:
+          type: string
+          enum: [running, stopped, ignored]
+          description: A service's expected state (check service_expected only; absent = automatic).
     HealthGroupRef:
       type: object
       required: [id, name, priority]
@@ -7143,7 +7400,9 @@ components:
         to: { type: array, items: { type: string } }
         allow_plaintext: { type: boolean }
         header_name: { type: string }
-        url_display: { type: string, readOnly: true }
+        url_display: { type: string, readOnly: true, description: 'Webhook, Discord, Slack: scheme and host of the secret URL. Never set for Telegram (its request URL contains the bot token).' }
+        chat_id: { type: string, description: 'Telegram: -1001234567890 (a group or channel), 123456789 (a person) or @channelname.' }
+        thread_id: { type: integer, minimum: 0, description: 'Telegram: the topic, in a group with topics.' }
         timeout_s: { type: integer, minimum: 1, maximum: 30 }
     DestinationSecrets:
       type: object
@@ -7152,11 +7411,12 @@ components:
         url: { type: string, description: Webhook, Discord or Slack URL. }
         header_value: { type: string, description: Webhook authorization header value. }
         password: { type: string, description: SMTP password. }
+        bot_token: { type: string, description: 'Telegram bot token from @BotFather (123456789:AA…).' }
     DestinationInput:
       type: object
       properties:
         name: { type: string, maxLength: 64 }
-        kind: { type: string, enum: [email, webhook, discord, slack] }
+        kind: { type: string, enum: [email, webhook, discord, slack, telegram] }
         enabled: { type: boolean }
         config: { $ref: '#/components/schemas/DestinationConfig' }
         secrets: { $ref: '#/components/schemas/DestinationSecrets' }
@@ -7167,10 +7427,10 @@ components:
       properties:
         id: { type: string }
         name: { type: string }
-        kind: { type: string, enum: [email, webhook, discord, slack] }
+        kind: { type: string, enum: [email, webhook, discord, slack, telegram] }
         enabled: { type: boolean }
         config: { $ref: '#/components/schemas/DestinationConfig' }
-        secrets_set: { type: object, required: [url, header_value, password], properties: { url: { type: boolean }, header_value: { type: boolean }, password: { type: boolean } } }
+        secrets_set: { type: object, required: [url, header_value, password, bot_token], properties: { url: { type: boolean }, header_value: { type: boolean }, password: { type: boolean }, bot_token: { type: boolean } } }
         notify_for: { type: string, enum: [recommended, custom] }
         routes: { type: array, items: { type: string } }
         health:

@@ -283,7 +283,7 @@ export function HostDetailPage() {
                 onClick={() => { if (confirm(`Remove ${h.name} from DROOL? Nothing is changed on the host.`)) remove.mutate(); }}>
                 Remove host
               </Button>
-              <span className="text-xs text-muted">Removes the host from DROOL only; nothing on the host changes.</span>
+              <span className="text-xs text-muted">Removes the host from DROOL only; nothing on the host changes. A password or key typed only to set it up goes too, unless another host uses it.</span>
             </div>
           </Card>
         )}

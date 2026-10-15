@@ -59,17 +59,17 @@ func TestReauthForHighImpactActions(t *testing.T) {
 	}
 	var me meResponse
 	c.do("GET", "/api/v1/auth/me", nil).json(t, &me)
-	if me.ReauthUntil == nil || me.ReauthWindowS != 300 {
+	if me.ReauthUntil == nil || me.ReauthWindowS != 900 {
 		t.Fatalf("me: %+v", me)
 	}
-	h.clock.Store(int64(6 * time.Minute))
+	h.clock.Store(int64(16 * time.Minute))
 	r := newUser("second")
 	if r.status != 403 || r.problemCode(t) != "reauth_required" {
 		t.Fatalf("after the window: %d %s", r.status, r.body)
 	}
 	var p Problem
 	r.json(t, &p)
-	if p.Reauth == nil || p.Reauth.MFA || p.Reauth.WindowS != 300 {
+	if p.Reauth == nil || p.Reauth.MFA || p.Reauth.WindowS != 900 {
 		t.Fatalf("problem: %s", r.body)
 	}
 	if _, err := h.st.R.GetUserByUsername(context.Background(), "second"); err == nil {
@@ -259,8 +259,8 @@ func TestTwoFactorSignIn(t *testing.T) {
 	if r := finish(map[string]string{"recovery_code": codes[1]}); r.status != 401 {
 		t.Fatalf("old recovery code after regenerating: %d", r.status)
 	}
-	// Turning it off needs a fresh confirmation.
-	h.clock.Add(int64(10 * time.Minute))
+	// Turning it off needs a fresh confirmation (the window is 15 minutes).
+	h.clock.Add(int64(16 * time.Minute))
 	if r := c.do("DELETE", "/api/v1/auth/mfa", nil); r.status != 403 || r.problemCode(t) != "reauth_required" {
 		t.Fatalf("disable without reauth: %d %s", r.status, r.body)
 	}
@@ -557,7 +557,7 @@ func TestLastPathAndKeyGuards(t *testing.T) {
 	if r.status != 409 || r.problemCode(t) != "credential_in_use" || !strings.Contains(string(r.body), "web") {
 		t.Fatalf("replacing an in-use credential: %d %s", r.status, r.body)
 	}
-	h.clock.Store(int64(6 * time.Minute))
+	h.clock.Store(int64(16 * time.Minute))
 	if r := c.do("PATCH", "/api/v1/secrets/"+cred.ID, map[string]any{"value": "second password", "replace_in_use": true}); r.status != 403 || r.problemCode(t) != "reauth_required" {
 		t.Fatalf("acknowledged, without a recent sign-in: %d %s", r.status, r.body)
 	}
@@ -566,7 +566,7 @@ func TestLastPathAndKeyGuards(t *testing.T) {
 		t.Fatalf("acknowledged and confirmed: %d %s", r.status, r.body)
 	}
 	// Renaming needs neither.
-	h.clock.Store(int64(12 * time.Minute))
+	h.clock.Store(int64(32 * time.Minute))
 	if r := c.do("PATCH", "/api/v1/secrets/"+cred.ID, map[string]any{"name": "deploy-password"}); r.status != 200 {
 		t.Fatalf("rename: %d %s", r.status, r.body)
 	}
@@ -588,7 +588,7 @@ func TestLastPathAndKeyGuards(t *testing.T) {
 	}
 
 	// Trust decisions need a recent sign-in.
-	h.clock.Store(int64(20 * time.Minute))
+	h.clock.Store(int64(48 * time.Minute))
 	for _, call := range []struct {
 		method, path string
 		body         map[string]any

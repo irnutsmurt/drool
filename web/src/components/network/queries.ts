@@ -14,6 +14,8 @@ export type NetSettings = Schemas["NetSettings"];
 export type NetSettingsView = Schemas["NetSettingsView"];
 export type NetEnrichment = Schemas["NetEnrichment"];
 export type NetCollection = Schemas["NetCollection"];
+export type NetRule = Schemas["NetRule"];
+export type NetRuleInput = Schemas["NetRuleInput"];
 
 /** The filters the API understands (all optional). The browser only
  * passes them along: filtering and paging happen on the server. */
@@ -33,6 +35,7 @@ export type NetFilter = {
   org?: string;
   peer?: string;
   policy?: "management" | "covered" | "unclassified" | "denied";
+  class?: "drool" | "approved" | "user" | "service" | "unknown" | "classified";
   source?: "conntrack" | "sockets" | "snapshot";
   first_seen_after?: string;
   last_seen_after?: string;
@@ -46,7 +49,7 @@ export type NetFilter = {
 
 export const filterKeys = [
   "host", "group", "direction", "scope", "protocol", "port", "local_port", "remote_port", "process", "service", "country", "asn", "org",
-  "peer", "policy", "source", "first_seen_after", "last_seen_after", "new", "since", "q", "sort",
+  "peer", "policy", "class", "source", "first_seen_after", "last_seen_after", "new", "since", "q", "sort",
 ] as const;
 
 /** Reads filters from URL search params (so views can be linked). */
@@ -85,6 +88,7 @@ export const nk = {
   host: (id: string) => ["network", "host", id] as const,
   topology: (q: Record<string, unknown>) => ["network", "topology", q] as const,
   settings: ["network", "settings"] as const,
+  rules: ["network", "classifications"] as const,
 };
 
 export const useNetFlows = (f: NetFilter, enabled = true) =>
@@ -127,6 +131,9 @@ export const useNetTopology = (q: TopoQuery, enabled: boolean) =>
     refetchInterval: 60_000,
     enabled,
   });
+
+export const useNetRules = (enabled = true) =>
+  useQuery({ queryKey: nk.rules, queryFn: () => unwrap(api.GET("/network/classifications")), enabled });
 
 export const useNetSettings = (enabled = true) =>
   useQuery({ queryKey: nk.settings, queryFn: () => unwrap(api.GET("/network/settings")), enabled });

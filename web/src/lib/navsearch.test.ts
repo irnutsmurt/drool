@@ -27,7 +27,7 @@ describe("navigation search", () => {
     ["ssh key", "/credentials"], ["credential", "/credentials"],
     ["api token", "/settings/tokens"], ["api key", "/settings/tokens"],
     ["notification", "/settings/notifications"], ["email", "/settings/notifications"], ["discord", "/settings/notifications"],
-    ["slack", "/settings/notifications"], ["webhook", "/settings/notifications"],
+    ["slack", "/settings/notifications"], ["telegram", "/settings/notifications"], ["webhook", "/settings/notifications"],
     ["audit", "/audit"], ["who changed", "/audit"],
     ["hardening", "/settings/system#secure"], ["security checklist", "/settings/system#secure"], ["master key", "/settings/system#secure"],
     ["secure", "/settings/system#secure"],

@@ -37,6 +37,7 @@ type SecretsSet struct {
 	URL         bool `json:"url"`
 	HeaderValue bool `json:"header_value"`
 	Password    bool `json:"password"`
+	BotToken    bool `json:"bot_token"`
 }
 
 // DestinationHealth is the small delivery summary.
@@ -73,6 +74,7 @@ type SecretsInput struct {
 	URL         *string `json:"url"`
 	HeaderValue *string `json:"header_value"`
 	Password    *string `json:"password"`
+	BotToken    *string `json:"bot_token"`
 }
 
 // Changed names the secrets an input replaces (for the audit log; never
@@ -91,6 +93,9 @@ func (in *SecretsInput) Changed() []string {
 	if in.Password != nil {
 		out = append(out, "password")
 	}
+	if in.BotToken != nil {
+		out = append(out, "bot_token")
+	}
 	return out
 }
 
@@ -106,6 +111,9 @@ func (in *SecretsInput) apply(s *notify.Secrets) {
 	}
 	if in.Password != nil {
 		s.Password = *in.Password
+	}
+	if in.BotToken != nil {
+		s.BotToken = strings.TrimSpace(*in.BotToken)
 	}
 }
 
@@ -350,6 +358,8 @@ func (s *Service) scanDest(r scanner) (*Destination, error) {
 			d.SecretsSet.Password = d.Config.Username != ""
 		case notify.KindWebhook:
 			d.SecretsSet.URL, d.SecretsSet.HeaderValue = true, d.Config.HeaderName != ""
+		case notify.KindTelegram:
+			d.SecretsSet.BotToken = true
 		default:
 			d.SecretsSet.URL = true
 		}

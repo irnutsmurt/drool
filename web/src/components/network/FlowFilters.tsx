@@ -54,10 +54,11 @@ function LazyInput({ value, onCommit, ...rest }: { value: string; onCommit: (v: 
 /** Quick questions, as filter presets. */
 export const presets: { id: string; label: string; f: NetFilter }[] = [
   { id: "external", label: "External connections", f: { scope: "external" } },
-  { id: "unclassified", label: "Unclassified", f: { policy: "unclassified" } },
+  { id: "unknown", label: "Unknown traffic", f: { class: "unknown" } },
+  { id: "unclassified", label: "Not in policy", f: { policy: "unclassified" } },
   { id: "new", label: "New external destinations (24 h)", f: { new: "host", since: "24h", direction: "out" } },
   { id: "denied", label: "Denied or would be denied", f: { policy: "denied" } },
-  { id: "management", label: "DROOL management", f: { policy: "management" } },
+  { id: "drool", label: "DROOL's own traffic", f: { class: "drool" } },
   { id: "inbound", label: "Inbound", f: { direction: "in" } },
 ];
 
@@ -154,12 +155,23 @@ export function FlowFilters({ value, onChange, facets, fleet = true }: {
             {facets?.networks.map((n) => <option key={n.value} value={n.value}>{n.label}</option>)}
           </Select>
         </Labeled>
+        <Labeled label="What it is" wide>
+          <Select className="h-8 text-xs" value={value.class ?? ""} onChange={(e) => set("class", e.target.value)}>
+            <option value="">anything</option>
+            <option value="drool">⛨ DROOL management (DROOL&apos;s own traffic)</option>
+            <option value="approved">✓ classified as expected</option>
+            <option value="user">◆ classified</option>
+            <option value="service">≡ known service (by its port)</option>
+            <option value="unknown">? unknown</option>
+            <option value="classified">anything classified (not unknown)</option>
+          </Select>
+        </Labeled>
         <Labeled label="Policy status" wide>
           <Select className="h-8 text-xs" value={value.policy ?? ""} onChange={(e) => set("policy", e.target.value)}>
             <option value="">any status</option>
             <option value="covered">✓ covered by policy</option>
-            <option value="management">⛨ DROOL management path</option>
-            <option value="unclassified">? unclassified</option>
+            <option value="management">⛨ protected management path</option>
+            <option value="unclassified">? not in policy</option>
             <option value="denied">✕ denied or would be denied</option>
           </Select>
         </Labeled>

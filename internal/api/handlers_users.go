@@ -153,18 +153,34 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, p)
 		return
 	}
+	why := reauthUsers
+	if req.Password != nil {
+		why = reauthUserPassword
+	}
+	if !s.requireReauth(w, r, why) {
+		return
+	}
 	ctx := r.Context()
 	id := r.PathValue("id")
 	details := map[string]any{}
+	changes := []string{}
 	if req.Role != nil {
 		details["role"] = *req.Role
+		changes = append(changes, "role")
 	}
 	if req.Disabled != nil {
 		details["disabled"] = *req.Disabled
+		changes = append(changes, "disabled")
 	}
 	if req.Password != nil {
-		details["password_changed"] = true
+		// Who set whose password (the actor and the target), never the
+		// password; their sessions end (their own current one stays when
+		// administrators set their own). Key names with "password" in them
+		// are redacted in audit details, so the fact is a value here.
+		changes = append(changes, "password")
+		details["sessions_revoked"] = principalFrom(ctx).UserID != id
 	}
+	details["changes"] = changes
 	up := auth.UserUpdate{Role: req.Role, Disabled: req.Disabled, Password: req.Password}
 	var u db.User
 	err := up.Prepare()
@@ -172,6 +188,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		err = s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
 			var err error
 			u, err = s.d.Auth.UpdateUserTx(ctx, q, principalFrom(ctx), id, up)
+			details["username"] = u.Username
 			return audit.Event{Action: "user.update", TargetType: "user", TargetID: id, Details: details}, err
 		})
 	}

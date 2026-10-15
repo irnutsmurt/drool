@@ -93,18 +93,18 @@ export function HostMonitoringPage() {
         ))}
       </div>
       <div id="monpanel" role="tabpanel" aria-labelledby={`montab-${tab}`}>
-        {!o ? <p className="text-sm text-muted">Loading…</p> : <Panel tab={tab} id={id} o={o} />}
+        {!o ? <p className="text-sm text-muted">Loading…</p> : <Panel tab={tab} id={id} o={o} hostName={host.data?.name ?? id} />}
       </div>
     </>
   );
 }
 
-function Panel({ tab, id, o }: { tab: string; id: string; o: MonHostOverview }): ReactNode {
+function Panel({ tab, id, o, hostName }: { tab: string; id: string; o: MonHostOverview; hostName: string }): ReactNode {
   switch (tab) {
     case "metrics":
       return <MetricsTab id={id} o={o} />;
     case "services":
-      return <ServicesTab id={id} o={o} />;
+      return <ServicesTab id={id} o={o} hostName={hostName} />;
     case "storage":
       return <StorageTab id={id} o={o} />;
     case "hardware":

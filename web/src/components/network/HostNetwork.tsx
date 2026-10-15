@@ -18,7 +18,8 @@ const views: { id: string; label: string; f: NetFilter }[] = [
   { id: "internal", label: "Internal", f: { scope: "internal" } },
   { id: "external", label: "External", f: { scope: "external" } },
   { id: "new", label: "New external (24 h)", f: { new: "host", since: "24h", direction: "out" } },
-  { id: "unclassified", label: "Unclassified", f: { policy: "unclassified" } },
+  { id: "unknown", label: "Unknown traffic", f: { class: "unknown" } },
+  { id: "unclassified", label: "Not in policy", f: { policy: "unclassified" } },
 ];
 
 /** A host's network activity, on its own page: how it is observed, what
@@ -71,7 +72,7 @@ export function HostNetworkPanel({ hostId }: { hostId: string }) {
               {v.label}
             </button>
           ))}
-          {hn && <span className="ml-auto text-xs text-muted">{hn.counts.flows} total · {hn.counts.unclassified} unclassified · {hn.counts.new_external_24h} new external (24 h)</span>}
+          {hn && <span className="ml-auto text-xs text-muted">{hn.counts.flows} total · {hn.counts.unclassified} not in policy · {hn.counts.new_external_24h} new external (24 h)</span>}
         </div>
         <FlowTable filter={filter} showHost={false} pageSize={25}
           empty={hn?.collection.mode === "snapshot" && !hn.collection.snapshot_at ? "No snapshot taken yet. SSH hosts are observed only when you take a snapshot." : "No connections observed."} />
@@ -96,7 +97,7 @@ export function HostNetworkSummary({ hostId }: { hostId: string }) {
         {never ? <span className="text-muted">No snapshot taken yet: SSH hosts are observed only when you take one.</span> : (
           <span>
             {hn.counts.flows} connection{hn.counts.flows === 1 ? "" : "s"} observed
-            {hn.counts.unclassified > 0 && <> · <span className="text-warn">{hn.counts.unclassified} unclassified</span></>}
+            {hn.counts.unclassified > 0 && <> · <span className="text-warn">{hn.counts.unclassified} not in policy</span></>}
             {hn.counts.denied > 0 && <> · <span className="text-danger">{hn.counts.denied} denied or would be</span></>}
             {hn.counts.new_external_24h > 0 && <> · {hn.counts.new_external_24h} new external (24 h)</>}
           </span>
@@ -104,7 +105,7 @@ export function HostNetworkSummary({ hostId }: { hostId: string }) {
       </p>
       <p className="text-xs text-muted">Listening on {hn.listening.length} socket{hn.listening.length === 1 ? "" : "s"}{hn.listening.length > 0 && `: ${hn.listening.slice(0, 4).map((l) => `${l.port}/${l.protocol}`).join(", ")}${hn.listening.length > 4 ? " …" : ""}`}</p>
       {(notable.data?.items ?? []).length > 0 && (
-        <ul className="space-y-1 text-xs" aria-label="Unclassified connections">
+        <ul className="space-y-1 text-xs" aria-label="Connections no policy describes">
           {notable.data!.items.map((f) => (
             <li key={f.id} className="flex flex-wrap items-baseline gap-x-2">
               <DirectionLabel dir={f.direction} />

@@ -113,7 +113,7 @@ func TestShepherdThroughPublishedPort(t *testing.T) {
 	} else {
 		pub = freePort()
 	}
-	p.env = []string{fmt.Sprintf("DROOL_AGENT_PUBLIC_PORT=%d", pub)}
+	p.env = append(p.env, fmt.Sprintf("DROOL_AGENT_PUBLIC_PORT=%d", pub))
 	os.WriteFile(filepath.Join(p.dir, "compose.override.yaml"), []byte(fmt.Sprintf(`services:
   drool:
     ports: !override

@@ -103,7 +103,7 @@ func (s *Service) AddRelease(ctx context.Context, signed *release.Signed, bin io
 	}
 	m, err := release.Verify(signed, keys)
 	if err != nil {
-		return nil, &ReleaseUploadError{Msg: "release rejected: " + err.Error() + " (register the release public key under Agents → Updates first)"}
+		return nil, &ReleaseUploadError{Msg: "release rejected: " + err.Error() + " (register the release public key under Shepherds → Updates first)"}
 	}
 	if _, err := s.st.R.GetReleaseFor(ctx, db.GetReleaseForParams{Version: m.Version, Os: m.OS, Arch: m.Arch}); err == nil {
 		return nil, &ReleaseUploadError{Msg: fmt.Sprintf("release %s for %s/%s already exists", m.Version, m.OS, m.Arch)}

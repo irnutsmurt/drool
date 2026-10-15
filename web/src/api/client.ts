@@ -24,11 +24,10 @@ export function setUnauthenticatedHandler(fn: () => void) {
 
 const SAFE = new Set(["GET", "HEAD", "OPTIONS"]);
 
-/** What a reauth_required answer says about confirming. */
-export interface ReauthInfo {
-  mfa: boolean;
-  window_s: number;
-}
+/** What a reauth_required answer says about confirming: whether to ask for
+ * a code, how long a confirmation lasts, and why (a typed reason with fixed
+ * server wording). */
+export type ReauthInfo = NonNullable<Problem["reauth"]>;
 
 let reauthHandler: ((info: ReauthInfo) => Promise<boolean>) | undefined;
 
@@ -39,10 +38,15 @@ export function setReauthHandler(fn: ((info: ReauthInfo) => Promise<boolean>) | 
   reauthHandler = fn;
 }
 
-// Copies of state-changing requests, to repeat one after re-authentication.
+// Copies of state-changing requests, to repeat one after re-authentication
+// (once: a second reauth_required is returned as it is).
 const replayable = new Map<string, Request>();
 
-const middleware: Middleware = {
+/** CSRF on state-changing requests, and the re-authentication round trip:
+ * a reauth_required answer asks the prompt; confirmed, the request is sent
+ * again exactly once; cancelled, the original answer stands and nothing was
+ * done. Exported for its unit test. */
+export const apiMiddleware: Middleware = {
   onRequest({ request, id }) {
     if (csrfToken && !SAFE.has(request.method)) {
       request.headers.set("X-DROOL-CSRF", csrfToken);
@@ -58,7 +62,7 @@ const middleware: Middleware = {
     }
     if (response.status === 403 && copy && reauthHandler && !request.url.endsWith("/auth/reauth")) {
       const p = (await response.clone().json().catch(() => undefined)) as (Problem & { reauth?: ReauthInfo }) | undefined;
-      if (p?.code === "reauth_required" && (await reauthHandler(p.reauth ?? { mfa: false, window_s: 300 }))) {
+      if (p?.code === "reauth_required" && (await reauthHandler(p.reauth ?? { mfa: false, window_s: 900 }))) {
         const headers = new Headers(copy.headers);
         if (csrfToken) headers.set("X-DROOL-CSRF", csrfToken);
         return fetch(new Request(copy, { headers }));
@@ -72,7 +76,7 @@ const middleware: Middleware = {
 };
 
 export const api = createClient<paths>({ baseUrl: "/api/v1", credentials: "same-origin" });
-api.use(middleware);
+api.use(apiMiddleware);
 
 /** Error thrown by unwrap() carrying the server's problem details. */
 export class ApiError extends Error {

@@ -12,6 +12,10 @@ import (
 type setupStatusResponse struct {
 	SetupRequired bool `json:"setup_required"`
 	CodeAvailable bool `json:"code_available"`
+	// DataVolume: while setup is required, the container volume this new
+	// DROOL keeps its data in (data_volume), so the setup page can warn
+	// someone who expected an existing installation.
+	DataVolume string `json:"data_volume,omitempty"`
 }
 
 func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
@@ -21,7 +25,11 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, errInternal)
 		return
 	}
-	writeJSON(w, http.StatusOK, setupStatusResponse{SetupRequired: required, CodeAvailable: has})
+	resp := setupStatusResponse{SetupRequired: required, CodeAvailable: has}
+	if required && s.d.Config != nil {
+		resp.DataVolume = s.d.Config.DataVolume
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 type setupClaimRequest struct {

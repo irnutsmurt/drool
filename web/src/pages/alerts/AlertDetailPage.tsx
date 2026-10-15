@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { errorMessage } from "@/lib/format";
 import { fmtTime } from "@/components/monitoring/format";
 import { useAcknowledge, useAlert, type AlertDetail, type Delivery } from "@/components/alerts/queries";
+import { MaintenanceDialog } from "@/components/alerts/MaintenanceDialog";
 import { AlertSeverity, AlertStateBadge, categoryLabel, checkLabel, clearedBy, fmtDuration, NotificationBadge, resolutionWord, untilText } from "@/components/alerts/ui";
 
 const deliveryWord: Record<string, string> = { opening: "Opening", escalation: "Escalation", reminder: "Reminder", recovery: "Recovery", cleared: "Cleared (not a recovery)" };
@@ -60,6 +61,7 @@ export function AlertDetailPage() {
         <div className="space-y-4">
           <Facts d={d} />
           <Acknowledge d={d} />
+          <Quieter d={d} />
           {d.occurrences.length > 0 && (
             <Card title="Other occurrences">
               <ul className="space-y-1 text-sm">
@@ -130,6 +132,51 @@ function Acknowledge({ d }: { d: AlertDetail }) {
         {ack.error && <Notice>{errorMessage(ack.error)}</Notice>}
         <Button type="submit" variant="primary" disabled={ack.isPending}>{ack.isPending ? "Acknowledging…" : "Acknowledge"}</Button>
       </form>
+    </Card>
+  );
+}
+
+const serviceChecks = new Set(["service_failed", "service_stopped", "service_unexpected"]);
+
+/** The other ways to quiet an alert, next to acknowledging it: snoozing is
+ * maintenance (temporary, notifications only), and a state that is
+ * intentional is set where it belongs (a service's expected state, or the
+ * health check), so it stops being a problem at all. */
+function Quieter({ d }: { d: AlertDetail }) {
+  const { can } = useAuth();
+  const a = d.alert;
+  const [snooze, setSnooze] = useState(false);
+  if (a.state === "resolved") return null;
+  const service = serviceChecks.has(a.check);
+  return (
+    <Card title="Quieter, for a while or for good">
+      <dl className="space-y-2 text-sm" data-testid="alert-quieter">
+        <div>
+          <dt className="font-medium">Acknowledge</dt>
+          <dd className="text-xs text-muted">You've seen it: no more reminders. It stays open until the condition recovers.</dd>
+        </div>
+        <div>
+          <dt className="font-medium">Snooze</dt>
+          <dd className="text-xs text-muted">
+            Maintenance for {a.host_name}, until a time you choose: no notifications meanwhile, health is still recorded, and what is still wrong
+            when it ends is notified then.
+            {can("maintenance.manage") && <> <button type="button" className="text-accent underline" onClick={() => setSnooze(true)}>Start maintenance…</button></>}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium">{service ? "Expected or ignored" : "Intentional"}</dt>
+          <dd className="text-xs text-muted">
+            {service ? (
+              <>If {a.subject || "the service"} is meant to be this way, set its expected state (Stopped, or Ignored) on the{" "}
+                <Link className="text-accent underline" to={`/hosts/${a.host_id}/monitoring?tab=services`}>host&apos;s services</Link>, or for a Pack on its page. Then it isn&apos;t a problem, and nothing alerts.</>
+            ) : (
+              <>If this is how {a.host_name} is meant to be, change the health check for it in its{" "}
+                <Link className="text-accent underline" to={`/hosts/${a.host_id}/monitoring`}>monitoring</Link> (health settings). Then it isn&apos;t a problem, and nothing alerts.</>
+            )}
+          </dd>
+        </div>
+      </dl>
+      {snooze && <MaintenanceDialog hostIds={[a.host_id]} onClose={() => setSnooze(false)} />}
     </Card>
   );
 }

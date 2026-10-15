@@ -81,9 +81,9 @@ test("fleet Network activity: summary, server-side filters, paging and details f
   await click(page, "button", "Previous");
   await waitFor(page, async () => /Showing 1–50/.test(await shown()), "page 1 again");
 
-  // Quick filter: unclassified only.
-  await click(page, 'button[aria-pressed]', "Unclassified");
-  await waitFor(page, async () => (await rows()).every((r) => r.includes("Unclassified")) && (await rows()).length > 0, "unclassified rows");
+  // Quick filter: what no policy describes.
+  await click(page, 'button[aria-pressed]', "Not in policy");
+  await waitFor(page, async () => (await rows()).every((r) => r.includes("Not in policy")) && (await rows()).length > 0, "rows not in policy");
   assert.match(page.url(), /policy=unclassified/);
   await click(page, "button", "Clear");
 
@@ -132,7 +132,8 @@ test("new external destinations and an unclassified connection's details", async
   await waitFor(page, async () => !!(await page.$('[data-testid="flow-details"]')), "details");
   const d = await page.$eval('[data-testid="flow-details"]', (e) => e.innerText);
   assert.match(d, /Unknown — DROOL couldn't tie this connection to a process/);
-  assert.match(d, /Unclassified/);
+  assert.match(d, /Not in policy/);
+  assert.match(d, /What it is[\s\S]*Unknown/);
   assert.match(d, /context, not a verdict/);
   assert.match(d, /Create policy from observed connection/);
   await shot(page, "network-new-destination");
@@ -174,7 +175,7 @@ test("a host's network activity: summary on the host, its own page with listenin
   await waitFor(page, async () => (await text(page)).includes("Snapshot only: SSH"), "snapshot label");
   assert.match(await text(page), /never continuously monitored/);
   // A real snapshot over SSH: the controller's own connection shows up as
-  // DROOL management.
+  // DROOL management, recognized from where DROOL's SSH comes from.
   await click(page, "button", "Take snapshot");
   await waitText(page, "Snapshot taken", 60000);
   await click(page, 'button[aria-pressed]', "Inbound");
@@ -183,6 +184,85 @@ test("a host's network activity: summary on the host, its own page with listenin
   await click(page, 'button[aria-pressed]', "External");
   await waitFor(page, async () => { const r = await rows(); return r.length > 0 && r.every((x) => /External/.test(x)); }, "external rows");
   await shot(page, "network-host");
+  assert.deepEqual(page.errors, []);
+});
+
+// The dialog's control labelled `label` (labels repeat in the filter bar).
+async function formField(label) {
+  const h = await page.evaluateHandle((l) => {
+    for (const lab of document.querySelectorAll('[data-testid="classify-form"] label')) {
+      if (lab.querySelector("span")?.textContent.trim() === l) return lab.querySelector("input,select");
+    }
+    return document.querySelector(`[data-testid="classify-form"] [aria-label="${l}"]`);
+  }, label);
+  assert.ok(h.asElement(), `form field ${label}`);
+  return h.asElement();
+}
+async function formSelect(label, value) {
+  const el = await formField(label);
+  await el.evaluate((s, v) => {
+    s.value = v;
+    s.dispatchEvent(new Event("change", { bubbles: true }));
+  }, value);
+}
+
+test("classifying traffic: DROOL's own by evidence, a label for one connection, widened, filtered and deleted", async () => {
+  for (const r of (await api(page, "GET", "/network/classifications")).body.items) await api(page, "DELETE", `/network/classifications/${r.id}`);
+  // Someone's SSH from the LAN uses port 22 too: a known service, never
+  // DROOL's own traffic.
+  await page.goto(base + "/network?peer=192.168.1.25", { waitUntil: "networkidle0" });
+  await waitFor(page, async () => (await rows()).length > 0, "LAN ssh row");
+  assert.ok((await rows()).every((r) => r.includes("Known service") && !r.includes("DROOL management")), (await rows()).join("\n"));
+
+  // An unknown destination: label it from its details (a dialog over the
+  // details dialog).
+  await page.goto(base + "/network?peer=185.10.20.30", { waitUntil: "networkidle0" });
+  await waitFor(page, async () => (await rows()).length === 1, "row");
+  assert.match((await rows())[0], /Unknown/);
+  await page.evaluate(() => document.querySelector('[data-testid="flow-table"] tbody tr button')?.click());
+  await waitFor(page, async () => !!(await page.$('[data-testid="flow-classification"]')), "what it is");
+  assert.match(await page.$eval('[data-testid="flow-classification"]', (e) => e.innerText), /Nothing says what this is yet/);
+  await click(page, '[data-testid="flow-classification"] button', "Classify");
+  await waitFor(page, async () => !!(await page.$('[data-testid="classify-form"]')), "classify form");
+  assert.match(await page.$eval('[data-testid="classify-scope"]', (e) => e.innerText), /this connection only/);
+  assert.match(await page.$eval('[data-testid="classify-scope"]', (e) => e.innerText), /no firewall rule is created/);
+  await (await formField("Label")).type("Backup provider");
+  await page.click('[data-testid="classify-form"] input[type="checkbox"]');
+  await shot(page, "network-classify");
+  await click(page, '[data-testid="classify-form"] button', "Save classification");
+  await waitFor(page, async () => !(await page.$('[data-testid="classify-form"]')), "form closed");
+  await waitFor(page, async () => /Expected[\s\S]*Backup provider[\s\S]*labeled from one connection/.test(await page.$eval('[data-testid="flow-classification"]', (e) => e.innerText)), "labeled");
+  await page.keyboard.press("Escape");
+  await waitFor(page, async () => !(await page.$('[data-testid="flow-details"]')), "details closed");
+  await waitFor(page, async () => (await rows())[0]?.includes("Backup provider"), "row relabeled");
+
+  // Widen it on the Classifications tab: every host's outbound 8812.
+  await page.goto(base + "/network?tab=classifications", { waitUntil: "networkidle0" });
+  await waitFor(page, async () => (await page.$eval('[data-testid="classifications"]', (e) => e.innerText)).includes("one connection"), "listed");
+  await page.click('button[aria-label="Edit Backup provider"]');
+  await waitFor(page, async () => !!(await page.$('[data-testid="classify-form"]')), "edit form");
+  await formSelect("Hosts", "");
+  await formSelect("Remote side", "any");
+  await waitFor(page, async () => /every connection that matches/.test(await page.$eval('[data-testid="classify-scope"]', (e) => e.innerText)), "wider scope");
+  await click(page, '[data-testid="classify-form"] button', "Save classification");
+  await waitFor(page, async () => (await page.$eval('[data-testid="classifications"]', (e) => e.innerText)).includes("any host → anywhere, TCP 8812"), "widened");
+  await shot(page, "network-classifications");
+
+  // It applies to traffic already observed: the other 8812 destinations.
+  await page.goto(base + "/network?class=approved", { waitUntil: "networkidle0" });
+  await waitFor(page, async () => { const r = await rows(); return r.length > 1 && r.every((x) => x.includes("Backup provider")) && r.some((x) => x.includes("95.216.1.")); }, "approved rows");
+  // DROOL's own traffic is its own filter.
+  await page.goto(base + "/network", { waitUntil: "networkidle0" });
+  await click(page, 'button[aria-pressed]', "DROOL's own traffic");
+  await waitFor(page, async () => /class=drool/.test(page.url()), "drool filter");
+
+  // Deleted: back to unknown.
+  await page.goto(base + "/network?tab=classifications", { waitUntil: "networkidle0" });
+  await page.click('button[aria-label="Delete Backup provider"]');
+  await click(page, "button", "Delete classification");
+  await waitText(page, "No classifications yet");
+  await page.goto(base + "/network?peer=185.10.20.30", { waitUntil: "networkidle0" });
+  await waitFor(page, async () => (await rows())[0]?.includes("Unknown"), "unknown again");
   assert.deepEqual(page.errors, []);
 });
 

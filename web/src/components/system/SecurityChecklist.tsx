@@ -10,6 +10,7 @@ import { StatusBadge, type Status } from "@/components/monitoring/Status";
 import { Card } from "@/components/ui/Card";
 import { plainLink } from "@/components/ui/links";
 import { formatBytes, formatDateTime } from "@/lib/format";
+import { GuideLink } from "@/components/ui/GuideLink";
 
 export function useSecurityFacts(enabled = true) {
   return useQuery({ queryKey: ["system", "security"], queryFn: () => unwrap(api.GET("/system/security")), enabled, staleTime: 60_000 });
@@ -131,7 +132,7 @@ export function SecurityChecklist() {
     ? { id: "tls", level: "done", title: "Your own TLS certificate", body: "Browsers trust this controller's certificate." }
     : { id: "tls", level: "optional", title: "Your own TLS certificate",
         body: <>DROOL uses its own self-signed certificate, so browsers warn on first visit. Fine at home; to change it, set{" "}
-          <code className={code}>server.tls.mode: provided</code> with your certificate (see the README's Configuration).</> });
+          <code className={code}>server.tls.mode: provided</code> with your certificate (<GuideLink page="Configuration" anchor="your-own-tls-certificate">Your own TLS certificate</GuideLink>).</> });
   if (f.certificate_hosts + f.credential_hosts > 0) {
     items.push(f.credential_hosts === 0
       ? { id: "ssh-certs", level: "done", title: "Short-lived SSH certificates", body: "Every SSH host signs DROOL in with a certificate valid for minutes." }

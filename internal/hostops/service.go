@@ -66,17 +66,35 @@ func UnitTransitional(active string) bool {
 }
 
 // classifySystemctl explains systemctl failures that aren't about the unit.
+// "Failed to connect to bus" alone doesn't mean systemd isn't running: an
+// account on a host without a D-Bus system bus (DietPi, minimal images)
+// gets it too, which is why DROOL asks systemd with the host's privilege
+// escalation (showUnit).
 func classifySystemctl(out string) *model.OpError {
-	if strings.Contains(out, "System has not been booted with systemd") || strings.Contains(out, "Failed to connect to bus") ||
-		strings.Contains(out, "systemctl: command not found") || strings.Contains(out, "systemctl: not found") {
+	switch {
+	case strings.Contains(out, "System has not been booted with systemd") ||
+		strings.Contains(out, "systemctl: command not found") || strings.Contains(out, "systemctl: not found"):
 		return &model.OpError{Class: model.ClassConfiguration, Message: "systemd is not running on this host",
 			Hint: "Service operations need systemd as the init system."}
+	case strings.Contains(out, "Failed to connect to bus"):
+		line := out
+		for _, l := range strings.Split(out, "\n") {
+			if strings.Contains(l, "Failed to connect to bus") {
+				line = strings.TrimSpace(l)
+				break
+			}
+		}
+		return &model.OpError{Class: model.ClassConfiguration, Message: "systemctl couldn't reach systemd on this host (" + line + ")",
+			Hint: "Service operations ask systemd as root, through the host's privilege escalation: without root (and without a D-Bus system bus) systemctl can't."}
 	}
 	return nil
 }
 
-func showUnit(ctx context.Context, c hostexec.Runner, unit string) (UnitState, error) {
-	r, err := RunCmd(ctx, c, Become{}, false, "systemctl show --no-pager -p "+showProps+" -- "+ShQuote(unit), 30*time.Second)
+// showUnit reads a unit's state with the operation's own privilege
+// escalation: as the login user, systemctl needs the D-Bus system bus,
+// which hosts like DietPi don't have, while root talks to systemd directly.
+func showUnit(ctx context.Context, c hostexec.Runner, b Become, unit string) (UnitState, error) {
+	r, err := RunCmd(ctx, c, b, true, "systemctl show --no-pager -p "+showProps+" -- "+ShQuote(unit), 30*time.Second)
 	if err != nil {
 		return UnitState{}, err
 	}
@@ -153,7 +171,7 @@ var StartCheck = 2 * time.Second
 func (h Host) Service(ctx context.Context, op *model.ServiceOp, out driver.OutputSink, started func()) (*driver.OpResult, error) {
 	c, b := h.R, h.B
 	unit := op.UnitName()
-	before, err := showUnit(ctx, c, unit)
+	before, err := showUnit(ctx, c, b, unit)
 	if err != nil {
 		return nil, err
 	}
@@ -185,10 +203,10 @@ func (h Host) Service(ctx context.Context, op *model.ServiceOp, out driver.Outpu
 		}
 	}
 	// Let start/stop settle before verifying.
-	after, err := showUnit(ctx, c, unit)
+	after, err := showUnit(ctx, c, b, unit)
 	for i := 0; err == nil && after.transitional() && i < 20; i++ {
 		time.Sleep(500 * time.Millisecond)
-		after, err = showUnit(ctx, c, unit)
+		after, err = showUnit(ctx, c, b, unit)
 	}
 	if err != nil {
 		return res, err
@@ -206,7 +224,7 @@ func (h Host) Service(ctx context.Context, op *model.ServiceOp, out driver.Outpu
 				return res, ctx.Err()
 			case <-time.After(StartCheck):
 			}
-			again, err := showUnit(ctx, c, unit)
+			again, err := showUnit(ctx, c, b, unit)
 			if err != nil {
 				return res, err
 			}
@@ -235,7 +253,7 @@ func serviceFailure(ctx context.Context, c hostexec.Runner, b Become, unit, acti
 	state := "unknown"
 	if err == nil {
 		out.Stdout().Write(r.Stdout)
-		if u, e := showUnit(ctx, c, unit); e == nil {
+		if u, e := showUnit(ctx, c, b, unit); e == nil {
 			state = u.Active + "/" + u.Sub
 		}
 	}

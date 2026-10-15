@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"drool/internal/packdeps"
 )
 
 // Problem is an RFC 9457 problem details body, extended with a stable
@@ -26,11 +28,8 @@ type Problem struct {
 	// Reauth is set on reauth_required: the action needs the user to
 	// confirm who they are again (POST /auth/reauth), then repeat it.
 	Reauth *reauthInfo `json:"reauth,omitempty"`
-}
-
-type reauthInfo struct {
-	MFA     bool `json:"mfa"`      // ask for the authenticator code too
-	WindowS int  `json:"window_s"` // how long a confirmation lasts
+	// Dependencies: set on pack_in_use (what still names the Pack).
+	Dependencies *packdeps.Report `json:"dependencies,omitempty"`
 }
 
 func (p *Problem) Error() string { return p.Code + ": " + p.Detail }

@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 	"unicode"
@@ -15,10 +16,15 @@ type Status struct {
 	MemUsedPct      *float64
 	MaxFSUsedPct    *float64
 	MaxFSMount      string
-	FailedUnits     *int // nil when systemd isn't running
+	FailedUnits     *int // nil when systemd isn't running, or the list couldn't be read
 	FailedUnitNames []string
-	RebootRequired  *bool
-	RebootReason    string
+	SystemdState    string // running | none | unknown (SystemdProbe)
+	// FailedError says why the failed units couldn't be read although
+	// systemd runs (FailedLimited: the account can't ask systemd).
+	FailedError    string
+	FailedLimited  bool
+	RebootRequired *bool
+	RebootReason   string
 }
 
 // ParseStatus parses StatusScript output.
@@ -54,14 +60,29 @@ func ParseStatus(out string) Status {
 			st.MaxFSUsedPct, st.MaxFSMount = &p, fs.Mount
 		}
 	}
-	if f := sec["failed"]; len(f) > 0 && f[0] == "systemd-running" {
-		names := parseUnitNames(f[1:])
-		n := len(names)
-		st.FailedUnits = &n
-		if len(names) > 20 {
-			names = names[:20]
+	if f := sec["failed"]; len(f) > 0 {
+		rest := f
+		switch {
+		case f[0] == "systemd-running": // a Shepherd from before SystemdProbe
+			st.SystemdState, rest = SystemdRunning, f[1:]
+		case strings.HasPrefix(f[0], "systemd="):
+			st.SystemdState, rest = strings.TrimSpace(strings.TrimPrefix(f[0], "systemd=")), f[1:]
 		}
-		st.FailedUnitNames = names
+		if st.SystemdState == SystemdRunning || st.SystemdState == SystemdUnknown {
+			if lines, err := sdLines(rest); err != nil {
+				var le *listError
+				errors.As(err, &le)
+				st.FailedError, st.FailedLimited = le.msg, le.limited
+			} else {
+				names := parseUnitNames(lines)
+				n := len(names)
+				st.FailedUnits = &n
+				if len(names) > 20 {
+					names = names[:20]
+				}
+				st.FailedUnitNames = names
+			}
+		}
 	}
 	// Debian/Ubuntu: authoritative reboot-required file.
 	if r := sec["reboot-file"]; len(r) > 0 && r[0] == "required" {

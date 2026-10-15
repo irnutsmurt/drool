@@ -24,6 +24,18 @@ x-drool-ports:
   web: &web-port 8080
   shepherds: &shepherd-port ${DROOL_AGENT_PUBLIC_PORT:-9443}
 
+# Data. Everything DROOL stores is in one Docker volume, drool_drool-data.
+# The name is written out here, so it doesn't depend on this folder's name
+# (or a Synology project's): moving or renaming the folder keeps your data.
+# A second DROOL on the same machine needs a name of its own: set
+# DROOL_INSTANCE, for example DROOL_INSTANCE=lab in a .env file next to this
+# one, and its data is in lab_drool-data.
+# Replacing a compose.yaml older than 2026-10-14? If your volume isn't called
+# drool_drool-data (docker volume ls), set DROOL_INSTANCE to the part before
+# "_drool-data" first: see "Compose data volume" in DROOL's guide.
+x-drool-data:
+  volume: &data-volume ${DROOL_INSTANCE:-drool}_drool-data
+
 services:
   drool:
     image: ${DROOL_IMAGE:-ghcr.io/irnutsmurt/drool:main}
@@ -47,6 +59,9 @@ services:
       # Optional, for automated deployments: your own setup code instead of
       # reading the generated one from the logs (see secrets: below).
       # DROOL_SETUP_SECRET_FILE: /run/secrets/drool_setup
+      # The data volume's name, for DROOL's messages: a DROOL that starts
+      # without data says which volume it started in. Don't change it here.
+      DROOL_DATA_VOLUME: *data-volume
     volumes:
       - drool-data:/data
     # DROOL needs no privileges, capabilities or host access: it listens on
@@ -71,6 +86,7 @@ services:
 
 volumes:
   drool-data:
+    name: *data-volume
 
 # secrets:
 #   drool_setup:

@@ -1,12 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, unwrap } from "@/api/client";
-import { qk, useGroup, useHosts, type Host } from "@/api/queries";
+import { useGroup, useHosts, type Host } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { GroupDesiredState } from "@/components/desired/GroupDesiredState";
 import { GroupHealthButton } from "@/components/health/GlobalHealth";
-import { AddHostsDialog, usePackMembership } from "@/components/packs/PackDialogs";
+import { AddHostsDialog, DeletePackDialog, usePackMembership } from "@/components/packs/PackDialogs";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -17,6 +15,7 @@ import { LoadError, Loading } from "@/components/ui/States";
 import { Table } from "@/components/ui/Table";
 import { plainLink } from "@/components/ui/links";
 import { errorMessage } from "@/lib/format";
+import { ExpectedServicesCard } from "@/components/monitoring/ExpectedServices";
 
 /** One pack: its hosts, added and removed here after the pack exists (it can
  * be empty), and what the pack is used for. */
@@ -24,15 +23,11 @@ export function PackPage() {
   const { id = "" } = useParams();
   const { can } = useAuth();
   const navigate = useNavigate();
-  const qc = useQueryClient();
   const pack = useGroup(id);
   const hosts = useHosts();
   const { remove } = usePackMembership();
   const [adding, setAdding] = useState(false);
-  const del = useMutation({
-    mutationFn: () => unwrap(api.DELETE("/groups/{id}", { params: { path: { id } } })),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: qk.groups }); void qc.invalidateQueries({ queryKey: qk.hosts }); navigate("/groups"); },
-  });
+  const [deleting, setDeleting] = useState(false);
 
   const crumbs = [{ label: "Packs", to: "/groups" }];
   if (pack.error) return <><PageHeader crumbs={crumbs} title="Pack" /><LoadError what="the pack" error={pack.error} /></>;
@@ -52,15 +47,10 @@ export function PackPage() {
           <div className="flex flex-wrap gap-2">
             {addButton}
             {can("monitoring.read") && <GroupHealthButton groupId={g.id} name={g.name} />}
-            {write && (
-              <Button variant="danger" disabled={del.isPending}
-                onClick={() => { if (confirm(`Delete pack ${g.name}? Its hosts are not affected.`)) del.mutate(); }}>
-                Delete pack
-              </Button>
-            )}
+            {write && <Button variant="danger" onClick={() => setDeleting(true)}>Delete pack</Button>}
           </div>
         )} />
-      {(remove.error ?? del.error) && <div className="mb-4"><Alert>{errorMessage(remove.error ?? del.error)}</Alert></div>}
+      {remove.error && <div className="mb-4"><Alert>{errorMessage(remove.error)}</Alert></div>}
 
       <Card className="mb-4" title={`Hosts (${g.host_ids.length})`}>
         {g.host_ids.length === 0 ? (
@@ -85,6 +75,8 @@ export function PackPage() {
         {can("desired.read") && <GroupDesiredState groupId={g.id} />}
       </Card>
 
+      {can("monitoring.read") && <ExpectedServicesCard scope="group" groupId={g.id} />}
+
       {g.host_ids.length > 0 && (
         <p className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
           {can("jobs.execute") && <Link className={plainLink} to={`/jobs/new?groups=${g.id}`}>Run on this pack</Link>}
@@ -95,6 +87,7 @@ export function PackPage() {
       )}
 
       {adding && <AddHostsDialog pack={g} hosts={all} onClose={() => setAdding(false)} />}
+      {deleting && <DeletePackDialog pack={g} onClose={() => setDeleting(false)} onDeleted={() => navigate("/groups")} />}
     </>
   );
 }

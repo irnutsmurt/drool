@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"bufio"
+	"errors"
 	"net"
 	"regexp"
 	"sort"
@@ -32,8 +33,16 @@ type Facts struct {
 
 	PkgManager     string   `json:"pkg_manager"`
 	PkgManagers    []string `json:"pkg_managers,omitempty"`
-	InitSystem     string   `json:"init_system"`
+	InitSystem     string   `json:"init_system"` // PID 1's name
 	SystemdRunning bool     `json:"systemd_running"`
+	// SystemdState is the host's evidence (SystemdProbe): running, none
+	// (PID 1 is something else) or unknown (hidden from the account).
+	SystemdState string `json:"systemd_state,omitempty"`
+	// ServicesError says why the service list couldn't be read although
+	// systemd runs; ServicesLimited: because the account can't ask systemd
+	// (no D-Bus system bus, or denied), not because it failed.
+	ServicesError   string `json:"services_error,omitempty"`
+	ServicesLimited bool   `json:"services_limited,omitempty"`
 
 	Services    []Service `json:"services"`
 	FailedUnits []string  `json:"failed_units"`
@@ -168,19 +177,49 @@ func ParseDiscover(out string) (f Facts, complete bool) {
 	}
 	f.PkgManagers = append([]string{}, sec["pkg"]...)
 	f.PkgManager = choosePkgManager(f.PkgManagers, f.OSFamily)
-	if i := sec["init"]; len(i) > 0 {
-		f.InitSystem = strings.TrimSpace(i[0])
-		for _, l := range i[1:] {
-			if l == "systemd-running" {
-				f.SystemdRunning = true
-			}
+	for idx, l := range sec["init"] {
+		switch {
+		case l == "systemd-running": // a Shepherd from before SystemdProbe
+			f.SystemdState = SystemdRunning
+		case strings.HasPrefix(l, "systemd="):
+			f.SystemdState = strings.TrimSpace(strings.TrimPrefix(l, "systemd="))
+		case idx == 0:
+			f.InitSystem = strings.TrimSpace(l)
 		}
 	}
-	if f.SystemdRunning {
+	if f.SystemdState == "" {
+		f.SystemdState = SystemdNone // the old script printed nothing then
+	}
+	if f.SystemdState != SystemdNone {
+		units, svcErr := sdLines(sec["services"])
+		failed, failErr := sdLines(sec["failed"])
+		if svcErr == nil {
+			f.Services = parseServices(units)
+		}
+		if failErr == nil {
+			f.FailedUnits = parseUnitNames(failed)
+		}
+		// Unknown evidence, but systemctl answered: it runs.
+		f.SystemdRunning = f.SystemdState == SystemdRunning || svcErr == nil && failErr == nil
+		if e := errors.Join(svcErr, failErr); e != nil {
+			var le *listError
+			errors.As(e, &le)
+			f.ServicesError, f.ServicesLimited = le.msg, le.limited
+		}
+	}
+	switch {
+	case f.SystemdRunning:
 		f.InitSystem = "systemd"
-		f.Services = parseServices(sec["services"])
-		f.FailedUnits = parseUnitNames(sec["failed"])
-	} else {
+		if f.ServicesLimited {
+			warn("systemd is running, but this account can't ask it which services there are (" + f.ServicesError + "): on a host without a D-Bus system bus only root can")
+		} else if f.ServicesError != "" {
+			warn("systemd is running, but listing its services failed: " + f.ServicesError)
+		}
+	case f.SystemdState == SystemdUnknown:
+		warn("whether systemd runs couldn't be read: PID 1 and /run/systemd are hidden from this account" + map[bool]string{true: " (" + f.ServicesError + ")", false: ""}[f.ServicesError != ""])
+	case f.InitSystem != "":
+		warn("PID 1 is " + f.InitSystem + ", not systemd: services and failed units are unavailable")
+	default:
 		warn("systemd is not running; services and failed units are unavailable")
 	}
 	if p, ok := sec["ports"]; ok {
@@ -197,6 +236,34 @@ func ParseDiscover(out string) (f Facts, complete bool) {
 		warn("discovery output was incomplete")
 	}
 	return f, complete
+}
+
+// Systemd states (SystemdProbe).
+const (
+	SystemdRunning = "running"
+	SystemdNone    = "none"
+	SystemdUnknown = "unknown"
+)
+
+// listError is a systemctl list that couldn't be read (sdlist).
+type listError struct {
+	msg     string
+	limited bool // the account can't reach systemd, rather than a failure
+}
+
+func (e *listError) Error() string { return e.msg }
+
+// sdLines separates sdlist's output from its error line.
+func sdLines(lines []string) ([]string, error) {
+	out := lines[:0:0]
+	for _, l := range lines {
+		if rest, ok := strings.CutPrefix(l, "@@sd-error "); ok {
+			kind, msg, _ := strings.Cut(rest, " ")
+			return nil, &listError{msg: strings.TrimSpace(msg), limited: kind == "permission"}
+		}
+		out = append(out, l)
+	}
+	return out, nil
 }
 
 func unquote(v string) string {

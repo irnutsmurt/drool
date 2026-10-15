@@ -4,6 +4,7 @@ import { useAuth, useSetupStatus } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
+import { GuideLink } from "@/components/ui/GuideLink";
 import { errorMessage } from "@/lib/format";
 
 /** One-time first-admin setup using the code printed in the controller's logs. */
@@ -49,6 +50,15 @@ export function SetupPage() {
             Enter the setup code from the controller's logs and create the administrator account.
           </p>
         </div>
+        {status.data?.data_volume && (
+          <Alert tone="warn">
+            <span data-testid="setup-new-volume">
+              This DROOL has no data yet: it starts new in the volume <code>{status.data.data_volume}</code>. Expected your existing
+              DROOL? Don&apos;t set up a new one: its data is in another volume.{" "}
+              <GuideLink page="Compose-Data-Volume">How to find it</GuideLink>
+            </span>
+          </Alert>
+        )}
         {status.data && !status.data.code_available && (
           <Alert tone="warn">
             No valid setup code. Restart the controller or run <code>drool setup code</code> to get a new one.

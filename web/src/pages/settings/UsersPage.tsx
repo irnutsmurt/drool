@@ -8,6 +8,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Alert } from "@/components/ui/Alert";
+import { Dialog } from "@/components/ui/Dialog";
 import { errorMessage, formatDateTime } from "@/lib/format";
 
 type User = Schemas["User"];
@@ -23,6 +24,8 @@ export function UsersPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("operator");
+  const [settingPassword, setSettingPassword] = useState<User | null>(null);
+  const [passwordSet, setPasswordSet] = useState("");
 
   const create = useMutation({
     mutationFn: () => unwrap(api.POST("/users", { body: { username, password, role } })),
@@ -52,6 +55,7 @@ export function UsersPage() {
   }
 
   const err = list.error ?? update.error ?? remove.error ?? resetMfa.error;
+  const isMe = (u: User) => u.id === me?.user.id;
   return (
     <div className="grid gap-4">
       <Card title="Add user">
@@ -74,6 +78,7 @@ export function UsersPage() {
       </Card>
       <Card title="Users">
         {err && <div className="mb-4"><Alert>{errorMessage(err)}</Alert></div>}
+        {passwordSet && <div className="mb-4"><Alert tone="ok">{passwordSet}</Alert></div>}
         <Table<User>
           rows={list.data?.items ?? []}
           rowKey={(u) => u.id}
@@ -100,6 +105,11 @@ export function UsersPage() {
               header: "",
               cell: (u) => (
                 <div className="flex justify-end gap-2">
+                  {!isMe(u) && (
+                    <Button size="sm" onClick={() => { setPasswordSet(""); setSettingPassword(u); }} aria-label={`Set password for ${u.username}`}>
+                      Set password…
+                    </Button>
+                  )}
                   <Button size="sm" disabled={update.isPending}
                     onClick={() => update.mutate({ id: u.id, body: { disabled: !u.disabled } })}>
                     {u.disabled ? "Enable" : "Disable"}
@@ -121,7 +131,46 @@ export function UsersPage() {
             },
           ]}
         />
+        <p className="mt-3 text-xs text-muted">Your own password: Settings → Account. Locked out with no administrator who can sign in?
+          On the controller, <code className="font-mono">drool user set-password --username NAME</code>.</p>
       </Card>
+      {settingPassword && (
+        <SetPasswordDialog user={settingPassword} onClose={() => setSettingPassword(null)}
+          onDone={(u) => { setSettingPassword(null); setPasswordSet(`Password set for ${u.username}. They were signed out everywhere and sign in with the new password${u.mfa_enabled ? " and their authenticator" : ""}.`); invalidate(); }} />
+      )}
     </div>
+  );
+}
+
+/** An administrator sets another user's password (forgotten, or a new
+ * colleague's first one): their sessions end; two-factor stays as it is.
+ * The server asks the administrator to confirm who they are first. */
+function SetPasswordDialog({ user, onClose, onDone }: { user: User; onClose: () => void; onDone: (u: User) => void }) {
+  const [password, setPassword] = useState("");
+  const [again, setAgain] = useState("");
+  const mismatch = again !== "" && again !== password;
+  const set = useMutation({
+    mutationFn: () => unwrap(api.PATCH("/users/{id}", { params: { path: { id: user.id } }, body: { password } })),
+    onSuccess: () => onDone(user),
+  });
+  return (
+    <Dialog title={`Set a new password for ${user.username}`} onClose={onClose}>
+      <form className="space-y-4 text-sm" onSubmit={(e) => { e.preventDefault(); if (!mismatch) set.mutate(); }}>
+        <p>{user.username} is signed out of every session and signs in with the new password{user.mfa_enabled ? " and their authenticator (two-factor stays on)" : ""}.
+          Give it to them through a channel you trust; they can change it under Settings → Account.</p>
+        <Field label="New password" hint="At least 12 characters.">
+          <Input type="password" autoComplete="new-password" minLength={12} value={password} onChange={(e) => setPassword(e.target.value)} required data-autofocus />
+        </Field>
+        <Field label="New password again">
+          <Input type="password" autoComplete="new-password" minLength={12} value={again} onChange={(e) => setAgain(e.target.value)} required />
+        </Field>
+        {mismatch && <Alert tone="warn">The two passwords differ.</Alert>}
+        {set.error && <Alert>{errorMessage(set.error)}</Alert>}
+        <div className="flex justify-end gap-2">
+          <Button type="button" onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="primary" disabled={set.isPending || mismatch || password.length < 12}>{set.isPending ? "Setting…" : "Set password"}</Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }

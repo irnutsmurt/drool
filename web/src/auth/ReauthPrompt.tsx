@@ -67,9 +67,10 @@ function ReauthDialog({ info, onDone }: { info: ReauthInfo; onDone: (ok: boolean
   return (
     <Dialog title="Confirm it's you" onClose={() => onDone(false)}>
       <form onSubmit={submit} className="space-y-4" data-testid="reauth-dialog">
+        {info.explanation && <p className="text-sm" data-testid="reauth-reason">{info.explanation}</p>}
         <p className="text-sm text-muted">
-          This is a high-impact action, so DROOL asks for your password{info.mfa ? " and a code from your authenticator" : ""} again.
-          You won't be asked again for {lasts}.
+          {info.explanation ? "DROOL" : "This is a high-impact action, so DROOL"} asks for your password{info.mfa ? " and a code from your authenticator" : ""} again.
+          One confirmation lasts {lasts}: other high-impact actions in that time don't ask again.
         </p>
         {error && <Alert>{error}</Alert>}
         <Field label="Password">

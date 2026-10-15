@@ -59,6 +59,8 @@ var fixture = []struct {
 	{12, "maintenance", `INSERT INTO maintenance (id, started_at) VALUES ('mnt_1',1)`, 0},
 	{12, "notify_destinations", `INSERT INTO notify_destinations (id, name, kind, config_json, created_at, updated_at) VALUES ('ndst_1','ops','webhook','{}',1,1)`, 0},
 	{12, "notify_deliveries", `INSERT INTO notify_deliveries (id, dedupe_key, destination_name, destination_kind, kind, message_json, status, next_attempt_at, created_at) VALUES ('ndel_1','k','ops','webhook','opening','{}','delivered',1,1)`, 0},
+	{12, "notify_deliveries", `INSERT INTO notify_deliveries (id, dedupe_key, destination_id, destination_name, destination_kind, kind, message_json, status, next_attempt_at, created_at) VALUES ('ndel_2','k2','ndst_1','ops','webhook','opening','{}','queued',1,1)`, 0},
+	{12, "notify_route_destinations", `INSERT INTO notify_route_destinations (route_id, destination_id) VALUES ('nrt_default','ndst_1')`, 0},
 	{14, "workflows", `INSERT INTO workflows (id, name, latest_revision, created_at, updated_at) VALUES ('wf_1','patch',1,1,1)`, 0},
 	{14, "schedules", `INSERT INTO schedules (id, kind, name, config_json, created_at, updated_at) VALUES ('sch_1','job','nightly','{}',1,1)`, 0},
 	{14, "schedule_occurrences", `INSERT INTO schedule_occurrences (id, schedule_id, schedule_revision, scheduled_for, status, created_at) VALUES ('occ_1','sch_1',1,1,'dispatched',1)`, 0},
@@ -101,6 +103,15 @@ func TestUpgradeFromEverySchema(t *testing.T) {
 				var got int
 				if err := st.Reader.QueryRow(`SELECT count(*) FROM ` + table).Scan(&got); err != nil || got != n {
 					t.Errorf("%s after the upgrade: %d rows (err %v), want %d", table, got, err, n)
+				}
+			}
+			// Rebuilt tables keep what points at them (0025 rebuilt
+			// notify_destinations).
+			if from >= 12 {
+				var linked int
+				st.Reader.QueryRow(`SELECT count(*) FROM notify_deliveries WHERE id = 'ndel_2' AND destination_id = 'ndst_1'`).Scan(&linked)
+				if linked != 1 {
+					t.Errorf("a delivery lost its destination in the upgrade")
 				}
 			}
 			var ok string

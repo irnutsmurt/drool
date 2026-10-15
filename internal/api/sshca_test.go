@@ -193,7 +193,7 @@ func TestSSHCertificateMigration(t *testing.T) {
 	h.srv.d.Pool.Evict(id)
 
 	// Retiring the static credential needs a fresh confirmation.
-	h.clock.Store(int64(10 * time.Minute))
+	h.clock.Store(int64(16 * time.Minute))
 	if r := c.do("PATCH", "/api/v1/hosts/"+id, map[string]any{"credential_id": ""}); r.status != 403 || r.problemCode(t) != "reauth_required" {
 		t.Fatalf("remove credential without reauth: %d %s", r.status, r.body)
 	}

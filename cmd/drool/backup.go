@@ -101,7 +101,7 @@ Keep a copy of that file somewhere safe and separate from this backup, or run
 	}
 	if m.AgentRootFingerprint != "" {
 		if m.AgentRootKeyIncluded {
-			fmt.Fprintf(msg, "\nThe Agent Root CA private key is still on this controller, so it is in this backup (sealed with the\nmaster key). Export it to offline storage and remove it from the controller (Agents → Trust in the web UI).\n")
+			fmt.Fprintf(msg, "\nThe Agent Root CA private key is still on this controller, so it is in this backup (sealed with the\nmaster key). Export it to offline storage and remove it from the controller (Shepherds → Trust (PKI) in the web UI).\n")
 		} else {
 			fmt.Fprintf(msg, "\nThe Agent Root CA private key is offline and NOT in this backup (root %s).\nKeep your offline copy: it is needed to recover from a lost master key or a compromised intermediate.\n", m.AgentRootFingerprint[:23])
 		}
@@ -198,7 +198,7 @@ Nothing was changed. To restore, do one of:
   - supply the master key file it was made with:  drool restore --master-key /path/to/master.key %s
     or pipe it in ahead of the backup:            cat master.key BACKUP | drool restore --master-key - -
   - restore without stored credentials:            drool restore --discard-credentials %s
-    (users, hosts, pinned host keys, groups and history are kept; SSH keys and
+    (users, hosts, pinned host keys, Packs and history are kept; SSH keys and
     passwords are deleted, the controller generates a new SSH key, and each
     host needs a credential assigned again)`, err, src, src)
 	}
@@ -215,9 +215,9 @@ Nothing was changed. To restore, do one of:
 	case res.Discarded:
 		fmt.Printf("  Stored credentials were DISCARDED. Hosts that need a credential assigned: %s\n", orDash(strings.Join(res.DiscardedFor, ", ")))
 		if m.AgentKeysSealed > 0 {
-			fmt.Printf("  The Agent CA keys were discarded too. Until you issue a new intermediate with the offline root key\n" +
-				"  (drool agent-ca rotate --root-key FILE), the agent endpoint stays off and agent hosts use SSH fallback if configured.\n" +
-				"  Agents then move to the new intermediate by themselves; no re-enrollment.\n")
+			fmt.Printf("  The Shepherd CA keys (Agent Root CA) were discarded too. Until you issue a new intermediate with the offline root key\n" +
+				"  (drool agent-ca rotate --root-key FILE), the Shepherd endpoint stays off and Shepherd hosts use SSH fallback if configured.\n" +
+				"  Shepherds then move to the new intermediate by themselves; no re-enrollment.\n")
 		}
 	case m.Credentials == 0:
 		fmt.Println("  No stored credentials in this backup.")
@@ -244,10 +244,10 @@ with the restored data and moves it to the new epoch when nothing would be
 lost or rolled back; hosts changed after the backup wait for you
 (Settings → System → Restore). Set aside, never repeated automatically:
 `, shortEpoch(rc.Epoch), shortEpoch(rc.PreviousEpoch))
-		fmt.Printf("  %d unfinished job(s) marked interrupted (outcome unknown)\n", rc.JobsInterrupted)
+		fmt.Printf("  %d unfinished run(s) marked interrupted (outcome unknown)\n", rc.JobsInterrupted)
 		fmt.Printf("  %d open firewall transaction(s) closed as unknown\n", rc.FirewallClosed)
 		fmt.Printf("  %d unsent notification(s) dropped, %d queued scheduled run(s) skipped\n", rc.DeliveriesDropped, rc.OccurrencesDrop)
-		fmt.Printf("  %d job schedule(s) held, %d automatic Desired State restore(s) paused, %d Shepherd rollout(s) paused\n",
+		fmt.Printf("  %d schedule(s) held, %d automatic Desired State restore(s) paused, %d Shepherd rollout(s) paused\n",
 			len(rc.SchedulesHeld), len(rc.AutoPaused), rc.RolloutsPaused)
 	}
 	fmt.Println("\nStart DROOL again (systemctl start drool, or docker compose start drool).")
@@ -265,7 +265,7 @@ func shortEpoch(e string) string {
 }
 
 func summarizeCounts(c map[string]int64) string {
-	labels := map[string]string{"users": "users", "hosts": "hosts", "secrets": "credentials", "jobs": "jobs", "audit_events": "audit events"}
+	labels := map[string]string{"users": "users", "hosts": "hosts", "secrets": "credentials", "jobs": "runs", "audit_events": "audit events"}
 	keys := []string{"users", "hosts", "secrets", "jobs", "audit_events"}
 	var parts []string
 	for _, k := range keys {
