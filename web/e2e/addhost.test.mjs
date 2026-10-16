@@ -71,9 +71,11 @@ test("adding a host with a dedicated DROOL SSH account", { skip: !spec && "needs
   assert.equal((done.match(/forgotten/g) ?? []).length, 2, "both setup credentials forgotten: " + done);
   await shot(page, "addhost-done");
 
-  // The host page: it signs in as drool, and the setup isn't offered again.
+  // The host's workspace: it signs in as drool (Management), and the setup
+  // isn't offered again.
   await click(page, "main button", "Done");
   await waitFor(page, async () => page.url().includes("/hosts/host_"), "the host page");
+  await click(page, '[data-testid="host-sections"] a', "Management");
   await waitText(page, "drool@127.0.0.1", 30000);
   await waitText(page, "passwordless sudo");
   assert.ok(!(await text(page)).includes("Set up a dedicated DROOL SSH account"));
@@ -93,7 +95,7 @@ test("removing that host cleans up DROOL's account on it", { skip: !spec && "nee
   const sch = await api(page, "POST", "/schedules", { name: "acct-browser updates", time_zone: "UTC",
     recurrence: { kind: "weekly", time: "03:00", weekdays: ["sun"] }, targets: { hosts: [h.id] }, steps: [{ type: "command", command: "true" }] });
   assert.equal(sch.status, 201, JSON.stringify(sch.body));
-  await page.goto(`${base}/hosts/${h.id}`, { waitUntil: "networkidle0" });
+  await page.goto(`${base}/hosts/${h.id}/management`, { waitUntil: "networkidle0" });
   await click(page, "main button", "Remove host…");
   const dialog = () => page.$eval('[data-testid="remove-host"]', (e) => e.innerText).catch(() => "");
   await waitFor(page, async () => /Clean up DROOL access/.test(await dialog()), "the removal plan", 60000);

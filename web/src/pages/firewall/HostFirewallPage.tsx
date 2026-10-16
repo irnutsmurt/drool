@@ -3,7 +3,7 @@ import { useHost } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { HostFirewall } from "@/components/firewall/HostFirewall";
 import { secondaryLink } from "@/components/ui/Button";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ReadOnlyNote } from "@/components/ui/ReadOnlyNote";
 import { LoadError, Loading } from "@/components/ui/States";
 
@@ -15,8 +15,7 @@ export function HostFirewallPage() {
   const h = host.data;
   return (
     <>
-      <PageHeader crumbs={[{ label: "Hosts", to: "/hosts" }, { label: h?.name ?? "Host", to: `/hosts/${id}` }]}
-        title={`${h?.name ?? "Host"}: firewall`}
+      <SectionHeader title="Firewall"
         description="What may reach this host and what it may reach, applied with automatic rollback protection: if a fresh management connection can't verify a change, the host reverts it by itself."
         actions={
           <>

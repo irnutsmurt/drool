@@ -184,8 +184,13 @@ test("a read-only role: no destinations it can't view, a clear 403 on direct lin
     await go(page, `/hosts/${ids["web-1"]}`);
     await waitText(page, "Health");
     const buttons = await page.$$eval("main button", (bs) => bs.map((b) => b.textContent.trim()));
-    for (const b of ["Run command", "Edit", "Reboot", "Install updates", "Remove host"]) assert.ok(!buttons.includes(b), `no ${b}: ${buttons}`);
+    for (const b of ["Run command", "Edit host details", "Reboot…", "Install updates", "Remove host…", "Actions"]) assert.ok(!buttons.includes(b), `no ${b}: ${buttons}`);
+    // The workspace offers a viewer only what it may open (no Files, no Network).
+    const sections = await page.$$eval('[data-testid="host-sections"] a', (as) => as.map((a) => a.textContent.trim()));
+    assert.deepEqual(sections, ["Overview", "Monitoring", "Firewall", "Desired State", "Management", "Activity"]);
     // Credentials the role can't list are named as such, not by internal ID.
+    await go(page, `/hosts/${ids["web-1"]}/management`);
+    await waitText(page, "Credential");
     const host = await text(page);
     assert.match(host, /a stored credential — your role can't see its name/);
     assert.ok(!/\bsec_[0-9a-z]{20,}/.test(host), "no internal credential IDs");
@@ -287,11 +292,12 @@ for (const theme of ["light", "dark"]) {
 test("related pages link to each other", async () => {
   const page = admin;
   const id = ids["web-1"];
-  // A host summarizes each area and links to its page.
+  // A host summarizes each area and links to its section of the workspace.
   await go(page, `/hosts/${id}`);
   await waitText(page, "View monitoring");
   const links = await page.$$eval("main a", (as) => as.map((a) => a.getAttribute("href")));
-  for (const want of [`/hosts/${id}/monitoring`, `/hosts/${id}/desired`, `/hosts/${id}/firewall`, `/hosts/${id}/network`, `/jobs?host=${id}`]) {
+  for (const want of [`/hosts/${id}/monitoring`, `/hosts/${id}/desired`, `/hosts/${id}/firewall`, `/hosts/${id}/network`, `/hosts/${id}/activity`,
+    `/hosts/${id}/files`, `/hosts/${id}/management`]) {
     assert.ok(links.includes(want), `host links to ${want}`);
   }
   // Runs for one host.

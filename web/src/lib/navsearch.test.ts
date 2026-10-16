@@ -91,7 +91,7 @@ describe("sidebar", () => {
       ["Observe", ["Monitoring", "Alerts", "Network Activity"]],
       ["Automate", ["Runs", "Schedules", "Workflows", "Desired State"]],
       ["Protect", ["Firewall", "Credentials", "Audit Log"]],
-      ["Settings", ["Settings"]],
+      ["", ["Settings"]],
     ]);
     expect(item("Packs").hint).toBe("Groups");
     expect(item("Shepherds").hint).toBe("DROOL agents");
@@ -114,7 +114,7 @@ describe("sidebar", () => {
   it("hides what the user can't view, and empty headings with it", () => {
     const viewer = new Set(["hosts.read", "jobs.read", "monitoring.read", "alerts.read"]);
     const s = visibleSections((p) => viewer.has(p));
-    expect(s.map((x) => x.heading ?? "")).toEqual(["", "Fleet", "Observe", "Automate", "Settings"]);
+    expect(s.map((x) => x.heading ?? "")).toEqual(["", "Fleet", "Observe", "Automate", ""]);
     expect(s.flatMap((x) => x.items.map((i) => i.label))).toEqual(["Overview", "Hosts", "Packs", "Monitoring", "Alerts", "Runs", "Settings"]);
   });
 });

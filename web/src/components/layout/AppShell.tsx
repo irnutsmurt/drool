@@ -4,11 +4,14 @@ import { Link, Outlet, useLocation } from "react-router";
 import { useAuth } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/Button";
 import { cx } from "@/components/ui/cx";
-import { ChevronDownIcon, CloseIcon, MenuIcon, SearchIcon, ShieldIcon } from "@/components/ui/icons";
+import {
+  BellIcon, ChevronDownIcon, ChipIcon, ClockIcon, CloseIcon, GearIcon, HomeIcon, KeyIcon, LogIcon, MenuIcon, NetworkIcon, PackIcon, PlayIcon, PulseIcon,
+  SearchIcon, ServerIcon, ShieldIcon, StepsIcon, TargetIcon, WallIcon,
+} from "@/components/ui/icons";
 import { ThemeSwitcher } from "@/components/ui/ThemeSwitcher";
 import { useAlertSummary } from "@/components/alerts/queries";
 import { StatusIcon } from "@/components/monitoring/Status";
-import { isActive, visibleSections, type NavItem } from "./nav";
+import { isActive, visibleSections, type NavIcon, type NavItem } from "./nav";
 import { CommandPalette, shortcutLabel, typingIn } from "./CommandPalette";
 import { useSecurityItems, useSystemInfo, type SecurityItem } from "./security";
 
@@ -100,11 +103,11 @@ function SidebarNav({ onNavigate, idPrefix = "nav" }: { onNavigate?: () => void;
   const alerts = useAlertSummary(can("alerts.read"));
   const sections = visibleSections(can);
   return (
-    <nav aria-label="Main" className="flex-1 overflow-y-auto px-2 pb-4">
+    <nav aria-label="Main" className="flex-1 overflow-y-auto px-2 pb-3">
       {sections.map((s) => (
-        <div key={s.id} className={s.heading ? "mt-4" : ""}>
+        <div key={s.id} className={s.apart ? "mt-3 border-t border-line pt-3" : s.heading ? "mt-3" : ""}>
           {s.heading && <div id={`${idPrefix}-${s.id}`} className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">{s.heading}</div>}
-          <ul aria-labelledby={s.heading ? `${idPrefix}-${s.id}` : undefined} className="flex flex-col gap-0.5">
+          <ul aria-labelledby={s.heading ? `${idPrefix}-${s.id}` : undefined} className="flex flex-col gap-px">
             {s.items.map((i) => (
               <li key={i.to}>
                 <NavEntry item={i} active={isActive(i, pathname)} onNavigate={onNavigate}
@@ -131,10 +134,12 @@ function NavEntry({ item: i, active, alerts, onNavigate }: {
     <>
       <Link to={i.to} aria-current={active ? "page" : undefined} aria-describedby={i.hint ? descId : undefined} onClick={onNavigate}
         onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}
-        className={cx("flex items-center gap-2 rounded-ui px-3 py-2 text-sm",
-          active ? "bg-surface-2 font-medium text-fg" : "text-muted hover:bg-surface-2 hover:text-fg")}>
+        className={cx("relative flex items-center gap-2.5 rounded-ui px-3 py-1.5 text-sm",
+          active ? "bg-surface-2 font-medium text-fg before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-accent"
+            : "text-muted hover:bg-surface-2 hover:text-fg")}>
+        <NavGlyph icon={i.icon} active={active} />
         <span>{i.label}</span>
-        {i.hint && <span className="ml-auto text-xs font-normal text-muted">{i.hint}</span>}
+        {i.hint && <span className="ml-auto whitespace-nowrap text-xs font-normal text-muted">{i.hint}</span>}
         {alerts && alerts.open > 0 && (
           <span className="ml-auto inline-flex items-center gap-1 text-xs font-semibold tabular-nums"
             aria-label={`${alerts.open} unacknowledged alert${alerts.open === 1 ? "" : "s"}${alerts.critical ? `, ${alerts.critical} critical` : ""}`}>
@@ -146,6 +151,17 @@ function NavEntry({ item: i, active, alerts, onNavigate }: {
       {tip && createPortal(<NavTip rect={tip} text={`${i.label}: ${i.description}`} />, document.body)}
     </>
   );
+}
+
+const glyphs: Record<NavIcon, (p: React.SVGProps<SVGSVGElement>) => React.ReactElement> = {
+  home: HomeIcon, hosts: ServerIcon, packs: PackIcon, shepherds: ChipIcon, monitoring: PulseIcon, alerts: BellIcon, network: NetworkIcon,
+  runs: PlayIcon, schedules: ClockIcon, workflows: StepsIcon, desired: TargetIcon, firewall: WallIcon, credentials: KeyIcon, audit: LogIcon,
+  settings: GearIcon,
+};
+
+function NavGlyph({ icon, active }: { icon: NavIcon; active: boolean }) {
+  const G = glyphs[icon];
+  return <G width={16} height={16} className={cx("shrink-0", active ? "text-accent" : "opacity-80")} />;
 }
 
 function NavTip({ rect, text }: { rect: DOMRect; text: string }) {

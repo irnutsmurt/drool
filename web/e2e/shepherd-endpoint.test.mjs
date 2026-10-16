@@ -40,7 +40,7 @@ test("the endpoint Shepherds will connect to, before installing", async () => {
     hostID = hosts.find((h) => h.management?.ssh_configured && h.management?.preferred !== "agent" && !h.jump_only && h.pinned_key)?.id;
   }
   assert.ok(hostID, "an SSH host without a Shepherd");
-  await page.goto(base + "/hosts/" + hostID, { waitUntil: "networkidle0" });
+  await page.goto(base + "/hosts/" + hostID + "/management", { waitUntil: "networkidle0" });
   await click(page, "main button", "Install Shepherd (DROOL agent)");
   await page.waitForSelector('[data-testid="shepherd-endpoint"]');
   await waitFor(page, async () => (await text(page)).includes("Shepherds will connect to: " + expected), "the endpoint in the install dialog");

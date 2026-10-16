@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type Schemas } from "@/api/client";
-import { useHost } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -10,7 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { cx } from "@/components/ui/cx";
 import { errorMessage, formatBytes, formatDateTime } from "@/lib/format";
 import { brief, describe, octal, parseOctal, symbolic } from "@/lib/modes";
@@ -46,7 +45,6 @@ export function FilesPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { can } = useAuth();
-  const host = useHost(id);
   const path = params.get("path") ?? "";
   const elevated = params.get("elevated") === "1";
   const canWrite = can("files.write");
@@ -120,9 +118,8 @@ export function FilesPage() {
 
   return (
     <>
-      <PageHeader
-        crumbs={[{ label: "Hosts", to: "/hosts" }, { label: host.data?.name ?? "Host", to: `/hosts/${id}` }]}
-        title={`Files on ${host.data?.name ?? ""}`}
+      <SectionHeader
+        title="Files"
         description="Browse, view, edit and upload files on this host. Every change is audited."
         actions={can("files.elevate") && !viaAgent && (
           <Checkbox checked={elevated} onChange={setElevated} label="Use administrator privileges"

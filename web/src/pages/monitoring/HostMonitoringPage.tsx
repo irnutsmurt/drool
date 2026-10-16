@@ -5,13 +5,11 @@ import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { cx } from "@/components/ui/cx";
 import { errorMessage } from "@/lib/format";
 import { MonitoringTiles, fidelityText } from "@/components/monitoring/HostMonitoringSummary";
 import { HostMaintenanceBanner } from "@/components/alerts/HostAlerts";
-import { useAlertSummary } from "@/components/alerts/queries";
-import { AlertCounts } from "@/components/alerts/ui";
 import { useHostMonitoring, useRefreshHost, type MonHostOverview } from "@/components/monitoring/queries";
 import { SeverityBadge } from "@/components/monitoring/Status";
 import { fmtSince, fmtTime } from "@/components/monitoring/format";
@@ -23,7 +21,8 @@ import { AgentTab } from "./AgentTab";
 import { HostHealthPanel } from "@/components/health/HostHealth";
 
 const tabs = [
-  { key: "overview", label: "Overview" },
+  // "Summary": the workspace already has an Overview (old links keep ?tab=overview).
+  { key: "overview", label: "Summary" },
   { key: "metrics", label: "Metrics" },
   { key: "services", label: "Services" },
   { key: "storage", label: "Storage health" },
@@ -31,18 +30,6 @@ const tabs = [
   { key: "health", label: "Health settings" },
   { key: "agent", label: "Collection & helpers" },
 ] as const;
-
-function HostAlertLine({ hostId }: { hostId: string }) {
-  const sum = useAlertSummary();
-  const c = sum.data?.hosts[hostId];
-  if (!c || c.critical + c.warning === 0) return null;
-  return (
-    <p className="mb-3 rounded-ui border border-line bg-surface px-3 py-2 text-sm">
-      Open alerts: <AlertCounts critical={c.critical} warning={c.warning} hostId={hostId} />
-      {c.acknowledged > 0 && <span className="text-muted"> ({c.acknowledged} acknowledged)</span>}
-    </p>
-  );
-}
 
 export function HostMonitoringPage() {
   const { id = "" } = useParams();
@@ -67,9 +54,8 @@ export function HostMonitoringPage() {
   };
   return (
     <>
-      <PageHeader
-        crumbs={[{ label: "Hosts", to: "/hosts" }, { label: host.data?.name ?? "Host", to: `/hosts/${id}` }]}
-        title={`${host.data?.name ?? "Host"}: monitoring`}
+      <SectionHeader
+        title="Monitoring"
         description={o?.has_data ? `${fidelityText(o)} · updated ${fmtSince(o.updated_at)}` : undefined}
         actions={
           <>
@@ -80,7 +66,6 @@ export function HostMonitoringPage() {
         }
       />
       {can("alerts.read") && <HostMaintenanceBanner hostId={id} />}
-      {can("alerts.read") && <HostAlertLine hostId={id} />}
       {mon.error && <Alert>{errorMessage(mon.error)}</Alert>}
       {o?.stale && <div className="mb-4"><Alert tone="warn">No monitoring data since {fmtTime(o.updated_at)}. The host may be unreachable; values are from before.</Alert></div>}
       <div role="tablist" aria-label="Monitoring" className="mb-4 flex flex-wrap gap-1 border-b border-line">

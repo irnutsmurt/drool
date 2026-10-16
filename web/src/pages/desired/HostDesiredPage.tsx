@@ -7,7 +7,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { cx } from "@/components/ui/cx";
 import { plainLink } from "@/components/ui/links";
 import { fmtSince, fmtTime } from "@/components/monitoring/format";
@@ -40,9 +40,8 @@ export function HostDesiredPage() {
   const restorable = h.resources.filter((r) => r.restorable);
   return (
     <>
-      <PageHeader
-        crumbs={[{ label: "Hosts", to: "/hosts" }, { label: h.name, to: `/hosts/${id}` }]}
-        title={`${h.name}: desired state`}
+      <SectionHeader
+        title="Desired State"
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
             <DesiredStatusBadge status={h.status} />

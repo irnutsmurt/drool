@@ -64,8 +64,8 @@ test("create an empty pack, then manage its hosts", async () => {
   assert.deepEqual(await tableHosts(), ["nas-01"]);
   await shot(page, "pack-members");
 
-  // From the host's page: add it back.
-  await page.goto(base + `/hosts/${id("pi-sd")}`, { waitUntil: "networkidle0" });
+  // From the host's Management section: add it back.
+  await page.goto(base + `/hosts/${id("pi-sd")}/management`, { waitUntil: "networkidle0" });
   await click(page, "main button", "Change…");
   await waitFor(page, async () => (await page.$('[role="dialog"]')) !== null, "the host's packs dialog");
   await click(page, '[role="dialog"] label', name);

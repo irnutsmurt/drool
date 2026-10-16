@@ -18,7 +18,7 @@ after(async () => browser?.close());
 test("uninstall a Shepherd: the plan, the removal, the result", async () => {
   const id = process.env.DROOL_E2E_HOST;
   assert.ok(id, "DROOL_E2E_HOST");
-  await page.goto(`${base}/hosts/${id}`, { waitUntil: "networkidle0" });
+  await page.goto(`${base}/hosts/${id}/management`, { waitUntil: "networkidle0" });
   await click(page, "button", "Uninstall Shepherd…");
   const dialog = () => page.$eval('[data-testid="uninstall-shepherd"]', (e) => e.innerText).catch(() => "");
   await waitFor(page, async () => /The Shepherd removes itself/.test(await dialog()), "the plan", 60000);

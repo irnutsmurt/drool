@@ -10,7 +10,10 @@ import { NotFoundPage } from "@/pages/NotFoundPage";
 import { Loading } from "@/components/ui/States";
 import { HostsPage } from "@/pages/hosts/HostsPage";
 import { AddHostPage } from "@/pages/hosts/AddHostPage";
-import { HostDetailPage } from "@/pages/hosts/HostDetailPage";
+import { HostLayout } from "@/components/hosts/workspace/HostLayout";
+import { HostOverviewPage } from "@/pages/hosts/HostOverviewPage";
+import { HostManagementPage } from "@/pages/hosts/HostManagementPage";
+import { HostActivityPage } from "@/pages/hosts/HostActivityPage";
 import { GroupsPage } from "@/pages/GroupsPage";
 import { PackPage } from "@/pages/PackPage";
 import { CredentialsPage } from "@/pages/CredentialsPage";
@@ -65,14 +68,27 @@ export const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: "hosts", element: <RequirePermission permission="hosts.read"><HostsPage /></RequirePermission> },
       { path: "hosts/new", element: <RequirePermission permission="hosts.write"><AddHostPage /></RequirePermission> },
-      { path: "hosts/:id", element: <RequirePermission permission="hosts.read"><HostDetailPage /></RequirePermission> },
-      { path: "hosts/:id/monitoring", element: <RequirePermission permission="monitoring.read">{later(<HostMonitoringPage />)}</RequirePermission> },
+      // A host's workspace: one header and local navigation for every page
+      // about the host. The addresses are the ones these pages always had.
+      {
+        path: "hosts/:id",
+        element: <RequirePermission permission="hosts.read"><HostLayout /></RequirePermission>,
+        children: [
+          { index: true, element: <HostOverviewPage /> },
+          { path: "monitoring", element: <RequirePermission permission="monitoring.read">{later(<HostMonitoringPage />)}</RequirePermission> },
+          { path: "files", element: <RequirePermission permission="files.read">{later(<FilesPage />)}</RequirePermission> },
+          { path: "files/edit", element: <RequirePermission permission="files.read">{later(<EditFilePage />)}</RequirePermission> },
+          { path: "network", element: <RequirePermission permission="network.read">{later(<HostNetworkPage />)}</RequirePermission> },
+          { path: "firewall", element: <RequirePermission permission="firewall.read">{later(<HostFirewallPage />)}</RequirePermission> },
+          { path: "desired", element: <RequirePermission permission="desired.read">{later(<HostDesiredPage />)}</RequirePermission> },
+          { path: "management", element: <HostManagementPage /> },
+          { path: "activity", element: <RequirePermission permission="jobs.read"><HostActivityPage /></RequirePermission> },
+        ],
+      },
       { path: "monitoring", element: <RequirePermission permission="monitoring.read">{later(<MonitoringPage />)}</RequirePermission> },
       { path: "monitoring/settings", element: <RequirePermission permission="monitoring.read">{later(<MonitoringSettingsPage />)}</RequirePermission> },
       { path: "alerts", element: <RequirePermission permission="alerts.read">{later(<AlertsPage />)}</RequirePermission> },
       { path: "alerts/:id", element: <RequirePermission permission="alerts.read">{later(<AlertDetailPage />)}</RequirePermission> },
-      { path: "hosts/:id/files", element: <RequirePermission permission="files.read">{later(<FilesPage />)}</RequirePermission> },
-      { path: "hosts/:id/files/edit", element: <RequirePermission permission="files.read">{later(<EditFilePage />)}</RequirePermission> },
       { path: "file-deployments/:id", element: <RequirePermission permission="files.read">{later(<FileDeploymentPage />)}</RequirePermission> },
       { path: "groups", element: <RequirePermission permission="hosts.read"><GroupsPage /></RequirePermission> },
       { path: "groups/:id", element: <RequirePermission permission="hosts.read"><PackPage /></RequirePermission> },
@@ -92,9 +108,6 @@ export const router = createBrowserRouter([
       { path: "desired/baselines/:id", element: <RequirePermission permission="desired.read">{later(<BaselineDetailPage />)}</RequirePermission> },
       { path: "desired/baselines/:id/edit", element: <RequirePermission permission="desired.manage">{later(<BaselineEditorPage key="edit" />)}</RequirePermission> },
       { path: "desired/history", element: <RequirePermission permission="desired.read">{later(<DesiredHistoryPage />)}</RequirePermission> },
-      { path: "hosts/:id/desired", element: <RequirePermission permission="desired.read">{later(<HostDesiredPage />)}</RequirePermission> },
-      { path: "hosts/:id/firewall", element: <RequirePermission permission="firewall.read">{later(<HostFirewallPage />)}</RequirePermission> },
-      { path: "hosts/:id/network", element: <RequirePermission permission="network.read">{later(<HostNetworkPage />)}</RequirePermission> },
       { path: "agents", element: <RequirePermission permission="agents.read">{later(<AgentsPage />)}</RequirePermission> },
       { path: "firewall", element: <RequirePermission permission="firewall.read">{later(<FirewallPage />)}</RequirePermission> },
       { path: "network", element: <RequirePermission permission="network.read">{later(<NetworkPage />)}</RequirePermission> },

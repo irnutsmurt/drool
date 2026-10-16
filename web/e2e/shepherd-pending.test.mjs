@@ -20,8 +20,8 @@ test("a Shepherd that hasn't reported what it may do yet", async () => {
   const hostID = process.env.DROOL_E2E_PENDING_HOST;
   assert.ok(hostID, "DROOL_E2E_PENDING_HOST");
 
-  await page.goto(base + "/hosts/" + hostID, { waitUntil: "networkidle0" });
-  await waitFor(page, async () => /Shepherd details|Unexpected Application Error/.test(await text(page)), "the host page");
+  await page.goto(base + "/hosts/" + hostID + "/management", { waitUntil: "networkidle0" });
+  await waitFor(page, async () => /Shepherd details|Unexpected Application Error/.test(await text(page)), "the host's Management section");
   assert.ok(!(await text(page)).includes("Unexpected Application Error"), "the host page failed: " + page.errors.join("; "));
   await click(page, "summary", "Shepherd details");
   await waitText(page, "Not reported yet");

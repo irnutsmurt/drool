@@ -7,7 +7,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { errorMessage, formatBytes, formatDateTime } from "@/lib/format";
 import { describe, octal, symbolic } from "@/lib/modes";
 
@@ -68,7 +68,7 @@ export function EditFilePage() {
   const notText = file.error instanceof ApiError && file.error.problem?.code === "not_text";
   return (
     <>
-      <PageHeader crumbs={[{ label: "Hosts", to: "/hosts" }, { label: host.data?.name ?? "Host", to: `/hosts/${id}` }, { label: "Files", to: back }]}
+      <SectionHeader
         title={path.split("/").pop() || path}
         description={<span className="font-mono">{host.data?.name}:{path}</span>}
         actions={<Link className="text-sm text-accent" to={back}>Back to {dir}</Link>} />
