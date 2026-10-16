@@ -145,7 +145,8 @@ func newReceiver(t *testing.T) *receiver {
 	r.srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		r.hits.Add(1)
 		b, _ := io.ReadAll(req.Body)
-		if r.hang.Load() {
+		hung := r.hang.Load()
+		if hung {
 			select {
 			case <-req.Context().Done():
 			case <-time.After(20 * time.Second):
@@ -156,6 +157,13 @@ func newReceiver(t *testing.T) *receiver {
 		r.mu.Lock()
 		r.got, r.raw, r.hdr = append(r.got, p), append(r.raw, string(b)), append(r.hdr, req.Header.Clone())
 		r.mu.Unlock()
+		if hung {
+			// A hanging receiver read the request but never answers. Not
+			// even once the sender gives up: Go's client still uses a
+			// response that races the close of a cancelled request's
+			// connection, so a 204 written then could count as delivered.
+			panic(http.ErrAbortHandler)
+		}
 		code := int(r.status.Load())
 		if code == 0 {
 			code = 204
