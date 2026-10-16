@@ -19,20 +19,20 @@ import { AlertCounts } from "@/components/alerts/ui";
 import { MonitoringTabs } from "./MonitoringTabs";
 
 const categories = [
-  { key: "unhealthy", label: "Needs attention" },
-  { key: "stale", label: "Unreachable / stale" },
-  { key: "cpu", label: "CPU" },
-  { key: "memory", label: "Memory" },
-  { key: "disk", label: "Low disk space" },
-  { key: "storage", label: "Storage health" },
-  { key: "services", label: "Service failures" },
-  { key: "network", label: "Interfaces" },
-  { key: "temperature", label: "Temperature" },
-  { key: "fidelity", label: "Reduced fidelity" },
-  { key: "helpers", label: "Missing helpers" },
-  { key: "no_data", label: "No data yet" },
-  { key: "all", label: "All hosts" },
-];
+  { key: "unhealthy", label: "Needs attention", group: "main" },
+  { key: "stale", label: "Unreachable / stale", group: "main" },
+  { key: "cpu", label: "CPU", group: "health" },
+  { key: "memory", label: "Memory", group: "health" },
+  { key: "disk", label: "Low disk space", group: "health" },
+  { key: "storage", label: "Storage health", group: "health" },
+  { key: "services", label: "Service failures", group: "health" },
+  { key: "network", label: "Interfaces", group: "health" },
+  { key: "temperature", label: "Temperature", group: "health" },
+  { key: "fidelity", label: "Reduced fidelity", group: "collection" },
+  { key: "helpers", label: "Missing helpers", group: "collection" },
+  { key: "no_data", label: "No data yet", group: "collection" },
+  { key: "all", label: "All hosts", group: "main" },
+] as const;
 
 const PAGE = 100;
 
@@ -88,18 +88,8 @@ export function MonitoringPage() {
           {Object.keys(as.maintenance).length > 0 && <span className="text-muted"> · {Object.keys(as.maintenance).length} host{Object.keys(as.maintenance).length === 1 ? "" : "s"} in maintenance</span>}
         </p>
       )}
-      <div role="group" aria-label="Show hosts" className="mb-4 flex flex-wrap gap-2">
-        {categories.map((c) => {
-          const n = c.key === "all" ? d?.hosts : d?.counts[c.key];
-          return (
-            <button key={c.key} type="button" aria-pressed={category === c.key} onClick={() => setCat(c.key)}
-              className={cx("rounded-ui border px-3 py-1.5 text-sm", category === c.key ? "border-accent bg-accent/15 font-medium" : "border-line hover:bg-surface-2",
-                c.key !== "all" && n ? "" : "")}>
-              {c.label} <span className={cx("ml-1 tabular-nums", n ? "font-semibold" : "text-muted")}>{n ?? 0}</span>
-            </button>
-          );
-        })}
-      </div>
+      <FleetFilters category={category} counts={d?.counts} hosts={d?.hosts} setCat={setCat} q={q}
+        reset={() => { setQ(""); setCat("all"); }} />
       <Card>
         <div className="mb-3 flex flex-wrap items-end gap-3">
           <Field label="Host"><Input value={q} placeholder="Name contains…" onChange={(e) => { setQ(e.target.value); setOffset(0); }} /></Field>
@@ -113,10 +103,18 @@ export function MonitoringPage() {
               <option value="temperature">Temperature</option>
             </Select>
           </Field>
-          <div className="ml-auto flex gap-2">
-            {can("jobs.execute") && <Button disabled={sel.size === 0} onClick={() => setDialog("helpers")}>Install recommended helpers{sel.size ? ` (${sel.size})` : ""}</Button>}
-            {can("agents.enroll") && <Button disabled={sel.size === 0} onClick={() => setDialog("convert")}>Convert to Shepherd{sel.size ? ` (${sel.size})` : ""}</Button>}
-          </div>
+          {(can("jobs.execute") || can("agents.enroll")) && (
+            <div className="ml-auto flex flex-wrap items-center gap-2" data-testid="fleet-bulk">
+              {sel.size === 0 ? <span className="text-xs text-muted">Select hosts to install monitoring helpers or convert them to Shepherds.</span> : (
+                <>
+                  <span className="text-sm">{sel.size} selected</span>
+                  {can("jobs.execute") && <Button size="sm" onClick={() => setDialog("helpers")}>Install recommended helpers</Button>}
+                  {can("agents.enroll") && <Button size="sm" onClick={() => setDialog("convert")}>Convert to Shepherd</Button>}
+                  <Button size="sm" variant="ghost" onClick={() => setSel(new Set())}>Clear</Button>
+                </>
+              )}
+            </div>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="rtable w-full text-left text-sm">
@@ -207,5 +205,56 @@ export function MonitoringPage() {
       {dialog === "helpers" && <HelperInstallDialog hostIds={[...sel]} onClose={() => setDialog("")} />}
       {dialog === "convert" && <ConvertDialog hostIds={[...sel]} onClose={() => setDialog("")} />}
     </>
+  );
+}
+
+/** Which hosts to show: the views people use most (everything, what needs
+ * attention, what can't be reached) always in sight, and the health or
+ * collection problems that some hosts have right now; the rest under "More
+ * filters". The active one always shows, with a way back to every host. */
+function FleetFilters({ category, counts, hosts, setCat, q, reset }: {
+  category: string;
+  counts?: Record<string, number>;
+  hosts?: number;
+  setCat: (c: string) => void;
+  q: string;
+  reset: () => void;
+}) {
+  const [more, setMore] = useState(false);
+  const n = (key: string) => (key === "all" ? hosts : counts?.[key]) ?? 0;
+  const main = categories.filter((c) => c.group === "main").sort((a, b) => (a.key === "all" ? -1 : b.key === "all" ? 1 : 0));
+  const others = categories.filter((c) => c.group !== "main");
+  const visible = [...main, ...others.filter((c) => n(c.key) > 0 || c.key === category)];
+  const chip = (c: (typeof categories)[number]) => (
+    <button key={c.key} type="button" aria-pressed={category === c.key} onClick={() => setCat(c.key)}
+      className={cx("rounded-ui border px-3 py-1.5 text-sm", category === c.key ? "border-accent bg-accent/15 font-medium" : "border-line hover:bg-surface-2")}>
+      {c.label} <span className={cx("ml-1 tabular-nums", n(c.key) ? "font-semibold" : "text-muted")}>{n(c.key)}</span>
+    </button>
+  );
+  return (
+    <div className="mb-4 space-y-2" data-testid="fleet-filters">
+      <div role="group" aria-label="Show hosts" className="flex flex-wrap items-center gap-2">
+        {visible.map(chip)}
+        <button type="button" aria-expanded={more} aria-controls="fleet-more-filters" onClick={() => setMore((v) => !v)}
+          className="rounded-ui px-2 py-1.5 text-sm text-muted underline underline-offset-2 hover:text-fg">
+          {more ? "Fewer filters" : `More filters (${others.length})`}
+        </button>
+        {(category !== "all" || q) && (
+          <button type="button" onClick={reset} className="rounded-ui px-2 py-1.5 text-sm text-muted underline underline-offset-2 hover:text-fg">Reset filters</button>
+        )}
+      </div>
+      {more && (
+        <div id="fleet-more-filters" className="grid gap-3 rounded-ui border border-line bg-surface p-3 sm:grid-cols-2">
+          <div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted">Health problems</div>
+            <div role="group" aria-label="Hosts with a health problem" className="flex flex-wrap gap-2">{others.filter((c) => c.group === "health").map(chip)}</div>
+          </div>
+          <div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted">How hosts are monitored</div>
+            <div role="group" aria-label="Hosts by how they are monitored" className="flex flex-wrap gap-2">{others.filter((c) => c.group === "collection").map(chip)}</div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

@@ -24,17 +24,21 @@ export interface MenuItem {
  * two visible actions. Keyboard: Enter/Space/↓ open it on the first item,
  * ↑/↓/Home/End move, Enter activates, Escape or Tab closes and focus
  * returns to the button. A click outside closes it. */
-export function MenuButton({ label, items, align = "end", size = "md", testId }: {
+export function MenuButton({ label, items, align = "end", size = "md", testId, ariaLabel, ghost }: {
   label: ReactNode;
   items: MenuItem[];
   align?: "start" | "end";
   size?: "sm" | "md";
   testId?: string;
+  /** The button's accessible name when its label is only a symbol (⋯). */
+  ariaLabel?: string;
+  /** A borderless button (row menus in tables). */
+  ghost?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  // The side the menu opens on: as asked, unless that runs off the screen
-  // (a button near a phone's left edge).
-  const [side, setSide] = useState(align);
+  // How far the menu moves sideways to stay on the screen (a button near
+  // a phone's edge, where neither side has room for it).
+  const [shift, setShift] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -48,13 +52,14 @@ export function MenuButton({ label, items, align = "end", size = "md", testId }:
   };
   useLayoutEffect(() => {
     if (!open) {
-      setSide(align);
+      setShift(0);
       return;
     }
     const r = list.current?.getBoundingClientRect();
-    if (r && r.left < 8) setSide("start");
-    else if (r && r.right > window.innerWidth - 8) setSide("end");
-  }, [open, align]);
+    if (!r) return;
+    if (r.left < 8) setShift(8 - r.left);
+    else if (r.right > window.innerWidth - 8) setShift(window.innerWidth - 8 - r.right);
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     entries()[0]?.focus();
@@ -89,17 +94,19 @@ export function MenuButton({ label, items, align = "end", size = "md", testId }:
   return (
     <div ref={box} className="relative inline-block">
       <button ref={button} type="button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} data-testid={testId}
-        onClick={() => setOpen((v) => !v)}
+        aria-label={ariaLabel} onClick={() => setOpen((v) => !v)}
         onKeyDown={(e) => { if (e.key === "ArrowDown" && !open) { e.preventDefault(); setOpen(true); } }}
-        className={cx("inline-flex items-center justify-center gap-1.5 rounded-ui border border-line bg-surface font-medium text-fg hover:bg-surface-2",
+        className={cx("inline-flex items-center justify-center gap-1.5 rounded-ui font-medium text-fg hover:bg-surface-2",
+          ghost ? "" : "border border-line bg-surface",
           size === "sm" ? "h-7 px-2.5 text-xs" : "h-9 px-3.5 text-sm")}>
         {label}
-        <ChevronDownIcon width={14} height={14} />
+        {!ghost && <ChevronDownIcon width={14} height={14} />}
       </button>
       {open && (
         <div ref={list} id={id} role="menu" aria-orientation="vertical" onKeyDown={onKey}
-          className={cx("absolute top-full z-40 mt-1 w-64 max-w-[calc(100vw-2rem)] rounded-ui border border-line bg-surface p-1 shadow-lg",
-            side === "end" ? "right-0" : "left-0")}>
+          style={shift ? { transform: `translateX(${shift}px)` } : undefined}
+          className={cx("absolute top-full z-40 mt-1 w-64 max-w-[calc(100vw-1rem)] rounded-ui border border-line bg-surface p-1 shadow-lg",
+            align === "end" ? "right-0" : "left-0")}>
           {shown.map((x, i) => (
             <div key={i} role="none" className={cx(x.separated && i > 0 && "mt-1 border-t border-line pt-1", x.narrowOnly && "sm:hidden")}>
               {x.to && !x.disabled ? (

@@ -166,10 +166,10 @@ test("a host's network activity: summary on the host, its own page with listenin
   const id = page.ids["web-1"];
   // The host overview summarizes and links to the host's Network Activity page.
   await page.goto(`${base}/hosts/${id}`, { waitUntil: "networkidle0" });
-  await waitText(page, "View network activity");
-  assert.equal(await page.$eval('main a[href$="/network"]', (a) => a.getAttribute("href")), `/hosts/${id}/network`);
+  await page.waitForSelector('[data-testid="tile-network"]');
+  assert.equal(await page.$eval('[data-testid="tile-network"] a', (a) => a.getAttribute("href")), `/hosts/${id}/network`);
   assert.equal(await page.$('[data-testid="flow-table"]'), null, "no connection table on the host overview");
-  await click(page, "main a", "View network activity");
+  await click(page, '[data-testid="tile-network"] a', "Open");
   await waitFor(page, async () => page.url().endsWith(`/hosts/${id}/network`), "host network page");
   await waitText(page, "How this host is observed");
   await waitFor(page, async () => (await text(page)).includes("Snapshot only: SSH"), "snapshot label");

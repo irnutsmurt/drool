@@ -585,6 +585,31 @@ export interface paths {
         patch: operations["updateSecret"];
         trace?: never;
     };
+    "/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find hosts, Packs, services, open alerts and runs by name
+         * @description The navigation search's records: hosts (by name, address, the machine's own host name, tags,
+         *     description, or a known interface address), Packs, services (unit name or description, with the
+         *     host's name to narrow it), open alerts (words of the title, check, category, subject or host) and
+         *     runs (name or id, newest first). Every word of the query must match. Each kind is searched only
+         *     when the caller may read it (hosts.read, monitoring.read, alerts.read, jobs.read); at most `limit`
+         *     results per kind, and `more` lists the kinds that had more. Read-only and not audited.
+         */
+        get: operations["search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/hosts": {
         parameters: {
             query?: never;
@@ -4966,6 +4991,33 @@ export interface components {
             last_seen_at: string;
             /** Format: date-time */
             decided_at: string | null;
+        };
+        SearchResults: {
+            query: string;
+            results: components["schemas"]["SearchResult"][];
+            /** @description Kinds with more matches than shown. */
+            more: ("host" | "pack" | "service" | "alert" | "run")[];
+        };
+        SearchResult: {
+            /** @enum {string} */
+            kind: "host" | "pack" | "service" | "alert" | "run";
+            /** @description The record's id; for a service, its unit name. */
+            id: string;
+            title: string;
+            /** @description One line that tells similar names apart: a host's OS and address, a service's description, an alert's host and severity, a run's status. */
+            detail: string;
+            /** @description Why it matched when not by its title ("address 10.0.0.5", "tag web"). */
+            match?: string;
+            /** @description A service's or an alert's host. */
+            host_id?: string;
+            host_name?: string;
+            /** @description A host's status, a service's state, an alert's severity or a run's status. */
+            state?: string;
+            /**
+             * Format: date-time
+             * @description When a run started.
+             */
+            at?: string;
         };
         Host: {
             id: string;
@@ -9518,6 +9570,32 @@ export interface operations {
             };
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    search: {
+        parameters: {
+            query: {
+                /** @description 1 to 100 characters; up to five words, all of which must match. */
+                q: string;
+                /** @description Results per kind (default 5). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matches, grouped by kind in the order host, pack, service, alert, run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResults"];
+                };
+            };
             422: components["responses"]["Problem"];
         };
     };

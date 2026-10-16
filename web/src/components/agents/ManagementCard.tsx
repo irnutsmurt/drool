@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, unwrap, type Schemas } from "@/api/client";
 import { qk, type Host } from "@/api/queries";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { CodeBlock } from "@/components/ui/CodeBlock";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
 import { errorMessage, formatAgo, formatDateTime } from "@/lib/format";
@@ -22,14 +24,11 @@ const updateLabels: Record<string, string> = {
   rolled_back: "rolled back", failed: "update failed",
 };
 
-/** How DROOL manages the host: its paths (Shepherd, the DROOL agent,
- * and/or SSH; DESIGN §8), whatever the host page adds (connection, trust),
- * problems in plain sight, and the Shepherd's details one click away. */
-export function ManagementCard({ host, children }: { host: Host; children?: ReactNode }) {
-  const { can } = useAuth();
+/** The host's management state and the changes to it, shared by its
+ * Connection and Shepherd cards. */
+function useHostManagement(host: Host) {
   const qc = useQueryClient();
   const agent = useHostAgent(host.id);
-  const [dialog, setDialog] = useState<"install" | "revoke" | "caps" | "manual" | "uninstall" | null>(null);
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ak.hostAgent(host.id) });
     void qc.invalidateQueries({ queryKey: qk.host(host.id) });
@@ -40,30 +39,31 @@ export function ManagementCard({ host, children }: { host: Host; children?: Reac
       unwrap(api.PUT("/hosts/{id}/management", { params: { path: { id: host.id } }, body })),
     onSuccess: invalidate,
   });
-  const resolve = useMutation({
-    mutationFn: (id: string) => unwrap(api.POST("/agents/{id}/resolve-conflict", { params: { path: { id } } })),
-    onSuccess: invalidate,
-  });
-  const adopt = useMutation({
-    mutationFn: (domain: string) => unwrap(api.POST("/hosts/{id}/state/{domain}/adopt", { params: { path: { id: host.id, domain } } })),
-    onSuccess: invalidate,
-  });
-  const update = useMutation({
-    mutationFn: (version: string) => unwrap(api.POST("/agents/rollouts", { body: { version, host_ids: [host.id] } })),
-    onSuccess: invalidate,
-  });
-
   const a = agent.data;
   const m = a?.management ?? host.management;
   const id = a?.identity;
-  const live = id && id.status !== "revoked";
-  const err = setMgmt.error || resolve.error || adopt.error || update.error;
+  const live = !!id && id.status !== "revoked";
+  return { a, m, id, live, setMgmt, invalidate };
+}
 
+/** How DROOL reaches the host right now: the path it prefers (Shepherd,
+ * the DROOL agent, or SSH; DESIGN §8), its fallback, whether operations
+ * can run at all — and the switches between them. */
+export function ConnectionCard({ host, children }: { host: Host; children?: ReactNode }) {
+  const { can } = useAuth();
+  const { a, m, id, live, setMgmt, invalidate } = useHostManagement(host);
+  const [revoking, setRevoking] = useState(false);
+  const resolve = useMutation({
+    mutationFn: (ident: string) => unwrap(api.POST("/agents/{id}/resolve-conflict", { params: { path: { id: ident } } })),
+    onSuccess: invalidate,
+  });
+  const err = setMgmt.error || resolve.error;
+  void a;
   return (
-    <Card title="Management" actions={<ManagementBadge m={m} />}>
+    <Card title="Connection" actions={<ManagementBadge m={m} />}>
       <div id="management" className="-mt-1 scroll-mt-4" />
       {err && <div className="mb-3"><Alert>{errorMessage(err)}</Alert></div>}
-      <dl className="grid grid-cols-[minmax(7rem,9rem)_1fr] gap-y-2 text-sm">
+      <dl className="grid grid-cols-[minmax(7rem,9rem)_1fr] gap-y-2 text-sm" data-testid="host-connection">
         <dt className="text-muted">Managed via</dt><dd>{m.preferred === "agent" ? "Shepherd (DROOL agent)" : "SSH"}</dd>
         {m.preferred === "agent" && (<>
           <dt className="text-muted">Shepherd</dt>
@@ -90,8 +90,8 @@ export function ManagementCard({ host, children }: { host: Host; children?: Reac
           <strong>Identity conflict.</strong> Two machines connected at the same time with this host's Shepherd identity — often a
           cloned VM that copied the agent's key. DROOL doesn't pick one: management is paused until you resolve it.
           <ul className="mt-2 space-y-1 text-xs">
-            {(id.conflict?.sessions ?? []).map((s, i) => (
-              <li key={i} className="font-mono">{s.address} · {s.hostname} · boot {s.boot_id?.slice(0, 8)} · since {formatDateTime(s.connected_at)}</li>
+            {(id.conflict?.sessions ?? []).map((sess, i) => (
+              <li key={i} className="font-mono">{sess.address} · {sess.hostname} · boot {sess.boot_id?.slice(0, 8)} · since {formatDateTime(sess.connected_at)}</li>
             ))}
           </ul>
           <p className="mt-2 text-xs">Shut down or re-image the clone (stop drool-agent and remove /var/lib/drool-agent there), then release the
@@ -99,105 +99,146 @@ export function ManagementCard({ host, children }: { host: Host; children?: Reac
           {can("agents.manage") && (
             <div className="mt-2 flex gap-2">
               <Button size="sm" disabled={resolve.isPending} onClick={() => resolve.mutate(id.id)}>Release quarantine</Button>
-              <Button size="sm" variant="danger" onClick={() => setDialog("revoke")}>Revoke identity</Button>
+              <Button size="sm" variant="danger" onClick={() => setRevoking(true)}>Revoke identity</Button>
             </div>
           )}
         </Alert></div>
       )}
 
-      {children}
-
-      {live && id && (!id.compatible || !id.epoch_matches || (a?.sessions ?? []).length > 1 || (a?.state_versions ?? []).some((sv) => sv.status !== "ok")
-        || id.update_state === "failed" || id.update_state === "rolled_back" || id.compatibility.status === "update_required" || id.compatibility.status === "reduced") && (
-        <div className="mt-3 space-y-2">
-          {!id.compatible && <Alert>Shepherd version {id.agent_version} isn&apos;t compatible with this controller{id.compat_reason ? `: ${id.compat_reason}` : ""}.</Alert>}
-          {id.compatible && id.compatibility.status === "update_required" && <Alert>Update this Shepherd: {id.compatibility.summary}. DROOL doesn&apos;t send it operations it can&apos;t do.</Alert>}
-          {id.compatibility.status === "reduced" && <Alert tone="warn">This Shepherd {id.compatibility.summary}.</Alert>}
-          {!id.epoch_matches && <Alert tone="warn">The Shepherd still answers to another controller epoch ({id.epoch_reported.slice(0, 12)}), from before this controller was restored: it refuses this controller&apos;s commands until it is reconciled (see the notice above, or Settings → System → Restore).</Alert>}
-          {(a?.sessions ?? []).length > 1 && <Alert>{a!.sessions.length} sessions are connected with this identity.</Alert>}
-          {(a?.state_versions ?? []).some((sv) => sv.status !== "ok") && <Alert tone="warn">Managed state on the host is ahead of, or foreign to, this controller: reconcile it under Shepherd details.</Alert>}
-          {(id.update_state === "failed" || id.update_state === "rolled_back") && <Alert tone="warn">The last Shepherd update {id.update_state === "failed" ? "failed" : "was rolled back"}{id.update_detail ? `: ${id.update_detail}` : ""}.</Alert>}
+      {(children || (can("hosts.write") && live)) && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+          {children}
+          {can("hosts.write") && live && m.ssh_configured && m.preferred === "agent" && m.fallback === "ssh" && (
+            <Button size="sm" variant="ghost" onClick={() => setMgmt.mutate({ preferred: "agent", fallback: "none" })}>Turn off SSH fallback</Button>
+          )}
+          {can("hosts.write") && live && m.ssh_configured && m.preferred === "agent" && m.fallback === "none" && (
+            <Button size="sm" variant="ghost" onClick={() => setMgmt.mutate({ preferred: "agent", fallback: "ssh" })}>Use SSH as fallback</Button>
+          )}
+          {can("hosts.write") && live && m.preferred === "ssh" && (
+            <Button size="sm" variant="ghost" onClick={() => setMgmt.mutate({ preferred: "agent", fallback: m.ssh_configured ? "ssh" : "none" })}>Prefer the Shepherd</Button>
+          )}
+          {can("hosts.write") && live && m.preferred === "agent" && m.ssh_configured && (
+            <Button size="sm" variant="ghost" onClick={() => setMgmt.mutate({ preferred: "ssh", fallback: "none" })}>Manage over SSH only</Button>
+          )}
         </div>
       )}
+      {revoking && id && <RevokeDialog identityId={id.id} hostName={host.name} onClose={() => { setRevoking(false); invalidate(); }} />}
+    </Card>
+  );
+}
 
-      {live && id && (
-        <details className="mt-4 border-t border-line pt-3">
-          <summary className="cursor-pointer text-sm font-medium">
-            Shepherd details <span className="font-normal text-muted">— version {id.agent_version || "—"}{a?.update_available ? `, update available: ${a.update_available}` : ""}; certificate; what DROOL may do</span>
-          </summary>
-          <div className="mt-3 space-y-3">
-          <dl className="grid grid-cols-[minmax(7rem,9rem)_1fr] gap-y-1.5 text-sm">
-            <dt className="text-muted">Shepherd version</dt>
-            <dd>{id.agent_version || "—"} <span title={id.compatibility.summary}><CompatibilityBadge c={id.compatibility} /></span>
-              {a?.update_available && <span className="ml-2"><Badge tone="accent">update available: {a.update_available}</Badge></span>}
-              {id.update_state && <span className="ml-2"><Badge tone={id.update_state === "healthy" ? "ok" : id.update_state === "rolled_back" || id.update_state === "failed" ? "danger" : "warn"}>{updateLabels[id.update_state] ?? id.update_state}</Badge></span>}
-            </dd>
-            {id.update_detail && (<><dt className="text-muted">Last update</dt><dd className="text-xs text-muted">{id.update_detail}</dd></>)}
-            <dt className="text-muted">Protocol</dt><dd>{id.protocol || "—"} (agent speaks {id.protocol_min}–{id.protocol_max}){id.compat_reason && <span className="text-danger"> {id.compat_reason}</span>}</dd>
-            <dt className="text-muted">Identity key</dt><dd className="font-mono text-xs">{id.key_fingerprint.slice(0, 30)}…</dd>
-            <dt className="text-muted">Certificate</dt><dd>valid until {formatDateTime(id.cert_not_after)} (renews after {formatDateTime(id.cert_renew_after)}){id.recovered_at && <span className="text-muted"> · recovered {formatAgo(id.recovered_at)}</span>}</dd>
-            <dt className="text-muted">Trust manifest</dt><dd>version {id.manifest_version}</dd>
-            <dt className="text-muted">Last seen</dt><dd>{id.connected ? "connected" : formatAgo(id.last_seen_at)} {id.last_address && <span className="font-mono text-xs text-muted">from {id.last_address}</span>}</dd>
-            {!id.epoch_matches && (<><dt className="text-muted">Controller epoch</dt><dd className="text-danger">different ({id.epoch_reported.slice(0, 12)}): the agent refuses commands until reconciled</dd></>)}
-          </dl>
-          <div>
-            <div className="mb-1 flex items-center gap-2 text-sm font-medium">What DROOL may do on this host
-              {can("agents.manage") && capsReported(id.ceiling) && <Button size="sm" variant="ghost" onClick={() => setDialog("caps")}>Narrow…</Button>}</div>
-            <p className="mb-2 text-xs text-muted">The host's own ceiling (/etc/drool/agent.yaml) is the limit; DROOL can narrow it but never widen it.
-              {a?.requested_caps && " Narrowed by the controller."}</p>
-            <CapsList caps={id.effective} />
-            {a?.ssh_bypasses_ceiling && (
-              <p className="mt-2 text-xs text-warn">SSH fallback logs in with root access, which this ceiling does not limit. DROOL uses SSH only while the
-                agent is unreachable and never to work around the agent refusing something; remove SSH credentials (or restrict sudo) to make the ceiling the only limit.</p>
+/** The host's Shepherd (DROOL agent): whether it has one, its version and
+ * compatibility, certificate, what DROOL may do through it, and the
+ * per-host actions (install, update, narrow, uninstall, revoke). Releases
+ * and fleet-wide rollouts stay under Shepherds. */
+export function ShepherdCard({ host }: { host: Host }) {
+  const { can } = useAuth();
+  const { a, m, id, live, invalidate } = useHostManagement(host);
+  const [dialog, setDialog] = useState<"install" | "revoke" | "caps" | "manual" | "uninstall" | "update" | null>(null);
+  const adopt = useMutation({
+    mutationFn: (domain: string) => unwrap(api.POST("/hosts/{id}/state/{domain}/adopt", { params: { path: { id: host.id, domain } } })),
+    onSuccess: () => {
+      invalidate();
+      setAdopting(null);
+    },
+  });
+  const [adopting, setAdopting] = useState<{ domain: string; revision: number } | null>(null);
+  const err = adopt.error;
+
+  return (
+    <Card title="Shepherd (DROOL agent)" actions={<Link className="text-sm text-accent" to="/agents?tab=updates">Releases and rollouts <span aria-hidden="true">→</span></Link>}>
+      <div data-testid="host-shepherd" className="space-y-3">
+        {err && <Alert>{errorMessage(err)}</Alert>}
+        {!live ? (
+          <p className="text-sm text-muted">
+            {id?.status === "revoked" ? "This host's Shepherd identity was revoked." : "No Shepherd is installed on this host."}{" "}
+            A Shepherd monitors the host continuously and runs DROOL's operations locally{m.ssh_configured ? ", with SSH as fallback" : ""}; the host's own
+            ceiling file limits what it may do.
+          </p>
+        ) : id && (
+          <>
+            <dl className="grid grid-cols-[minmax(7rem,9rem)_1fr] gap-y-1.5 text-sm">
+              <dt className="text-muted">Version</dt>
+              <dd>{id.agent_version || "—"} <span title={id.compatibility.summary}><CompatibilityBadge c={id.compatibility} /></span>
+                {a?.update_available && <span className="ml-2"><Badge tone="accent">update available: {a.update_available}</Badge></span>}
+                {id.update_state && <span className="ml-2"><Badge tone={id.update_state === "healthy" ? "ok" : id.update_state === "rolled_back" || id.update_state === "failed" ? "danger" : "warn"}>{updateLabels[id.update_state] ?? id.update_state}</Badge></span>}
+              </dd>
+              <dt className="text-muted">State</dt><dd>{stateLabels[m.agent_state] ?? m.agent_state}{id.connected ? "" : <span className="text-muted"> · last seen {formatAgo(id.last_seen_at)}</span>}</dd>
+              <dt className="text-muted">Certificate</dt><dd>valid until {formatDateTime(id.cert_not_after)}</dd>
+            </dl>
+            {(!id.compatible || !id.epoch_matches || (a?.sessions ?? []).length > 1 || (a?.state_versions ?? []).some((sv) => sv.status !== "ok")
+              || id.update_state === "failed" || id.update_state === "rolled_back" || id.compatibility.status === "update_required" || id.compatibility.status === "reduced") && (
+              <div className="space-y-2">
+                {!id.compatible && <Alert>Shepherd version {id.agent_version} isn&apos;t compatible with this controller{id.compat_reason ? `: ${id.compat_reason}` : ""}.</Alert>}
+                {id.compatible && id.compatibility.status === "update_required" && <Alert>Update this Shepherd: {id.compatibility.summary}. DROOL doesn&apos;t send it operations it can&apos;t do.</Alert>}
+                {id.compatibility.status === "reduced" && <Alert tone="warn">This Shepherd {id.compatibility.summary}.</Alert>}
+                {!id.epoch_matches && <Alert tone="warn">The Shepherd still answers to another controller epoch ({id.epoch_reported.slice(0, 12)}), from before this controller was restored: it refuses this controller&apos;s commands until it is reconciled (see the notice above, or Settings → System → Restore).</Alert>}
+                {(a?.sessions ?? []).length > 1 && <Alert>{a!.sessions.length} sessions are connected with this identity.</Alert>}
+                {(a?.state_versions ?? []).some((sv) => sv.status !== "ok") && <Alert tone="warn">Managed state on the host is ahead of, or foreign to, this controller: reconcile it under Shepherd details.</Alert>}
+                {(id.update_state === "failed" || id.update_state === "rolled_back") && <Alert tone="warn">The last Shepherd update {id.update_state === "failed" ? "failed" : "was rolled back"}{id.update_detail ? `: ${id.update_detail}` : ""}.</Alert>}
+              </div>
             )}
-          </div>
-          {(a?.state_versions ?? []).length > 0 && (
-            <div>
-              <div className="mb-1 text-sm font-medium">Managed state versions</div>
-              <ul className="text-xs">
-                {a!.state_versions.map((sv) => (
-                  <li key={sv.domain} className="flex items-center gap-2">
-                    <span className="font-mono">{sv.domain}</span>
-                    <span className="text-muted">controller rev {sv.revision}, host rev {sv.reported_revision}</span>
-                    {sv.status === "ok" ? <Badge tone="ok">in sync</Badge> : <Badge tone="danger">{sv.status === "host_ahead" ? "host ahead: reconciliation required" : "different epoch"}</Badge>}
-                    {sv.status === "host_ahead" && can("agents.manage") && (
-                      <Button size="sm" variant="ghost" onClick={() => { if (confirm(`Adopt the host's ${sv.domain} revision ${sv.reported_revision}? DROOL won't push older state over it.`)) adopt.mutate(sv.domain); }}>Adopt host state</Button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {(a?.sessions ?? []).length > 1 && <p className="text-xs text-danger">{a!.sessions.length} sessions connected with this identity.</p>}
-          </div>
-        </details>
-      )}
+            <details className="border-t border-line pt-3">
+              <summary className="cursor-pointer text-sm font-medium">
+                Shepherd details <span className="font-normal text-muted">— protocol, identity, trust manifest; what DROOL may do</span>
+              </summary>
+              <div className="mt-3 space-y-3">
+                <dl className="grid grid-cols-[minmax(7rem,9rem)_1fr] gap-y-1.5 text-sm">
+                  {id.update_detail && (<><dt className="text-muted">Last update</dt><dd className="text-xs text-muted">{id.update_detail}</dd></>)}
+                  <dt className="text-muted">Protocol</dt><dd>{id.protocol || "—"} (agent speaks {id.protocol_min}–{id.protocol_max}){id.compat_reason && <span className="text-danger"> {id.compat_reason}</span>}</dd>
+                  <dt className="text-muted">Identity key</dt><dd className="font-mono text-xs">{id.key_fingerprint.slice(0, 30)}…</dd>
+                  <dt className="text-muted">Certificate</dt><dd>valid until {formatDateTime(id.cert_not_after)} (renews after {formatDateTime(id.cert_renew_after)}){id.recovered_at && <span className="text-muted"> · recovered {formatAgo(id.recovered_at)}</span>}</dd>
+                  <dt className="text-muted">Trust manifest</dt><dd>version {id.manifest_version}</dd>
+                  <dt className="text-muted">Last seen</dt><dd>{id.connected ? "connected" : formatAgo(id.last_seen_at)} {id.last_address && <span className="font-mono text-xs text-muted">from {id.last_address}</span>}</dd>
+                  {!id.epoch_matches && (<><dt className="text-muted">Controller epoch</dt><dd className="text-danger">different ({id.epoch_reported.slice(0, 12)}): the agent refuses commands until reconciled</dd></>)}
+                </dl>
+                <div>
+                  <div className="mb-1 flex items-center gap-2 text-sm font-medium">What DROOL may do on this host
+                    {can("agents.manage") && capsReported(id.ceiling) && <Button size="sm" variant="ghost" onClick={() => setDialog("caps")}>Narrow…</Button>}</div>
+                  <p className="mb-2 text-xs text-muted">The host's own ceiling (/etc/drool/agent.yaml) is the limit; DROOL can narrow it but never widen it.
+                    {a?.requested_caps && " Narrowed by the controller."}</p>
+                  <CapsList caps={id.effective} />
+                  {a?.ssh_bypasses_ceiling && (
+                    <p className="mt-2 text-xs text-warn">SSH fallback logs in with root access, which this ceiling does not limit. DROOL uses SSH only while the
+                      agent is unreachable and never to work around the agent refusing something; remove SSH credentials (or restrict sudo) to make the ceiling the only limit.</p>
+                  )}
+                </div>
+                {(a?.state_versions ?? []).length > 0 && (
+                  <div>
+                    <div className="mb-1 text-sm font-medium">Managed state versions</div>
+                    <ul className="text-xs">
+                      {a!.state_versions.map((sv) => (
+                        <li key={sv.domain} className="flex items-center gap-2">
+                          <span className="font-mono">{sv.domain}</span>
+                          <span className="text-muted">controller rev {sv.revision}, host rev {sv.reported_revision}</span>
+                          {sv.status === "ok" ? <Badge tone="ok">in sync</Badge> : <Badge tone="danger">{sv.status === "host_ahead" ? "host ahead: reconciliation required" : "different epoch"}</Badge>}
+                          {sv.status === "host_ahead" && can("agents.manage") && (
+                            <Button size="sm" variant="ghost" onClick={() => setAdopting({ domain: sv.domain, revision: sv.reported_revision })}>Adopt host state</Button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {(a?.sessions ?? []).length > 1 && <p className="text-xs text-danger">{a!.sessions.length} sessions connected with this identity.</p>}
+              </div>
+            </details>
+          </>
+        )}
 
-      <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-3">
-        {!live && m.ssh_configured && can("agents.enroll") && <Button variant="primary" onClick={() => setDialog("install")}>Install Shepherd (DROOL agent)</Button>}
-        {!live && can("agents.enroll") && <Button onClick={() => setDialog("manual")}>Manual install…</Button>}
-        {live && a?.update_available && can("agents.manage") && (
-          <Button disabled={update.isPending} onClick={() => { if (confirm(`Update the Shepherd (DROOL agent) on ${host.name} to ${a.update_available}? If it doesn't become healthy, it rolls back by itself.`)) update.mutate(a.update_available!); }}>
-            Update Shepherd to {a.update_available}</Button>
-        )}
-        {can("hosts.write") && live && m.ssh_configured && m.preferred === "agent" && m.fallback === "ssh" && (
-          <Button size="sm" variant="ghost" onClick={() => setMgmt.mutate({ preferred: "agent", fallback: "none" })}>Turn off SSH fallback</Button>
-        )}
-        {can("hosts.write") && live && m.ssh_configured && m.preferred === "agent" && m.fallback === "none" && (
-          <Button size="sm" variant="ghost" onClick={() => setMgmt.mutate({ preferred: "agent", fallback: "ssh" })}>Use SSH as fallback</Button>
-        )}
-        {can("hosts.write") && live && m.preferred === "ssh" && (
-          <Button size="sm" variant="ghost" onClick={() => setMgmt.mutate({ preferred: "agent", fallback: m.ssh_configured ? "ssh" : "none" })}>Prefer the Shepherd</Button>
-        )}
-        {can("hosts.write") && live && m.preferred === "agent" && m.ssh_configured && (
-          <Button size="sm" variant="ghost" onClick={() => setMgmt.mutate({ preferred: "ssh", fallback: "none" })}>Manage over SSH only</Button>
-        )}
-        {id && can("agents.manage") && can("hosts.write") && (
-          <Button size="sm" variant="danger" onClick={() => setDialog("uninstall")}>{live ? "Uninstall Shepherd…" : "Remove Shepherd leftovers…"}</Button>
-        )}
-        {live && id && can("agents.manage") && id.status !== "quarantined" && (
-          <Button size="sm" variant="danger" onClick={() => setDialog("revoke")}>Revoke Shepherd identity</Button>
-        )}
+        <div className="flex flex-wrap gap-2 border-t border-line pt-3">
+          {!live && m.ssh_configured && can("agents.enroll") && <Button variant="primary" onClick={() => setDialog("install")}>Install Shepherd (DROOL agent)</Button>}
+          {!live && can("agents.enroll") && <Button onClick={() => setDialog("manual")}>Manual install…</Button>}
+          {live && a?.update_available && can("agents.manage") && (
+            <Button onClick={() => setDialog("update")}>Update Shepherd to {a.update_available}</Button>
+          )}
+          {id && can("agents.manage") && can("hosts.write") && (
+            <Button size="sm" variant="danger" onClick={() => setDialog("uninstall")}>{live ? "Uninstall Shepherd…" : "Remove Shepherd leftovers…"}</Button>
+          )}
+          {live && id && can("agents.manage") && id.status !== "quarantined" && (
+            <Button size="sm" variant="danger" onClick={() => setDialog("revoke")}>Revoke Shepherd identity</Button>
+          )}
+        </div>
       </div>
 
       {dialog === "install" && <InstallDialog host={host} onClose={() => { setDialog(null); invalidate(); }} />}
@@ -205,7 +246,32 @@ export function ManagementCard({ host, children }: { host: Host; children?: Reac
       {dialog === "uninstall" && <UninstallDialog host={host} onClose={() => { setDialog(null); invalidate(); }} />}
       {dialog === "revoke" && id && <RevokeDialog identityId={id.id} hostName={host.name} onClose={() => { setDialog(null); invalidate(); }} />}
       {dialog === "caps" && id && capsReported(id.ceiling) && <CapsDialog hostId={host.id} ceiling={id.ceiling} requested={a?.requested_caps ?? null} onClose={() => { setDialog(null); invalidate(); }} />}
+      {dialog === "update" && a?.update_available && <UpdateDialog host={host} version={a.update_available} onClose={() => { setDialog(null); invalidate(); }} />}
+      {adopting && (
+        <ConfirmDialog title={`Adopt the host's ${adopting.domain} state?`} confirmLabel="Adopt host state" busy={adopt.isPending}
+          error={adopt.error} onConfirm={() => adopt.mutate(adopting.domain)} onClose={() => setAdopting(null)}>
+          <p>{host.name} reports {adopting.domain} revision {adopting.revision}, newer than DROOL&apos;s. Adopting it makes that revision DROOL&apos;s:
+            DROOL won&apos;t push older state over it.</p>
+        </ConfirmDialog>
+      )}
     </Card>
+  );
+}
+
+/** Updating one host's Shepherd: a rollout of one, with the same health
+ * check and automatic rollback as fleet rollouts. */
+function UpdateDialog({ host, version, onClose }: { host: Host; version: string; onClose: () => void }) {
+  const update = useMutation({
+    mutationFn: () => unwrap(api.POST("/agents/rollouts", { body: { version, host_ids: [host.id] } })),
+    onSuccess: onClose,
+  });
+  return (
+    <ConfirmDialog title={`Update the Shepherd on ${host.name}?`} confirmLabel={`Update to ${version}`} busy={update.isPending}
+      error={update.error} onConfirm={() => update.mutate()} onClose={onClose}>
+      <p>The Shepherd (DROOL agent) on {host.name} updates to <strong>{version}</strong>. If it doesn&apos;t become healthy after the update, it
+        rolls back to the version it had by itself.</p>
+      <p className="text-muted">The update is a rollout of this one host: follow it under Shepherds → Updates.</p>
+    </ConfirmDialog>
   );
 }
 

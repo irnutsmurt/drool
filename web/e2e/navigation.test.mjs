@@ -57,7 +57,9 @@ async function search(page, q) {
   await page.keyboard.up("Control");
   await page.keyboard.press("Backspace");
   if (q) await page.keyboard.type(q);
-  await sleep(200);
+  await sleep(250);
+  // Hosts, services, alerts and runs come from the server as typing pauses.
+  await waitFor(page, async () => (await page.$eval('[data-testid="command-palette"]', (d) => d.getAttribute("data-searching"))) === "false", "search settled");
   return page.$$eval('[role="listbox"] [role="option"]', (os) => os.map((o) => o.getAttribute("data-to")));
 }
 
@@ -154,8 +156,52 @@ test("navigation search: button, Ctrl+K and '/', aliases, keyboard, Escape retur
   assert.match(page.url(), /tab=simulate/);
   // Nothing matches: said so.
   await search(page, "zzzz-nothing");
-  assert.match(await page.$eval('[data-testid="command-palette"]', (d) => d.innerText), /No page or setting matches/);
+  assert.match(await page.$eval('[data-testid="command-palette"]', (d) => d.innerText), /Nothing matches/);
   await page.keyboard.press("Escape");
+  assert.deepEqual(page.errors, []);
+});
+
+test("search finds hosts, services, alerts and runs, grouped, and opens where they are", async () => {
+  const page = admin;
+  const web = (await api(page, "GET", `/hosts/${ids["web-1"]}`)).body;
+  const run = await api(page, "POST", "/jobs", { name: `e2e search ${Date.now().toString(36)}`, steps: [{ type: "command", command: "true", read_only: true }],
+    targets: { hosts: [web.id] } });
+  assert.equal(run.status, 201, JSON.stringify(run.body));
+  await go(page, "/");
+  const groups = () => page.$$eval('[data-testid="command-palette"] [role="group"]', (gs) => gs.map((g) => g.firstElementChild?.textContent));
+  // A host by name: the host first, its workspace on Enter.
+  let offered = await search(page, "web-1");
+  assert.equal(offered[0], `/hosts/${web.id}`);
+  assert.equal((await groups())[0], "Hosts");
+  // …and by its address, saying why it matched.
+  offered = await search(page, web.address);
+  assert.ok(offered.includes(`/hosts/${web.id}`), `address ${web.address}: ${offered}`);
+  assert.match(await page.$eval('[data-testid="command-palette"]', (d) => d.innerText), new RegExp(`matches address ${web.address.replaceAll(".", "\\.")}`));
+  // A service, with its host, opens that host's Services filtered to it.
+  offered = await search(page, "jellyfin");
+  const svc = offered.find((t) => t.includes("/monitoring?tab=services&unit=jellyfin.service"));
+  assert.ok(svc, `jellyfin.service: ${offered}`);
+  assert.match(await page.$eval('[data-testid="command-palette"]', (d) => d.innerText), /jellyfin\.service\s*— nas-01/);
+  // Open alerts by words of their title and category.
+  offered = await search(page, "disk full");
+  assert.ok(offered.some((t) => t.startsWith("/alerts/alr_")), `disk full: ${offered}`);
+  assert.ok((await groups()).includes("Active alerts"));
+  // Runs by name.
+  offered = await search(page, run.body.name);
+  assert.ok(offered.includes(`/jobs/${run.body.id}`), `run: ${offered}`);
+  // Pages still win when the words name one ("cron" is Schedules).
+  offered = await search(page, "cron");
+  assert.equal(offered[0], "/jobs/schedules");
+  // Open the service result: the host's Services, found and highlighted.
+  await search(page, "jellyfin");
+  const i = (await page.$$eval('[role="listbox"] [role="option"]', (os) => os.map((o) => o.getAttribute("data-to")))).indexOf(svc);
+  for (let k = 0; k < i; k++) await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await waitFor(page, async () => page.url().includes("tab=services") && page.url().includes("unit=jellyfin.service"), "the service's host");
+  await waitFor(page, async () => (await page.$eval('input[aria-label="Find a service"]', (x) => x.value).catch(() => "")) === "jellyfin.service", "found");
+  const rows = await page.$$eval("table tbody tr", (r) => r.map((x) => x.innerText));
+  assert.equal(rows.length, 1, `only that service: ${rows}`);
+  await shot(page, "search-service");
   assert.deepEqual(page.errors, []);
 });
 
@@ -295,7 +341,7 @@ test("related pages link to each other", async () => {
   const id = ids["web-1"];
   // A host summarizes each area and links to its section of the workspace.
   await go(page, `/hosts/${id}`);
-  await waitText(page, "View monitoring");
+  await waitText(page, "Health now");
   const links = await page.$$eval("main a", (as) => as.map((a) => a.getAttribute("href")));
   for (const want of [`/hosts/${id}/monitoring`, `/hosts/${id}/desired`, `/hosts/${id}/firewall`, `/hosts/${id}/network`, `/hosts/${id}/activity`,
     `/hosts/${id}/files`, `/hosts/${id}/management`]) {

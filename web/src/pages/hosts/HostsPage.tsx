@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { useGroups, useHosts, type Host } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { HostStatusBadge } from "@/components/hosts/HostStatusBadge";
@@ -19,7 +19,15 @@ export function HostsPage() {
   const { can } = useAuth();
   const hosts = useHosts();
   const groups = useGroups();
-  const [q, setQ] = useState("");
+  // The search box is in the address (?q=), so the navigation search's
+  // "More hosts…" and a shared link open the same list.
+  const [params, setParams] = useSearchParams();
+  const q = params.get("q") ?? "";
+  const setQ = (v: string) => setParams((p) => {
+    if (v) p.set("q", v);
+    else p.delete("q");
+    return p;
+  }, { replace: true });
   const [status, setStatus] = useState("");
   const [group, setGroup] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -31,7 +39,9 @@ export function HostsPage() {
   });
   const rows = (hosts.data?.items ?? []).filter((h) => {
     const text = `${h.name} ${h.address} ${h.description} ${h.tags.join(" ")} ${osLabel(h)}`.toLowerCase();
-    return (!q || text.includes(q.toLowerCase())) && (!status || h.status === status) && (!group || h.group_ids.includes(group));
+    // Every word must appear, as in the navigation search.
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    return words.every((w) => text.includes(w)) && (!status || h.status === status) && (!group || h.group_ids.includes(group));
   });
 
   const addButton = can("hosts.write") && (
@@ -54,7 +64,7 @@ export function HostsPage() {
     <>
       {header}
       <div className="mb-4 flex flex-wrap gap-3">
-        <Input className="max-w-xs" placeholder="Search name, address, tag…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input className="max-w-xs" aria-label="Search hosts" placeholder="Search name, address, tag…" value={q} onChange={(e) => setQ(e.target.value)} />
         <Select className="max-w-[12rem]" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">All statuses</option>
           <option value="ready">Ready</option>

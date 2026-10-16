@@ -12,10 +12,9 @@ import { cx } from "@/components/ui/cx";
 import { plainLink } from "@/components/ui/links";
 import { errorMessage, formatDateTime } from "@/lib/format";
 import { summarizeCounts } from "./jobs/summary";
-import { useAlerts, useAlertSummary, useEvents } from "@/components/alerts/queries";
+import { useAlerts, useAlertSummary } from "@/components/alerts/queries";
+import { EventList } from "@/components/alerts/EventList";
 import { AlertSeverity } from "@/components/alerts/ui";
-import { StatusIcon } from "@/components/monitoring/Status";
-import { fmtSince } from "@/components/monitoring/format";
 import { useDesiredSummary } from "@/components/desired/queries";
 import { useFwHosts } from "@/components/firewall/queries";
 import { SecurityNote } from "@/components/layout/AppShell";
@@ -334,46 +333,10 @@ function SecurityCard() {
   );
 }
 
-const eventStatus: Record<string, "critical" | "warning" | "info"> = { critical: "critical", warning: "warning", info: "info" };
-
-/** Where an event's object lives in the UI. */
-function eventLink(e: { object_type?: string; object_id?: string }): string | undefined {
-  switch (e.object_type) {
-    case "alert":
-      return e.object_id ? `/alerts/${e.object_id}` : undefined;
-    case "job":
-      return e.object_id ? `/jobs/${e.object_id}` : undefined;
-    case "schedule":
-      return e.object_id ? `/jobs/schedules/${e.object_id}` : "/jobs/schedules";
-    case "maintenance":
-      return "/alerts?view=maintenance";
-    case "baseline":
-      return e.object_id ? `/desired/baselines/${e.object_id}` : "/desired/baselines";
-    case "desired_host":
-      return e.object_id ? `/hosts/${e.object_id}/desired` : "/desired";
-    case "desired":
-      return "/desired";
-  }
-  return undefined;
-}
-
 function EventsCard() {
-  const ev = useEvents(undefined, 8);
-  const rows = ev.data?.events ?? [];
   return (
     <Card title="Recent events">
-      {!ev.data ? <p className="text-sm text-muted">{ev.isError ? "Couldn't load events." : "Loading…"}</p>
-        : rows.length === 0 ? <p className="text-sm text-muted">No events yet.</p> : (
-        <ul className="space-y-2 text-sm">
-          {rows.map((e) => (
-            <li key={e.id} className="flex items-start gap-2">
-              <StatusIcon status={e.kind === "alert.recovered" || e.kind === "notifications.recovered" ? "ok" : e.kind === "alert.cleared" ? "info" : eventStatus[e.severity] ?? "info"} />
-              {eventLink(e) ? <Link className="min-w-0 text-accent" to={eventLink(e)!}>{e.title}</Link> : <span className="min-w-0">{e.title}</span>}
-              <span className="ml-auto shrink-0 text-xs text-muted">{fmtSince(e.ts)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <EventList limit={8} />
     </Card>
   );
 }

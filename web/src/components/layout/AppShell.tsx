@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Link, Outlet, useLocation } from "react-router";
 import { useAuth } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/Button";
+import { ConfirmHost } from "@/components/ui/ConfirmDialog";
 import { cx } from "@/components/ui/cx";
 import {
   BellIcon, ChevronDownIcon, ChipIcon, ClockIcon, CloseIcon, GearIcon, HomeIcon, KeyIcon, LogIcon, MenuIcon, NetworkIcon, PackIcon, PlayIcon, PulseIcon,
@@ -72,9 +73,9 @@ export function AppShell() {
           </button>
           <Link to="/" className="mr-1 font-semibold lg:hidden">DROOL</Link>
           <button type="button" onClick={() => setPalette(true)} aria-keyshortcuts="Control+K Meta+K /" data-testid="search-button"
-            className="inline-flex h-8 items-center gap-2 rounded-ui border border-line bg-surface px-2 text-sm text-muted hover:bg-surface-2 hover:text-fg md:w-72 md:px-2.5">
-            <SearchIcon />
-            <span className="sr-only md:not-sr-only">Search pages and settings…</span>
+            className="inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-ui border border-line bg-surface px-2 text-sm text-muted hover:bg-surface-2 hover:text-fg md:w-80 md:px-2.5">
+            <SearchIcon className="shrink-0" />
+            <span className="sr-only md:not-sr-only md:truncate">Search hosts, services, pages…</span>
             <kbd className="ml-auto hidden rounded border border-line px-1 text-[11px] md:inline">{shortcutLabel()}</kbd>
           </button>
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
@@ -92,6 +93,7 @@ export function AppShell() {
         </main>
       </div>
       {palette && <CommandPalette onClose={closePalette} />}
+      <ConfirmHost />
     </div>
   );
 }

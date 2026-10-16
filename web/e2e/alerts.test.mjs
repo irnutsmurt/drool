@@ -283,8 +283,9 @@ test("alert quick actions: Acknowledge, Snooze and Ignore from the list; who may
     await waitFor(page, async () => (await activeRow(svc.title)).length > 0, "the row");
     await click(page, actionsFor(svc), "Actions");
     await page.waitForSelector('[data-testid="alert-actions"]');
-    const menu = await page.$eval('[data-testid="alert-actions"]', (e) => e.innerText);
-    for (const want of ["Acknowledge…", "Snooze…", "Ignore…", "Open the alert"]) assert.ok(menu.includes(want), "actions lack " + want);
+    // The alert's inspector: its facts, the ways to deal with it, and links further.
+    const menu = await page.$eval('[data-testid="alert-inspector"]', (e) => e.innerText);
+    for (const want of ["Acknowledge…", "Snooze…", "Ignore…", "Open the alert", "View host nas-01", "View monitoring"]) assert.ok(menu.includes(want), "inspector lacks " + want);
     await shot(page, "alert-quick-actions");
     await click(page, '[data-testid="alert-actions"] button', "Acknowledge…");
     await page.waitForSelector('[data-testid="alert-acknowledge"]');

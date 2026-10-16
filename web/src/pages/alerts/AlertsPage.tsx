@@ -13,7 +13,7 @@ import { fmtSince, fmtTime } from "@/components/monitoring/format";
 import { useAlerts, useAlertSummary, useEndMaintenance, useMaintenance, type Alert, type AlertCategory, type AlertFilter } from "@/components/alerts/queries";
 import { AlertSeverity, AlertStateBadge, categoryLabel, fmtDuration, MaintenanceNote, NotificationBadge, untilText } from "@/components/alerts/ui";
 import { MaintenanceDialog } from "@/components/alerts/MaintenanceDialog";
-import { AlertActionsButton, AlertActionsDialog } from "@/components/alerts/AlertActions";
+import { AlertActionsButton, AlertInspector } from "@/components/alerts/AlertActions";
 import { useSchedules, minutesText } from "@/components/automation/queries";
 import { ScheduleStateBadge } from "@/components/automation/ui";
 import { plainLink } from "@/components/ui/links";
@@ -98,8 +98,8 @@ function AlertList({ view, params, set }: { view: "active" | "acknowledged" | "r
     until: day(params.get("to"), true),
   };
   const q = useAlerts(f);
-  // The row's Actions… dialog, kept here: it stays open while what it does
-  // takes the alert out of this list.
+  // The inspector, kept here: it stays open while what it does takes the
+  // alert out of this list.
   const [acting, setActing] = useState<Alert>();
   const rows = q.data?.pages.flatMap((p) => p.items) ?? [];
   const history = view === "resolved";
@@ -160,7 +160,7 @@ function AlertList({ view, params, set }: { view: "active" | "acknowledged" | "r
           <tbody>
             {rows.length === 0 ? (
               <tr><td colSpan={history ? 6 : 7} className="rt-empty px-3 py-6 text-center text-muted">{q.isLoading ? "Loading…" : empty}</td></tr>
-            ) : rows.map((a) => <AlertRow key={a.id} a={a} history={history} onActions={setActing} />)}
+            ) : rows.map((a) => <AlertRow key={a.id} a={a} history={history} onActions={setActing} inspected={acting?.id === a.id} />)}
           </tbody>
         </table>
       </div>
@@ -169,18 +169,24 @@ function AlertList({ view, params, set }: { view: "active" | "acknowledged" | "r
           <Button onClick={() => void q.fetchNextPage()} disabled={q.isFetchingNextPage}>{q.isFetchingNextPage ? "Loading…" : "Load more"}</Button>
         </div>
       )}
-      {acting && <AlertActionsDialog a={acting} onClose={() => setActing(undefined)} />}
+      {acting && <AlertInspector a={acting} onClose={() => setActing(undefined)} />}
     </Card>
   );
 }
 
-function AlertRow({ a, history, onActions }: { a: Alert; history: boolean; onActions: (a: Alert) => void }) {
+function AlertRow({ a, history, onActions, inspected }: { a: Alert; history: boolean; onActions: (a: Alert) => void; inspected?: boolean }) {
   return (
-    <tr className="border-b border-line last:border-0 align-top">
+    <tr className={cx("border-b border-line last:border-0 align-top", inspected && "bg-accent/10")} aria-current={inspected ? "true" : undefined}>
       <td data-label="Severity" className="px-3 py-2"><AlertSeverity severity={a.severity} /></td>
       <td data-label="Host" className="px-3 py-2"><Link className="text-accent" to={`/hosts/${a.host_id}`}>{a.host_name}</Link></td>
       <td data-primary="" className="px-3 py-2">
-        <Link className="font-medium hover:underline" to={`/alerts/${a.id}`}>{a.title}</Link>
+        {/* A plain click looks at it beside the list; a new tab (or Ctrl/⌘-click) opens its page. */}
+        <Link className="font-medium hover:underline" to={`/alerts/${a.id}`}
+          onClick={(e) => {
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            e.preventDefault();
+            onActions(a);
+          }}>{a.title}</Link>
         <div className="text-xs text-muted">{categoryLabel[a.category] ?? a.category}{a.value_text ? ` · ${a.value_text}` : ""}</div>
       </td>
       <td data-label={history ? "Duration" : "Age"} className="px-3 py-2 whitespace-nowrap tabular-nums" title={`Opened ${fmtTime(a.opened_at)}`}>

@@ -52,7 +52,7 @@ test("fleet page: what needs attention, filters, agent vs SSH", async () => {
 
 test("host overview: headline tiles link to details; unknown is never zero", async () => {
   await go(`/hosts/${page.ids["nas-01"]}`);
-  await waitText(page, "View monitoring");
+  await waitText(page, "Health now");
   let t = await text(page);
   // Services counts what is monitored (jellyfin and smbd, the fixture's);
   // the failed backup.service nobody monitors is a note, not a problem.
@@ -108,7 +108,9 @@ test("services: filters, all units, history, watching", async () => {
   await click(page, '[aria-label="Show services"] button', "All");
   await click(page, "label", "Show all units");
   await waitText(page, "systemd-journald.service");
-  await click(page, "button", "History");
+  // A unit's history and its monitoring settings are under its ⋯ menu.
+  await click(page, 'button[aria-label="More for jellyfin.service"]', "");
+  await click(page, '[role="menuitem"]', "State history");
   await page.waitForSelector('[role="dialog"]');
   await page.keyboard.press("Escape");
   t = await text(page);
@@ -129,7 +131,8 @@ test("services: Monitor is the one control; failed but unmonitored never alerts;
   const monitored = (unit) => page.$eval(box(unit), (b) => b.checked);
   const settle = () => page.waitForNetworkIdle({ idleTime: 300 }).catch(() => {});
   const customize = async (unit, choice) => {
-    await click(page, `button[aria-label="Customize monitoring of ${unit}"]`, "Custom");
+    await click(page, `button[aria-label="More for ${unit}"]`, "");
+    await click(page, '[role="menuitem"]', "Customize monitoring…");
     await page.waitForSelector('[data-testid="service-monitor"]');
     await click(page, '[data-testid="service-monitor"] label', choice);
     await click(page, '[data-testid="service-monitor"] button[type="submit"]', "Save");

@@ -6,10 +6,13 @@ import { useAuth } from "@/auth/AuthContext";
 import { Alert as Notice } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
+import { Inspector } from "@/components/ui/Inspector";
 import { Field } from "@/components/ui/Field";
 import { plainLink } from "@/components/ui/links";
 import { errorMessage } from "@/lib/format";
-import { MaintenanceDialog } from "./MaintenanceDialog";
+import { fmtSince, fmtTime } from "@/components/monitoring/format";
+import { MaintenanceForm } from "./MaintenanceDialog";
+import { AlertSeverity, AlertStateBadge, MaintenanceNote, NotificationBadge, categoryLabel } from "./ui";
 import { alertKeys, useAcknowledge, type Alert } from "./queries";
 
 type IgnoreOption = Schemas["AlertIgnoreOptions"]["options"][number];
@@ -21,11 +24,11 @@ function useCanAct(a: Alert) {
 }
 
 /** Actions… on an open alert's row (dogfooding correction batch): the
- * common ways to deal with it without opening it. Acknowledge, Snooze
+ * common ways to deal with it without opening its page. Acknowledge, Snooze
  * (maintenance for its host) and Ignore (its health settings, so the
- * condition stops being a problem). The alert's page has the same and its
- * timeline. Closed alerts have none. The list shows the dialog
- * (AlertActionsDialog), so it stays open when the alert leaves the list. */
+ * condition stops being a problem), in the alert's inspector. Closed alerts
+ * have none. The list shows the inspector, so it stays open when the alert
+ * leaves the list. */
 export function AlertActionsButton({ a, onOpen }: { a: Alert; onOpen: (a: Alert) => void }) {
   const c = useCanAct(a);
   if (a.state === "resolved" || !(c.ack || c.snooze || c.ignore)) return null;
@@ -45,44 +48,82 @@ function Choice({ title, help, onClick, disabled, note }: { title: string; help:
   );
 }
 
-export function AlertActionsDialog({ a, onClose }: { a: Alert; onClose: () => void }) {
+/** An open alert, inspected beside the list (Pattern A): what is wrong,
+ * where, since when and who was told, with the ways to deal with it —
+ * Acknowledge, Snooze (maintenance for its host), Ignore (its health
+ * setting) — each a step inside the same panel with Back, never a dialog on
+ * top; and the way to its host, its monitoring and its full page (timeline,
+ * deliveries). The list keeps it open while acting takes the alert out of
+ * view. */
+export function AlertInspector({ a, onClose }: { a: Alert; onClose: () => void }) {
   const c = useCanAct(a);
   const [step, setStep] = useState<"menu" | "ack" | "snooze" | "ignore">("menu");
-  if (step === "snooze") return <MaintenanceDialog hostIds={[a.host_id]} defaultReason={`Snoozed: ${a.title}`} onClose={onClose} />;
-  if (step === "ack") return <AcknowledgeDialog a={a} onBack={() => setStep("menu")} onClose={onClose} />;
-  if (step === "ignore") return <IgnoreDialog a={a} onBack={() => setStep("menu")} onClose={onClose} />;
+  const back = () => setStep("menu");
+  const title = step === "ack" ? `Acknowledge: ${a.title}` : step === "snooze" ? `Snooze: ${a.title}` : step === "ignore" ? `Ignore: ${a.title}` : a.title;
+  const open = a.state !== "resolved";
   return (
-    <Dialog title={`${a.host_name}: ${a.title}`} onClose={onClose}>
-      <div className="space-y-4" data-testid="alert-actions">
-        <ul className="space-y-2" aria-label="Actions">
-          {a.state === "active" && (
-            <Choice title="Acknowledge…" disabled={!c.ack} onClick={() => setStep("ack")}
-              help="You've seen it: no more reminders. It stays open until the condition recovers." />
-          )}
-          <Choice title="Snooze…" disabled={!c.snooze} onClick={() => setStep("snooze")}
-            help={<>Maintenance for {a.host_name} until a time you choose: no notifications meanwhile, health is still recorded, and what is still wrong when it ends is notified then.</>} />
-          <Choice title="Ignore…" disabled={!c.ignore} onClick={() => setStep("ignore")}
-            help="If it's meant to be this way: change the health setting behind it, so it isn't a problem any more. The alert closes as cleared, not recovered." />
-        </ul>
-        {!(c.ack && c.snooze && c.ignore) && (
-          <p className="text-xs text-muted">Greyed out: your role can&apos;t do that.</p>
-        )}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Link className={plainLink} to={`/alerts/${a.id}`}>Open the alert</Link>
-          <Button onClick={onClose}>Close</Button>
-        </div>
-      </div>
-    </Dialog>
+    <Inspector title={title} onClose={onClose} onBack={step === "menu" ? undefined : back} testId="alert-inspector"
+      subtitle={<span className="inline-flex flex-wrap items-center gap-2"><AlertSeverity severity={a.severity} /><AlertStateBadge a={a} /><span>{a.host_name}</span></span>}>
+      {/* Done is done: the list shows the result (the alert moves or is marked). */}
+      {step === "ack" ? <AcknowledgeForm a={a} onBack={back} onClose={onClose} onDone={onClose} />
+        : step === "snooze" ? <MaintenanceForm hostIds={[a.host_id]} defaultReason={`Snoozed: ${a.title}`} onClose={back} onDone={onClose} cancelLabel="Back" />
+          : step === "ignore" ? <IgnoreForm a={a} onBack={back} onClose={onClose} />
+            : (
+              <div className="space-y-5 text-sm">
+                <dl className="grid grid-cols-[minmax(6.5rem,8rem)_1fr] gap-y-1.5" data-testid="alert-summary">
+                  <dt className="text-muted">Host</dt><dd><Link className={plainLink} to={`/hosts/${a.host_id}`}>{a.host_name}</Link></dd>
+                  <dt className="text-muted">What</dt><dd>{categoryLabel[a.category] ?? a.category}{a.subject && <span className="font-mono text-xs"> · {a.subject}</span>}</dd>
+                  {a.value_text && (<><dt className="text-muted">Now</dt><dd>{a.value_text}</dd></>)}
+                  <dt className="text-muted">Since</dt><dd>{fmtTime(a.observed_at ?? a.issue_started_at)} <span className="text-muted">({fmtSince(a.observed_at ?? a.issue_started_at)})</span></dd>
+                  {a.acknowledgement && (<><dt className="text-muted">Acknowledged</dt><dd>by {a.acknowledgement.by}{a.acknowledgement.note && <span className="block text-muted">“{a.acknowledgement.note}”</span>}</dd></>)}
+                  <dt className="text-muted">Notification</dt><dd className="flex flex-wrap items-center gap-2"><NotificationBadge a={a} /><MaintenanceNote a={a} /></dd>
+                </dl>
+                {a.detail && <p className="rounded-ui bg-surface-2 px-3 py-2">{a.detail}</p>}
+                {open && (
+                  <section data-testid="alert-actions" aria-label="Deal with it">
+                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Deal with it</h3>
+                    <ul className="space-y-2" aria-label="Actions">
+                      {a.state === "active" && (
+                        <Choice title="Acknowledge…" disabled={!c.ack} onClick={() => setStep("ack")}
+                          help="You've seen it: no more reminders. It stays open until the condition recovers." />
+                      )}
+                      <Choice title="Snooze…" disabled={!c.snooze} onClick={() => setStep("snooze")}
+                        help={<>Maintenance for {a.host_name} until a time you choose: no notifications meanwhile, health is still recorded, and what is still wrong when it ends is notified then.</>} />
+                      <Choice title="Ignore…" disabled={!c.ignore} onClick={() => setStep("ignore")}
+                        help="If it's meant to be this way: change the health setting behind it, so it isn't a problem any more. The alert closes as cleared, not recovered." />
+                    </ul>
+                    {!(c.ack && c.snooze && c.ignore) && <p className="mt-2 text-xs text-muted">Greyed out: your role can&apos;t do that.</p>}
+                  </section>
+                )}
+                <section aria-label="Look further">
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Look further</h3>
+                  <ul className="space-y-1.5">
+                    <li><Link className={plainLink} to={`/hosts/${a.host_id}`}>View host {a.host_name}</Link></li>
+                    <li><Link className={plainLink} to={`/hosts/${a.host_id}/monitoring${a.category === "services" ? "?tab=services" : ""}`}>View monitoring</Link></li>
+                    <li><Link className={plainLink} to={`/alerts/${a.id}`}>Open the alert</Link> <span className="text-xs text-muted">— its timeline, deliveries and other occurrences</span></li>
+                  </ul>
+                </section>
+              </div>
+            )}
+    </Inspector>
   );
 }
 
 /** Acknowledge, with the optional note (the same as on the alert's page). */
 export function AcknowledgeDialog({ a, onBack, onClose }: { a: Alert; onBack?: () => void; onClose: () => void }) {
+  return (
+    <Dialog title={`Acknowledge: ${a.title}`} onClose={onClose}>
+      <AcknowledgeForm a={a} onBack={onBack} onClose={onClose} onDone={onClose} />
+    </Dialog>
+  );
+}
+
+/** The acknowledgement form, for a dialog or an inspector step. */
+export function AcknowledgeForm({ a, onBack, onClose, onDone }: { a: Alert; onBack?: () => void; onClose: () => void; onDone: () => void }) {
   const ack = useAcknowledge(a.id);
   const [note, setNote] = useState("");
   return (
-    <Dialog title={`Acknowledge: ${a.title}`} onClose={onClose}>
-      <form className="space-y-3" data-testid="alert-acknowledge" onSubmit={(e) => { e.preventDefault(); ack.mutate(note, { onSuccess: onClose }); }}>
+      <form className="space-y-3" data-testid="alert-acknowledge" onSubmit={(e) => { e.preventDefault(); ack.mutate(note, { onSuccess: onDone }); }}>
         <p className="text-sm text-muted">Tells others someone is on it and stops reminders. It doesn&apos;t close the alert: that happens when {a.host_name}&apos;s condition recovers.</p>
         <Field label="Note (optional)">
           <textarea className="min-h-16 w-full rounded-ui border border-line bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
@@ -94,7 +135,6 @@ export function AcknowledgeDialog({ a, onBack, onClose }: { a: Alert; onBack?: (
           <Button type="submit" variant="primary" disabled={ack.isPending}>{ack.isPending ? "Acknowledging…" : "Acknowledge"}</Button>
         </div>
       </form>
-    </Dialog>
   );
 }
 
@@ -103,6 +143,15 @@ export function AcknowledgeDialog({ a, onBack, onClose }: { a: Alert; onBack?: (
  * where it's undone. Applying one is an ordinary health setting change with
  * its own permissions and audit; nothing closes an alert by hand. */
 export function IgnoreDialog({ a, onBack, onClose }: { a: Alert; onBack?: () => void; onClose: () => void }) {
+  return (
+    <Dialog title={`Ignore: ${a.title}`} onClose={onClose}>
+      <IgnoreForm a={a} onBack={onBack} onClose={onClose} />
+    </Dialog>
+  );
+}
+
+/** The Ignore… choices, for a dialog or an inspector step. */
+export function IgnoreForm({ a, onBack, onClose }: { a: Alert; onBack?: () => void; onClose: () => void }) {
   const qc = useQueryClient();
   // Not under alertKeys.all: applying an option refreshes the alerts, and
   // the options it was chosen from stay as they were.
@@ -124,7 +173,6 @@ export function IgnoreDialog({ a, onBack, onClose }: { a: Alert; onBack?: () => 
   });
   const needs = (n?: string) => (n === "monitoring.settings" ? "an administrator's (monitoring.settings)" : "monitoring.manage");
   return (
-    <Dialog title={`Ignore: ${a.title}`} onClose={onClose}>
       <div className="space-y-4 text-sm" data-testid="alert-ignore">
         {q.error && <Notice>{errorMessage(q.error)}</Notice>}
         {apply.isSuccess ? (
@@ -164,6 +212,5 @@ export function IgnoreDialog({ a, onBack, onClose }: { a: Alert; onBack?: () => 
           </form>
         )}
       </div>
-    </Dialog>
   );
 }

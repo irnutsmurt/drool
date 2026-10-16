@@ -186,6 +186,8 @@ func (s *Server) routes() []route {
 		{method: "PATCH", path: APIPrefix + "/secrets/{id}", auth: authed, perm: auth.PermCredentialsManage, h: s.handleUpdateSecret},
 		{method: "DELETE", path: APIPrefix + "/secrets/{id}", auth: authed, perm: auth.PermCredentialsManage, h: s.handleDeleteSecret},
 
+		// The navigation search: each kind of record only with its own read permission.
+		{method: "GET", path: APIPrefix + "/search", auth: authed, h: s.handleSearch},
 		{method: "GET", path: APIPrefix + "/hosts", auth: authed, perm: auth.PermHostsRead, h: s.handleListHosts},
 		{method: "POST", path: APIPrefix + "/hosts", auth: authed, perm: auth.PermHostsWrite, h: s.handleCreateHost},
 		{method: "GET", path: APIPrefix + "/hosts/{id}", auth: authed, perm: auth.PermHostsRead, h: s.handleGetHost},

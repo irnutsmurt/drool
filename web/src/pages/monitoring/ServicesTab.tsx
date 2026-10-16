@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import { useAuth } from "@/auth/AuthContext";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Dialog } from "@/components/ui/Dialog";
+import { Input, Select } from "@/components/ui/Field";
+import { MenuButton, type MenuItem } from "@/components/ui/Menu";
 import { cx } from "@/components/ui/cx";
 import { errorMessage } from "@/lib/format";
 import { StatusBadge } from "@/components/monitoring/Status";
@@ -77,36 +81,94 @@ function StateCell({ u }: { u: MonService }) {
   return <StateBadge u={u} />;
 }
 
+/** How many services a page shows: a phone gets a short list it can
+ * scroll, with the rest one tap away. */
+const PAGE_PHONE = 20;
+const PAGE_WIDE = 150;
+
 export function ServicesTab({ id, o, hostName }: { id: string; o: MonHostOverview; hostName: string }) {
+  const [params, setParams] = useSearchParams();
+  // ?unit= (the navigation search): find that service, among all units if needed.
+  const wanted = params.get("unit") ?? "";
   const [filter, setFilter] = useState("all");
   const [all, setAll] = useState(false);
+  const [find, setFind] = useState(wanted);
+  const [limit, setLimit] = useState(0);
   const [hist, setHist] = useState("");
   const [acting, setActing] = useState<MonService | null>(null);
   const [custom, setCustom] = useState<MonService | null>(null);
+  const phone = useMediaQuery("(max-width: 767.98px)");
   const q = useServices(id, filter, all);
   const { can } = useAuth();
   const v = q.data;
   void o;
+  // A unit the default list hides (inactive, "noise"): show all units once.
+  const missing = !!wanted && !!v?.supported && !all && !v.units.some((u) => u.name === wanted);
+  useEffect(() => {
+    if (missing) setAll(true);
+  }, [missing]);
+  // Bring the unit the search opened into view, once it is listed.
+  const scrolled = useRef(false);
+  useEffect(() => {
+    if (!wanted || scrolled.current || !v?.units.some((u) => u.name === wanted)) return;
+    const el = [...document.querySelectorAll<HTMLElement>(`[data-unit="${CSS.escape(wanted)}"]`)].find((e) => e.offsetParent !== null);
+    if (el) {
+      scrolled.current = true;
+      el.scrollIntoView({ block: "center" });
+    }
+  });
+  const setFindText = (t: string) => {
+    setFind(t);
+    setLimit(0);
+    if (wanted && t !== wanted) setParams((p) => {
+      p.delete("unit");
+      return p;
+    }, { replace: true });
+  };
+  const words = find.toLowerCase().split(/\s+/).filter(Boolean);
+  const units = (v?.units ?? []).filter((u) => words.every((w) => `${u.name} ${u.description}`.toLowerCase().includes(w)));
+  const pageSize = limit || (phone ? PAGE_PHONE : PAGE_WIDE);
+  const shown = units.slice(0, pageSize);
+
+  const rowMenu = (u: MonService): MenuItem[] => [
+    { label: "Customize monitoring…", hint: "Expected state, ignore, how long before it alerts", onSelect: () => setCustom(u) },
+    { label: "State history", hint: "When it started, stopped or failed", onSelect: () => setHist(u.name) },
+  ];
+  const actions = (u: MonService) => (
+    <span className="inline-flex items-center gap-1">
+      {can("jobs.execute") && <Button size="sm" onClick={() => setActing(u)} aria-label={`Actions for ${u.name}`}>Actions…</Button>}
+      <MenuButton label={<span aria-hidden="true">⋯</span>} ariaLabel={`More for ${u.name}`} ghost size="sm" items={rowMenu(u)} />
+    </span>
+  );
+  const customized = (u: MonService) => isCustomized(u) && (
+    <button type="button" className="text-xs text-muted underline underline-offset-2 hover:text-fg" onClick={() => setCustom(u)}
+      aria-label={`Customize monitoring of ${u.name}`}>⚙ Customized</button>
+  );
   return (
     <Card title="Services">
       {q.error && <Alert>{errorMessage(q.error)}</Alert>}
       {v && !v.supported && <p className="text-sm text-muted">{v.note || "No service inventory for this host."}</p>}
       {v?.supported && (
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <div role="group" aria-label="Show services" className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <Input className="h-8 max-w-[16rem]" aria-label="Find a service" placeholder="Find a service…" value={find}
+              onChange={(e) => setFindText(e.target.value)} />
+            <div role="group" aria-label="Show services" className="hidden flex-wrap gap-1 md:flex">
               {filters.map((f) => (
-                <button key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}
+                <button key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => { setFilter(f.key); setLimit(0); }}
                   className={cx("rounded-ui border px-2.5 py-1 text-sm", filter === f.key ? "border-accent bg-accent/15 font-medium" : "border-line hover:bg-surface-2")}>
                   {f.label} <span className="text-muted">{v.counts[f.key] ?? 0}</span>
                 </button>
               ))}
             </div>
-            <Checkbox label={`Show all units (advanced${v.hidden ? `, ${v.hidden} hidden` : ""})`} checked={all} onChange={setAll} />
+            <Select className="h-8 max-w-[12rem] md:hidden" aria-label="Show services (phone)" value={filter} onChange={(e) => { setFilter(e.target.value); setLimit(0); }}>
+              {filters.map((f) => <option key={f.key} value={f.key}>{f.label} ({v.counts[f.key] ?? 0})</option>)}
+            </Select>
+            <Checkbox label={`Show all units (advanced${v.hidden ? `, ${v.hidden} hidden` : ""})`} checked={all} onChange={(on) => { setAll(on); setLimit(0); }} />
             <span className="ml-auto text-xs text-muted">{v.source === "ssh" ? "Polled over SSH" : "Reported by the Shepherd"} · {fmtSince(v.updated_at)}</span>
           </div>
-          <div className="overflow-x-auto">
-            <table className="rtable w-full text-left text-sm">
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full text-left text-sm">
               <caption className="sr-only">Services ({filter})</caption>
               <thead>
                 <tr className="border-b border-line text-xs text-muted">
@@ -120,38 +182,58 @@ export function ServicesTab({ id, o, hostName }: { id: string; o: MonHostOvervie
                 </tr>
               </thead>
               <tbody>
-                {v.units.length === 0 && <tr><td colSpan={7} className="rt-empty px-2 py-6 text-center text-muted">No services match.</td></tr>}
-                {v.units.map((u) => (
-                  <tr key={u.name} className="border-b border-line last:border-0">
-                    <td data-primary="" className="px-2 py-1.5">
+                {shown.length === 0 && <tr><td colSpan={7} className="px-2 py-6 text-center text-muted">No services match.</td></tr>}
+                {shown.map((u) => (
+                  <tr key={u.name} data-unit={u.name} className={cx("border-b border-line last:border-0", u.name === wanted && "bg-accent/10")}>
+                    <td className="px-2 py-1.5">
                       <div className="font-mono text-xs">{u.name}</div>
                       {u.description && <div className="text-xs text-muted">{u.description}</div>}
                     </td>
-                    <td data-label="State" className="px-2 py-1.5"><span><StateCell u={u} /> <span className="text-xs text-muted">{u.active}/{u.sub}</span></span><HealthLine u={u} /></td>
-                    <td data-label="Enabled" className="px-2 py-1.5 text-xs">{u.file_state || "—"}</td>
-                    <td data-label="Since" className="px-2 py-1.5 text-xs">{u.since ? fmtTime(u.since * 1000) : "—"}</td>
-                    <td data-label="Restarts" className="px-2 py-1.5 tabular-nums">{u.restarts ?? "—"}</td>
-                    <td data-label="Monitor" className="px-2 py-1.5"><MonitorToggle hostId={id} unit={u} /></td>
-                    <td data-label="" className="px-2 py-1.5 text-right whitespace-nowrap">
-                      <Button size="sm" variant="ghost" onClick={() => setHist(u.name)}>History</Button>
-                      <Button size="sm" variant="ghost" onClick={() => setCustom(u)} aria-label={`Customize monitoring of ${u.name}`}>
-                        {isCustomized(u) ? "⚙ Customized" : "Customize…"}
-                      </Button>
-                      {can("jobs.execute") && (
-                        <Button size="sm" onClick={() => setActing(u)} aria-label={`Actions for ${u.name}`}>Actions…</Button>
-                      )}
-                    </td>
+                    <td className="px-2 py-1.5"><span><StateCell u={u} /> <span className="text-xs text-muted">{u.active}/{u.sub}</span></span><HealthLine u={u} /></td>
+                    <td className="px-2 py-1.5 text-xs">{u.file_state || "—"}</td>
+                    <td className="px-2 py-1.5 text-xs">{u.since ? fmtTime(u.since * 1000) : "—"}</td>
+                    <td className="px-2 py-1.5 tabular-nums">{u.restarts ?? "—"}</td>
+                    <td className="px-2 py-1.5"><span className="flex flex-col items-start gap-0.5"><MonitorToggle hostId={id} unit={u} />{customized(u)}</span></td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-right">{actions(u)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          {/* Phones: one compact entry per service, the essentials only. */}
+          <ul className="divide-y divide-line md:hidden" aria-label="Services">
+            {shown.length === 0 && <li className="py-6 text-center text-sm text-muted">No services match.</li>}
+            {shown.map((u) => (
+              <li key={u.name} data-unit={u.name} className={cx("py-2.5", u.name === wanted && "bg-accent/10")}>
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="break-all font-mono text-xs">{u.name}</div>
+                    {u.description && <div className="truncate text-xs text-muted">{u.description}</div>}
+                  </div>
+                  <StateCell u={u} />
+                </div>
+                <HealthLine u={u} />
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <MonitorToggle hostId={id} unit={u} />
+                  {customized(u)}
+                  <span className="ml-auto">{actions(u)}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {units.length > shown.length && (
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
+              <span>Showing {shown.length} of {units.length}</span>
+              <Button size="sm" onClick={() => setLimit(pageSize + (phone ? PAGE_PHONE : PAGE_WIDE))}>Show more</Button>
+              <Button size="sm" variant="ghost" onClick={() => setLimit(units.length)}>Show all {units.length}</Button>
+            </div>
+          )}
           <p className="text-xs text-muted">
             DROOL lists every service and its state, but alerts only on the ones you <strong>Monitor</strong>: a monitored service that
             stops, fails or isn&apos;t installed is a health issue. Without it, a failed service is shown as failed and never alerts.
-            <strong> Customize…</strong> sets more: expected <em>stopped</em> (running is the problem) or <em>ignored</em> on this host, and
-            how long before it alerts. For a pack&apos;s hosts, set it on the pack&apos;s page. Actions run as an ordinary run, DROOL checks the
-            result on the host, and they never change what is monitored.
+            <strong> Customize monitoring…</strong> (under ⋯) sets more: expected <em>stopped</em> (running is the problem) or <em>ignored</em> on
+            this host, and how long before it alerts. For a pack&apos;s hosts, set it on the pack&apos;s page. Actions run as an ordinary run, DROOL
+            checks the result on the host, and they never change what is monitored.
           </p>
         </div>
       )}

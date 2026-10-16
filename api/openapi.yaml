@@ -655,6 +655,28 @@ paths:
         '404': { $ref: '#/components/responses/Problem' }
         '409': { $ref: '#/components/responses/Problem' }
 
+  /search:
+    get:
+      operationId: search
+      tags: [hosts]
+      summary: Find hosts, Packs, services, open alerts and runs by name
+      description: |
+        The navigation search's records: hosts (by name, address, the machine's own host name, tags,
+        description, or a known interface address), Packs, services (unit name or description, with the
+        host's name to narrow it), open alerts (words of the title, check, category, subject or host) and
+        runs (name or id, newest first). Every word of the query must match. Each kind is searched only
+        when the caller may read it (hosts.read, monitoring.read, alerts.read, jobs.read); at most `limit`
+        results per kind, and `more` lists the kinds that had more. Read-only and not audited.
+      parameters:
+        - { name: q, in: query, required: true, description: '1 to 100 characters; up to five words, all of which must match.', schema: { type: string, minLength: 1, maxLength: 100 } }
+        - { name: limit, in: query, description: 'Results per kind (default 5).', schema: { type: integer, minimum: 1, maximum: 10 } }
+      responses:
+        '200':
+          description: Matches, grouped by kind in the order host, pack, service, alert, run.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchResults' }
+        '422': { $ref: '#/components/responses/Problem' }
   /hosts:
     get:
       operationId: listHosts
@@ -4677,6 +4699,29 @@ components:
         last_seen_at: { type: string, format: date-time }
         decided_at: { type: [string, 'null'], format: date-time }
 
+    SearchResults:
+      type: object
+      required: [query, results, more]
+      properties:
+        query: { type: string }
+        results: { type: array, items: { $ref: '#/components/schemas/SearchResult' } }
+        more:
+          type: array
+          description: Kinds with more matches than shown.
+          items: { type: string, enum: [host, pack, service, alert, run] }
+    SearchResult:
+      type: object
+      required: [kind, id, title, detail]
+      properties:
+        kind: { type: string, enum: [host, pack, service, alert, run] }
+        id: { type: string, description: 'The record''s id; for a service, its unit name.' }
+        title: { type: string }
+        detail: { type: string, description: 'One line that tells similar names apart: a host''s OS and address, a service''s description, an alert''s host and severity, a run''s status.' }
+        match: { type: string, description: 'Why it matched when not by its title ("address 10.0.0.5", "tag web").' }
+        host_id: { type: string, description: A service's or an alert's host. }
+        host_name: { type: string }
+        state: { type: string, description: 'A host''s status, a service''s state, an alert''s severity or a run''s status.' }
+        at: { type: string, format: date-time, description: When a run started. }
     Host:
       type: object
       required: [id, name, description, address, port, user, credential_id, become_method, become_credential_id,

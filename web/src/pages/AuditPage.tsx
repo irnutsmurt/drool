@@ -1,30 +1,25 @@
-import { useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { api, unwrap, type Schemas } from "@/api/client";
+import { Link, useSearchParams } from "react-router";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
-import { Table } from "@/components/ui/Table";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
-import { Alert } from "@/components/ui/Alert";
-import { errorMessage, formatDateTime } from "@/lib/format";
+import { plainLink } from "@/components/ui/links";
+import { useHosts } from "@/api/queries";
 import { AuditIntegrityCard, AuditSinkCard } from "@/components/audit/AuditIntegrity";
+import { AuditTable } from "@/components/audit/AuditTable";
 
-type Event = Schemas["AuditEvent"];
-
-const resultTone = { success: "ok", failure: "danger", denied: "warn" } as const;
-
+/** The audit log: who did what, when. Filtered by action prefix, and by
+ * target (?target=, the way a host's Activity links here). */
 export function AuditPage() {
-  const [action, setAction] = useState("");
-  const q = useInfiniteQuery({
-    queryKey: ["audit", action],
-    initialPageParam: "",
-    queryFn: ({ pageParam }) =>
-      unwrap(api.GET("/audit", { params: { query: { limit: 50, cursor: pageParam || undefined, action: action || undefined } } })),
-    getNextPageParam: (last) => last.next_cursor || undefined,
-  });
-  const rows = q.data?.pages.flatMap((p) => p.items) ?? [];
+  const [params, setParams] = useSearchParams();
+  const action = params.get("action") ?? "";
+  const target = params.get("target") ?? "";
+  const hosts = useHosts();
+  const targetHost = hosts.data?.items.find((h) => h.id === target);
+  const set = (k: string, v: string) => setParams((p) => {
+    if (v) p.set(k, v);
+    else p.delete(k);
+    return p;
+  }, { replace: true });
 
   return (
     <>
@@ -33,40 +28,17 @@ export function AuditPage() {
         <AuditIntegrityCard />
         <AuditSinkCard />
       </div>
-      <div className="mb-4 max-w-xs">
-        <Input placeholder="Filter by action prefix, e.g. auth." value={action} onChange={(e) => setAction(e.target.value)} />
-      </div>
-      {q.error && <Alert>{errorMessage(q.error)}</Alert>}
-      <Card>
-        <Table<Event>
-          rows={rows}
-          rowKey={(e) => e.id}
-          empty={q.isPending ? "Loading…" : "No audit events."}
-          columns={[
-            { header: "#", cell: (e) => <span className="font-mono text-xs text-muted" title={e.hash ? `chain hash ${e.hash}` : "from before the hash chain"}>{e.seq ?? "—"}</span> },
-            { header: "Time", cell: (e) => <span className="whitespace-nowrap">{formatDateTime(e.ts)}</span> },
-            { header: "Actor", cell: (e) => e.actor.name || e.actor.type },
-            { header: "Action", cell: (e) => <code className="font-mono text-xs">{e.action}</code> },
-            { header: "Target", cell: (e) => (e.target.id ? `${e.target.type} ${e.target.id}` : "—") },
-            { header: "Result", cell: (e) => <Badge tone={resultTone[e.result]}>{e.result}</Badge> },
-            { header: "Source", cell: (e) => e.source_ip || "—" },
-            {
-              header: "Details",
-              cell: (e) => (
-                <code className="block max-w-sm truncate font-mono text-xs text-muted" title={JSON.stringify(e.details)}>
-                  {Object.keys(e.details).length ? JSON.stringify(e.details) : ""}
-                </code>
-              ),
-            },
-          ]}
-        />
-        {q.hasNextPage && (
-          <div className="mt-4 text-center">
-            <Button size="sm" onClick={() => void q.fetchNextPage()} disabled={q.isFetchingNextPage}>
-              Load more
-            </Button>
-          </div>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Input className="max-w-xs" aria-label="Filter by action" placeholder="Filter by action prefix, e.g. auth." value={action} onChange={(e) => set("action", e.target.value)} />
+        {target && (
+          <span className="text-sm">
+            About {targetHost ? <Link className={plainLink} to={`/hosts/${target}/activity?view=audit`}>{targetHost.name}</Link> : <code className="font-mono text-xs">{target}</code>}
+            {" · "}<button type="button" className="underline underline-offset-2 hover:text-fg" onClick={() => set("target", "")}>show every target</button>
+          </span>
         )}
+      </div>
+      <Card>
+        <AuditTable action={action} target={target} />
       </Card>
     </>
   );

@@ -19,7 +19,19 @@ const presets = [
 
 /** Start maintenance now. It only silences notifications: monitoring,
  * health issues and every safety mechanism keep working. */
-export function MaintenanceDialog({ hostIds = [], groupIds = [], defaultReason = "", onClose }: { hostIds?: string[]; groupIds?: string[]; defaultReason?: string; onClose: () => void }) {
+export function MaintenanceDialog(props: { hostIds?: string[]; groupIds?: string[]; defaultReason?: string; onClose: () => void }) {
+  return (
+    <Dialog title="Start maintenance" onClose={props.onClose}>
+      <MaintenanceForm {...props} onDone={props.onClose} />
+    </Dialog>
+  );
+}
+
+/** The maintenance form, for a dialog or an inspector step (Snooze… on an
+ * alert): onDone after it started, onClose to give up (with cancelLabel). */
+export function MaintenanceForm({ hostIds = [], groupIds = [], defaultReason = "", onClose, onDone, cancelLabel = "Cancel" }: {
+  hostIds?: string[]; groupIds?: string[]; defaultReason?: string; onClose: () => void; onDone: () => void; cancelLabel?: string;
+}) {
   const hosts = useHosts();
   const groups = useGroups();
   const start = useStartMaintenance();
@@ -48,11 +60,10 @@ export function MaintenanceDialog({ hostIds = [], groupIds = [], defaultReason =
     if (preset === "manual") body.indefinite = true;
     else if (preset === "until") body.until = until ? new Date(until).getTime() : 0;
     else body.duration_minutes = Number(preset);
-    start.mutate(body, { onSuccess: onClose });
+    start.mutate(body, { onSuccess: onDone });
   };
   return (
-    <Dialog title="Start maintenance" onClose={onClose}>
-      <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+      <form className="space-y-4" data-testid="maintenance-form" onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <p className="text-sm text-muted">
           Notifications are paused for these hosts. Monitoring, health issues and alerts stay visible (marked
           “suppressed by maintenance”), and firewall rollback, agent recovery and host-key checks keep working.
@@ -100,12 +111,11 @@ export function MaintenanceDialog({ hostIds = [], groupIds = [], defaultReason =
         </Field>
         {start.error && <Alert>{errorMessage(start.error)}</Alert>}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="ghost" onClick={onClose}>{cancelLabel}</Button>
           <Button type="submit" variant="primary" disabled={start.isPending || selHosts.size + selGroups.size === 0}>
             {start.isPending ? "Starting…" : "Start maintenance"}
           </Button>
         </div>
       </form>
-    </Dialog>
   );
 }
