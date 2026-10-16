@@ -265,8 +265,7 @@ func (a *Agent) connect(ctx context.Context, ep string) error {
 	a.sessionCancel = cancel
 	a.mu.Unlock()
 	client := pb.NewAgentClient(conn)
-	var pr peer.Peer
-	stream, err := client.Session(sctx, grpc.Peer(&pr))
+	stream, err := client.Session(sctx)
 	if err != nil {
 		return err
 	}
@@ -280,8 +279,10 @@ func (a *Agent) connect(ctx context.Context, ep string) error {
 	if err != nil {
 		return err
 	}
-	// The live stream's peer (grpc.Peer is only filled in when the stream
-	// ends, so it can't be used here).
+	// The live stream's peer, read from the stream's context. Not the
+	// grpc.Peer call option: grpc fills that in from its own goroutine when
+	// the stream ends, which raced with this function's reads and writes.
+	var pr peer.Peer
 	if p, ok := peer.FromContext(stream.Context()); ok {
 		pr = *p
 	}
