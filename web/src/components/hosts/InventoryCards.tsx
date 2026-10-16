@@ -110,21 +110,40 @@ export function SystemCard({ host }: { host: Host }) {
                       { header: "Used", cell: (fs) => <span className={cx(fs.used_pct >= 90 && "text-danger")}>{formatPct(fs.used_pct)}</span> },
                     ]} />
                 )}
-                <Table caption="Addresses" rows={addresses} rowKey={(a) => a.address} empty="No addresses known."
-                  columns={[
-                    { header: "Address", cell: (a) => <span className="font-mono text-xs">{a.address}</span> },
-                    { header: "Interface", cell: (a) => a.interface || "—" },
-                    { header: "Source", cell: (a) => <Badge tone={a.source === "configured" ? "accent" : "neutral"}>{a.source}</Badge> },
-                    { header: "Last seen", cell: (a) => <span className="text-muted">{formatAgo(a.last_seen_at)}</span> },
-                  ]} />
+                {/* Lines, not wide tables: this card is a third of the page. */}
+                <section aria-label="Addresses">
+                  <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">Addresses</h3>
+                  {addresses.length === 0 ? <p className="text-sm text-muted">No addresses known.</p> : (
+                    <ul className="divide-y divide-line text-sm">
+                      {addresses.map((a) => (
+                        <li key={a.address} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 py-1.5">
+                          <span className="font-mono text-xs [overflow-wrap:anywhere]">{a.address}</span>
+                          <span className="text-muted">{a.interface || "—"}</span>
+                          <Badge tone={a.source === "configured" ? "accent" : "neutral"}>{a.source}</Badge>
+                          <span className="text-xs text-muted">seen {formatAgo(a.last_seen_at)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
                 {full && full.interfaces.length > 0 && (
-                  <Table caption="Interfaces" rows={full.interfaces} rowKey={(i) => i.name}
-                    columns={[
-                      { header: "Interface", cell: (i) => <span className="font-mono text-xs">{i.name}</span> },
-                      { header: "State", cell: (i) => i.state ?? "" },
-                      { header: "MAC", cell: (i) => <span className="font-mono text-xs">{i.mac ?? ""}</span> },
-                      { header: "Addresses", cell: (i) => <span className="font-mono text-xs [overflow-wrap:anywhere]">{i.addresses.map((a) => `${a.address}/${a.prefix}`).join(", ")}</span> },
-                    ]} />
+                  <section aria-label="Interfaces">
+                    <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">Interfaces</h3>
+                    <ul className="divide-y divide-line text-sm">
+                      {full.interfaces.map((i) => (
+                        <li key={i.name} className="py-1.5">
+                          <span className="flex flex-wrap items-center gap-x-2">
+                            <span className="font-mono text-xs">{i.name}</span>
+                            {i.state && <span className="text-muted">{i.state}</span>}
+                            {i.mac && <span className="font-mono text-xs text-muted">{i.mac}</span>}
+                          </span>
+                          {i.addresses.length > 0 && (
+                            <span className="block font-mono text-xs [overflow-wrap:anywhere]">{i.addresses.map((a) => `${a.address}/${a.prefix}`).join(", ")}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
                 )}
                 {full && full.warnings.length > 0 && (
                   <div className="text-xs text-muted">

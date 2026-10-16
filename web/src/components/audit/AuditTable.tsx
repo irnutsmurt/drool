@@ -34,13 +34,15 @@ export function AuditTable({ action, target, pageSize = 50, empty }: { action?: 
           { header: "Time", cell: (e) => <span className="whitespace-nowrap">{formatDateTime(e.ts)}</span> },
           { header: "Actor", cell: (e) => e.actor.name || e.actor.type },
           { header: "Action", primary: true, cell: (e) => <code className="font-mono text-xs">{e.action}</code> },
-          ...(target ? [] : [{ header: "Target", cell: (e: Event) => (e.target.id ? `${e.target.type} ${e.target.id}` : "—") }]),
+          ...(target ? [] : [{ header: "Target", cell: (e: Event) => (e.target.id
+            ? <span className="block max-w-[13rem] [overflow-wrap:anywhere]">{e.target.type} <span className="font-mono text-xs">{e.target.id}</span></span>
+            : "—") }]),
           { header: "Result", cell: (e) => <Badge tone={resultTone[e.result]}>{e.result}</Badge> },
           { header: "Source", cell: (e) => e.source_ip || "—" },
           {
             header: "Details",
             cell: (e) => (
-              <code className="block max-w-sm truncate font-mono text-xs text-muted" title={JSON.stringify(e.details)}>
+              <code className="block max-w-[14rem] truncate font-mono text-xs text-muted" title={JSON.stringify(e.details)}>
                 {Object.keys(e.details).length ? JSON.stringify(e.details) : ""}
               </code>
             ),

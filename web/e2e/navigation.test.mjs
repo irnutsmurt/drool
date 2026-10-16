@@ -177,7 +177,11 @@ test("search finds hosts, services, alerts and runs, grouped, and opens where th
   offered = await search(page, web.address);
   assert.ok(offered.includes(`/hosts/${web.id}`), `address ${web.address}: ${offered}`);
   assert.match(await page.$eval('[data-testid="command-palette"]', (d) => d.innerText), new RegExp(`matches address ${web.address.replaceAll(".", "\\.")}`));
-  // A service, with its host, opens that host's Services filtered to it.
+  // A service, with its host, opens that host's Services filtered to it
+  // (once the fixture host has reported its services: this test may run
+  // first on a fresh controller).
+  await waitFor(page, async () => ((await api(page, "GET", "/search?q=jellyfin")).body.results ?? []).some((r) => r.kind === "service"),
+    "nas-01's services reported", 60000);
   offered = await search(page, "jellyfin");
   const svc = offered.find((t) => t.includes("/monitoring?tab=services&unit=jellyfin.service"));
   assert.ok(svc, `jellyfin.service: ${offered}`);
@@ -445,4 +449,24 @@ test("loading is never shown as empty or healthy", async () => {
   } finally {
     await page.close();
   }
+});
+
+// No hidden rightmost column at 1440 px (specification section 13): wide
+// tables fit, or their less frequent actions sit in a menu. The host's
+// System card keeps its addresses and interfaces inside the card.
+test("at 1440 px no table hides columns behind a sideways scroll", async () => {
+  const web = ids["web-1"];
+  for (const path of ["/audit", "/jobs", "/alerts?view=all", "/network", "/monitoring", "/hosts", `/hosts/${web}/files?path=/etc`, `/hosts/${web}`]) {
+    await go(admin, path);
+    if (path === `/hosts/${web}`) {
+      await click(admin, "main summary", "Filesystems, addresses and interfaces");
+      await sleep(800);
+    }
+    const sideways = await admin.evaluate(() => [...document.querySelectorAll("main *")].filter((e) => {
+      const ox = getComputedStyle(e).overflowX;
+      return (ox === "auto" || ox === "scroll") && e.clientWidth > 0 && e.scrollWidth > e.clientWidth + 2;
+    }).map((e) => `${e.clientWidth}/${e.scrollWidth}: ${(e.innerText || "").slice(0, 40).replace(/\s+/g, " ")}`));
+    assert.deepEqual(sideways, [], `${path} scrolls sideways at 1440 px`);
+  }
+  assert.deepEqual(admin.errors, []);
 });

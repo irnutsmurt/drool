@@ -169,3 +169,19 @@ test("a busy host says what holds it, and Install comes back by itself", async (
   await page.keyboard.press("Escape");
   assert.deepEqual(page.errors, []);
 });
+
+// Wide tables keep every row's actions in sight at 1440 px (specification
+// section 13: no hidden rightmost column): the file manager shows Download
+// and puts the less frequent actions in each row's ⋯ menu.
+test("files: every row's actions in sight, the less frequent ones in its menu", async () => {
+  await go(page, `/hosts/${ids["web-1"]}/files?path=/etc`);
+  await waitFor(page, async () => (await page.$$("main table tbody tr")).length > 3, "the /etc listing");
+  const sideways = await page.evaluate(() => [...document.querySelectorAll("main .overflow-x-auto")].filter((e) => e.scrollWidth > e.clientWidth + 2).length);
+  assert.equal(sideways, 0, "a table scrolls sideways at 1440 px");
+  await click(page, "main button", "More for passwd");
+  await page.waitForSelector('[role="menu"]');
+  const items = await page.$$eval('[role="menuitem"]', (els) => els.map((e) => e.textContent.trim()));
+  for (const want of ["Rename or move…", "Permissions…", "Owner…", "Delete…"]) assert.ok(items.some((t) => t.startsWith(want)), `${want} in ${items}`);
+  await page.keyboard.press("Escape");
+  assert.deepEqual(page.errors, []);
+});

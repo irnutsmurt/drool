@@ -93,10 +93,11 @@ export function SystemPage() {
             rows={d.config}
             rowKey={(c) => c.key}
             columns={[
-              { header: "Key", cell: (c) => <code className="font-mono text-xs">{c.key}</code> },
-              { header: "Value", cell: (c) => <code className="font-mono text-xs">{JSON.stringify(c.value)}</code> },
+              // Long keys, values and variable names wrap: the table fits narrower windows.
+              { header: "Key", cell: (c) => <code className="font-mono text-xs [overflow-wrap:anywhere]">{c.key}</code> },
+              { header: "Value", cell: (c) => <code className="font-mono text-xs [overflow-wrap:anywhere]">{JSON.stringify(c.value)}</code> },
               { header: "Source", cell: (c) => <Badge tone={sourceTone[c.source]}>{c.source}</Badge> },
-              { header: "Override with", cell: (c) => <code className="font-mono text-xs text-muted">{c.env_var}</code> },
+              { header: "Override with", cell: (c) => <code className="font-mono text-xs text-muted [overflow-wrap:anywhere]">{c.env_var}</code> },
             ]}
           />
         </Card>

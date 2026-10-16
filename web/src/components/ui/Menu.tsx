@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import { ChevronDownIcon } from "./icons";
@@ -24,7 +24,8 @@ export interface MenuItem {
  * the less frequent things a page offers, so the page header keeps one or
  * two visible actions. Keyboard: Enter/Space/↓ open it on the first item,
  * ↑/↓/Home/End move, Enter activates, Escape or Tab closes and focus
- * returns to the button. A click outside, or scrolling, closes it. The open
+ * returns to the button. A click outside closes it; scrolling moves it with
+ * its button, and closes it once the button is off the screen. The open
  * list is drawn above the page (a portal), so a table's scroll box can't
  * cut it off: under its button, above it when there's no room below, and
  * always on the screen. */
@@ -54,11 +55,8 @@ export function MenuButton({ label, items, align = "end", size = "md", testId, a
     setOpen(false);
     if (focusButton) button.current?.focus();
   };
-  useLayoutEffect(() => {
-    if (!open) {
-      setPos(null);
-      return;
-    }
+  // Under the button, above it when there's no room below, on the screen.
+  const place = useCallback(() => {
     const b = button.current?.getBoundingClientRect();
     const l = list.current;
     if (!b || !l) return;
@@ -68,16 +66,29 @@ export function MenuButton({ label, items, align = "end", size = "md", testId, a
     const below = b.bottom + 4;
     const top = below + h > window.innerHeight - 8 && b.top - 4 - h >= 8 ? b.top - 4 - h : below;
     setPos({ top, left });
-  }, [open, align]);
+  }, [align]);
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    place();
+  }, [open, place]);
   const placed = pos !== null;
   useEffect(() => {
     if (!open || !placed) return;
     entries()[0]?.focus({ preventScroll: true });
     const inside = (t: EventTarget | null) => !!t && (box.current?.contains(t as Node) || list.current?.contains(t as Node));
     const onDown = (e: MouseEvent) => { if (!inside(e.target)) setOpen(false); };
-    // The list stays where it was drawn: scrolling the page (or resizing)
-    // closes it rather than leaving it detached from its button.
-    const onMove = (e: Event) => { if (!inside(e.target)) setOpen(false); };
+    // Scrolling (or resizing) moves the list with its button, also a scroll
+    // still settling as it opens (a touch flick, a button scrolled into
+    // view); once the button has left the screen, the list closes.
+    const onMove = (e: Event) => {
+      if (inside(e.target)) return;
+      const b = button.current?.getBoundingClientRect();
+      if (!b || b.bottom < 0 || b.top > window.innerHeight) setOpen(false);
+      else place();
+    };
     document.addEventListener("mousedown", onDown);
     window.addEventListener("scroll", onMove, true);
     window.addEventListener("resize", onMove);
@@ -86,7 +97,7 @@ export function MenuButton({ label, items, align = "end", size = "md", testId, a
       window.removeEventListener("scroll", onMove, true);
       window.removeEventListener("resize", onMove);
     };
-  }, [open, placed]);
+  }, [open, placed, place]);
 
   const onKey = (e: React.KeyboardEvent) => {
     const all = entries();

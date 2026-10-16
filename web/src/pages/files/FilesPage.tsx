@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
+import { MenuButton } from "@/components/ui/Menu";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { cx } from "@/components/ui/cx";
 import { errorMessage, formatBytes, formatDateTime } from "@/lib/format";
@@ -244,20 +245,22 @@ function FileTable({ entries, canWrite, elevated, hostId, onOpen, onAction }: {
               )}
               <td className="whitespace-nowrap py-1.5 pr-3 text-muted">{formatDateTime(e.mtime)}</td>
               <td className="whitespace-nowrap py-1.5 text-right">
-                <span className="inline-flex gap-1">
+                <span className="inline-flex items-center gap-1">
                   {e.kind === "file" && (
                     <a className="inline-flex h-7 items-center rounded-ui px-2 text-xs text-accent hover:bg-surface-2"
                       href={`/api/v1/hosts/${hostId}/files/content?path=${encodeURIComponent(e.path)}&elevated=${elevated}`} download>
                       Download
                     </a>
                   )}
+                  {/* The rest in a menu, so every row's actions stay in sight (no
+                      sideways scrolling to reach Delete). */}
                   {canWrite && (
-                    <>
-                      <Button size="sm" variant="ghost" title="Rename or move" onClick={() => onAction({ kind: "rename", entry: e })}>Rename</Button>
-                      {e.kind !== "symlink" && <Button size="sm" variant="ghost" onClick={() => onAction({ kind: "chmod", entry: e })}>Permissions</Button>}
-                      <Button size="sm" variant="ghost" onClick={() => onAction({ kind: "chown", entry: e })}>Owner</Button>
-                      <Button size="sm" variant="ghost" className="text-danger" onClick={() => onAction({ kind: "delete", entry: e })}>Delete</Button>
-                    </>
+                    <MenuButton label={<span aria-hidden="true">⋯</span>} ariaLabel={`More for ${e.name}`} ghost size="sm" items={[
+                      { label: "Rename or move…", onSelect: () => onAction({ kind: "rename", entry: e }) },
+                      ...(e.kind !== "symlink" ? [{ label: "Permissions…", onSelect: () => onAction({ kind: "chmod", entry: e }) }] : []),
+                      { label: "Owner…", onSelect: () => onAction({ kind: "chown", entry: e }) },
+                      { label: "Delete…", danger: true, separated: true, onSelect: () => onAction({ kind: "delete", entry: e }) },
+                    ]} />
                   )}
                 </span>
               </td>
