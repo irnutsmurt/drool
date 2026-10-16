@@ -39,6 +39,8 @@ export function PackPage() {
   const members = all.filter((h) => g.host_ids.includes(h.id)).sort((a, b) => a.name.localeCompare(b.name));
   const write = can("hosts.write");
   const addButton = write && <Button variant="primary" onClick={() => setAdding(true)}>Add hosts</Button>;
+  // Like a host's header: the common runs in sight, reviewed before they start.
+  const run = can("jobs.execute") && g.host_ids.length > 0;
 
   return (
     <>
@@ -46,6 +48,8 @@ export function PackPage() {
         description={g.description || <span className="text-muted">A pack: hosts you run, schedule and configure together.</span>}
         actions={(
           <div className="flex flex-wrap gap-2">
+            {run && <Button onClick={() => navigate(`/jobs/new?groups=${g.id}`)}>Run on this pack</Button>}
+            {run && <Button onClick={() => navigate(`/jobs/new?groups=${g.id}&op=system_update`)}>Install updates</Button>}
             {addButton}
             {can("monitoring.read") && <GroupHealthButton groupId={g.id} name={g.name} />}
             {write && <Button variant="danger" onClick={() => setDeleting(true)}>Delete pack</Button>}
@@ -82,7 +86,6 @@ export function PackPage() {
 
       {g.host_ids.length > 0 && (
         <p className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
-          {can("jobs.execute") && <Link className={plainLink} to={`/jobs/new?groups=${g.id}`}>Run on this pack</Link>}
           {can("alerts.read") && <Link className={plainLink} to={`/alerts?group_id=${g.id}`}>Alerts</Link>}
           {can("network.read") && <Link className={plainLink} to={`/network?group=${g.id}`}>Network Activity</Link>}
           {can("desired.read") && <Link className={plainLink} to="/desired/baselines">Baselines</Link>}

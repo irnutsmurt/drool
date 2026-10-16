@@ -43,6 +43,7 @@ test("create an empty pack, then manage its hosts", async () => {
   await waitText(page, "No hosts assigned yet");
   const empty = await text(page);
   assert.ok(empty.includes(name) && empty.includes("Pack page test") && empty.includes("Hosts (0)"), empty);
+  assert.ok(!empty.includes("Install updates") && !empty.includes("Run on this pack"), "an empty pack offers no runs");
   assert.equal((await api(page, "GET", `/groups/${packID}`)).body.host_ids.length, 0);
   await shot(page, "pack-empty");
 
@@ -64,6 +65,13 @@ test("create an empty pack, then manage its hosts", async () => {
   await waitText(page, "Hosts (1)");
   assert.deepEqual(await tableHosts(), ["nas-01"]);
   await shot(page, "pack-members");
+
+  // Like a host's header: the common runs in sight, reviewed before they
+  // start (Scenario C: update a Pack).
+  await click(page, "main button", "Install updates");
+  await waitFor(page, async () => page.url().endsWith(`/jobs/new?groups=${packID}&op=system_update`), "New run for the pack");
+  await waitText(page, "Review: run on 1 host");
+  assert.match(await text(page), /System update/);
 
   // From the host's Management section: add it back.
   await page.goto(base + `/hosts/${id("pi-sd")}/management`, { waitUntil: "networkidle0" });
