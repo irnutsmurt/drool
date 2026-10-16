@@ -76,7 +76,16 @@ export function buildGroups(q: string, pages: PageResult[], records: RecordResul
       more: more.includes(kind) ? { to: morePath(kind, q), label: `More ${kindLabels[kind].toLowerCase()}…` } : undefined,
     }))
     .filter((g) => g.entries.length > 0);
-  const pagesFirst = !q.trim() || (pages[0]?.score ?? 0) >= 90;
-  const out = pagesFirst ? [pageGroup, ...recordGroups] : [...recordGroups, pageGroup];
+  // Pages lead when the words name one (or nothing is typed). Otherwise
+  // hosts lead; then the pages, when a title or alias has a word starting
+  // with the query ("update": Shepherd updates, New run…), before the
+  // services and runs that merely contain it; pages that only matched a
+  // description come last.
+  const top = pages[0]?.score ?? 0;
+  const hosts = recordGroups.filter((g) => g.id === "host");
+  const others = recordGroups.filter((g) => g.id !== "host");
+  const out = !q.trim() || top >= 90 ? [pageGroup, ...recordGroups]
+    : top >= 70 ? [...hosts, pageGroup, ...others]
+      : [...recordGroups, pageGroup];
   return out.filter((g) => g.entries.length > 0);
 }

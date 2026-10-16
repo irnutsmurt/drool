@@ -317,6 +317,12 @@ for (const theme of ["light", "dark"]) {
         });
         assert.ok(w[0] <= w[2] + 1 && w[1] <= w[2] + 1, `${p} scrolls sideways: ${w}`);
       }
+      // Dense lists stay bounded on a phone: a page of at most 25 compact
+      // connections, not a card per connection (it was 20,844 px tall).
+      await go(page, "/network");
+      await waitFor(page, async () => (await page.$$('[data-testid="flow-table"] li[data-flow-id]')).length > 0, "connections on a phone");
+      const len = await page.evaluate(() => [document.querySelector("main").scrollHeight, document.querySelectorAll('[data-testid="flow-table"] li[data-flow-id]').length]);
+      assert.ok(len[1] <= 25 && len[0] < 6000, `Network Activity on a phone (height, entries): ${len}`);
       // Dialogs fit and scroll inside.
       await go(page, `/hosts/${ids["nas-01"]}`);
       await click(page, "button", "Start maintenance");

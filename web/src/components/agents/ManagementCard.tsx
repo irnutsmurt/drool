@@ -318,6 +318,8 @@ function InstallDialog({ host, onClose }: { host: Host; onClose: () => void }) {
         </>
       }>
       <div className="space-y-4">
+        {/* First, in sight: why Install waits, until it doesn't. */}
+        {!install.isPending && !install.data?.ok && <HostBusyNotice busy={busy.data} action="Installing" />}
         <p className="text-sm">DROOL copies the agent over this host's pinned SSH connection, writes its capability ceiling
           (/etc/drool/agent.yaml), enrolls it with a single-use token, and starts the drool-agent service. The host then uses the
           agent, with SSH as fallback.</p>
@@ -329,7 +331,6 @@ function InstallDialog({ host, onClose }: { host: Host; onClose: () => void }) {
         <Field label="Also trust a release-signing key (optional)" hint="Only for agent builds you sign yourself (drool release keygen). Anyone with that key's private half can install code that runs as root on this host.">
           <Input className="font-mono text-xs" value={key} onChange={(e) => setKey(e.target.value)} placeholder="drool-release-ed25519 AAAA… my builds" />
         </Field>
-        {!install.isPending && !install.data?.ok && <HostBusyNotice busy={busy.data} action="Installing" />}
         {install.error && !(refused && blocked) && <Alert>{errorMessage(install.error)}{refused && " It is free again now: try again."}</Alert>}
         {install.data && (
           <>

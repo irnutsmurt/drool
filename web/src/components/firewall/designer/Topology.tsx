@@ -294,13 +294,35 @@ function TopologyInner(p: TopologyProps) {
     [p.doc, p.services, expanded, pinned, showAll, showMgmt, filter, p.hosts, p.management],
   );
   const policyNodes = useMemo(() => graph.nodes.filter((n) => configured.has(n.key)).map((n) => ({ id: n.key })), [graph.nodes, configured]);
+  // The view follows the canvas (the side panel coming or going changes
+  // its width) until someone pans, zooms or focuses it themselves; Fit
+  // hands it back.
+  const userMoved = useRef(false);
+  const canvas = useRef<HTMLDivElement>(null);
   const fitPolicy = useCallback((duration = 200) => {
+    userMoved.current = false;
     if (mode === "both" && policyNodes.length > 0) rf.fitView({ nodes: policyNodes, padding: 0.2, duration, maxZoom: 1.2 });
     else rf.fitView({ padding: 0.15, duration, maxZoom: 1.2 });
   }, [mode, policyNodes, rf]);
-  const fitAll = () => rf.fitView({ padding: 0.1, duration: 200 });
+  const fitAll = () => {
+    userMoved.current = false;
+    rf.fitView({ padding: 0.1, duration: 200 });
+  };
+  useEffect(() => {
+    const el = canvas.current;
+    if (!el) return;
+    let width = el.clientWidth;
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth === width) return;
+      width = el.clientWidth;
+      if (!userMoved.current) fitPolicy(0);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fitPolicy]);
   /** A box and what it is directly connected to. */
   const focusOn = (key: string) => {
+    userMoved.current = true;
     const near = new Set([key]);
     for (const e of graph.edges) {
       if (e.source === key) near.add(e.target);
@@ -311,6 +333,7 @@ function TopologyInner(p: TopologyProps) {
   const focusSelection = () => {
     const sel = p.selection;
     if (!sel) return;
+    userMoved.current = true;
     if (sel.kind === "node") focusOn(sel.key);
     else rf.fitView({ nodes: [{ id: sel.edge.source }, { id: sel.edge.target }], padding: 0.4, duration: 300, maxZoom: 1.4 });
   };
@@ -409,13 +432,14 @@ function TopologyInner(p: TopologyProps) {
           </div>
         )}
       </div>
-      <div className="relative min-h-0 flex-1" data-testid="topology-canvas">
+      <div ref={canvas} className="relative min-h-0 flex-1" data-testid="topology-canvas">
         <ReactFlow
           nodes={nodes} edges={flowEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} colorMode={resolved}
           onNodesChange={onNodesChange} onNodeDragStop={onNodeDragStop}
           onNodeClick={(_, n) => p.onSelect({ kind: "node", key: n.id })}
           onEdgeClick={(_, e) => p.onSelect({ kind: "edge", edge: (e.data as EdgeData).g })}
           onPaneClick={() => p.onSelect(null)}
+          onMoveStart={(e) => { if (e) userMoved.current = true; }}
           onConnect={(c: Connection) => {
             if (!p.canWrite || !c.source || !c.target || c.source === c.target) return;
             if (c.source === "controller" || c.target === "controller") return;

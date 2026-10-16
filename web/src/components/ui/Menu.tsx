@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import { ChevronDownIcon } from "./icons";
 import { cx } from "./cx";
@@ -23,7 +24,10 @@ export interface MenuItem {
  * the less frequent things a page offers, so the page header keeps one or
  * two visible actions. Keyboard: Enter/Space/↓ open it on the first item,
  * ↑/↓/Home/End move, Enter activates, Escape or Tab closes and focus
- * returns to the button. A click outside closes it. */
+ * returns to the button. A click outside, or scrolling, closes it. The open
+ * list is drawn above the page (a portal), so a table's scroll box can't
+ * cut it off: under its button, above it when there's no room below, and
+ * always on the screen. */
 export function MenuButton({ label, items, align = "end", size = "md", testId, ariaLabel, ghost }: {
   label: ReactNode;
   items: MenuItem[];
@@ -36,9 +40,9 @@ export function MenuButton({ label, items, align = "end", size = "md", testId, a
   ghost?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  // How far the menu moves sideways to stay on the screen (a button near
-  // a phone's edge, where neither side has room for it).
-  const [shift, setShift] = useState(0);
+  // Where the open list is drawn (fixed, in the viewport); null until it
+  // has been measured.
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -52,21 +56,37 @@ export function MenuButton({ label, items, align = "end", size = "md", testId, a
   };
   useLayoutEffect(() => {
     if (!open) {
-      setShift(0);
+      setPos(null);
       return;
     }
-    const r = list.current?.getBoundingClientRect();
-    if (!r) return;
-    if (r.left < 8) setShift(8 - r.left);
-    else if (r.right > window.innerWidth - 8) setShift(window.innerWidth - 8 - r.right);
-  }, [open]);
+    const b = button.current?.getBoundingClientRect();
+    const l = list.current;
+    if (!b || !l) return;
+    const w = l.offsetWidth;
+    const h = l.offsetHeight;
+    const left = Math.min(Math.max(8, align === "end" ? b.right - w : b.left), window.innerWidth - 8 - w);
+    const below = b.bottom + 4;
+    const top = below + h > window.innerHeight - 8 && b.top - 4 - h >= 8 ? b.top - 4 - h : below;
+    setPos({ top, left });
+  }, [open, align]);
+  const placed = pos !== null;
   useEffect(() => {
-    if (!open) return;
-    entries()[0]?.focus();
-    const onDown = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    if (!open || !placed) return;
+    entries()[0]?.focus({ preventScroll: true });
+    const inside = (t: EventTarget | null) => !!t && (box.current?.contains(t as Node) || list.current?.contains(t as Node));
+    const onDown = (e: MouseEvent) => { if (!inside(e.target)) setOpen(false); };
+    // The list stays where it was drawn: scrolling the page (or resizing)
+    // closes it rather than leaving it detached from its button.
+    const onMove = (e: Event) => { if (!inside(e.target)) setOpen(false); };
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
+    window.addEventListener("scroll", onMove, true);
+    window.addEventListener("resize", onMove);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("resize", onMove);
+    };
+  }, [open, placed]);
 
   const onKey = (e: React.KeyboardEvent) => {
     const all = entries();
@@ -83,7 +103,11 @@ export function MenuButton({ label, items, align = "end", size = "md", testId, a
       e.preventDefault();
       e.stopPropagation();
       close();
-    } else if (e.key === "Tab") close(false);
+    } else if (e.key === "Tab") {
+      // Back to the button, then the browser's Tab moves on from there.
+      setOpen(false);
+      button.current?.focus();
+    }
   };
 
   const itemClass = (x: MenuItem) => cx(
@@ -102,11 +126,10 @@ export function MenuButton({ label, items, align = "end", size = "md", testId, a
         {label}
         {!ghost && <ChevronDownIcon width={14} height={14} />}
       </button>
-      {open && (
+      {open && createPortal(
         <div ref={list} id={id} role="menu" aria-orientation="vertical" onKeyDown={onKey}
-          style={shift ? { transform: `translateX(${shift}px)` } : undefined}
-          className={cx("absolute top-full z-40 mt-1 w-64 max-w-[calc(100vw-1rem)] rounded-ui border border-line bg-surface p-1 shadow-lg",
-            align === "end" ? "right-0" : "left-0")}>
+          style={{ position: "fixed", top: pos?.top ?? 0, left: pos?.left ?? 0, visibility: pos ? "visible" : "hidden" }}
+          className="z-50 w-64 max-w-[calc(100vw-1rem)] rounded-ui border border-line bg-surface p-1 shadow-lg">
           {shown.map((x, i) => (
             <div key={i} role="none" className={cx(x.separated && i > 0 && "mt-1 border-t border-line pt-1", x.narrowOnly && "sm:hidden")}>
               {x.to && !x.disabled ? (
@@ -130,7 +153,8 @@ export function MenuButton({ label, items, align = "end", size = "md", testId, a
               )}
             </div>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

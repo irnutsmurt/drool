@@ -141,3 +141,31 @@ test("on a phone the sections are a selector and the header stays compact", asyn
     await phone.close();
   }
 });
+
+// Host busy (section 14): an action that needs the host to itself says what
+// is in the way, in sight, and comes back by itself when it's free. The
+// server still refuses a busy host (advisory only).
+test("a busy host says what holds it, and Install comes back by itself", async () => {
+  const id = ids["web-1"];
+  const run = await api(page, "POST", "/jobs", { name: "e2e busy hold", steps: [{ type: "command", command: "sleep 90" }], targets: { hosts: [id] } });
+  assert.equal(run.status, 201, JSON.stringify(run.body));
+  const buttons = () => page.$$eval('[data-testid="install-shepherd"] button', (bs) => bs.map((b) => [b.textContent.trim(), b.disabled]));
+  try {
+    await waitFor(page, async () => (await api(page, "GET", `/hosts/${id}/busy`)).body.busy, "the run holding web-1", 30000);
+    await go(page, `/hosts/${id}/management`);
+    await click(page, "main button", "Install Shepherd (DROOL agent)");
+    await page.waitForSelector('[data-testid="install-shepherd"] [data-testid="host-busy"]');
+    assert.match(await page.$eval('[data-testid="host-busy"]', (e) => e.innerText),
+      /The host is in use: The run “e2e busy hold”\. Installing becomes possible as soon as it has finished: this updates by itself\./);
+    assert.ok((await buttons()).some(([l, d]) => l === "Waiting for the host…" && d), JSON.stringify(await buttons()));
+    const inSight = await page.$eval('[data-testid="host-busy"]', (e) => { const r = e.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight; });
+    assert.ok(inSight, "the explanation is in sight when the dialog opens");
+    await shot(page, "host-busy-install");
+  } finally {
+    await api(page, "POST", `/jobs/${run.body.id}/cancel`);
+  }
+  await waitFor(page, async () => (await buttons()).some(([l, d]) => /^Install with the/.test(l) && !d), "Install offered again", 30000);
+  assert.equal(await page.$('[data-testid="host-busy"]'), null, "the notice went away");
+  await page.keyboard.press("Escape");
+  assert.deepEqual(page.errors, []);
+});
