@@ -57,11 +57,23 @@ function toInput(f: Form, origin: "rule" | "flow"): NetRuleInput {
   };
 }
 
+/** Say what recurring traffic is (the Classifications tab's dialog). */
+export function ClassifyDialog({ flow, rule, onClose }: { flow?: NetFlowDetail; rule?: NetRule; onClose: () => void }) {
+  return (
+    <Dialog title={rule ? "Edit classification" : "Classify traffic"} onClose={onClose}>
+      <ClassifyForm flow={flow} rule={rule} onDone={onClose} onCancel={onClose} />
+    </Dialog>
+  );
+}
+
 /** Say what recurring traffic is. From a connection, the form starts as
  * exactly that connection (a label for it alone); widening the hosts, the
  * port or the remote side classifies similar traffic too. Labels only:
- * nothing is enforced, no firewall rule comes from it. */
-export function ClassifyDialog({ flow, rule, onClose }: { flow?: NetFlowDetail; rule?: NetRule; onClose: () => void }) {
+ * nothing is enforced, no firewall rule comes from it. A form, for a dialog
+ * or a step of the connection's inspector. */
+export function ClassifyForm({ flow, rule, onDone, onCancel, cancelLabel = "Cancel" }: {
+  flow?: NetFlowDetail; rule?: NetRule; onDone: () => void; onCancel: () => void; cancelLabel?: string;
+}) {
   const qc = useQueryClient();
   const hosts = useHosts();
   const packs = useGroups();
@@ -79,13 +91,12 @@ export function ClassifyDialog({ flow, rule, onClose }: { flow?: NetFlowDetail; 
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: nk.all });
-      onClose();
+      onDone();
     },
   });
   const hostList = hosts.data?.items ?? [];
   const packList = packs.data?.items ?? [];
   return (
-    <Dialog title={rule ? "Edit classification" : "Classify traffic"} onClose={onClose}>
       <form className="space-y-3" data-testid="classify-form" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
         <Field label="Label" hint="What this traffic is, for example “NFS media storage” or “Backups to the NAS”.">
           <Input data-autofocus required maxLength={120} value={f.label} onChange={(e) => set({ label: e.target.value })} />
@@ -150,10 +161,9 @@ export function ClassifyDialog({ flow, rule, onClose }: { flow?: NetFlowDetail; 
         </p>
         {save.error && <Alert>{errorMessage(save.error)}</Alert>}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="ghost" onClick={onCancel}>{cancelLabel}</Button>
           <Button type="submit" variant="primary" disabled={save.isPending || !f.label.trim()}>Save classification</Button>
         </div>
       </form>
-    </Dialog>
   );
 }

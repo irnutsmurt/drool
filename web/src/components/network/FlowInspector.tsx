@@ -3,9 +3,9 @@ import { Link, useNavigate } from "react-router";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { Dialog } from "@/components/ui/Dialog";
+import { Inspector } from "@/components/ui/Inspector";
 import { errorMessage, formatDateTime } from "@/lib/format";
-import { ClassifyDialog } from "./ClassifyDialog";
+import { ClassifyForm } from "./ClassifyDialog";
 import { ClassBadge, CollectionBadge, DirectionLabel, PolicyBadge, ScopeBadge, classSource, ep, noLookup, policyText, when } from "./labels";
 import { useNetFlow, useNetRules, type NetEnrichState } from "./queries";
 
@@ -17,9 +17,12 @@ const enforcementText: Record<string, string> = {
   enforced: "Enforced",
 };
 
-/** One observed connection: who, where, what, and what the firewall
- * policy says about it. */
-export function FlowDialog({ id, onClose }: { id: number; onClose: () => void }) {
+/** One observed connection, inspected beside the list (Pattern A): who,
+ * where, what, and what the firewall policy says about it. Classifying it
+ * is a step in the same panel (Back returns here), never a dialog on a
+ * dialog; "Create policy from observed connection" opens a draft in the
+ * Firewall Designer (nothing is saved or applied there until reviewed). */
+export function FlowInspector({ id, onClose }: { id: number; onClose: () => void }) {
   const q = useNetFlow(id);
   const { can } = useAuth();
   const navigate = useNavigate();
@@ -31,8 +34,28 @@ export function FlowDialog({ id, onClose }: { id: number; onClose: () => void })
   const rules = useNetRules(canClassify && !!f?.classification.rule_id);
   const rule = rules.data?.items.find((r) => r.id === f?.classification.rule_id);
   const [classify, setClassify] = useState<"new" | "edit" | null>(null);
+  const title = classify === "edit" ? "Edit classification" : classify ? "Classify traffic" : "Observed connection";
+  const subtitle = f && <span className="font-mono text-xs">{f.host.name} {f.direction === "in" ? "←" : "→"} {f.peer_host?.name ?? f.remote_ip}:{f.port}/{f.protocol}</span>;
   return (
-    <Dialog title="Observed connection" onClose={onClose} wide>
+    <Inspector title={title} subtitle={subtitle} onClose={onClose} onBack={classify ? () => setClassify(null) : undefined} backLabel="Back to the connection" testId="flow-inspector"
+      footer={!classify && f && ((canClassify && f.classification.kind !== "drool") || (f.suggestion && can("firewall.read"))) ? (
+        <>
+          {canClassify && f.classification.kind !== "drool" && (
+            <>
+              {rule && <Button size="sm" onClick={() => setClassify("edit")}>Edit “{rule.label}”…</Button>}
+              <Button size="sm" variant={rule ? "ghost" : "secondary"} onClick={() => setClassify("new")}>{rule ? "Classify differently…" : "Classify…"}</Button>
+            </>
+          )}
+          {f.suggestion && can("firewall.read") && (
+            <Button size="sm" variant="primary" onClick={() => navigate(`/firewall?tab=designer&view=rules&suggest=${f.id}`)}>
+              Create policy from observed connection…
+            </Button>
+          )}
+        </>
+      ) : undefined}>
+      {classify && f ? (
+        <ClassifyForm flow={f} rule={classify === "edit" ? rule : undefined} onDone={() => setClassify(null)} onCancel={() => setClassify(null)} cancelLabel="Back" />
+      ) : (<>
       {q.error && <Alert>{errorMessage(q.error)}</Alert>}
       {!f ? <p className="text-sm text-muted">Loading…</p> : (
         <div className="space-y-4 text-sm" data-testid="flow-details">
@@ -66,12 +89,6 @@ export function FlowDialog({ id, onClose }: { id: number; onClose: () => void })
             <p className="flex flex-wrap items-center gap-2"><ClassBadge flow={f} /></p>
             <p className="mt-1">{f.classification.detail}</p>
             <p className="mt-1 text-xs text-muted">How DROOL knows: {classSource[f.classification.source] ?? f.classification.source}.</p>
-            {canClassify && f.classification.kind !== "drool" && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {rule && <Button size="sm" onClick={() => setClassify("edit")}>Edit “{rule.label}”…</Button>}
-                <Button size="sm" variant={rule ? "ghost" : "secondary"} onClick={() => setClassify("new")}>{rule ? "Classify differently…" : "Classify…"}</Button>
-              </div>
-            )}
           </section>
 
           <section className="rounded-ui border border-line p-3" aria-label="Firewall">
@@ -87,15 +104,10 @@ export function FlowDialog({ id, onClose }: { id: number; onClose: () => void })
             </p>
             {f.policy.notes.length > 0 && <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs">{f.policy.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
             {f.suggestion && (
-              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-                <span className="text-xs text-muted">Suggested: {f.suggestion.title}</span>
-                {can("firewall.read") && (
-                  <Button size="sm" variant="primary" onClick={() => navigate(`/firewall?tab=designer&view=rules&suggest=${f.id}`)}>
-                    Create policy from observed connection…
-                  </Button>
-                )}
-                <span className="w-full text-[11px] text-muted">Opens a draft in the Firewall Designer. Nothing is saved or applied until you review it, save it, and apply it.</span>
-              </div>
+              <p className="mt-2 border-t border-line pt-2 text-xs text-muted">
+                Suggested policy: {f.suggestion.title}. “Create policy from observed connection” opens a draft in the Firewall Designer: nothing is saved
+                or applied until you review it, save it, and apply it.
+              </p>
             )}
           </section>
 
@@ -113,11 +125,10 @@ export function FlowDialog({ id, onClose }: { id: number; onClose: () => void })
               </ul>
             </section>
           )}
-          <div className="flex justify-end"><Button onClick={onClose}>Close</Button></div>
-          {classify && <ClassifyDialog flow={f} rule={classify === "edit" ? rule : undefined} onClose={() => setClassify(null)} />}
         </div>
       )}
-    </Dialog>
+      </>)}
+    </Inspector>
   );
 }
 

@@ -222,6 +222,14 @@ func TestNetworkClassification(t *testing.T) {
 	if f := all["web1 in tcp 192.168.1.25:22"]; f.Classification.RuleID != laptop.ID || !strings.Contains(f.Classification.Detail, "from this connection") {
 		t.Errorf("provenance: %+v", f.Classification)
 	}
+	// The detail says what the classification matches, in words (it once
+	// said "()": the rules were described only when listed).
+	if d := all["web1 out tcp 10.1.20.40:2049"].Classification.Detail; !strings.Contains(d, "(any host → pack storage, TCP 2049)") || strings.Contains(d, "()") {
+		t.Errorf("rule detail: %q", d)
+	}
+	if d := all["web1 in tcp 192.168.1.25:22"].Classification.Detail; !strings.Contains(d, "(web1 ← 192.168.1.25, TCP 22)") {
+		t.Errorf("connection label detail: %q", d)
+	}
 	if t.Failed() {
 		t.FailNow()
 	}

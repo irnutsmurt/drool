@@ -197,9 +197,15 @@ func (v *view) newClassifier(ctx context.Context) *classifier {
 		}
 		rows.Close()
 	}
-	// The user's rules, most specific first.
+	// The user's rules, most specific first, each described in words for
+	// the connections it labels (without the names, the detail said "()").
 	rules, _ := v.s.listRules(ctx)
+	var names map[string]string
+	if len(rules) > 0 {
+		names = v.s.names(ctx)
+	}
 	for _, r := range rules {
+		r.Described = describe(r, names)
 		m := ruleMatch{r: r, score: specificity(r)}
 		if r.RemoteCIDR != "" {
 			if p, err := parsePeer(r.RemoteCIDR); err == nil {

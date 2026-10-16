@@ -87,7 +87,8 @@ test("fleet Network activity: summary, server-side filters, paging and details f
   assert.match(page.url(), /policy=unclassified/);
   await click(page, "button", "Clear");
 
-  // External connections to one country, then one network.
+  // External connections to one country, then one network (under More filters).
+  await click(page, "button", "More filters");
   await select("Country", "US");
   await waitFor(page, async () => { const r = await rows(); return r.length > 0 && r.every((x) => x.includes("(US)")); }, "US rows");
   await select("Network (ASN)", "15169");
@@ -222,7 +223,8 @@ test("classifying traffic: DROOL's own by evidence, a label for one connection, 
   await page.evaluate(() => document.querySelector('[data-testid="flow-table"] tbody tr button')?.click());
   await waitFor(page, async () => !!(await page.$('[data-testid="flow-classification"]')), "what it is");
   assert.match(await page.$eval('[data-testid="flow-classification"]', (e) => e.innerText), /Nothing says what this is yet/);
-  await click(page, '[data-testid="flow-classification"] button', "Classify");
+  // Classify is in the inspector's footer, in sight; the form replaces the details (no dialog on top).
+  await click(page, '[data-testid="flow-inspector"] button', "Classify…");
   await waitFor(page, async () => !!(await page.$('[data-testid="classify-form"]')), "classify form");
   assert.match(await page.$eval('[data-testid="classify-scope"]', (e) => e.innerText), /this connection only/);
   assert.match(await page.$eval('[data-testid="classify-scope"]', (e) => e.innerText), /no firewall rule is created/);
@@ -253,6 +255,7 @@ test("classifying traffic: DROOL's own by evidence, a label for one connection, 
   await waitFor(page, async () => { const r = await rows(); return r.length > 1 && r.every((x) => x.includes("Backup provider")) && r.some((x) => x.includes("95.216.1.")); }, "approved rows");
   // DROOL's own traffic is its own filter.
   await page.goto(base + "/network", { waitUntil: "networkidle0" });
+  await click(page, "button", "More filters");
   await click(page, 'button[aria-pressed]', "DROOL's own traffic");
   await waitFor(page, async () => /class=drool/.test(page.url()), "drool filter");
 

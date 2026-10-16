@@ -40,8 +40,22 @@ export function RemoveHostDialog({ hostId, hostName, onRemoved, onClose }: { hos
   const hasParts = (p?.parts.length ?? 0) > 0;
   const stepWord: Record<string, string> = { shepherd: "Shepherd", account: "SSH account" };
   const changeWord: Record<string, string> = { schedule: "Schedule", firewall_policy: "Firewall policy" };
+  const footer = (
+    <>
+      {res?.host_deleted ? <Button variant="primary" onClick={onRemoved} data-autofocus>Done</Button> : <Button onClick={onClose}>{res ? "Close" : "Cancel"}</Button>}
+      {p && !p.blocked && !res && (
+        <Button variant="danger" disabled={busy || (picked === "cleanup" && !p.can_clean_up)}
+          onClick={() => (picked === "cleanup" ? cleanup.mutate() : forget.mutate())}>
+          {busy ? "Removing…" : picked === "cleanup" ? "Clean up and remove" : "Remove from DROOL"}
+        </Button>
+      )}
+      {res && !res.host_deleted && (
+        <Button variant="danger" disabled={busy} onClick={() => forget.mutate()}>Remove from DROOL only</Button>
+      )}
+    </>
+  );
   return (
-    <Dialog title={`Remove ${hostName} from DROOL?`} onClose={res?.host_deleted ? onRemoved : onClose}>
+    <Dialog title={`Remove ${hostName} from DROOL?`} onClose={res?.host_deleted ? onRemoved : onClose} footer={footer}>
       <div className="space-y-4 text-sm" data-testid="remove-host">
         {plan.isPending && <p className="text-muted">Checking what DROOL installed on {hostName}…</p>}
         {plan.error && <Alert>{errorMessage(plan.error)}</Alert>}
@@ -106,18 +120,6 @@ export function RemoveHostDialog({ hostId, hostName, onRemoved, onClose }: { hos
             </ul>
           </div>
         )}
-        <div className="flex flex-wrap justify-end gap-2">
-          {res?.host_deleted ? <Button variant="primary" onClick={onRemoved} data-autofocus>Done</Button> : <Button onClick={onClose}>{res ? "Close" : "Cancel"}</Button>}
-          {p && !p.blocked && !res && (
-            <Button variant="danger" disabled={busy || (picked === "cleanup" && !p.can_clean_up)}
-              onClick={() => (picked === "cleanup" ? cleanup.mutate() : forget.mutate())}>
-              {busy ? "Removing…" : picked === "cleanup" ? "Clean up and remove" : "Remove from DROOL"}
-            </Button>
-          )}
-          {res && !res.host_deleted && (
-            <Button variant="danger" disabled={busy} onClick={() => forget.mutate()}>Remove from DROOL only</Button>
-          )}
-        </div>
       </div>
     </Dialog>
   );

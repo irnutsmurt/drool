@@ -2362,6 +2362,25 @@ paths:
         '403': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
         '409': { $ref: '#/components/responses/Problem' }
+  /hosts/{id}/busy:
+    get:
+      operationId: getHostBusy
+      tags: [hosts]
+      summary: What is using a host right now
+      description: |
+        The holders of the host's lock, in words: a run (with its id), an inventory refresh, a routine status check, a
+        file operation, a Shepherd install or uninstall, the host's removal. Actions that need the host to themselves are
+        refused with 409 host_busy while anything holds it; this says what is in the way. Advisory only: every action
+        takes the lock again when it starts.
+      parameters:
+        - $ref: '#/components/parameters/HostId'
+      responses:
+        '200':
+          description: Whether the host is busy, and with what.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HostBusy' }
+        '404': { $ref: '#/components/responses/Problem' }
   /hosts/{id}/removal/plan:
     post:
       operationId: planHostRemoval
@@ -4699,6 +4718,20 @@ components:
         last_seen_at: { type: string, format: date-time }
         decided_at: { type: [string, 'null'], format: date-time }
 
+    HostBusy:
+      type: object
+      required: [busy, holders]
+      properties:
+        busy: { type: boolean }
+        holders:
+          type: array
+          items:
+            type: object
+            required: [kind, label]
+            properties:
+              kind: { type: string, enum: [run, refresh, status_check, preview, dry_run, files, removal, shepherd_install, shepherd_uninstall, other] }
+              label: { type: string }
+              job_id: { type: string, description: The run holding the host. }
     SearchResults:
       type: object
       required: [query, results, more]

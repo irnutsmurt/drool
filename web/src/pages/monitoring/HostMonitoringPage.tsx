@@ -68,11 +68,12 @@ export function HostMonitoringPage() {
       {can("alerts.read") && <HostMaintenanceBanner hostId={id} />}
       {mon.error && <Alert>{errorMessage(mon.error)}</Alert>}
       {o?.stale && <div className="mb-4"><Alert tone="warn">No monitoring data since {fmtTime(o.updated_at)}. The host may be unreachable; values are from before.</Alert></div>}
-      <div role="tablist" aria-label="Monitoring" className="mb-4 flex flex-wrap gap-1 border-b border-line">
+      {/* The section's own views: pills, a level below the host's sections. */}
+      <div role="tablist" aria-label="Monitoring" className="mb-4 flex flex-wrap gap-1">
         {tabs.map((t, i) => (
           <button key={t.key} id={`montab-${t.key}`} role="tab" type="button" aria-selected={tab === t.key} aria-controls="monpanel"
             tabIndex={tab === t.key ? 0 : -1} onKeyDown={(e) => onKey(e, i)} onClick={() => setTab(t.key)}
-            className={cx("-mb-px border-b-2 px-3 py-2 text-sm", tab === t.key ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg")}>
+            className={cx("rounded-ui border px-3 py-1 text-sm", tab === t.key ? "border-accent bg-accent/15 font-medium text-fg" : "border-line text-muted hover:bg-surface-2 hover:text-fg")}>
             {t.label}
           </button>
         ))}

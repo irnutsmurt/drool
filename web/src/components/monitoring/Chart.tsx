@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { fmtValue, seriesLabel, seriesUnit } from "./format";
 
 export type ChartSeries = { key: string; points: number[][] };
@@ -25,9 +25,26 @@ function Marker({ kind, x, y, color }: { kind: string; x: number; y: number; col
   return <circle cx={x} cy={y} r={3} fill={color} />;
 }
 
-const W = 640;
-const H = 180;
-const PAD = { l: 76, r: 12, t: 10, b: 24 };
+/** The plot's height, and the margins for the axis labels. The width is
+ * the space the chart is given (measured), so labels keep their size: a
+ * fixed drawing scaled down to a narrow column shrank them to unreadable. */
+const H = 190;
+const PAD = { l: 64, r: 12, t: 10, b: 26 };
+
+/** The width of an element, kept current as it changes size. */
+function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
+  const ref = useRef<T>(null);
+  const [w, setW] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setW(el.clientWidth);
+    const ro = new ResizeObserver(([e]) => setW(Math.round(e!.contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, w];
+}
 
 function timeLabel(t: number, span: number) {
   const d = new Date(t * 1000);
@@ -50,6 +67,10 @@ export function Chart({ title, series, from, to, step, gaps = [], maxPct = true 
   const [table, setTable] = useState(false);
   const [hover, setHover] = useState<number | null>(null);
   const svg = useRef<SVGSVGElement>(null);
+  const [box, measured] = useWidth<HTMLDivElement>();
+  // Until measured (first paint), a typical width; never narrower than a phone's column.
+  const W = Math.max(260, measured || 600);
+  const narrowPlot = W < 420;
   const shown = series.slice(0, 4);
   const unit = seriesUnit(shown[0]?.key ?? "cpu");
   const top = useMemo(() => {
@@ -72,8 +93,10 @@ export function Chart({ title, series, from, to, step, gaps = [], maxPct = true 
     return d;
   };
   const empty = shown.every((s) => s.points.length === 0);
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * top);
-  const times = [0, 1, 2, 3, 4].map((i) => from + ((to - from) * i) / 4);
+  const ticks = (narrowPlot ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1]).map((f) => f * top);
+  // As many time labels as fit (about one per 120 px).
+  const nTimes = Math.max(2, Math.min(6, Math.floor((W - PAD.l - PAD.r) / 120) + 1));
+  const times = Array.from({ length: nTimes }, (_, i) => from + ((to - from) * i) / (nTimes - 1));
   const nearest = (s: ChartSeries, t: number) => {
     let best: number[] | undefined;
     for (const p of s.points) if (!best || Math.abs(p[0]! - t) < Math.abs(best[0]! - t)) best = p;
@@ -132,8 +155,8 @@ export function Chart({ title, series, from, to, step, gaps = [], maxPct = true 
           </table>
         </div>
       ) : (
-        <div className="relative">
-          <svg ref={svg} viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={`${title} chart; use "Show as table" for the values`}
+        <div className="relative" ref={box}>
+          <svg ref={svg} width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block max-w-full" role="img" aria-label={`${title} chart; use "Show as table" for the values`}
             onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
             <defs>
               <pattern id={`${id}-gap`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -143,11 +166,11 @@ export function Chart({ title, series, from, to, step, gaps = [], maxPct = true 
             {ticks.map((v) => (
               <g key={v}>
                 <line x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)} stroke="var(--ui-chart-grid)" />
-                <text x={PAD.l - 6} y={y(v) + 3} textAnchor="end" fontSize="10" fill="var(--ui-muted)">{fmtValue(unit, v)}</text>
+                <text x={PAD.l - 6} y={y(v) + 4} textAnchor="end" fontSize="11" fill="var(--ui-muted)">{fmtValue(unit, v)}</text>
               </g>
             ))}
             {times.map((t, i) => (
-              <text key={t} x={x(t)} y={H - 6} textAnchor={i === 0 ? "start" : i === times.length - 1 ? "end" : "middle"} fontSize="10" fill="var(--ui-muted)">{timeLabel(t, to - from)}</text>
+              <text key={t} x={x(t)} y={H - 7} textAnchor={i === 0 ? "start" : i === times.length - 1 ? "end" : "middle"} fontSize="11" fill="var(--ui-muted)">{timeLabel(t, to - from)}</text>
             ))}
             {gaps.filter((g) => g.to > from && g.from < to).map((g) => (
               <g key={`${g.from}-${g.to}`}>

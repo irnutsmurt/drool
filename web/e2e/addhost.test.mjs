@@ -111,7 +111,7 @@ test("removing that host cleans up DROOL's account on it", { skip: !spec && "nee
     "Clean up DROOL access and remove the host (recommended)");
   await shot(page, "remove-host-plan");
   await sleep(3500); // past the test controller's re-authentication window
-  await click(page, '[data-testid="remove-host"] button', "Clean up and remove");
+  await click(page, '[role="dialog"] button', "Clean up and remove");
   await page.waitForSelector('[data-testid="reauth-dialog"]');
   await fill(page, "Password", adminPassword);
   await click(page, '[data-testid="reauth-dialog"] button', "Confirm");
@@ -121,7 +121,7 @@ test("removing that host cleans up DROOL's account on it", { skip: !spec && "nee
   assert.match(done, /Cleanup initiated/);
   assert.match(done, /can't verify the final state through that account/);
   await shot(page, "remove-host-done");
-  await click(page, '[data-testid="remove-host"] button', "Done");
+  await click(page, '[role="dialog"] button', "Done");
   await waitFor(page, async () => new URL(page.url()).pathname === "/hosts", "back on the host list");
   assert.ok(!(await text(page)).includes("acct-browser"), "the host is still listed");
   const after = (await api(page, "GET", `/schedules/${sch.body.id}`)).body;

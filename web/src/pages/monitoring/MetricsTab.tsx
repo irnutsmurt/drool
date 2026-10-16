@@ -16,7 +16,11 @@ const ranges = [
 ];
 
 /** One request, several charts (series split by unit, four per chart). */
-function ChartGroup({ id, range, title, selectors, max = 8 }: { id: string; range: string; title: (key: string, i: number) => string; selectors: string[]; max?: number }) {
+function ChartGroup({ id, range, title, selectors, max = 8, columns = 2 }: {
+  id: string; range: string; title: (key: string, i: number) => string; selectors: string[]; max?: number;
+  /** Side by side on wide screens: 1 when the group sits in a column already. */
+  columns?: 1 | 2;
+}) {
   const h = useHistory(id, range, selectors);
   if (!h.data) return <p className="text-sm text-muted">Loading…</p>;
   // Selector order, not alphabetical (load1, load5, load15).
@@ -36,7 +40,7 @@ function ChartGroup({ id, range, title, selectors, max = 8 }: { id: string; rang
     return <p className="text-sm text-muted">No data for this range yet.</p>;
   }
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className={cx("grid gap-6", columns === 2 && "lg:grid-cols-2")}>
       {groups.slice(0, max).map((g, i) => (
         <Chart key={g.keys.join()} title={title(g.keys[0]!, i)} from={h.data.from} to={h.data.to} step={h.data.step_s} gaps={h.data.gaps}
           series={g.keys.map((k) => series.find((s) => s.key === k)!)} />
@@ -64,9 +68,11 @@ export function MetricsTab({ id, o, compact }: { id: string; o: MonHostOverview;
         </span>
       </div>
       <Card title="CPU and memory">
+        {/* Two columns of one chart each — not a two-column grid inside
+            each column, which left every chart a quarter of the width. */}
         <div className="grid gap-6 lg:grid-cols-2">
-          <ChartGroup id={id} range={range} selectors={["cpu", "cpu.iowait"]} title={() => "CPU"} max={1} />
-          <ChartGroup id={id} range={range} selectors={["mem", "swap"]} title={() => "Memory and swap"} max={1} />
+          <ChartGroup id={id} range={range} selectors={["cpu", "cpu.iowait"]} title={() => "CPU"} max={1} columns={1} />
+          <ChartGroup id={id} range={range} selectors={["mem", "swap"]} title={() => "Memory and swap"} max={1} columns={1} />
         </div>
         {!compact && st && (
           <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">

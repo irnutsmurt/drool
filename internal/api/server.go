@@ -191,6 +191,7 @@ func (s *Server) routes() []route {
 		{method: "GET", path: APIPrefix + "/hosts", auth: authed, perm: auth.PermHostsRead, h: s.handleListHosts},
 		{method: "POST", path: APIPrefix + "/hosts", auth: authed, perm: auth.PermHostsWrite, h: s.handleCreateHost},
 		{method: "GET", path: APIPrefix + "/hosts/{id}", auth: authed, perm: auth.PermHostsRead, h: s.handleGetHost},
+		{method: "GET", path: APIPrefix + "/hosts/{id}/busy", auth: authed, perm: auth.PermHostsRead, h: s.handleHostBusy},
 		{method: "PATCH", path: APIPrefix + "/hosts/{id}", auth: authed, perm: auth.PermHostsWrite, h: s.handleUpdateHost},
 		{method: "DELETE", path: APIPrefix + "/hosts/{id}", auth: authed, perm: auth.PermHostsWrite, h: s.handleDeleteHost},
 		{method: "POST", path: APIPrefix + "/hosts/{id}/removal/plan", auth: authed, perm: auth.PermHostsWrite, h: s.handlePlanRemoval},

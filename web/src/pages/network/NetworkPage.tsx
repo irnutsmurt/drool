@@ -72,7 +72,7 @@ function Activity() {
     <div className="space-y-4">
       {s && <EnrichmentNote state={s.enrichment_state} />}
       {s && (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" data-testid="network-summary">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" data-testid="network-summary">
           <Stat label="Connections (flows)" value={s.counts.flows} detail={`${s.counts.inbound} inbound · ${s.counts.outbound} outbound`} />
           <Stat label="External" value={s.counts.external} detail={`${s.counts.new_external_24h} new destination(s) in the last 24 hours`}
             onClick={() => setFilter({ new: "host", since: "24h", direction: "out" })} action="Show new destinations" />
@@ -106,11 +106,12 @@ function Stat({ label, value, detail, tone, onClick, action }: {
   label: string; value: number; detail: string; tone?: "warn" | "danger"; onClick?: () => void; action?: string;
 }) {
   return (
-    <div className="rounded-ui border border-line bg-surface p-3">
-      <div className="text-xs text-muted">{label}</div>
-      <div className={cx("text-2xl font-semibold tabular-nums", tone === "warn" && "text-warn", tone === "danger" && "text-danger")}>{value.toLocaleString()}</div>
-      <div className="text-xs text-muted">{detail}</div>
-      {onClick && value > 0 && <button type="button" className="mt-1 text-xs text-accent underline" onClick={onClick}>{action}</button>}
+    <div className="rounded-ui border border-line bg-surface px-3 py-2">
+      <div className="flex items-baseline gap-2">
+        <span className={cx("text-xl font-semibold tabular-nums", tone === "warn" && "text-warn", tone === "danger" && "text-danger")}>{value.toLocaleString()}</span>
+        <span className="text-sm">{label}</span>
+      </div>
+      <div className="text-xs text-muted">{detail}{onClick && value > 0 && <> · <button type="button" className="text-accent underline" onClick={onClick}>{action}</button></>}</div>
     </div>
   );
 }

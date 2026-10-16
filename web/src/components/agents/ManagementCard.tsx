@@ -14,6 +14,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
 import { errorMessage, formatAgo, formatDateTime } from "@/lib/format";
+import { HostBusyNotice, useHostBusy } from "@/components/hosts/HostBusy";
 import { CapsList, capsReported } from "./CapsList";
 import { ManagementBadge, stateLabels } from "./ManagementBadge";
 import { PresetPicker } from "./PresetPicker";
@@ -298,8 +299,24 @@ function InstallDialog({ host, onClose }: { host: Host; onClose: () => void }) {
   const install = useMutation({
     mutationFn: () => unwrap(api.POST("/hosts/{id}/agent/install", { params: { path: { id: host.id } }, body: { preset, release_key: key.trim() || undefined } })),
   });
+  // Installing needs the host to itself: say what is in the way (a run,
+  // an inventory refresh right after the host was set up…) and offer it
+  // again once that has finished. The server still refuses if it is busy.
+  const busy = useHostBusy(host.id, !install.isPending && !install.data?.ok);
+  const blocked = !!busy.data?.busy;
+  const refused = install.error instanceof ApiError && install.error.problem?.code === "host_busy";
   return (
-    <Dialog title={`Install a Shepherd (DROOL agent) on ${host.name}`} onClose={onClose} wide>
+    <Dialog title={`Install a Shepherd (DROOL agent) on ${host.name}`} onClose={onClose} wide testId="install-shepherd"
+      footer={
+        <>
+          <Button onClick={onClose}>{install.data?.ok ? "Done" : "Cancel"}</Button>
+          {!install.data?.ok && (
+            <Button variant="primary" disabled={install.isPending || blocked} onClick={() => install.mutate()}>
+              {install.isPending ? "Installing… (up to a few minutes)" : blocked ? "Waiting for the host…" : `Install with the ${preset} preset`}
+            </Button>
+          )}
+        </>
+      }>
       <div className="space-y-4">
         <p className="text-sm">DROOL copies the agent over this host's pinned SSH connection, writes its capability ceiling
           (/etc/drool/agent.yaml), enrolls it with a single-use token, and starts the drool-agent service. The host then uses the
@@ -312,21 +329,14 @@ function InstallDialog({ host, onClose }: { host: Host; onClose: () => void }) {
         <Field label="Also trust a release-signing key (optional)" hint="Only for agent builds you sign yourself (drool release keygen). Anyone with that key's private half can install code that runs as root on this host.">
           <Input className="font-mono text-xs" value={key} onChange={(e) => setKey(e.target.value)} placeholder="drool-release-ed25519 AAAA… my builds" />
         </Field>
-        {install.error && <Alert>{errorMessage(install.error)}</Alert>}
+        {!install.isPending && !install.data?.ok && <HostBusyNotice busy={busy.data} action="Installing" />}
+        {install.error && !(refused && blocked) && <Alert>{errorMessage(install.error)}{refused && " It is free again now: try again."}</Alert>}
         {install.data && (
           <>
             <Alert tone={install.data.ok ? "ok" : "danger"}>{install.data.ok ? "The agent is installed and connected." : install.data.error}</Alert>
             <pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded-ui bg-surface-2 p-2 font-mono text-xs">{install.data.output}</pre>
           </>
         )}
-        <div className="flex justify-end gap-2">
-          <Button onClick={onClose}>{install.data?.ok ? "Done" : "Cancel"}</Button>
-          {!install.data?.ok && (
-            <Button variant="primary" disabled={install.isPending} onClick={() => install.mutate()}>
-              {install.isPending ? "Installing… (up to a few minutes)" : `Install with the ${preset} preset`}
-            </Button>
-          )}
-        </div>
       </div>
     </Dialog>
   );
@@ -412,8 +422,24 @@ function UninstallDialog({ host, onClose }: { host: Host; onClose: () => void })
     refused: "Refused by the Shepherd", forgotten: "Forgotten in DROOL", nothing: "Nothing to remove",
   };
   const self = p?.method === "shepherd";
+  const footer = (
+    <>
+      <Button onClick={onClose}>{res ? "Done" : "Cancel"}</Button>
+      {!res && p?.can_uninstall && (
+        <Button variant="danger" disabled={run.isPending} onClick={() => run.mutate(undefined)}>
+          {run.isPending ? (self ? "Removing… (up to a minute)" : "Uninstalling… (up to a minute)") : "Uninstall Shepherd"}
+        </Button>
+      )}
+      {!res && p && !p.can_uninstall && p.refusal_code === "no_path" && p.identity && p.identity.status !== "revoked" && (
+        <Button variant="danger" disabled={run.isPending} onClick={() => run.mutate("forget")}>Forget the Shepherd</Button>
+      )}
+      {res && (res.outcome === "partial" || res.outcome === "unknown") && (
+        <Button variant="danger" disabled={run.isPending} onClick={() => { run.reset(); void plan.refetch(); }}>Check again</Button>
+      )}
+    </>
+  );
   return (
-    <Dialog title={`Uninstall the Shepherd from ${host.name}?`} onClose={onClose} wide>
+    <Dialog title={`Uninstall the Shepherd from ${host.name}?`} onClose={onClose} wide footer={footer}>
       <div className="space-y-4 text-sm" data-testid="uninstall-shepherd">
         {plan.isPending && <p className="text-muted">Checking how DROOL can reach the Shepherd on {host.name}…</p>}
         {plan.error && <Alert>{errorMessage(plan.error)}</Alert>}
@@ -473,20 +499,6 @@ function UninstallDialog({ host, onClose }: { host: Host; onClose: () => void })
             )}
           </>
         )}
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button onClick={onClose}>{res ? "Done" : "Cancel"}</Button>
-          {!res && p?.can_uninstall && (
-            <Button variant="danger" disabled={run.isPending} onClick={() => run.mutate(undefined)}>
-              {run.isPending ? (self ? "Removing… (up to a minute)" : "Uninstalling… (up to a minute)") : "Uninstall Shepherd"}
-            </Button>
-          )}
-          {!res && p && !p.can_uninstall && p.refusal_code === "no_path" && p.identity && p.identity.status !== "revoked" && (
-            <Button variant="danger" disabled={run.isPending} onClick={() => run.mutate("forget")}>Forget the Shepherd</Button>
-          )}
-          {res && (res.outcome === "partial" || res.outcome === "unknown") && (
-            <Button variant="danger" disabled={run.isPending} onClick={() => { run.reset(); void plan.refetch(); }}>Check again</Button>
-          )}
-        </div>
       </div>
     </Dialog>
   );

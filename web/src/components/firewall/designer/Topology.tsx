@@ -170,8 +170,11 @@ function TopologyInner(p: TopologyProps) {
   const [obsPeriod, setObsPeriod] = useState("7d");
   const [obsScope, setObsScope] = useState<"" | "internal" | "external">("");
   // Few external networks by default (the rest fold into "Other external
-  // networks"): a readable picture first, more on request.
-  const [obsMax, setObsMax] = useState(8);
+  // networks"): a readable picture first, more on request. Next to the
+  // policy, fewer still: the policy is what is being read there.
+  const [obsMaxChosen, setObsMax] = useState<number>();
+  const obsMax = obsMaxChosen ?? (mode === "both" ? 5 : 8);
+  const [options, setOptions] = useState(false);
   const obsQ = useNetTopology({ expand: obsExpand, policy: obsStatus || undefined, last_seen_after: obsPeriod || undefined, scope: obsScope || undefined, max_external: obsMax },
     mode !== "configured");
   const observed = obsQ.data as Observed | undefined;
@@ -280,20 +283,51 @@ function TopologyInner(p: TopologyProps) {
     saveTimer.current = setTimeout(() => p.saveLayout({ ...p.layout, nodes: pos }), 300);
   }, [p]);
 
+  // What "Fit" frames: with observed connections next to the policy, the
+  // policy's own boxes (observed networks can be many, and fitting them
+  // all made the policy unreadably small); otherwise everything.
+  // The policy's own boxes: what the configured view shows (boxes added
+  // only because traffic was observed don't count).
+  const configured = useMemo(
+    () => new Set(toGraph(p.doc, allServices(p.doc, p.services), { mode: "configured", expanded, pinned, showAllHosts: showAll, showManagement: showMgmt, filter, hosts: p.hosts }, p.management).nodes.map((n) => n.key)),
+    [p.doc, p.services, expanded, pinned, showAll, showMgmt, filter, p.hosts, p.management],
+  );
+  const policyNodes = useMemo(() => graph.nodes.filter((n) => configured.has(n.key)).map((n) => ({ id: n.key })), [graph.nodes, configured]);
+  const fitPolicy = useCallback((duration = 200) => {
+    if (mode === "both" && policyNodes.length > 0) rf.fitView({ nodes: policyNodes, padding: 0.2, duration, maxZoom: 1.2 });
+    else rf.fitView({ padding: 0.15, duration, maxZoom: 1.2 });
+  }, [mode, policyNodes, rf]);
+  const fitAll = () => rf.fitView({ padding: 0.1, duration: 200 });
+  /** A box and what it is directly connected to. */
+  const focusOn = (key: string) => {
+    const near = new Set([key]);
+    for (const e of graph.edges) {
+      if (e.source === key) near.add(e.target);
+      if (e.target === key) near.add(e.source);
+    }
+    rf.fitView({ nodes: [...near].map((id) => ({ id })), padding: 0.3, duration: 300, maxZoom: 1.4 });
+  };
+  const focusSelection = () => {
+    const sel = p.selection;
+    if (!sel) return;
+    if (sel.kind === "node") focusOn(sel.key);
+    else rf.fitView({ nodes: [{ id: sel.edge.source }, { id: sel.edge.target }], padding: 0.4, duration: 300, maxZoom: 1.4 });
+  };
+
   const relayout = () => {
     const auto = autoLayout(graph.nodes, graph.edges);
     shown.current = {};
     p.saveLayout({ ...p.layout, nodes: auto });
-    setTimeout(() => rf.fitView({ padding: 0.15 }), 50);
+    setTimeout(() => fitPolicy(0), 50);
   };
 
   // Boxes came or went (the controller appears with the first check, a
-  // filter changed, ...): keep everything in view.
+  // filter changed, the view switched): frame what is being read.
   const nodeCount = graph.nodes.length;
   useEffect(() => {
-    const t = setTimeout(() => rf.fitView({ padding: 0.15, duration: 200 }), 150);
+    const t = setTimeout(() => fitPolicy(), 150);
     return () => clearTimeout(t);
-  }, [nodeCount, rf]);
+  }, [nodeCount, mode, fitPolicy]);
 
   useEffect(() => {
     if (p.focusNodes?.length) setTimeout(() => rf.fitView({ nodes: p.focusNodes!.map((id) => ({ id })), padding: 0.4, duration: 300 }), 50);
@@ -315,57 +349,64 @@ function TopologyInner(p: TopologyProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-3 py-2 text-sm" role="toolbar" aria-label="Topology tools">
-        {p.canObserve && (
-          <div role="group" aria-label="Show configured policy, observed connections, or both" className="inline-flex overflow-hidden rounded-ui border border-line" data-testid="topology-mode">
-            {modes.map((m) => (
-              <button key={m.id} type="button" aria-pressed={mode === m.id} onClick={() => p.onMode(m.id)}
-                className={`px-2 py-1 text-xs ${mode === m.id ? "bg-accent text-accent-fg" : "bg-surface hover:bg-surface-2"}`}>{m.label}</button>
-            ))}
+      <div className="border-b border-line bg-surface text-sm">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2" role="toolbar" aria-label="Topology tools">
+          {p.canObserve && (
+            <div role="group" aria-label="Show configured policy, observed connections, or both" className="inline-flex overflow-hidden rounded-ui border border-line" data-testid="topology-mode">
+              {modes.map((m) => (
+                <button key={m.id} type="button" aria-pressed={mode === m.id} onClick={() => p.onMode(m.id)}
+                  className={`px-2 py-1 text-xs ${mode === m.id ? "bg-accent text-accent-fg" : "bg-surface hover:bg-surface-2"}`}>{m.label}</button>
+              ))}
+            </div>
+          )}
+          {p.canWrite && mode !== "observed" && <Button size="sm" variant="primary" onClick={p.onNewRule}>New rule…</Button>}
+          {mode !== "observed" && (
+            <Select aria-label="Place an object on the canvas" value={addKind} onChange={(e) => pin(e.target.value)} className="h-7 !w-40 text-xs">
+              <option value="">Place on canvas…</option>
+              {addOptions.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
+            </Select>
+          )}
+          <Input aria-label="Filter the topology" placeholder="Filter (name, CIDR)…" value={filter} onChange={(e) => setFilter(e.target.value)} className="h-7 !w-40 text-xs" />
+          <Select aria-label="Focus on a host, Pack or network" value="" onChange={(e) => e.target.value && focusOn(e.target.value)} className="h-7 !w-40 text-xs">
+            <option value="">Focus on…</option>
+            {graph.nodes.filter((n) => n.kind === "host" || n.kind === "group" || n.kind === "network").map((n) => <option key={n.key} value={n.key}>{kindText(n.kind)}: {n.label}</option>)}
+          </Select>
+          <span className="inline-flex overflow-hidden rounded-ui border border-line" role="group" aria-label="View">
+            <button type="button" className="border-r border-line bg-surface px-2 py-1 text-xs hover:bg-surface-2" onClick={() => fitPolicy()}
+              title={mode === "both" ? "Frame the policy's boxes" : "Frame everything"}>{mode === "both" ? "Fit policy" : "Fit"}</button>
+            {mode === "both" && <button type="button" className="border-r border-line bg-surface px-2 py-1 text-xs hover:bg-surface-2" onClick={fitAll}>Fit all</button>}
+            <button type="button" className="bg-surface px-2 py-1 text-xs hover:bg-surface-2 disabled:opacity-50" disabled={!p.selection} onClick={focusSelection}>Focus selection</button>
+          </span>
+          <Button size="sm" variant="ghost" aria-expanded={options} aria-controls="topology-options" onClick={() => setOptions((v) => !v)}>
+            {options ? "Hide display options" : "Display options"}
+          </Button>
+        </div>
+        {options && (
+          <div id="topology-options" className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line px-3 py-2">
+            <label className="flex items-center gap-1 whitespace-nowrap text-xs"><input type="checkbox" checked={showMgmt} onChange={(e) => setShowMgmt(e.target.checked)} /> DROOL management paths</label>
+            <label className="flex items-center gap-1 whitespace-nowrap text-xs"><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> All hosts</label>
+            {mode !== "configured" && (
+              <>
+                <Select aria-label="Observed connections: policy status" value={obsStatus} onChange={(e) => setObsStatus(e.target.value as typeof obsStatus)} className="h-7 !w-36 text-xs">
+                  <option value="">any status</option><option value="unclassified">unclassified</option><option value="denied">denied / would be</option>
+                  <option value="covered">covered</option><option value="management">DROOL management</option>
+                </Select>
+                <Select aria-label="Observed connections: remote addresses" value={obsScope} onChange={(e) => setObsScope(e.target.value as typeof obsScope)} className="h-7 !w-36 text-xs">
+                  <option value="">int. + external</option><option value="internal">internal only</option><option value="external">external only</option>
+                </Select>
+                <Select aria-label="Observed connections: last seen" value={obsPeriod} onChange={(e) => setObsPeriod(e.target.value)} className="h-7 !w-32 text-xs">
+                  <option value="24h">seen in 24 h</option><option value="7d">seen in 7 days</option><option value="">any time</option>
+                </Select>
+                <Select aria-label="External networks shown" value={obsMax} onChange={(e) => setObsMax(Number(e.target.value))} className="h-7 !w-40 text-xs">
+                  <option value={0}>external: one box</option>
+                  <option value={5}>top 5 networks</option><option value={8}>top 8 networks</option>
+                  <option value={15}>top 15 networks</option><option value={30}>top 30 networks</option>
+                </Select>
+              </>
+            )}
+            <Button size="sm" variant="ghost" onClick={relayout}>Auto layout</Button>
           </div>
         )}
-        {p.canWrite && mode !== "observed" && <Button size="sm" variant="primary" onClick={p.onNewRule}>New rule…</Button>}
-        {mode !== "observed" && <label className="flex items-center gap-1 whitespace-nowrap text-xs">
-          <span className="text-muted">Place on canvas</span>
-          <Select aria-label="Place an object on the canvas" value={addKind} onChange={(e) => pin(e.target.value)} className="h-7 !w-44 text-xs">
-            <option value="">choose…</option>
-            {addOptions.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
-          </Select>
-        </label>}
-        <Input aria-label="Filter the topology" placeholder="Filter (name, CIDR)…" value={filter} onChange={(e) => setFilter(e.target.value)} className="h-7 !w-44 text-xs" />
-        <label className="flex items-center gap-1 whitespace-nowrap text-xs"><input type="checkbox" checked={showMgmt} onChange={(e) => setShowMgmt(e.target.checked)} /> DROOL management paths</label>
-        <label className="flex items-center gap-1 whitespace-nowrap text-xs"><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> All hosts</label>
-        {mode !== "configured" && (
-          <>
-            <Select aria-label="Observed connections: policy status" value={obsStatus} onChange={(e) => setObsStatus(e.target.value as typeof obsStatus)} className="h-7 !w-36 text-xs">
-              <option value="">any status</option><option value="unclassified">unclassified</option><option value="denied">denied / would be</option>
-              <option value="covered">covered</option><option value="management">DROOL management</option>
-            </Select>
-            <Select aria-label="Observed connections: remote addresses" value={obsScope} onChange={(e) => setObsScope(e.target.value as typeof obsScope)} className="h-7 !w-36 text-xs">
-              <option value="">int. + external</option><option value="internal">internal only</option><option value="external">external only</option>
-            </Select>
-            <Select aria-label="Observed connections: last seen" value={obsPeriod} onChange={(e) => setObsPeriod(e.target.value)} className="h-7 !w-32 text-xs">
-              <option value="24h">seen in 24 h</option><option value="7d">seen in 7 days</option><option value="">any time</option>
-            </Select>
-            <Select aria-label="External networks shown" value={obsMax} onChange={(e) => setObsMax(Number(e.target.value))} className="h-7 !w-40 text-xs">
-              <option value={0}>external: one box</option>
-              <option value={5}>top 5 networks</option><option value={8}>top 8 networks</option>
-              <option value={15}>top 15 networks</option><option value={30}>top 30 networks</option>
-            </Select>
-          </>
-        )}
-        <Button size="sm" variant="ghost" onClick={relayout}>Auto layout</Button>
-        <Button size="sm" variant="ghost" onClick={() => rf.fitView({ padding: 0.15, duration: 200 })}>Fit</Button>
-        <span className="ml-auto flex flex-wrap items-center gap-3 text-[11px] text-muted" aria-hidden>
-          {mode !== "observed" && <span><span style={{ color: "var(--ui-edge-allow)" }}>━━</span> allow</span>}
-          {mode !== "observed" && <span><span style={{ color: "var(--ui-edge-deny)" }}>╍╍</span> deny</span>}
-          <span><span style={{ color: "var(--ui-edge-mgmt)" }}>┅┅</span> DROOL management (read-only)</span>
-          {mode !== "configured" && <>
-            <span><span style={{ color: "var(--ui-edge-observed)" }}>┈┈</span> ✓ observed, covered</span>
-            <span><span style={{ color: "var(--ui-warn)" }}>╌╌</span> ⚠ observed, unclassified</span>
-            <span><span style={{ color: "var(--ui-danger)" }}>┄┄</span> ✕ observed, denied</span>
-          </>}
-        </span>
       </div>
       <div className="relative min-h-0 flex-1" data-testid="topology-canvas">
         <ReactFlow
@@ -381,13 +422,23 @@ function TopologyInner(p: TopologyProps) {
             p.onConnect(c.source, c.target);
           }}
           nodesConnectable={p.canWrite && mode !== "observed"} edgesReconnectable={false} deleteKeyCode={null}
-          fitView fitViewOptions={{ padding: 0.15 }} minZoom={0.1} proOptions={{ hideAttribution: true }}
+          fitView={mode !== "both"} fitViewOptions={{ padding: 0.15, maxZoom: 1.2 }} minZoom={0.1} proOptions={{ hideAttribution: true }}
           style={{ background: "var(--ui-canvas)" }}
         >
           <Background color="var(--ui-canvas-dot)" gap={18} />
           <Controls showInteractive={false} />
           {graph.nodes.length > 12 && <MiniMap pannable zoomable nodeColor={(n) => nodeStyle[(n.data as NodeData).g.kind] ?? "var(--ui-surface)"} />}
         </ReactFlow>
+        <div className="pointer-events-none absolute bottom-2 left-12 flex max-w-[calc(100%-4rem)] flex-wrap gap-x-3 gap-y-0.5 rounded-ui border border-line bg-surface/90 px-2 py-1 text-[11px] text-muted" aria-hidden data-testid="topology-legend">
+          {mode !== "observed" && <span><span style={{ color: "var(--ui-edge-allow)" }}>━━</span> allow</span>}
+          {mode !== "observed" && <span><span style={{ color: "var(--ui-edge-deny)" }}>╍╍</span> deny</span>}
+          <span><span style={{ color: "var(--ui-edge-mgmt)" }}>┅┅</span> DROOL management (read-only)</span>
+          {mode !== "configured" && <>
+            <span><span style={{ color: "var(--ui-edge-observed)" }}>┈┈</span> ✓ observed, covered</span>
+            <span><span style={{ color: "var(--ui-warn)" }}>╌╌</span> ⚠ observed, unclassified</span>
+            <span><span style={{ color: "var(--ui-danger)" }}>┄┄</span> ✕ observed, denied</span>
+          </>}
+        </div>
         {graph.nodes.length === 0 && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8 text-center text-sm text-muted">
             {filter ? "Nothing matches the filter."

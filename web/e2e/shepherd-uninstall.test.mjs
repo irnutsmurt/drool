@@ -32,14 +32,14 @@ test("uninstall a Shepherd: the plan, the removal, the result", async () => {
   assert.match(plan, /DROOL's own SSH account stay as they are/);
   assert.doesNotMatch(plan, /BEGIN|PRIVATE KEY/, "no secrets in the plan");
   await shot(page, "shepherd-uninstall-plan");
-  await click(page, '[data-testid="uninstall-shepherd"] button', "Uninstall Shepherd");
+  await click(page, '[role="dialog"] button', "Uninstall Shepherd");
   await waitFor(page, async () => /Verified removed|Self-removal initiated|Partly removed|unknown/i.test(await dialog()), "the result", 180000);
   const done = await dialog();
   assert.match(done, /Verified removed/);
   assert.match(done, /checked over SSH/);
   assert.match(done, /manages .* over SSH/);
   await shot(page, "shepherd-uninstall-done");
-  await click(page, '[data-testid="uninstall-shepherd"] button', "Done");
+  await click(page, '[role="dialog"] button', "Done");
   // The page now says SSH, and offers to install a Shepherd again.
   await waitFor(page, async () => /Install (a )?Shepherd/.test(await text(page)), "install offered again", 30000);
   assert.deepEqual(page.errors, []);

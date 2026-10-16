@@ -2303,6 +2303,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/hosts/{id}/busy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What is using a host right now
+         * @description The holders of the host's lock, in words: a run (with its id), an inventory refresh, a routine status check, a
+         *     file operation, a Shepherd install or uninstall, the host's removal. Actions that need the host to themselves are
+         *     refused with 409 host_busy while anything holds it; this says what is in the way. Advisory only: every action
+         *     takes the lock again when it starts.
+         */
+        get: operations["getHostBusy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/hosts/{id}/removal/plan": {
         parameters: {
             query?: never;
@@ -4991,6 +5014,16 @@ export interface components {
             last_seen_at: string;
             /** Format: date-time */
             decided_at: string | null;
+        };
+        HostBusy: {
+            busy: boolean;
+            holders: {
+                /** @enum {string} */
+                kind: "run" | "refresh" | "status_check" | "preview" | "dry_run" | "files" | "removal" | "shepherd_install" | "shepherd_uninstall" | "other";
+                label: string;
+                /** @description The run holding the host. */
+                job_id?: string;
+            }[];
         };
         SearchResults: {
             query: string;
@@ -12621,6 +12654,29 @@ export interface operations {
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
+        };
+    };
+    getHostBusy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HostId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Whether the host is busy, and with what. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostBusy"];
+                };
+            };
+            404: components["responses"]["Problem"];
         };
     };
     planHostRemoval: {

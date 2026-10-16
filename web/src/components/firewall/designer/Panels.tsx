@@ -7,7 +7,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Input, Select } from "@/components/ui/Field";
 import { errorMessage } from "@/lib/format";
 import { Link } from "react-router";
-import { FlowDialog } from "@/components/network/FlowDialog";
+import { FlowInspector } from "@/components/network/FlowInspector";
 import { PolicyBadge, when } from "@/components/network/labels";
 import { useNetFlow } from "@/components/network/queries";
 import { affectedHosts, entriesLabel, kindLabel, obsStatusLabel, parseRef, refLabel, serviceLabel, type Doc, type GEdge, type MgmtPath, type ServiceInfo } from "./model";
@@ -419,7 +419,7 @@ function ObservedEdge({ e, hosts, onClose }: { e: GEdge; hosts: { id: string; na
         <Link className="mt-1 inline-block text-xs text-accent underline" to={flowsLink(e, hosts)}>Show all in Network Activity</Link>
       </div>
       <p className="text-[11px] text-muted">Observed lines show traffic DROOL has seen, not routes. The firewall policy decides the status; nothing here changes it — use “Create policy from observed connection” in a connection&apos;s details to start a draft rule.</p>
-      {open !== undefined && <FlowDialog id={open} onClose={() => setOpen(undefined)} />}
+      {open !== undefined && <FlowInspector id={open} onClose={() => setOpen(undefined)} />}
     </div>
   );
 }

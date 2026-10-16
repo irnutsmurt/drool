@@ -17,6 +17,7 @@ import { MenuButton, type MenuItem } from "@/components/ui/Menu";
 import { LoadError, Loading } from "@/components/ui/States";
 import { cx } from "@/components/ui/cx";
 import { errorMessage } from "@/lib/format";
+import { useHostBusy } from "../HostBusy";
 import { HostStatusBadge } from "../HostStatusBadge";
 import { TestConnectionDialog } from "../TestConnectionDialog";
 import { RemoveHostDialog } from "../RemoveHostDialog";
@@ -188,6 +189,10 @@ function HostFacts({ h }: { h: Host }) {
   const a = alerts.data?.hosts[h.id];
   const open = a ? a.critical + a.warning : 0;
   const maint = alerts.data?.maintenance[h.id];
+  // A run working on the host now (other actions that need the host to
+  // themselves wait for it; their dialogs say so).
+  const busy = useHostBusy(h.id, !h.jump_only, 10_000);
+  const runs = (busy.data?.holders ?? []).filter((x) => x.kind === "run" && x.job_id);
   const parts: ReactNode[] = [];
   if (!h.jump_only) parts.push(<span key="os">{osLabel(h)}</span>);
   else parts.push(<span key="jump">Jump host only</span>);
@@ -211,6 +216,13 @@ function HostFacts({ h }: { h: Host }) {
     );
   }
   if (maint) parts.push(<Badge key="maint" tone="warn">In maintenance {untilText(maint.ends_at)}</Badge>);
+  if (runs.length > 0) {
+    parts.push(
+      <Link key="busy" to={`/jobs/${runs[0]!.job_id}`} className="inline-flex items-center gap-1 text-accent underline-offset-2 hover:underline" data-testid="host-busy-run">
+        <span aria-hidden="true">⏵</span>{runs[0]!.label} is running{runs.length > 1 ? ` (+${runs.length - 1} more)` : ""}
+      </Link>,
+    );
+  }
   return (
     <div className="mt-1 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm" data-testid="host-facts">
       {parts}
