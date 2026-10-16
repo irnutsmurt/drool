@@ -49,6 +49,11 @@ export function DesignerPage() {
   const [ruleDialog, setRuleDialog] = useState<{ index?: number; from?: string; to?: string } | null>(null);
   const [focus, setFocus] = useState<string[]>();
   const [side, setSide] = useState<"details" | "preview">("preview");
+  // On the Topology view the side panel gives way to the canvas while there
+  // is nothing to show in it (nothing selected, no unsaved change): the map
+  // gets the full width, so the policy stays legible. Selecting something or
+  // changing the draft brings it back; the toggle opens or hides it by hand.
+  const [panelChoice, setPanelChoice] = useState<boolean | null>(null);
   const [confirmSave, setConfirmSave] = useState(false);
   const [applyTo, setApplyTo] = useState<string[] | null>(null);
   const topoMode = (params.get("topo") as TopologyMode | null) ?? "configured";
@@ -120,6 +125,7 @@ export function DesignerPage() {
 
   const blocked = d.management.filter((p) => p.blocked).length;
   const save = () => (blocked > 0 ? setConfirmSave(true) : d.save.mutate());
+  const showPanel = view !== "topology" || (panelChoice ?? (selection != null || d.dirty));
 
   return (
     <div className="flex flex-col gap-3" data-testid="designer">
@@ -141,6 +147,12 @@ export function DesignerPage() {
           {blocked > 0 && <> <Badge tone="danger">management path blocked</Badge></>}
         </span>
         <div className="ml-auto flex gap-2">
+          {view === "topology" && (
+            <Button size="sm" variant="ghost" aria-expanded={showPanel} aria-controls="designer-side"
+              onClick={() => { if (showPanel) setSelection(null); setPanelChoice(!showPanel); }}>
+              {showPanel ? "Hide side panel" : "Details and preview"}
+            </Button>
+          )}
           {canWrite && <Button size="sm" variant="ghost" disabled={!d.canUndo} onClick={d.undo}>Undo</Button>}
           {canWrite && <Button size="sm" variant="ghost" disabled={!d.dirty} onClick={d.discard}>Discard changes</Button>}
           {canWrite && (
@@ -163,7 +175,7 @@ export function DesignerPage() {
       {suggestId && !canWrite && <Alert tone="warn">Only administrators can turn an observed connection into a policy.</Alert>}
       <MgmtAlerts management={d.management} onShow={showPath} />
 
-      <div className="grid min-h-[38rem] gap-3 xl:grid-cols-[1fr_24rem]">
+      <div className={cx("grid min-h-[38rem] gap-3", showPanel && "xl:grid-cols-[1fr_24rem]")}>
         <div className={cx("min-h-[38rem] overflow-hidden rounded-ui border border-line bg-surface", view === "rules" && "min-h-0 overflow-visible border-0 bg-transparent")} role="region" aria-label={`${views.find((v) => v.id === view)!.label} view`}>
           {view === "topology" && narrow && (
             <p className="border-b border-line bg-surface-2 px-3 py-2 text-xs text-muted" role="note">
@@ -173,7 +185,7 @@ export function DesignerPage() {
           {view === "topology" && (
             <div className={topoMode === "configured" ? "h-[38rem]" : "h-[46rem]"}>
               <Topology doc={d.draft} services={services} hosts={hosts} management={d.management} layout={d.layout} saveLayout={d.saveLayout}
-                canWrite={canWrite} selection={selection} onSelect={(s) => { setSelection(s); if (s) setSide("details"); }}
+                canWrite={canWrite} selection={selection} onSelect={(s) => { setSelection(s); if (s) { setSide("details"); setPanelChoice(null); } }}
                 onConnect={(from, to) => setRuleDialog({ from, to })} onNewRule={() => setRuleDialog({})} highlight={highlight} focusNodes={focus}
                 mode={topoMode} onMode={setTopoMode} canObserve={can("network.read")} />
             </div>
@@ -188,7 +200,7 @@ export function DesignerPage() {
             </div>
           )}
         </div>
-        <aside className="rounded-ui border border-line bg-surface p-3" aria-label="Details and preview">
+        {showPanel && <aside id="designer-side" className="rounded-ui border border-line bg-surface p-3" aria-label="Details and preview">
           <div role="tablist" aria-label="Side panel" className="mb-3 flex gap-1 border-b border-line">
             {(["preview", "details"] as const).map((s) => (
               <button key={s} role="tab" aria-selected={side === s} onClick={() => setSide(s)}
@@ -203,7 +215,7 @@ export function DesignerPage() {
             <Inspector selection={selection} doc={d.draft} services={services} hosts={hosts} management={d.management}
               onEditRule={(index) => setRuleDialog({ index })} onClose={() => setSelection(null)} />
           )}
-        </aside>
+        </aside>}
       </div>
 
       {ruleDialog && (
