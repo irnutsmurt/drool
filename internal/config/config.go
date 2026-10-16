@@ -82,18 +82,25 @@ type SSHCA struct {
 type Network struct {
 	// GeoIPDir holds optional MaxMind-format (.mmdb) country and ASN
 	// databases the operator installs and updates (default
-	// <data_dir>/geoip). DROOL only reads them; it never downloads them or
-	// looks addresses up online.
+	// <data_dir>/geoip). DROOL only reads them and never changes them.
 	GeoIPDir string `yaml:"geoip_dir"`
+	// GeoIPDownload lets DROOL download the country and ASN databases the
+	// operator doesn't provide (DB-IP Lite) into <data_dir>/geoip/downloaded
+	// and keep them up to date; false: never (no outbound requests for
+	// them). Addresses are always looked up locally.
+	GeoIPDownload bool `yaml:"geoip_download"`
 }
 
-// GeoIPDir returns the GeoIP database directory.
+// GeoIPDir returns the operator's GeoIP database directory.
 func (c *Config) GeoIPDir() string {
 	if c.Network.GeoIPDir != "" {
 		return c.Network.GeoIPDir
 	}
 	return filepath.Join(c.DataDir, "geoip")
 }
+
+// GeoIPDownloadDir is where DROOL keeps the databases it downloads.
+func (c *Config) GeoIPDownloadDir() string { return filepath.Join(c.DataDir, "geoip", "downloaded") }
 
 // AdvertisedPort is the port Shepherds are told to connect to:
 // public_port when it is set, else the listen port.
@@ -257,6 +264,7 @@ func Defaults() Config {
 			Workers:         4,
 		},
 		Retention: Retention{JobsDays: 30},
+		Network:   Network{GeoIPDownload: true},
 		Agent: Agent{
 			Enabled:       true,
 			Port:          9443,

@@ -105,12 +105,17 @@ export function RemoteLabel({ flow }: { flow: NetFlow }) {
 }
 
 /** Why a public address has no country or network owner, when it wasn't
- * looked up at all: lookups off, or no database of that kind. "Unknown" is
- * kept for a database that genuinely has no answer (state "on"). */
+ * looked up at all: lookups off, the database still being prepared, or no
+ * database of that kind. "Unknown" is kept for a database that genuinely
+ * has no answer (state "on"). */
 export function noLookup(state: NetEnrichState | undefined, kind: "country" | "asn"): string | null {
   const s = state?.[kind];
   if (s === "off") return kind === "country" ? "country lookups are off" : "network-owner lookups are off";
-  if (s === "unavailable") return kind === "country" ? "no country database is configured" : "no ASN database is configured";
+  if (s === "preparing") return kind === "country" ? "the country database is still being prepared" : "the ASN database is still being prepared";
+  if (s === "unavailable") {
+    if (state?.downloads) return kind === "country" ? "the country database couldn't be downloaded yet" : "the ASN database couldn't be downloaded yet";
+    return kind === "country" ? "no country database is configured" : "no ASN database is configured";
+  }
   return null;
 }
 

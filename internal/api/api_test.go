@@ -108,6 +108,9 @@ type harnessOpts struct {
 	fwFake string
 	// env adds configuration (DROOL_* variables).
 	env []string
+	// geoipURL: DROOL downloads GeoIP/ASN databases from this test server
+	// (into geoDir/downloaded); "" downloads nothing.
+	geoipURL string
 }
 
 func newHarnessWith(t *testing.T, o harnessOpts) *harness {
@@ -189,7 +192,11 @@ func newHarnessWith(t *testing.T, o harnessOpts) *harness {
 		t.Fatal(err)
 	}
 	geoDir := t.TempDir()
-	network := netsvc.New(netsvc.Deps{Store: st, Firewall: fw, GeoIPDir: geoDir, Log: logs.App})
+	netDeps := netsvc.Deps{Store: st, Firewall: fw, GeoIPDir: geoDir, Log: logs.App}
+	if o.geoipURL != "" {
+		netDeps.GeoIPDownloadDir, netDeps.GeoIPDownloads, netDeps.GeoIPDownloadURL = filepath.Join(geoDir, "downloaded"), true, o.geoipURL
+	}
+	network := netsvc.New(netDeps)
 	eng := engine.New(st, inv, router, auditW, logs.Job, engine.Config{RetryDelay: 10 * time.Millisecond})
 	if err := eng.Start(context.Background()); err != nil {
 		t.Fatal(err)

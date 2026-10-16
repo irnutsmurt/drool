@@ -123,7 +123,7 @@ func TestReleasePackages(t *testing.T) {
 			must("runuser -u drool -- drool migrate")
 			// The controller runs from the package's layout and hands out the
 			// Shepherd binaries in /usr/lib/drool.
-			must("runuser -u drool -- env DROOL_SETUP_SECRET=pkg-test-setup-code-1 DROOL_LOGGING_OUTPUT=stdout drool serve >/tmp/serve.log 2>&1 &")
+			must("runuser -u drool -- env DROOL_SETUP_SECRET=pkg-test-setup-code-1 DROOL_LOGGING_OUTPUT=stdout DROOL_NETWORK_GEOIP_DOWNLOAD=false drool serve >/tmp/serve.log 2>&1 &")
 			c := &controller{port: port, setupKey: "pkg-test-setup-code-1", client: insecureClient()}
 			waitFor(t, time.Minute, pt.Name+" controller", func() bool {
 				_, err := sh("runuser -u drool -- drool healthcheck >/dev/null 2>&1")

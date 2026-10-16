@@ -72,6 +72,10 @@ type Topology struct {
 	Truncated  bool `json:"truncated"`
 	// Collapsed external networks beyond MaxExternal, drawn as one node.
 	Collapsed int `json:"collapsed"`
+	// Attribution the network-owner data's licence asks for, when it
+	// comes from a database DROOL downloaded.
+	Attribution    string `json:"attribution,omitempty"`
+	AttributionURL string `json:"attribution_url,omitempty"`
 }
 
 // TopoOptions shape the graph.
@@ -116,6 +120,9 @@ func (s *Service) Topology(ctx context.Context, o TopoOptions) (*Topology, error
 	}
 	var flows []Flow
 	out := &Topology{Nodes: []TopoNode{}, Edges: []TopoEdge{}}
+	if st := s.enrichState(ctx, v.enrich); st.Attribution != "" {
+		out.Attribution, out.AttributionURL = st.Attribution, st.AttributionURL
+	}
 	for rows.Next() {
 		r, err := scanRow(rows)
 		if err != nil {

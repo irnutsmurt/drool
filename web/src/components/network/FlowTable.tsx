@@ -8,6 +8,7 @@ import { errorMessage } from "@/lib/format";
 import { ClassBadge, CountryLabel, DirectionLabel, Endpoint, NetworkLabel, PolicyBadge, ProcessLabel, RemoteLabel, ScopeBadge, scopeText, when } from "./labels";
 import { useNetFlows, type NetEnrichState, type NetFilter, type NetFlow } from "./queries";
 import { FlowInspector } from "./FlowInspector";
+import { GeoAttribution } from "./Enrichment";
 
 /** A phone's page of connections: a screenful or two, the rest a tap away. */
 const PHONE_PAGE = 25;
@@ -69,6 +70,7 @@ export function FlowTable({ filter, showHost = true, empty, pageSize = 50 }: {
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+        <GeoAttribution state={page?.enrichment_state} />
         <span aria-live="polite">
           {rows.length > 0 && <>Showing {start + 1}–{start + rows.length}{page?.total != null ? <> of {page.total}</> : page?.next_cursor ? <> (more)</> : null}</>}
           {page?.truncated && <> · the search stopped after scanning {page.scanned} rows; continue to search further</>}

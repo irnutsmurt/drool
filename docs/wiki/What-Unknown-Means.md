@@ -16,7 +16,7 @@ couldn't check. An Unknown is a question, not an answer.
 | Desired State: **Unknown** | DROOL couldn't confirm the resource's state | The host is unreachable, the data is too old, or monitoring is off. See [Host Shows Unknown](Host-Shows-Unknown.md) |
 | A run's host: **outcome unknown** / **interrupted** | DROOL lost contact mid-operation; it may or may not have happened | Check the host before repeating. See [Failed, Interrupted and Unknown Outcomes](Failed-Interrupted-and-Unknown-Outcomes.md) |
 | Network Activity: process **Unknown** | The connection was gone before DROOL could see which program owned it | Common for very short outbound connections |
-| Network Activity: country or network *unknown* | The GeoIP/ASN database has no answer for that address. Without a database (or with lookups off), connections show **—** instead, and the page says why | See [GeoIP and ASN](GeoIP-and-ASN.md#what-network-activity-shows) |
+| Network Activity: country or network *unknown* | The GeoIP/ASN database has no answer for that address. Without a database (still being prepared, none, or lookups off), connections show **—** instead, and the page says why | See [GeoIP and ASN](GeoIP-and-ASN.md#what-network-activity-shows) |
 
 ## Unknown versus stale
 

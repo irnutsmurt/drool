@@ -60,8 +60,8 @@ test("Network Activity without GeoIP/ASN databases: one explanation, dashes, the
   await click(page, '[data-testid="enrichment-note"] a', "Configure enrichment");
   await waitFor(page, async () => !!(await page.$('[data-testid="enrichment-status"]')), "enrichment status");
   const st = await page.$eval('[data-testid="enrichment-status"]', (e) => e.innerText);
-  assert.match(st, /Network \(ASN\): not available/);
-  if (state === "none") assert.match(st, /No databases installed\. Monitoring works without them/);
+  assert.match(st, /Network owner \(ASN\)\s+Not available/);
+  if (state === "none") assert.match(st, /No databases\. Monitoring works without them/);
 
   // Lookups turned off: told apart from databases missing.
   const s = (await api(page, "GET", "/network/settings")).body;

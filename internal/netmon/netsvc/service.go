@@ -10,6 +10,8 @@ package netsvc
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"sync"
@@ -29,7 +31,15 @@ type Deps struct {
 	// GeoIPDir holds the operator's MMDB files (default
 	// <data_dir>/geoip). Missing is fine: enrichment is optional.
 	GeoIPDir string
-	Log      *slog.Logger
+	// GeoIPDownloadDir holds the databases DROOL downloads itself
+	// (<data_dir>/geoip/downloaded); "" downloads nothing.
+	GeoIPDownloadDir string
+	// GeoIPDownloads: the configuration allows automatic downloads
+	// (network.geoip_download, on by default).
+	GeoIPDownloads bool
+	// GeoIPDownloadURL replaces the provider's address (tests only).
+	GeoIPDownloadURL string
+	Log              *slog.Logger
 }
 
 // Service is network monitoring.
@@ -38,6 +48,9 @@ type Service struct {
 	log *slog.Logger
 	now func() time.Time
 	geo *geoip.Enricher
+	// updates downloads and updates the databases; nil when DROOL
+	// downloads nothing.
+	updates *geoip.Updater
 
 	mu        sync.Mutex
 	lastPrune PruneResult
@@ -53,8 +66,103 @@ func New(d Deps) *Service {
 		d.Log = slog.Default()
 	}
 	s := &Service{d: d, log: d.Log, now: time.Now, geo: geoip.NewEnricher(d.GeoIPDir, CacheSize), kick: make(chan struct{}, 1)}
+	if d.GeoIPDownloadDir != "" {
+		s.geo.SetDownloadDir(d.GeoIPDownloadDir)
+		s.updates = geoip.NewUpdater(geoip.UpdaterConfig{Dir: d.GeoIPDownloadDir, BaseURL: d.GeoIPDownloadURL, Allowed: s.downloadsAllowed,
+			Log: d.Log, StartDelay: 5 * time.Second}, s.geo)
+	}
 	s.geo.Refresh()
 	return s
+}
+
+// downloadsAllowed: whether DROOL may download databases now, and if not
+// why — the configuration, the lookups setting or the downloads setting.
+func (s *Service) downloadsAllowed(ctx context.Context) (bool, string) {
+	if !s.d.GeoIPDownloads {
+		return false, "turned off in the controller's configuration (network.geoip_download)"
+	}
+	set := s.Settings(ctx)
+	if !set.Enrichment {
+		return false, "country and network-owner lookups are off"
+	}
+	if !set.GeoIPDownloads {
+		return false, "turned off in these settings"
+	}
+	return true, ""
+}
+
+// EnrichmentStatus is what enrichment can do now: the databases found,
+// automatic downloads, and one state for the pages to explain.
+type EnrichmentStatus struct {
+	geoip.Status
+	// Downloads describes automatic downloads; absent when DROOL
+	// downloads nothing.
+	Downloads *geoip.UpdateStatus `json:"downloads,omitempty"`
+	// State: off (lookups off), available, updating, update_failed (the
+	// databases in use are kept), preparing (the first download is on
+	// its way), unavailable (downloading failed; it is retried) or
+	// not_configured (no database, nothing downloaded automatically).
+	State string `json:"state"`
+}
+
+// EnrichmentStatus describes enrichment now.
+func (s *Service) EnrichmentStatus(ctx context.Context) EnrichmentStatus {
+	out := EnrichmentStatus{Status: s.geo.Status()}
+	if s.updates != nil {
+		up := s.updates.Status(ctx)
+		out.Downloads = &up
+	}
+	up := out.Downloads
+	loaded := out.Country || out.ASN
+	switch {
+	case !s.Settings(ctx).Enrichment:
+		out.State = "off"
+	case loaded && up != nil && up.Checking:
+		out.State = "updating"
+	case loaded && up != nil && up.Enabled && up.LastError != "":
+		out.State = "update_failed"
+	case loaded:
+		out.State = "available"
+	case up != nil && up.Enabled && (up.Checking || up.LastError == ""):
+		out.State = "preparing"
+	case up != nil && up.Enabled:
+		out.State = "unavailable"
+	default:
+		out.State = "not_configured"
+	}
+	return out
+}
+
+// ErrNoDownloads: DROOL can't download databases now (CheckGeoIP).
+var ErrNoDownloads = errors.New("automatic downloads are off")
+
+// GeoIPCheckable says why DROOL can't check for newer databases now (nil:
+// it can).
+func (s *Service) GeoIPCheckable(ctx context.Context) error {
+	if s.updates == nil {
+		return ErrNoDownloads
+	}
+	if ok, why := s.downloadsAllowed(ctx); !ok {
+		return fmt.Errorf("%w: %s", ErrNoDownloads, why)
+	}
+	return nil
+}
+
+// CheckGeoIPNow checks for newer databases and waits for the outcome
+// (tests).
+func (s *Service) CheckGeoIPNow(ctx context.Context) error {
+	if s.updates == nil {
+		return ErrNoDownloads
+	}
+	return s.updates.Check(ctx)
+}
+
+// CheckGeoIP starts a check for newer databases now (Check now). It
+// returns at once; the status says when it is done.
+func (s *Service) CheckGeoIP() {
+	if s.updates != nil {
+		s.updates.Trigger()
+	}
 }
 
 // Enricher returns the GeoIP/ASN enricher.
@@ -80,6 +188,14 @@ func (s *Service) SettingsChanged(ctx context.Context) {
 		s.d.Firewall.PushCollection(ctx)
 	}
 	s.Kick()
+	// Downloads just allowed with a database still missing: fetch it now.
+	if s.updates != nil {
+		if ok, _ := s.downloadsAllowed(ctx); ok {
+			if c, a := s.geo.Kinds(); !c || !a {
+				s.updates.Trigger()
+			}
+		}
+	}
 }
 
 // Kick runs a maintenance pass soon.
@@ -163,6 +279,9 @@ func (s *Service) Run(ctx context.Context) {
 		if err := s.d.Firewall.Rescope(ctx); err != nil {
 			s.log.Warn("could not reclassify observation scopes", "err", err)
 		}
+	}
+	if s.updates != nil {
+		go s.updates.Run(ctx)
 	}
 	tick := time.NewTicker(time.Minute)
 	defer tick.Stop()

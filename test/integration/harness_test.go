@@ -493,6 +493,9 @@ func (c *controller) start() error {
 		"DROOL_SETUP_SECRET="+c.setupKey,
 		"DROOL_LOGGING_OUTPUT=file",
 		"DROOL_LOGGING_LEVEL=debug",
+		// No test controller downloads GeoIP databases from the internet;
+		// TestGeoIPDownloads turns it on with a local stand-in.
+		"DROOL_NETWORK_GEOIP_DOWNLOAD=false",
 	)
 	c.cmd.Env = append(c.cmd.Env, c.extraEnv...)
 	// Don't leave a controller behind if the test binary is killed.

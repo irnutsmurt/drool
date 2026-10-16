@@ -109,7 +109,13 @@ export const useNetFlow = (id: number | undefined) =>
   });
 
 export const useNetSummary = (f: NetFilter) =>
-  useQuery({ queryKey: nk.summary(f), queryFn: () => unwrap(api.GET("/network/summary", { params: { query: f } })), refetchInterval: 30_000 });
+  useQuery({
+    queryKey: nk.summary(f), queryFn: () => unwrap(api.GET("/network/summary", { params: { query: f } })),
+    refetchInterval: (q) => {
+      const st = q.state.data?.enrichment_state;
+      return st?.country === "preparing" || st?.asn === "preparing" ? 3_000 : 30_000;
+    },
+  });
 
 export const useNetFacets = (hosts?: string[]) =>
   useQuery({ queryKey: nk.facets(hosts), queryFn: () => unwrap(api.GET("/network/filters", { params: { query: { host: hosts } } })), staleTime: 30_000 });
@@ -136,5 +142,11 @@ export const useNetTopology = (q: TopoQuery, enabled: boolean) =>
 export const useNetRules = (enabled = true) =>
   useQuery({ queryKey: nk.rules, queryFn: () => unwrap(api.GET("/network/classifications")), enabled });
 
+/** Enrichment in motion (the first download, a check): ask again soon. */
+const settling = (s?: string) => s === "preparing" || s === "updating";
+
 export const useNetSettings = (enabled = true) =>
-  useQuery({ queryKey: nk.settings, queryFn: () => unwrap(api.GET("/network/settings")), enabled });
+  useQuery({
+    queryKey: nk.settings, queryFn: () => unwrap(api.GET("/network/settings")), enabled,
+    refetchInterval: (q) => (settling(q.state.data?.enrichment_status.state) ? 2_000 : false),
+  });

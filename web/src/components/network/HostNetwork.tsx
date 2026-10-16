@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { cx } from "@/components/ui/cx";
 import { errorMessage, formatAgo } from "@/lib/format";
 import { CollectionBadge, DirectionLabel, noLookup, PolicyBadge } from "./labels";
+import { GeoAttribution } from "./Enrichment";
 import { FlowTable } from "./FlowTable";
 import { nk, useHostNetwork, useNetFlows, type NetFilter } from "./queries";
 
@@ -117,6 +118,7 @@ export function HostNetworkSummary({ hostId }: { hostId: string }) {
               <PolicyBadge flow={f} />
             </li>
           ))}
+          {notable.data!.items.some((f) => f.geo?.org) && <li><GeoAttribution state={notable.data!.enrichment_state} /></li>}
         </ul>
       )}
     </div>

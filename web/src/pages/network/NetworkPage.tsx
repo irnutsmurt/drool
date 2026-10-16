@@ -10,10 +10,11 @@ import { Card } from "@/components/ui/Card";
 import { Field, Select, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { cx } from "@/components/ui/cx";
-import { errorMessage, formatBytes, formatDateTime } from "@/lib/format";
+import { errorMessage, formatDateTime } from "@/lib/format";
 import { FlowFilters } from "@/components/network/FlowFilters";
 import { FlowTable } from "@/components/network/FlowTable";
 import { ClassifyDialog } from "@/components/network/ClassifyDialog";
+import { EnrichmentCard } from "@/components/network/Enrichment";
 import {
   filterFromParams, filterToParams, nk, useNetFacets, useNetRules, useNetSettings, useNetSummary, type NetEnrichState, type NetFilter, type NetRule, type NetSettings,
 } from "@/components/network/queries";
@@ -141,9 +142,23 @@ function Fidelity({ s }: { s: NonNullable<ReturnType<typeof useNetSummary>["data
  * database loaded, "unknown" means the database has no answer. */
 export function EnrichmentNote({ state }: { state: NetEnrichState }) {
   const link = <Link className={plainLink} to="/network?tab=settings">Configure enrichment →</Link>;
+  const settings = <Link className={plainLink} to="/network?tab=settings">Collection and enrichment →</Link>;
   let text: ReactNode = null;
+  const preparing = state.country === "preparing" || state.asn === "preparing";
+  const missing = state.country === "unavailable" || state.asn === "unavailable";
   if (state.country === "off" && state.asn === "off") {
-    text = <>Country and network-owner lookups are turned off. <Link className={plainLink} to="/network?tab=settings">Collection and enrichment →</Link></>;
+    text = <>Country and network-owner lookups are turned off. {settings}</>;
+  } else if (preparing && !missing) {
+    // The first download, not a problem to solve: no warning.
+    return (
+      <p className="px-1 text-xs text-muted" role="status" data-testid="enrichment-note" data-state="preparing">
+        Preparing country and network-owner data: DROOL is downloading its databases for the first time. They appear here when ready.
+      </p>
+    );
+  } else if (missing && state.downloads) {
+    const which = state.country === "unavailable" && state.asn === "unavailable" ? "Country and network-owner information is"
+      : state.country === "unavailable" ? "Country information is" : "Network-owner information is";
+    text = <>{which} temporarily unavailable: DROOL couldn&apos;t download its database{state.download_error ? <> ({state.download_error})</> : null}. It tries again automatically. {settings}</>;
   } else if (state.country === "unavailable" && state.asn === "unavailable") {
     text = <>Country and network-owner information is unavailable because GeoIP/ASN databases are not configured. {link}</>;
   } else if (state.country === "unavailable") {
@@ -242,19 +257,15 @@ function SettingsTab() {
   const canEdit = can("network.settings");
   const [form, setForm] = useState<NetSettings | null>(null);
   useEffect(() => {
-    if (q.data && !form) setForm({ collection: q.data.collection, retention_days: q.data.retention_days, max_flows_per_host: q.data.max_flows_per_host, enrichment: q.data.enrichment });
+    if (q.data && !form) setForm({ collection: q.data.collection, retention_days: q.data.retention_days, max_flows_per_host: q.data.max_flows_per_host, enrichment: q.data.enrichment,
+      geoip_downloads: q.data.geoip_downloads });
   }, [q.data, form]);
   const save = useMutation({
     mutationFn: (b: NetSettings) => unwrap(api.PUT("/network/settings", { body: b })),
     onSuccess: () => void qc.invalidateQueries({ queryKey: nk.all }),
   });
-  const reload = useMutation({
-    mutationFn: () => unwrap(api.POST("/network/enrichment/reload")),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: nk.all }),
-  });
   if (q.error) return <Alert>{errorMessage(q.error)}</Alert>;
   if (!q.data || !form) return <p className="text-sm text-muted">Loading…</p>;
-  const st = reload.data ?? q.data.enrichment_status;
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       <Card title="Collection">
@@ -274,8 +285,17 @@ function SettingsTab() {
           </Field>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.enrichment} disabled={!canEdit} onChange={(e) => setForm({ ...form, enrichment: e.target.checked })} />
-            Show country and network owner for public addresses (local databases only)
+            Show country and network owner for public addresses (looked up on this controller)
           </label>
+          {q.data.enrichment_status.downloads && (
+            <label className="ml-6 flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-0.5" checked={!!form.geoip_downloads} disabled={!canEdit || !form.enrichment}
+                onChange={(e) => setForm({ ...form, geoip_downloads: e.target.checked })} />
+              <span>Download and update the databases automatically
+                <span className="block text-xs text-muted">DB-IP Lite country and ASN (CC BY 4.0), checked daily. Only the database files are downloaded; your own databases are used instead where you provide them.</span>
+              </span>
+            </label>
+          )}
           {save.error && <Alert>{errorMessage(save.error)}</Alert>}
           {save.isSuccess && <Alert tone="ok">Saved.</Alert>}
           {canEdit ? <Button variant="primary" type="submit" disabled={save.isPending}>Save</Button>
@@ -283,46 +303,7 @@ function SettingsTab() {
           {q.data && <p className="text-xs text-muted">Changes are recorded in the audit log.</p>}
         </form>
       </Card>
-      <Card title="GeoIP and ASN enrichment" actions={canEdit ? <Button size="sm" onClick={() => reload.mutate()} disabled={reload.isPending}>Reload databases</Button> : undefined}>
-        <div className="space-y-3 text-sm" data-testid="enrichment-status">
-          <p>
-            Country: {st.country ? <Badge tone="ok">✓ available</Badge> : <Badge tone="warn">not available</Badge>}{" "}
-            Network (ASN): {st.asn ? <Badge tone="ok">✓ available</Badge> : <Badge tone="warn">not available</Badge>}
-          </p>
-          <p className="text-xs text-muted">
-            DROOL looks public addresses up in MaxMind-format (<code>.mmdb</code>) files in <code className="break-all">{st.directory}</code>. It never sends
-            addresses to an online service, and never looks up private, loopback, link-local, multicast or documentation addresses. Files are reloaded
-            automatically when they change.
-          </p>
-          {st.files.length === 0 ? (
-            <div className="rounded-ui border border-line bg-surface-2 p-3 text-xs">
-              <p className="font-medium">No databases installed. Monitoring works without them: connections show no country or network owner (“—”), and Network Activity says why. “Unknown” is shown only when a database has no answer for an address.</p>
-              <p className="mt-1">To enable enrichment, put country and ASN databases in the directory above, for example:</p>
-              <ul className="mt-1 list-disc space-y-0.5 pl-5">
-                <li>MaxMind GeoLite2 Country and ASN (free account; keep them current with <code>geoipupdate</code>)</li>
-                <li>DB-IP Lite country and ASN (monthly downloads, CC BY 4.0)</li>
-                <li>IPinfo Lite (country and ASN in one file)</li>
-              </ul>
-              {st.error && <p className="mt-1 text-muted">({st.error})</p>}
-            </div>
-          ) : (
-            <ul className="space-y-1 text-xs">
-              {st.files.map((f) => (
-                <li key={f.name} className="rounded-ui border border-line p-2">
-                  <span className="font-mono">{f.name}</span> · {formatBytes(f.size)} · {f.database_type || "unknown type"}{f.build_date && <> · built {f.build_date}</>}
-                  <div className="text-muted">provides: {f.provides.join(", ") || "nothing recognised"}{f.used.length > 0 && <> · used for {f.used.join(", ")}</>}</div>
-                  {f.error && <div className="text-danger">✕ {f.error}</div>}
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="text-xs text-muted">
-            Loaded {formatDateTime(st.loaded_at)} · cache {st.cache.entries.toLocaleString()} / {st.cache.max.toLocaleString()} addresses
-            ({st.cache.hits.toLocaleString()} hits, {st.cache.misses.toLocaleString()} lookups).
-          </p>
-          <p className="text-xs text-muted">GeoIP and ASN data are context, not a security verdict: they can be wrong or out of date, and DROOL never blocks or scores traffic by country or network.</p>
-        </div>
-      </Card>
+      <EnrichmentCard st={q.data.enrichment_status} canEdit={canEdit} />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { errorMessage, formatDateTime } from "@/lib/format";
 import { ClassifyForm } from "./ClassifyDialog";
 import { ClassBadge, CollectionBadge, DirectionLabel, PolicyBadge, ScopeBadge, classSource, ep, noLookup, policyText, when } from "./labels";
 import { useNetFlow, useNetRules, type NetEnrichState } from "./queries";
+import { GeoAttribution } from "./Enrichment";
 
 const enforcementText: Record<string, string> = {
   unmanaged: "DROOL does not manage this host's firewall",
@@ -112,7 +113,10 @@ export function FlowInspector({ id, onClose }: { id: number; onClose: () => void
           </section>
 
           {f.scope === "public" && (
-            <p className="text-[11px] text-muted">Country and network come from the local GeoIP/ASN databases. They are context, not a verdict, and may be inaccurate or out of date.</p>
+            <p className="text-[11px] text-muted">
+              Country and network come from the GeoIP/ASN databases on this controller. They are context, not a verdict, and may be inaccurate or out of date.
+              {f.enrichment_state.attribution && <> <GeoAttribution state={f.enrichment_state} className="" /></>}
+            </p>
           )}
 
           {f.related.length > 0 && (

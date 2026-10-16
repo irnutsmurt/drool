@@ -71,27 +71,49 @@ type Geo struct {
 type EnrichState struct {
 	Country string `json:"country"`
 	ASN     string `json:"asn"`
+	// Downloads: DROOL downloads missing databases itself, so
+	// "unavailable" means a download failed for now (DownloadError says
+	// why; it is retried), not that nothing is set up.
+	Downloads     bool   `json:"downloads,omitempty"`
+	DownloadError string `json:"download_error,omitempty"`
+	// Attribution the data's licence asks for, when downloaded data is
+	// shown (DB-IP Lite: CC BY 4.0).
+	Attribution    string `json:"attribution,omitempty"`
+	AttributionURL string `json:"attribution_url,omitempty"`
 }
 
 // Enrichment states.
 const (
 	EnrichOff         = "off"
 	EnrichUnavailable = "unavailable"
+	EnrichPreparing   = "preparing" // DROOL's first download is on its way
 	EnrichOn          = "on"
 )
 
-func (s *Service) enrichState(on bool) EnrichState {
+func (s *Service) enrichState(ctx context.Context, on bool) EnrichState {
 	country, asn := s.geo.Kinds()
-	k := func(loaded bool) string {
+	k := func(kind string, loaded bool) string {
 		switch {
 		case !on:
 			return EnrichOff
-		case !loaded:
-			return EnrichUnavailable
+		case loaded:
+			return EnrichOn
+		case s.updates != nil && s.updates.Pending(ctx, kind):
+			return EnrichPreparing
 		}
-		return EnrichOn
+		return EnrichUnavailable
 	}
-	return EnrichState{Country: k(country), ASN: k(asn)}
+	out := EnrichState{Country: k(geoip.KindCountry, country), ASN: k(geoip.KindASN, asn)}
+	if on && s.updates != nil {
+		if ok, _ := s.downloadsAllowed(ctx); ok {
+			out.Downloads = true
+			out.DownloadError = s.updates.Status(ctx).LastError
+		}
+	}
+	if on && s.geo.DownloadedInUse() {
+		out.Attribution, out.AttributionURL = geoip.Attribution, geoip.ProviderURL
+	}
+	return out
 }
 
 // HostRef names a DROOL host.
@@ -556,7 +578,7 @@ func (s *Service) List(ctx context.Context, f Filter) (*Page, error) {
 	}
 	where, args := f.sqlWhere()
 	col := f.sortCol()
-	page := &Page{Items: []Flow{}, EnrichmentState: s.enrichState(v.enrich)}
+	page := &Page{Items: []Flow{}, EnrichmentState: s.enrichState(ctx, v.enrich)}
 	if !f.goFilters() {
 		var n int64
 		if err := s.d.Store.Reader.QueryRowContext(ctx, "SELECT count(*) FROM fw_observations o WHERE "+where, args...).Scan(&n); err == nil {
@@ -662,7 +684,7 @@ func (s *Service) Get(ctx context.Context, id int64) (*Detail, error) {
 	if err != nil {
 		return nil, err
 	}
-	d := &Detail{Flow: v.flow(ctx, r), Firewall: v.cl.Firewall(ctx, r.HostID), Related: []Flow{}, EnrichmentState: s.enrichState(v.enrich)}
+	d := &Detail{Flow: v.flow(ctx, r), Firewall: v.cl.Firewall(ctx, r.HostID), Related: []Flow{}, EnrichmentState: s.enrichState(ctx, v.enrich)}
 	s.addPeerFirstSeen(ctx, []Flow{d.Flow})
 	if t, err := s.d.Store.R.HostFirstSeenPeer(ctx, db.HostFirstSeenPeerParams{HostID: r.HostID, Peer: r.Peer}); err == nil && t > 0 {
 		d.PeerFirstSeen = ts(t)

@@ -52,7 +52,8 @@ from. The release installs a commented example as `/usr/share/drool/config.examp
 | `data_dir` | `/var/lib/drool` (containers: `/data`) | Where DROOL keeps its database and files |
 | `data_volume` | empty (`compose.yaml`: `drool_drool-data`) | Only for messages: the container volume `data_dir` is, which a DROOL starting without data names ([Compose Data Volume](Compose-Data-Volume.md)) |
 | `secrets.master_key_file` | `<data_dir>/master.key` | Where the [master key](Master-Key.md) is |
-| `network.geoip_dir` | `<data_dir>/geoip` | Where the [GeoIP and ASN](GeoIP-and-ASN.md) databases are |
+| `network.geoip_dir` | `<data_dir>/geoip` | Where your own [GeoIP and ASN](GeoIP-and-ASN.md) databases are (DROOL only reads them) |
+| `network.geoip_download` | `true` | Download the [GeoIP and ASN](GeoIP-and-ASN.md) databases you don't provide (DB-IP Lite) into `<data_dir>/geoip/downloaded` and keep them up to date. `false`: never contact DB-IP. Addresses are always looked up locally |
 | `auth.session_idle_timeout` | `12h` | Sign out after this long without activity |
 | `auth.session_absolute_timeout` | `168h` (7 days) | Sign out after this long in any case |
 | `auth.reauth_window` | `15m` | How long [confirming it's you](Re-authentication.md) lasts |

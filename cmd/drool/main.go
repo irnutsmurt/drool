@@ -732,7 +732,12 @@ func cmdServe(path string, explicit bool) error {
 	}
 	go poll.Run(ctx)
 	go fw.Run(ctx)
-	network := netsvc.New(netsvc.Deps{Store: st, Firewall: fw, GeoIPDir: cfg.GeoIPDir(), Log: logs.App.With("component", "network")})
+	geoURL := os.Getenv("DROOL_TEST_GEOIP_URL")
+	if geoURL != "" {
+		log.Warn("TEST MODE: GeoIP/ASN databases are downloaded from a test server; never use this in production", "url", geoURL)
+	}
+	network := netsvc.New(netsvc.Deps{Store: st, Firewall: fw, GeoIPDir: cfg.GeoIPDir(), GeoIPDownloadDir: cfg.GeoIPDownloadDir(),
+		GeoIPDownloads: cfg.Network.GeoIPDownload, GeoIPDownloadURL: geoURL, Log: logs.App.With("component", "network")})
 	go network.Run(ctx)
 	// Alerting (M12) consumes the health issues monitoring records.
 	alertCfg := alerts.Config{}

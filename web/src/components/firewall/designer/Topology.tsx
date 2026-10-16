@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
 import { allServices, kindLabel, obsServicesLabel, obsStatusLabel, parseRef, toGraph, type Doc, type GEdge, type GNode, type MgmtPath, type Observed, type ServiceInfo, type TopologyMode } from "./model";
 import { useNetTopology } from "@/components/network/queries";
+import { GeoAttribution } from "@/components/network/Enrichment";
 import type { Layout } from "./useDesigner";
 
 export type Selection = { kind: "node"; key: string } | { kind: "edge"; edge: GEdge } | null;
@@ -452,7 +453,8 @@ function TopologyInner(p: TopologyProps) {
           : <>Dotted lines are <strong>connections DROOL has observed</strong>; external addresses are grouped by the network that owns them (ASN), not by route or country.
             {observed?.collapsed ? <> {observed.collapsed} smaller external network(s) are grouped as “Other external networks”.</> : null}
             {observed?.truncated ? <> Only the {observed.considered.toLocaleString()} most recent flows are drawn.</> : null}
-            {" "}The same connections are listed below the canvas.</>}
+            {" "}The same connections are listed below the canvas.
+            {obsQ.data?.attribution && <> <GeoAttribution state={obsQ.data} className="" /></>}</>}
         {pinned.size > 0 && <> · <button type="button" className="underline" onClick={() => p.saveLayout({ ...p.layout, pinned: [] })}>Unpin {pinned.size} placed object(s)</button></>}
       </p>
       {mode !== "configured" && <ObservedList edges={graph.edges} onSelect={(e) => p.onSelect({ kind: "edge", edge: e })} />}

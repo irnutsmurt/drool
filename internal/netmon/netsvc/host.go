@@ -144,7 +144,7 @@ func (s *Service) Host(ctx context.Context, hostID string) (*HostNetwork, error)
 		return nil, err
 	}
 	out := &HostNetwork{Host: v.hostRef(hostID), Collection: s.collection(ctx, hostID), Firewall: v.cl.Firewall(ctx, hostID),
-		Listening: []Listening{}, Enrichment: s.geo.Available() && v.enrich, EnrichmentState: s.enrichState(v.enrich)}
+		Listening: []Listening{}, Enrichment: s.geo.Available() && v.enrich, EnrichmentState: s.enrichState(ctx, v.enrich)}
 	out.Counts = s.counts(ctx, v, Filter{Hosts: []string{hostID}})
 	// Listening ports come from the inventory (one source of truth).
 	inbound := map[string][2]int64{}
@@ -271,7 +271,7 @@ func (s *Service) FleetSummary(ctx context.Context, f Filter) (*Summary, error) 
 	if err != nil {
 		return nil, err
 	}
-	out := &Summary{Counts: s.counts(ctx, v, f), Enrichment: s.geo.Available() && v.enrich, EnrichmentState: s.enrichState(v.enrich),
+	out := &Summary{Counts: s.counts(ctx, v, f), Enrichment: s.geo.Available() && v.enrich, EnrichmentState: s.enrichState(ctx, v.enrich),
 		Settings: s.Settings(ctx), LastPrune: s.LastPrune()}
 	hosts, err := s.d.Store.R.ListHosts(ctx)
 	if err != nil {

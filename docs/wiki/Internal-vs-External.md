@@ -5,7 +5,7 @@ Network Activity sorts the other end of every connection into one of three kinds
 | Kind | Means | Shown as |
 |---|---|---|
 | ⌂ **Internal** | An address in your **internal ranges** | The DROOL host it belongs to (*database-01*), its Pack, or the named network (*network: home-lan*) |
-| ◎ **External** | A public internet address | With its country and network owner, when a [GeoIP/ASN database](GeoIP-and-ASN.md) is installed |
+| ◎ **External** | A public internet address | With its country and network owner ([GeoIP and ASN](GeoIP-and-ASN.md)) |
 | ◌ **Special** | Neither: an address that isn't on the public internet and isn't in your internal ranges, such as multicast, reserved, benchmarking or documentation addresses. Special addresses are never looked up in a GeoIP database | With the kind of range, for example *Special (documentation)* |
 
 Your internal ranges always win: with the default list, loopback and link-local addresses count as

@@ -2952,6 +2952,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/network/enrichment/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Check for newer downloaded databases now (Check now); it also happens daily. Returns at once: the status says when the check is done. Only the database files are downloaded; addresses are never sent anywhere. Requires network.settings; audited (network.enrichment.check). */
+        post: operations["checkNetworkEnrichment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/hosts/{id}/network": {
         parameters: {
             query?: never;
@@ -6339,12 +6356,19 @@ export interface components {
             remote_group_id?: string;
             remote_cidr?: string;
         };
-        /** @description What country and network-owner (ASN) data can be shown for public addresses, per kind: off (enrichment is turned off), unavailable (on, but no usable database of that kind is loaded, so nothing could be looked up), or on (a database is loaded: a public address it has no answer for is genuinely unknown). */
+        /** @description What country and network-owner (ASN) data can be shown for public addresses, per kind: off (enrichment is turned off), unavailable (on, but no usable database of that kind is loaded, so nothing could be looked up), preparing (DROOL's first download of that database is on its way), or on (a database is loaded: a public address it has no answer for is genuinely unknown). */
         NetEnrichState: {
             /** @enum {string} */
-            country: "off" | "unavailable" | "on";
+            country: "off" | "unavailable" | "preparing" | "on";
             /** @enum {string} */
-            asn: "off" | "unavailable" | "on";
+            asn: "off" | "unavailable" | "preparing" | "on";
+            /** @description DROOL downloads missing databases itself: unavailable then means a download failed for now (it is retried), not that nothing is set up. */
+            downloads?: boolean;
+            /** @description Why the last download failed. */
+            download_error?: string;
+            /** @description The attribution the data's licence asks for, when downloaded data is shown (IP Geolocation by DB-IP). */
+            attribution?: string;
+            attribution_url?: string;
         };
         NetFlowPage: {
             items: components["schemas"]["NetFlow"][];
@@ -6439,9 +6463,14 @@ export interface components {
             max_flows_per_host: number;
             /** @description Look public addresses up in the local GeoIP/ASN databases. Never online. */
             enrichment: boolean;
+            /** @description Download the country and ASN databases the operator doesn't provide (DB-IP Lite) and keep them up to date (on by default). Only the database files are downloaded; addresses are still looked up locally. Optional on save: left out, it keeps its value. */
+            geoip_downloads?: boolean;
         };
         NetEnrichment: {
+            /** @description The operator's database directory (network.geoip_dir); DROOL never changes it. */
             directory: string;
+            /** @description Where DROOL keeps the databases it downloads. */
+            download_directory?: string;
             country: boolean;
             asn: boolean;
             files: {
@@ -6454,6 +6483,8 @@ export interface components {
                 provides: string[];
                 used: string[];
                 error?: string;
+                /** @description DROOL downloaded it (else it is the operator's own; the operator's win for the kinds they provide). */
+                downloaded?: boolean;
             }[];
             /** Format: date-time */
             loaded_at?: string;
@@ -6464,6 +6495,51 @@ export interface components {
                 hits: number;
                 misses: number;
             };
+            /**
+             * @description off (lookups off); available; updating (a check or download is running); update_failed (the last check failed and the databases in use are kept); preparing (the first download is on its way); unavailable (downloading failed and is retried); not_configured (no database and nothing downloaded automatically).
+             * @enum {string}
+             */
+            state: "off" | "available" | "updating" | "update_failed" | "preparing" | "unavailable" | "not_configured";
+            downloads?: components["schemas"]["NetGeoIPDownloads"];
+        };
+        /** @description Automatic downloads (absent when the controller downloads nothing). */
+        NetGeoIPDownloads: {
+            /** @description DROOL downloads and updates databases now. */
+            enabled: boolean;
+            /** @description Why not */
+            disabled?: string;
+            /** @description DB-IP Lite. */
+            provider: string;
+            provider_url: string;
+            /** @description CC BY 4.0. */
+            license: string;
+            /** @description What the licence asks to show with the data. */
+            attribution: string;
+            directory: string;
+            checking: boolean;
+            /** Format: date-time */
+            last_check?: string;
+            /**
+             * Format: date-time
+             * @description The last check that completed without an error.
+             */
+            last_success?: string;
+            last_error?: string;
+            /** Format: date-time */
+            last_error_at?: string;
+            /** Format: date-time */
+            next_check?: string;
+            databases: {
+                /** @enum {string} */
+                kind: "country" | "asn";
+                /** @description The provider's monthly release (YYYY-MM). */
+                release: string;
+                build_date?: string;
+                /** Format: date-time */
+                downloaded: string;
+            }[];
+            /** @description Kinds the operator's own databases provide (not downloaded). */
+            yours: ("country" | "asn")[];
         };
         NetSettingsView: components["schemas"]["NetSettings"] & {
             enrichment_status: components["schemas"]["NetEnrichment"];
@@ -6551,6 +6627,9 @@ export interface components {
             considered: number;
             truncated: boolean;
             collapsed: number;
+            /** @description The attribution the network-owner data's licence asks for, when it comes from a downloaded database (IP Geolocation by DB-IP). */
+            attribution?: string;
+            attribution_url?: string;
         };
         FwObservation: {
             /** @enum {string} */
@@ -13920,6 +13999,27 @@ export interface operations {
                     "application/json": components["schemas"]["NetEnrichment"];
                 };
             };
+        };
+    };
+    checkNetworkEnrichment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Checking. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetEnrichment"];
+                };
+            };
+            409: components["responses"]["Problem"];
         };
     };
     hostNetwork: {

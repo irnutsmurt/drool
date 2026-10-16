@@ -28,6 +28,10 @@ type Settings struct {
 	// Enrichment: look public addresses up in the local GeoIP/ASN
 	// databases, if any are installed. Never online.
 	Enrichment bool `json:"enrichment"`
+	// GeoIPDownloads: download the databases the operator doesn't
+	// provide (DB-IP Lite) and keep them up to date. Only the database
+	// files are downloaded; addresses are still looked up locally.
+	GeoIPDownloads bool `json:"geoip_downloads"`
 }
 
 // Defaults.
@@ -40,7 +44,7 @@ const settingKey = "network.monitoring"
 
 // DefaultSettings are used until an administrator saves settings.
 func DefaultSettings() Settings {
-	return Settings{Collection: CollectAll, RetentionDays: DefaultRetentionDays, MaxFlowsPerHost: DefaultMaxFlowsPerHost, Enrichment: true}
+	return Settings{Collection: CollectAll, RetentionDays: DefaultRetentionDays, MaxFlowsPerHost: DefaultMaxFlowsPerHost, Enrichment: true, GeoIPDownloads: true}
 }
 
 // LoadSettings reads the settings (defaults for anything unset).

@@ -211,27 +211,37 @@ func (s *Server) handleHostNetworkSnapshot(w http.ResponseWriter, r *http.Reques
 // can do right now.
 type networkSettingsView struct {
 	netmon.Settings
-	Enrichment geoip.Status `json:"enrichment_status"`
+	Enrichment netsvc.EnrichmentStatus `json:"enrichment_status"`
 }
 
 func (s *Server) handleNetworkSettings(w http.ResponseWriter, r *http.Request) {
 	if !s.networkEnabled(w, r) {
 		return
 	}
-	writeJSON(w, http.StatusOK, networkSettingsView{Settings: s.d.Network.Settings(r.Context()), Enrichment: s.d.Network.Enricher().Status()})
+	ctx := r.Context()
+	writeJSON(w, http.StatusOK, networkSettingsView{Settings: s.d.Network.Settings(ctx), Enrichment: s.d.Network.EnrichmentStatus(ctx)})
 }
 
 func (s *Server) handleSetNetworkSettings(w http.ResponseWriter, r *http.Request) {
 	if !s.networkEnabled(w, r) {
 		return
 	}
-	var in netmon.Settings
-	if p := decodeJSON(w, r, &in); p != nil {
+	// geoip_downloads is optional: a client that doesn't know it keeps it.
+	var body struct {
+		netmon.Settings
+		GeoIPDownloads *bool `json:"geoip_downloads"`
+	}
+	if p := decodeJSON(w, r, &body); p != nil {
 		writeProblem(w, r, p)
 		return
 	}
 	ctx := r.Context()
 	before := s.d.Network.Settings(ctx)
+	in := body.Settings
+	in.GeoIPDownloads = before.GeoIPDownloads
+	if body.GeoIPDownloads != nil {
+		in.GeoIPDownloads = *body.GeoIPDownloads
+	}
 	err := s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
 		if err := s.d.Network.SaveSettingsTx(ctx, q, in, principalFrom(ctx).UserID); err != nil {
 			return audit.Event{}, err
@@ -244,14 +254,37 @@ func (s *Server) handleSetNetworkSettings(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.d.Network.SettingsChanged(ctx)
-	writeJSON(w, http.StatusOK, networkSettingsView{Settings: s.d.Network.Settings(ctx), Enrichment: s.d.Network.Enricher().Status()})
+	writeJSON(w, http.StatusOK, networkSettingsView{Settings: s.d.Network.Settings(ctx), Enrichment: s.d.Network.EnrichmentStatus(ctx)})
 }
 
 func (s *Server) handleNetworkEnrichment(w http.ResponseWriter, r *http.Request) {
 	if !s.networkEnabled(w, r) {
 		return
 	}
-	writeJSON(w, http.StatusOK, s.d.Network.Enricher().Status())
+	writeJSON(w, http.StatusOK, s.d.Network.EnrichmentStatus(r.Context()))
+}
+
+// handleCheckNetworkEnrichment asks for a check for newer downloaded
+// databases now (Check now); the status says when it is done.
+func (s *Server) handleCheckNetworkEnrichment(w http.ResponseWriter, r *http.Request) {
+	if !s.networkEnabled(w, r) {
+		return
+	}
+	ctx := r.Context()
+	if err := s.d.Network.GeoIPCheckable(ctx); err != nil {
+		writeProblem(w, r, errConflict("downloads_off", "DROOL can't check for new databases: "+strings.TrimPrefix(err.Error(), netsvc.ErrNoDownloads.Error()+": ")+"."))
+		return
+	}
+	err := s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
+		return audit.Event{Action: "network.enrichment.check", TargetType: "settings", TargetID: "network",
+			Details: map[string]any{"provider": geoip.ProviderName}}, nil
+	})
+	if err != nil {
+		writeProblem(w, r, s.firewallError(err))
+		return
+	}
+	s.d.Network.CheckGeoIP()
+	writeJSON(w, http.StatusAccepted, s.d.Network.EnrichmentStatus(ctx))
 }
 
 func (s *Server) handleReloadNetworkEnrichment(w http.ResponseWriter, r *http.Request) {
@@ -273,7 +306,7 @@ func (s *Server) handleReloadNetworkEnrichment(w http.ResponseWriter, r *http.Re
 		writeProblem(w, r, s.firewallError(err))
 		return
 	}
-	writeJSON(w, http.StatusOK, st)
+	writeJSON(w, http.StatusOK, s.d.Network.EnrichmentStatus(ctx))
 }
 
 // --- classifications of observed traffic (final After-M17 batch) ---

@@ -12,8 +12,10 @@ What DROOL listens on, what it connects to, and what it puts where.
 | The jump host | Hosts behind it | Their SSH port | Connections forwarded through the jump host |
 | The controller | Notification destinations | Their ports (SMTP 587/465/25, HTTPS 443, …) | Alerts ([Notification Routing](Notification-Routing.md)) |
 | The controller | Your audit receiver | HTTPS | The [remote audit copy](Remote-Audit-Copy.md) |
+| The controller | `download.db-ip.com` | **TCP 443** (HTTPS) | Downloading the [GeoIP and ASN](GeoIP-and-ASN.md) databases, at startup if missing and then daily; never with `network.geoip_download: false` |
 
-The controller makes no other connections: no telemetry, no update checks, no online GeoIP lookups.
+The controller makes no other connections: no telemetry, no update checks, no online GeoIP lookups
+(addresses are looked up locally; only the database files are downloaded).
 
 ## On the controller
 
@@ -26,7 +28,8 @@ The controller makes no other connections: no telemetry, no update checks, no on
 | `…/artifacts/` | | Stored files: deployments, previous versions for rollback, Desired State contents |
 | `…/backups/` | | Backups made with `drool backup` (and before upgrades) |
 | `…/logs/` | (logs go to the container's output) | DROOL's logs, rotated: `app.log`, `audit.log`, `security.log`, `job.log` |
-| `…/geoip/` | | [GeoIP and ASN](GeoIP-and-ASN.md) databases, if you add them |
+| `…/geoip/` | | Your own [GeoIP and ASN](GeoIP-and-ASN.md) databases, if you add them (DROOL only reads them) |
+| `…/geoip/downloaded/` | | The GeoIP and ASN databases DROOL downloads (DB-IP Lite), and what it knows about them |
 | `…/pre-restore-<time>/` | | Your previous files after a restore |
 | `/etc/drool/config.yaml` | (environment variables) | The [configuration file](Configuration.md), if any |
 | `/usr/bin/drool` (package), `/usr/local/bin/drool` (archive) | | The program |

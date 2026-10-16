@@ -69,8 +69,9 @@ func newComposeProject(t *testing.T, image, composeFile, suffix string) *compose
 		t.Fatal(err)
 	}
 	os.WriteFile(filepath.Join(p.dir, "compose.yaml"), b, 0o644)
+	// No downloads from the internet in tests (GeoIP databases).
 	os.WriteFile(filepath.Join(p.dir, "compose.override.yaml"), []byte(fmt.Sprintf(
-		"services:\n  drool:\n    ports: !override\n      - \"127.0.0.1:%d:8080\"\n", p.webPort)), 0o644)
+		"services:\n  drool:\n    ports: !override\n      - \"127.0.0.1:%d:8080\"\n    environment:\n      DROOL_NETWORK_GEOIP_DOWNLOAD: \"false\"\n", p.webPort)), 0o644)
 	t.Cleanup(func() {
 		if !*flagKeep {
 			p.run("down", "-v", "--remove-orphans")

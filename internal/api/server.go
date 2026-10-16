@@ -378,6 +378,7 @@ func (s *Server) routes() []route {
 		{method: "PUT", path: APIPrefix + "/network/classifications/{id}", auth: authed, perm: auth.PermNetworkClassify, h: s.handlePutClassification},
 		{method: "DELETE", path: APIPrefix + "/network/classifications/{id}", auth: authed, perm: auth.PermNetworkClassify, h: s.handleDeleteClassification},
 		{method: "POST", path: APIPrefix + "/network/enrichment/reload", auth: authed, perm: auth.PermNetworkSettings, h: s.handleReloadNetworkEnrichment},
+		{method: "POST", path: APIPrefix + "/network/enrichment/check", auth: authed, perm: auth.PermNetworkSettings, h: s.handleCheckNetworkEnrichment},
 		{method: "GET", path: APIPrefix + "/hosts/{id}/network", auth: authed, perm: auth.PermNetworkRead, h: s.handleHostNetwork},
 		{method: "GET", path: APIPrefix + "/monitoring/summary", auth: authed, perm: auth.PermMonitoringRead, h: s.handleMonitoringSummary},
 		{method: "GET", path: APIPrefix + "/monitoring/issues", auth: authed, perm: auth.PermMonitoringRead, h: s.handleMonitoringIssues},

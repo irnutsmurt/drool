@@ -2867,6 +2867,17 @@ paths:
       description: Reload the databases now (they are also reloaded automatically when the files change). Audited (network.enrichment.reload).
       responses:
         '200': { description: Status after reloading., content: { application/json: { schema: { $ref: '#/components/schemas/NetEnrichment' } } } }
+  /network/enrichment/check:
+    post:
+      operationId: checkNetworkEnrichment
+      tags: [network]
+      description: >-
+        Check for newer downloaded databases now (Check now); it also happens daily. Returns at once: the status says when the
+        check is done. Only the database files are downloaded; addresses are never sent anywhere. Requires network.settings;
+        audited (network.enrichment.check).
+      responses:
+        '202': { description: Checking., content: { application/json: { schema: { $ref: '#/components/schemas/NetEnrichment' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
   /hosts/{id}/network:
     get:
       operationId: hostNetwork
@@ -6090,12 +6101,17 @@ components:
       type: object
       description: >-
         What country and network-owner (ASN) data can be shown for public addresses, per kind: off (enrichment is turned off),
-        unavailable (on, but no usable database of that kind is loaded, so nothing could be looked up), or on (a database is
-        loaded: a public address it has no answer for is genuinely unknown).
+        unavailable (on, but no usable database of that kind is loaded, so nothing could be looked up), preparing (DROOL's
+        first download of that database is on its way), or on (a database is loaded: a public address it has no answer for is
+        genuinely unknown).
       required: [country, asn]
       properties:
-        country: { type: string, enum: ['off', unavailable, 'on'] }
-        asn: { type: string, enum: ['off', unavailable, 'on'] }
+        country: { type: string, enum: ['off', unavailable, preparing, 'on'] }
+        asn: { type: string, enum: ['off', unavailable, preparing, 'on'] }
+        downloads: { type: boolean, description: "DROOL downloads missing databases itself: unavailable then means a download failed for now (it is retried), not that nothing is set up." }
+        download_error: { type: string, description: Why the last download failed. }
+        attribution: { type: string, description: "The attribution the data's licence asks for, when downloaded data is shown (IP Geolocation by DB-IP)." }
+        attribution_url: { type: string }
     NetFlowPage:
       type: object
       required: [items, total, scanned, truncated, enrichment_state]
@@ -6195,11 +6211,18 @@ components:
         retention_days: { type: integer, minimum: 1, maximum: 365 }
         max_flows_per_host: { type: integer, minimum: 100, maximum: 100000 }
         enrichment: { type: boolean, description: Look public addresses up in the local GeoIP/ASN databases. Never online. }
+        geoip_downloads:
+          type: boolean
+          description: >-
+            Download the country and ASN databases the operator doesn't provide (DB-IP Lite) and keep them up to date (on by
+            default). Only the database files are downloaded; addresses are still looked up locally. Optional on save: left out,
+            it keeps its value.
     NetEnrichment:
       type: object
-      required: [directory, country, asn, files, cache]
+      required: [directory, country, asn, files, cache, state]
       properties:
-        directory: { type: string }
+        directory: { type: string, description: "The operator's database directory (network.geoip_dir); DROOL never changes it." }
+        download_directory: { type: string, description: Where DROOL keeps the databases it downloads. }
         country: { type: boolean }
         asn: { type: boolean }
         files:
@@ -6216,14 +6239,52 @@ components:
               provides: { type: array, items: { type: string } }
               used: { type: array, items: { type: string } }
               error: { type: string }
+              downloaded: { type: boolean, description: "DROOL downloaded it (else it is the operator's own; the operator's win for the kinds they provide)." }
         loaded_at: { type: string, format: date-time }
         error: { type: string }
         cache: { type: object, required: [entries, max, hits, misses], properties: { entries: { type: integer }, max: { type: integer }, hits: { type: integer }, misses: { type: integer } } }
+        state:
+          type: string
+          enum: ['off', available, updating, update_failed, preparing, unavailable, not_configured]
+          description: >-
+            off (lookups off); available; updating (a check or download is running); update_failed (the last check failed and the
+            databases in use are kept); preparing (the first download is on its way); unavailable (downloading failed and is
+            retried); not_configured (no database and nothing downloaded automatically).
+        downloads: { $ref: '#/components/schemas/NetGeoIPDownloads' }
+    NetGeoIPDownloads:
+      type: object
+      description: Automatic downloads (absent when the controller downloads nothing).
+      required: [enabled, provider, provider_url, license, attribution, directory, checking, databases, yours]
+      properties:
+        enabled: { type: boolean, description: DROOL downloads and updates databases now. }
+        disabled: { type: string, description: Why not, when it doesn't. }
+        provider: { type: string, description: DB-IP Lite. }
+        provider_url: { type: string }
+        license: { type: string, description: CC BY 4.0. }
+        attribution: { type: string, description: What the licence asks to show with the data. }
+        directory: { type: string }
+        checking: { type: boolean }
+        last_check: { type: string, format: date-time }
+        last_success: { type: string, format: date-time, description: The last check that completed without an error. }
+        last_error: { type: string }
+        last_error_at: { type: string, format: date-time }
+        next_check: { type: string, format: date-time }
+        databases:
+          type: array
+          items:
+            type: object
+            required: [kind, release, downloaded]
+            properties:
+              kind: { type: string, enum: [country, asn] }
+              release: { type: string, description: The provider's monthly release (YYYY-MM). }
+              build_date: { type: string }
+              downloaded: { type: string, format: date-time }
+        yours: { type: array, items: { type: string, enum: [country, asn] }, description: "Kinds the operator's own databases provide (not downloaded)." }
     NetSettingsView:
       allOf:
         - { $ref: '#/components/schemas/NetSettings' }
         - type: object
-          required: [enrichment_status]
+          required: [enrichment_status, geoip_downloads]
           properties:
             enrichment_status: { $ref: '#/components/schemas/NetEnrichment' }
     NetPrune:
@@ -6301,6 +6362,8 @@ components:
         considered: { type: integer }
         truncated: { type: boolean }
         collapsed: { type: integer }
+        attribution: { type: string, description: "The attribution the network-owner data's licence asks for, when it comes from a downloaded database (IP Geolocation by DB-IP)." }
+        attribution_url: { type: string }
     FwObservation:
       type: object
       required: [direction, protocol, port, peer, source, count, first_seen, last_seen, classified, verdict, reason]
