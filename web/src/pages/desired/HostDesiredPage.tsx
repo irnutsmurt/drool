@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { cx } from "@/components/ui/cx";
+import { ChevronDownIcon } from "@/components/ui/icons";
 import { plainLink } from "@/components/ui/links";
 import { fmtSince, fmtTime } from "@/components/monitoring/format";
 import { RestoreDialog } from "@/components/desired/RestoreDialog";
@@ -100,7 +101,11 @@ export function HostDesiredPage() {
         </Card>
 
         <Card title={h.resources.length ? `Managed resources (${h.resources.length})` : "Managed resources"}>
-          {h.resources.length === 0 ? <p className="text-sm text-muted">Nothing is managed on this host.</p> : (
+          {h.resources.length === 0 ? <p className="text-sm text-muted">Nothing is managed on this host.</p> : (<>
+            <p className="mb-2 text-xs text-muted">
+              Open a resource for what differs, where its value comes from and its history
+              {can("desired.restore") || can("desired.manage") ? ", and to restore it or accept the current state" : ""}.
+            </p>
             <ul className="divide-y divide-line" aria-label="Managed resources">
               {h.resources.map((r) => (
                 <li key={r.key}>
@@ -110,7 +115,10 @@ export function HostDesiredPage() {
                     <span className="break-all font-mono text-xs" aria-label={describeKey(r.key)}>{r.name}</span>
                     <span className="text-sm"><span className="text-muted">wants </span>{r.want}</span>
                     <span className="text-sm"><span className="text-muted">is </span>{r.current || "—"}</span>
-                    <span className="flex flex-wrap items-center gap-1"><DesiredStatusBadge status={r.status} />{r.auto.enabled && <Badge tone="accent">auto</Badge>}</span>
+                    <span className="flex flex-wrap items-center gap-1">
+                      <DesiredStatusBadge status={r.status} />{r.auto.enabled && <Badge tone="accent">auto</Badge>}
+                      <ChevronDownIcon className={cx("ml-auto shrink-0 text-muted transition-transform", open === r.key && "rotate-180")} />
+                    </span>
                   </button>
                   {open === r.key && (
                     <ResourceDetail hostId={id} r={r} onRestore={() => setRestore([r.key])} onReview={() => setReview(r.key)}
@@ -119,7 +127,7 @@ export function HostDesiredPage() {
                 </li>
               ))}
             </ul>
-          )}
+          </>)}
         </Card>
 
         {h.excluded.length > 0 && (

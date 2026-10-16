@@ -13,7 +13,7 @@ import { fmtTime } from "@/components/monitoring/format";
 import { useAcknowledge, useAlert, type AlertDetail, type Delivery } from "@/components/alerts/queries";
 import { MaintenanceDialog } from "@/components/alerts/MaintenanceDialog";
 import { IgnoreDialog } from "@/components/alerts/AlertActions";
-import { AlertSeverity, AlertStateBadge, categoryLabel, checkLabel, clearedBy, fmtDuration, NotificationBadge, resolutionWord, untilText } from "@/components/alerts/ui";
+import { AlertSeverity, AlertStateBadge, alertMonitoringLink, categoryLabel, checkLabel, clearedBy, fmtDuration, NotificationBadge, resolutionWord, untilText } from "@/components/alerts/ui";
 
 const deliveryWord: Record<string, string> = { opening: "Opening", escalation: "Escalation", reminder: "Reminder", recovery: "Recovery", cleared: "Cleared (not a recovery)" };
 
@@ -33,7 +33,7 @@ export function AlertDetailPage() {
         actions={
           <>
             <Link to={`/hosts/${a.host_id}`} className={secondaryLink}>View host</Link>
-            <Link to={`/hosts/${a.host_id}/monitoring`} className={secondaryLink}>View monitoring</Link>
+            <Link to={alertMonitoringLink(a).to} className={secondaryLink}>{alertMonitoringLink(a).label}</Link>
           </>
         }
       />

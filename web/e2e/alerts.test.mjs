@@ -285,7 +285,9 @@ test("alert quick actions: Acknowledge, Snooze and Ignore from the list; who may
     await page.waitForSelector('[data-testid="alert-actions"]');
     // The alert's inspector: its facts, the ways to deal with it, and links further.
     const menu = await page.$eval('[data-testid="alert-inspector"]', (e) => e.innerText);
-    for (const want of ["Acknowledge…", "Snooze…", "Ignore…", "Open the alert", "View host nas-01", "View monitoring"]) assert.ok(menu.includes(want), "inspector lacks " + want);
+    for (const want of ["Acknowledge…", "Snooze…", "Ignore…", "Open the alert", "View host nas-01", "View backup.service"]) assert.ok(menu.includes(want), "inspector lacks " + want);
+    // A service alert leads to its unit among the host's services.
+    assert.ok(await page.$(`[data-testid="alert-inspector"] a[href="/hosts/${id}/monitoring?tab=services&unit=backup.service"]`), "the link to the service");
     await shot(page, "alert-quick-actions");
     await click(page, '[data-testid="alert-actions"] button', "Acknowledge…");
     await page.waitForSelector('[data-testid="alert-acknowledge"]');

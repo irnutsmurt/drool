@@ -46,7 +46,8 @@ export function GroupsPage() {
       )}
       <div className="grid gap-4 md:grid-cols-2">
         {items.map((g: Group) => (
-          <Card key={g.id} title={`${g.name} (${g.host_ids.length} host${g.host_ids.length === 1 ? "" : "s"})`}
+          <Card key={g.id}
+            title={<><Link className="text-accent hover:underline" to={`/groups/${g.id}`}>{g.name}</Link> ({g.host_ids.length} host{g.host_ids.length === 1 ? "" : "s"})</>}
             actions={(
               <div className="flex flex-wrap justify-end gap-2">
                 {can("monitoring.read") && <GroupHealthButton groupId={g.id} name={g.name} />}

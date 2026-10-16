@@ -232,7 +232,10 @@ test("review difference, restore managed state and accept current state on a rea
   assert.equal(b.status, 201, JSON.stringify(b.body));
   await waitStatus("web-1", `file:${path}`, "drift");
   await go(`/hosts/${web}/desired`);
+  // Each row opens (a chevron says so) for its details and actions.
+  assert.match(await text(page), /Open a resource for what differs, where its value comes from and its history, and to restore it or accept the current state\./);
   await openResource(path);
+  assert.ok(await page.$eval('ul[aria-label="Managed resources"] > li > button[aria-expanded="true"]', (b, p) => b.textContent.includes(p), path));
   await click(page, "button", "Review difference");
   await waitText(page, "The file is missing on the host");
   assert.match(await text(page), /Read-only: reviewing never changes the host/);

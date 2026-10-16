@@ -12,7 +12,7 @@ import { plainLink } from "@/components/ui/links";
 import { errorMessage } from "@/lib/format";
 import { fmtSince, fmtTime } from "@/components/monitoring/format";
 import { MaintenanceForm } from "./MaintenanceDialog";
-import { AlertSeverity, AlertStateBadge, MaintenanceNote, NotificationBadge, categoryLabel } from "./ui";
+import { AlertSeverity, AlertStateBadge, MaintenanceNote, NotificationBadge, alertMonitoringLink, categoryLabel } from "./ui";
 import { alertKeys, useAcknowledge, type Alert } from "./queries";
 
 type IgnoreOption = Schemas["AlertIgnoreOptions"]["options"][number];
@@ -99,7 +99,7 @@ export function AlertInspector({ a, onClose }: { a: Alert; onClose: () => void }
                   <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Look further</h3>
                   <ul className="space-y-1.5">
                     <li><Link className={plainLink} to={`/hosts/${a.host_id}`}>View host {a.host_name}</Link></li>
-                    <li><Link className={plainLink} to={`/hosts/${a.host_id}/monitoring${a.category === "services" ? "?tab=services" : ""}`}>View monitoring</Link></li>
+                    <li><Link className={plainLink} to={alertMonitoringLink(a).to}>{alertMonitoringLink(a).label}</Link></li>
                     <li><Link className={plainLink} to={`/alerts/${a.id}`}>Open the alert</Link> <span className="text-xs text-muted">— its timeline, deliveries and other occurrences</span></li>
                   </ul>
                 </section>

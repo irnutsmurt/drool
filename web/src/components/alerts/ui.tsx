@@ -21,6 +21,16 @@ export const checkLabel: Record<string, string> = {
   probe: "Write/read probe", stale: "No monitoring data", fidelity: "Reduced fidelity", gpu_utilization: "High GPU utilization",
 };
 
+/** Where an alert's subject is looked at on its host: a failed service
+ * among the host's services (found and highlighted, as from the search),
+ * storage and hardware on their tabs, anything else the monitoring summary. */
+export function alertMonitoringLink(a: Alert): { to: string; label: string } {
+  const base = `/hosts/${a.host_id}/monitoring`;
+  if (a.category === "services" && a.subject) return { to: `${base}?tab=services&unit=${encodeURIComponent(a.subject)}`, label: `View ${a.subject}` };
+  const tab = ({ services: "services", storage: "storage", temperature: "hardware", gpu: "hardware" } as Record<string, string>)[a.category ?? ""];
+  return { to: tab ? `${base}?tab=${tab}` : base, label: "View monitoring" };
+}
+
 /** Whether a resolved alert closed by configuration (or its subject
  * disappeared) rather than recovering. */
 export const clearedBy = (a: Alert) => a.resolution === "disabled" || a.resolution === "reconfigured" || a.resolution === "gone";
