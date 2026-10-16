@@ -71,7 +71,8 @@ test("sidebar: direct destinations under headings; themed names explain themselv
     ["Observe", ["Monitoring", "Alerts", "Network Activity"]],
     ["Automate", ["Runs", "Schedules", "Workflows", "Desired State"]],
     ["Protect", ["Firewall", "Credentials", "Audit Log"]],
-    ["Settings", ["Settings"]],
+    // One destination, set apart: no "Settings" heading over a "Settings" link.
+    ["", ["Settings"]],
   ]);
   // Headings are labels, not links.
   assert.equal(await page.$('nav[aria-label="Main"] div[id^=nav-] a'), null);

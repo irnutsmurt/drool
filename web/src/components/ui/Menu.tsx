@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { ChevronDownIcon } from "./icons";
 import { cx } from "./cx";
@@ -32,6 +32,9 @@ export function MenuButton({ label, items, align = "end", size = "md", testId }:
   testId?: string;
 }) {
   const [open, setOpen] = useState(false);
+  // The side the menu opens on: as asked, unless that runs off the screen
+  // (a button near a phone's left edge).
+  const [side, setSide] = useState(align);
   const box = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -43,6 +46,15 @@ export function MenuButton({ label, items, align = "end", size = "md", testId }:
     setOpen(false);
     if (focusButton) button.current?.focus();
   };
+  useLayoutEffect(() => {
+    if (!open) {
+      setSide(align);
+      return;
+    }
+    const r = list.current?.getBoundingClientRect();
+    if (r && r.left < 8) setSide("start");
+    else if (r && r.right > window.innerWidth - 8) setSide("end");
+  }, [open, align]);
   useEffect(() => {
     if (!open) return;
     entries()[0]?.focus();
@@ -87,7 +99,7 @@ export function MenuButton({ label, items, align = "end", size = "md", testId }:
       {open && (
         <div ref={list} id={id} role="menu" aria-orientation="vertical" onKeyDown={onKey}
           className={cx("absolute top-full z-40 mt-1 w-64 max-w-[calc(100vw-2rem)] rounded-ui border border-line bg-surface p-1 shadow-lg",
-            align === "end" ? "right-0" : "left-0")}>
+            side === "end" ? "right-0" : "left-0")}>
           {shown.map((x, i) => (
             <div key={i} role="none" className={cx(x.separated && i > 0 && "mt-1 border-t border-line pt-1", x.narrowOnly && "sm:hidden")}>
               {x.to && !x.disabled ? (
