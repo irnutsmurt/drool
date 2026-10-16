@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { errorMessage } from "@/lib/format";
+import type { SimSummary } from "@/components/jobs/RunConfirmDialog";
 import { ChangeList } from "./StepResult";
 
 export type OpKind = "command" | "script" | "package" | "system_update" | "service" | "reboot" | "file_deploy";
@@ -142,12 +143,14 @@ type SimHost = Schemas["SimulateResult"]["hosts"][number];
  * Removals beyond the named packages must be allowed explicitly; the allow
  * box only appears once a preview has shown them.
  */
-export function SimulatePanel({ targets, step, allow, setAllow, hasTargets }: {
+export function SimulatePanel({ targets, step, allow, setAllow, hasTargets, onResult }: {
   targets: Schemas["TargetSpec"];
   step: Schemas["Operation"];
   allow: boolean;
   setAllow: (v: boolean) => void;
   hasTargets: boolean;
+  /** The dry run's outcome, for the run's review (null: none for this step). */
+  onResult?: (r: SimSummary | null) => void;
 }) {
   const sim = useMutation({
     mutationFn: () => unwrap(api.POST("/jobs/simulate", { body: { targets, step } })),
@@ -165,6 +168,16 @@ export function SimulatePanel({ targets, step, allow, setAllow, hasTargets }: {
 
   const hosts = sim.data?.hosts ?? [];
   const withRemovals = hosts.filter((h) => h.extra_removals.length > 0);
+  useEffect(() => {
+    if (!onResult) return;
+    if (!sim.data) return onResult(null);
+    const changes = (h: SimHost) => (h.plan ? h.plan.upgrade.length + h.plan.install.length + h.plan.remove.length + h.plan.downgrade.length : 0);
+    onResult({
+      hosts: hosts.length, changing: hosts.filter((h) => changes(h) > 0).length, packages: hosts.reduce((n, h) => n + changes(h), 0),
+      removing: withRemovals.map((h) => h.host_name), failed: hosts.filter((h) => h.error).map((h) => h.host_name), removalsAllowed: allow,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sim.data, allow]);
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">

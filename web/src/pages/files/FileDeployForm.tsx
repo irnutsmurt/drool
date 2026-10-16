@@ -119,14 +119,41 @@ const stateLabel: Record<string, { text: string; tone: "ok" | "warn" | "accent" 
   remove: { text: "would remove", tone: "danger" },
 };
 
+/** What a deployment preview found, as far as the run's review needs it. */
+export interface DeploySummary {
+  hosts: number;
+  /** Hosts per outcome ("would create", "identical (nothing to do)"…). */
+  outcomes: [string, number][];
+  skipped: string[];
+  failed: string[];
+}
+
 /** Per-host dry run with diffs. */
-export function DeployPreviewPanel({ targets, step, hasTargets }: { targets: Schemas["TargetSpec"]; step: Schemas["FileDeployOp"]; hasTargets: boolean }) {
+export function DeployPreviewPanel({ targets, step, hasTargets, onResult }: {
+  targets: Schemas["TargetSpec"];
+  step: Schemas["FileDeployOp"];
+  hasTargets: boolean;
+  /** The preview's outcome, for the run's review (null: none for this step). */
+  onResult?: (r: DeploySummary | null) => void;
+}) {
   const prev = useMutation({
     mutationFn: () => unwrap(api.POST("/file-deployments/preview", { body: { targets, step } })),
   });
   const key = useMemo(() => JSON.stringify([targets, step]), [targets, step]);
   const { reset } = prev;
   useEffect(() => reset(), [key, reset]);
+  useEffect(() => {
+    if (!onResult) return;
+    const hs = prev.data?.hosts;
+    if (!hs) return onResult(null);
+    const counts = new Map<string, number>();
+    for (const h of hs) {
+      const st = h.preview && stateLabel[h.preview.state];
+      if (st) counts.set(st.text, (counts.get(st.text) ?? 0) + 1);
+    }
+    onResult({ hosts: hs.length, outcomes: [...counts], skipped: hs.filter((h) => h.skipped).map((h) => h.host_name),
+      failed: hs.filter((h) => h.error).map((h) => h.host_name) });
+  }, [prev.data, onResult]);
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">

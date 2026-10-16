@@ -28,7 +28,8 @@ export function SchedulesPage() {
   return (
     <>
       <PageHeader title="Schedules" actions={newButton}
-        description={<>Jobs and workflows that run at the times you choose. Each run is an ordinary job under <Link className={plainLink} to="/jobs">Runs</Link>; recurring maintenance windows are under <Link className={plainLink} to="/alerts?view=maintenance">Alerts → Maintenance</Link>.</>} />
+        description={<>A schedule decides when a run happens: its own steps or a saved <Link className={plainLink} to="/jobs/workflows">workflow</Link>, at the times you choose.
+          Each run is an ordinary run under <Link className={plainLink} to="/jobs">Runs</Link>; recurring maintenance windows are under <Link className={plainLink} to="/alerts?view=maintenance">Alerts → Maintenance</Link>.</>} />
       {list.error && <Alert>{errorMessage(list.error)}</Alert>}
       {!archived && list.data && rows.length === 0 ? (
         <EmptyState title="No schedules yet"

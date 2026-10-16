@@ -15,6 +15,7 @@ import { Field, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { plainLink } from "@/components/ui/links";
 import { errorMessage } from "@/lib/format";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 export function ScheduleDetailPage() {
   const { id = "" } = useParams();
@@ -31,10 +32,13 @@ export function ScheduleDetailPage() {
   const canRun = can("schedules.manage") && (maint ? can("maintenance.manage") : can("jobs.execute"));
   const back = maint ? "/alerts?view=maintenance" : "/jobs/schedules";
 
-  const runNow = () => {
-    const what = maint ? `Start the maintenance window “${s.name}” now (for ${minutesText(s.config.duration_minutes ?? 0)})?`
-      : `Run “${s.name}” now on ${s.targets_text}?\nIt runs with your permissions, and hosts under maintenance are not skipped. The next scheduled run doesn't change.`;
-    if (confirm(what)) {
+  const runNow = async () => {
+    const ok = await confirmAction(maint
+      ? { title: `Start the maintenance window “${s.name}” now?`, confirmLabel: "Start maintenance",
+        body: <p>For {minutesText(s.config.duration_minutes ?? 0)}: notifications for its hosts pause meanwhile. Monitoring and alerts continue.</p> }
+      : { title: `Run “${s.name}” now?`, confirmLabel: "Run now",
+        body: <><p>On {s.targets_text}, resolved now.</p><p>It runs with your permissions, and hosts under maintenance are not skipped. The next scheduled run doesn&apos;t change.</p></> });
+    if (ok) {
       act.mutate("run-now", {
         onSuccess: (r) => {
           if (r && "job_id" in r && r.job_id) navigate(`/jobs/${r.job_id}`);
@@ -42,13 +46,15 @@ export function ScheduleDetailPage() {
       });
     }
   };
-  const disable = () => {
-    if (!s.active_job_id || confirm("Disable this schedule? Future runs stop. The run in progress continues; cancel it on its page if you need to.")) {
+  const disable = async () => {
+    if (!s.active_job_id || await confirmAction({ title: `Disable “${s.name}”?`, confirmLabel: "Disable schedule",
+      body: <p>Future runs stop. The run in progress continues; cancel it on its page if you need to.</p> })) {
       act.mutate("disable");
     }
   };
-  const archive = () => {
-    if (confirm(`Archive “${s.name}”? It stops running; its history and past jobs are kept.${s.active_job_id ? " The run in progress continues." : ""}`)) {
+  const archive = async () => {
+    if (await confirmAction({ title: `Archive “${s.name}”?`, confirmLabel: "Archive schedule",
+      body: <p>It stops running; its history and past runs are kept.{s.active_job_id ? " The run in progress continues." : ""}</p> })) {
       act.mutate("archive", { onSuccess: () => navigate(back) });
     }
   };
@@ -140,9 +146,10 @@ function Summary({ s }: { s: Schedule }) {
     rows.push(["Each window", minutesText(c.duration_minutes ?? 0)], ["Reason", c.reason || "—"]);
   } else {
     rows.push(
-      ["Runs", c.workflow
-        ? <><Link className="text-accent" to={`/jobs/workflows/${c.workflow.id}`}>{s.workflow_name || "workflow"}</Link>, revision {c.workflow.revision}</>
-        : s.action],
+      ["What runs", c.workflow
+        ? <>Saved workflow <Link className="text-accent" to={`/jobs/workflows/${c.workflow.id}`}>{s.workflow_name || "workflow"}</Link>, revision {c.workflow.revision}
+          <span className="block text-xs text-muted">This revision, until you update the schedule: changing the workflow doesn&apos;t change what runs here.</span></>
+        : <>{s.action}<span className="block text-xs text-muted">Its own steps, saved with this schedule.</span></>],
       ["Rollout", rolloutText(c.strategy ?? { concurrency: 10 })],
       ["If DROOL was down", c.recurrence.kind === "once"
         ? (c.late_limit_minutes ? `Starts when DROOL returns, unless more than ${c.late_limit_minutes} min late` : "Starts when DROOL returns")

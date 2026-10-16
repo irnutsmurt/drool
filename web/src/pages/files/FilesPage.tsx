@@ -14,6 +14,7 @@ import { cx } from "@/components/ui/cx";
 import { errorMessage, formatBytes, formatDateTime } from "@/lib/format";
 import { brief, describe, octal, parseOctal, symbolic } from "@/lib/modes";
 import { upload } from "@/lib/upload";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 type Entry = Schemas["FileInfo"];
 type Listing = Schemas["FileListing"];
@@ -75,7 +76,8 @@ export function FilesPage() {
     for (const f of Array.from(files)) {
       const dest = join(dir, f.name);
       const exists = listing.data?.entries.some((e) => e.name === f.name);
-      if (exists && !confirm(`${f.name} already exists in ${dir}. Replace it?`)) continue;
+      if (exists && !(await confirmAction({ title: `Replace ${f.name}?`, confirmLabel: "Replace", danger: true,
+        body: <p>{f.name} already exists in <span className="font-mono">{dir}</span>. Uploading replaces it on the host.</p> }))) continue;
       const ctl = new AbortController();
       abortRef.current = ctl;
       setUploading({ name: f.name, progress: 0 });

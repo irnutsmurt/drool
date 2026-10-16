@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Table } from "@/components/ui/Table";
 import { plainLink } from "@/components/ui/links";
 import { errorMessage, formatAgo, formatDateTime } from "@/lib/format";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 type HostRec = Schemas["HostReconciliation"];
 type State = HostRec["state"];
@@ -180,7 +181,9 @@ export function RestoreReconciliationCard() {
                     <div className="flex flex-wrap gap-2">
                       {canAccept(h) && (
                         <Button size="sm" onClick={() => {
-                          if (confirm(`Accept ${h.host_name}'s state as it is? Nothing on the host changes; it is moved to this controller's epoch with what it has, and DROOL's own configuration then shows where it differs.`)) accept.mutate(h.host_id);
+                          void confirmAction({ title: `Accept ${h.host_name}'s state as it is?`, confirmLabel: "Accept host's state",
+                            body: <p>Nothing on the host changes: it is moved to this controller&apos;s epoch with what it has, and DROOL&apos;s own configuration then shows where it differs.</p> })
+                            .then((ok) => ok && accept.mutate(h.host_id));
                         }} disabled={accept.isPending}>Accept host's state…</Button>
                       )}
                       <Button size="sm" variant="ghost" onClick={() => retry.mutate(h.host_id)} disabled={retry.isPending}>Check again</Button>
@@ -195,9 +198,11 @@ export function RestoreReconciliationCard() {
         {r.status === "reconciling" && can("settings.write") && (
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={() => {
-              if (confirm(open.length
-                ? `${open.length} host${open.length === 1 ? " is" : "s are"} not reconciled. They keep refusing this controller's commands until they are, and are still compared when their Shepherds connect. Finish anyway?`
-                : "Finish the reconciliation?")) finish.mutate();
+              void confirmAction({ title: open.length ? "Finish the reconciliation with hosts still open?" : "Finish the reconciliation?", confirmLabel: "Finish reconciliation",
+                body: open.length
+                  ? <p>{open.length} host{open.length === 1 ? " is" : "s are"} not reconciled. They keep refusing this controller&apos;s commands until they are, and are still compared when their Shepherds connect.</p>
+                  : <p>Every host is reconciled: the restore is complete.</p> })
+                .then((ok) => ok && finish.mutate());
             }} disabled={finish.isPending}>Finish reconciliation…</Button>
             <span className="text-muted">It finishes by itself once every host is reconciled.</span>
           </div>

@@ -21,6 +21,7 @@ import {
   type Destination, type DestinationConfig, type DestinationInput, type NotificationSettings, type Route, type RouteInput, type TestResult,
 } from "@/components/alerts/queries";
 import { categoryLabel, checkLabel } from "@/components/alerts/ui";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 const kinds = [
   { key: "discord", label: "Discord", hint: "Channel settings → Integrations → Webhooks → copy the URL." },
@@ -125,7 +126,9 @@ function Destinations() {
                 )}
                 {manage && <Button size="sm" onClick={() => setEdit(d)}>Edit</Button>}
                 {manage && (
-                  <Button size="sm" variant="ghost" onClick={() => { if (confirm(`Delete ${d.name}? Unsent notifications to it are cancelled; alerts are not affected.`)) del.mutate(d.id); }}>
+                  <Button size="sm" variant="ghost" onClick={() => void confirmAction({ title: `Delete the destination ${d.name}?`, confirmLabel: "Delete destination", danger: true,
+                    body: <p>Notifications not yet sent to it are cancelled, and routes stop sending to it. Alerts themselves are not affected.</p> })
+                    .then((ok) => ok && del.mutate(d.id))}>
                     Delete
                   </Button>
                 )}

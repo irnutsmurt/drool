@@ -6,7 +6,7 @@
 // (container hosts web-1 and server-a..c).
 import { test, after, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { api, base, click, field, fill, launch, session, shot, sleep, tabTo, text, waitFor, waitText } from "./lib.mjs";
+import { api, base, click, confirmIn, field, fill, launch, session, shot, sleep, tabTo, text, waitFor, waitText } from "./lib.mjs";
 
 let browser;
 let page;
@@ -21,7 +21,6 @@ beforeEach(async () => {
   page?.close().catch(() => {});
   page = await session(browser);
   await page.evaluate(() => localStorage.setItem("drool.theme", "light"));
-  page.on("dialog", (d) => d.accept());
   const hosts = (await api(page, "GET", "/hosts")).body.items;
   page.ids = Object.fromEntries(hosts.map((h) => [h.name, h.id]));
 });
@@ -59,6 +58,17 @@ async function choose(label) {
   await sleep(150);
 }
 
+/** Empties a number or text field the way a person does. */
+async function clear(label) {
+  const el = await field(page, label);
+  await el.focus();
+  await page.keyboard.down("Control");
+  await page.keyboard.press("a");
+  await page.keyboard.up("Control");
+  await page.keyboard.press("Backspace");
+  await sleep(150);
+}
+
 async function select(label, value) {
   const el = await field(page, label);
   await el.select(value);
@@ -71,7 +81,7 @@ test("Runs, Schedules and Workflows: peer sidebar destinations, from the keyboar
   await go("/jobs");
   const automate = () => page.$$eval('nav[aria-label="Main"] ul[aria-labelledby="nav-automate"] a', (as) => as.map((a) => [a.textContent.trim(), a.getAttribute("aria-current")]));
   assert.deepEqual(await automate(), [["Runs", "page"], ["Schedules", null], ["Workflows", null], ["Desired State", null]]);
-  assert.match(await text(page), /Every job DROOL runs/);
+  assert.match(await text(page), /A run is one execution on chosen hosts/);
   await tabTo(page, () => document.activeElement?.textContent === "Schedules", "Schedules link");
   await page.keyboard.press("Enter");
   await waitFor(page, async () => page.url().endsWith("/jobs/schedules"), "schedules url");
@@ -134,8 +144,8 @@ test("schedule this job: recommended rollout, preview waves, run now, history, d
   await fill(page, "Command", "echo scheduled-$(hostname)");
   await check("web-1");
   await check("server-a");
-  await waitText(page, "Recommended for 2 hosts");
-  await click(page, "button", "Use recommended rollout");
+  // A change on several hosts: the recommended rollout is the default.
+  await waitText(page, "Recommended for 2 hosts: 1 canary host first");
   await waitText(page, "Canary");
   await shot(page, "new-job-rollout");
   await click(page, "button", "Schedule this run");
@@ -159,6 +169,8 @@ test("schedule this job: recommended rollout, preview waves, run now, history, d
   assert.match(await text(page), /Every day at 03:00 \(UTC\)/);
   // Run now: an ordinary job, with the schedule as its origin.
   await click(page, "button", "Run now");
+  await waitText(page, "It runs with your permissions");
+  await confirmIn(page, "Run now");
   await waitFor(page, async () => /\/jobs\/job_/.test(page.url()), "job page");
   const job = page.url().split("/").pop();
   await waitText(page, "Started with Run now from schedule");
@@ -177,6 +189,51 @@ test("schedule this job: recommended rollout, preview waves, run now, history, d
   await waitText(page, "Nightly echo");
   assert.match(await text(page), /disabled/);
   await shot(page, "schedules-list");
+  assert.deepEqual(page.errors, []);
+});
+
+test("new run: reviewed before it starts; a rollout the user chose is kept", async () => {
+  await go("/jobs/new");
+  await fill(page, "Command", "echo reviewed-$(hostname)");
+  await fill(page, "Name", "Reviewed echo");
+  await check("web-1");
+  await check("server-a");
+  await waitText(page, "Recommended for 2 hosts:");
+  // The user's own rollout, every host at once: kept as the targets change,
+  // with the recommendation offered beside it, never applied for them.
+  await click(page, "button", "Change rollout…");
+  await choose("No canary");
+  await clear("Batch size");
+  await clear("Pause after failures");
+  await waitText(page, "Rollout: all hosts in one wave, up to 5 at a time, no failure limit.");
+  await check("server-b");
+  await waitText(page, "Recommended for 3 hosts:");
+  assert.match(await text(page), /Rollout: all hosts in one wave/);
+  // The review: what, on which hosts, how it rolls out and what that risks.
+  await click(page, "button", "Review: run on 3 hosts");
+  await page.waitForSelector('[data-testid="run-confirm"]');
+  const review = await page.$eval('[data-testid="run-confirm"]', (d) => d.innerText);
+  for (const s of ["Start this run on 3 hosts?", "echo reviewed-$(hostname)", "server-a", "server-b", "web-1", "all hosts in one wave", "Every host at once"]) {
+    assert.ok(review.includes(s), `${s} in: ${review}`);
+  }
+  await shot(page, "run-review");
+  // Escape: nothing starts.
+  await page.keyboard.press("Escape");
+  await waitFor(page, async () => (await page.$('[data-testid="run-confirm"]')) === null, "the review closed");
+  assert.ok(!(await api(page, "GET", "/jobs")).body.items.some((j) => j.name === "Reviewed echo"), "no run after Escape");
+  // The recommendation, chosen; then Start.
+  await click(page, "button", "Use recommended rollout");
+  await waitText(page, "Rollout: 1 canary host first");
+  await click(page, "button", "Review: run on 3 hosts");
+  await page.waitForSelector('[data-testid="run-confirm"]');
+  assert.match(await page.$eval('[data-testid="run-confirm"]', (d) => d.innerText), /1 canary host first, then batches of 5/);
+  await confirmIn(page, "Start run on 3 hosts", { testId: "run-confirm", wait: false });
+  await waitFor(page, async () => /\/jobs\/job_/.test(page.url()), "job page");
+  const job = page.url().split("/").pop();
+  await waitJobDone(job);
+  const spec = (await api(page, "GET", `/jobs/${job}`)).body.spec;
+  assert.equal(spec.strategy.canary_count, 1);
+  assert.equal(spec.strategy.batch_size, 5);
   assert.deepEqual(page.errors, []);
 });
 
@@ -241,7 +298,9 @@ test("a failing canary pauses the rollout before anyone else starts", async () =
   assert.ok(/^Canary server-a 1 failed/.test(waves[0]), waves.join("|"));
   assert.ok(/^Batch 1 .*2 not started/.test(waves[1]), waves.join("|"));
   await shot(page, "job-canary-paused");
-  await click(page, "button", "Cancel");
+  await click(page, "main button", "Cancel");
+  await waitText(page, "What already changed on a host stays changed.");
+  await confirmIn(page, "Cancel the run");
   await waitText(page, "cancelled");
   assert.deepEqual(page.errors, []);
 });

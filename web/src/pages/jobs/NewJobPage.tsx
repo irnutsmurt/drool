@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type Schemas } from "@/api/client";
 import { jk, useGroups, useHosts } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
-import { RolloutAdvice, RolloutFields, WavesList, defaultRollout, recommendedRollout, strategyFrom, type RolloutState } from "@/components/automation/Rollout";
+import { RolloutAdvice, RolloutFields, WavesList, defaultRollout, mutates, recommendedRollout, rolloutText, strategyFrom, type RolloutState } from "@/components/automation/Rollout";
+import { RunConfirmDialog, type SimSummary } from "@/components/jobs/RunConfirmDialog";
 import { HostStatusBadge } from "@/components/hosts/HostStatusBadge";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -17,8 +18,7 @@ import {
   PackageForm, RebootForm, ServiceForm, SimulatePanel, SystemUpdateForm, defaultTimeouts, opKinds, packageNames, serviceActions,
   type OpKind, type PackageState, type RebootState, type ServiceAction, type ServiceState, type SystemUpdateState,
 } from "./OperationForms";
-import { describeStep } from "./StepResult";
-import { DeployPreviewPanel, FileDeployForm, emptyFileDeploy, fileDeployStep, type FileDeployState } from "../files/FileDeployForm";
+import { DeployPreviewPanel, FileDeployForm, emptyFileDeploy, fileDeployStep, type DeploySummary, type FileDeployState } from "../files/FileDeployForm";
 
 type TargetSpec = Schemas["TargetSpec"];
 
@@ -42,8 +42,16 @@ export function NewJobPage() {
   const [hostIds, setHostIds] = useState<string[]>(() => params.get("hosts")?.split(",").filter(Boolean) ?? []);
   const [groupIds, setGroupIds] = useState<string[]>(() => params.get("groups")?.split(",").filter(Boolean) ?? []);
   const [tags, setTags] = useState("");
-  const [rollout, setRollout] = useState<RolloutState>(defaultRollout);
-  const strategy = useMemo(() => strategyFrom(rollout), [rollout]);
+  // The rollout: the recommended one for a change to several hosts unless
+  // the user chose another (then theirs is kept, never overridden).
+  const [rollout, setRolloutState] = useState<RolloutState>(defaultRollout);
+  const [rolloutTouched, setRolloutTouched] = useState(false);
+  const [hostCount, setHostCount] = useState(0);
+  const [advanced, setAdvanced] = useState(false);
+  const [editRollout, setEditRollout] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [sim, setSim] = useState<SimSummary | null>(null);
+  const [deploy, setDeploy] = useState<DeploySummary | null>(null);
   const { can } = useAuth();
   const [filter, setFilter] = useState("");
   const [onlyOn, setOnlyOn] = useState<("debian" | "redhat")[]>([]);
@@ -90,6 +98,16 @@ export function NewJobPage() {
     return { type: "script", body, interpreter, become, read_only: readOnly, timeout_s, when };
   }, [kind, command, script, interpreter, become, readOnly, timeout, onlyOn, perOS, variants, pkg, sys, svc, rb, fd]);
   const conditional = onlyOn.length > 0 || (kind === "script" && perOS);
+  const autoRollout = !rolloutTouched && hostCount >= 2 && mutates([step]);
+  const effective = rolloutTouched ? rollout : autoRollout ? recommendedRollout : defaultRollout;
+  const strategy = useMemo(() => strategyFrom(effective), [effective]);
+  const setRollout = (v: RolloutState) => {
+    setRolloutState(v);
+    setRolloutTouched(true);
+  };
+  // What a schedule or workflow made from this run starts with: the rollout
+  // chosen or recommended here; otherwise none, so it recommends its own.
+  const carried = rolloutTouched || autoRollout ? strategy : undefined;
   const stepReady = {
     command: command.trim() !== "",
     script: perOS ? Object.values(variants).some((v) => v.trim()) : script.trim() !== "",
@@ -129,37 +147,39 @@ export function NewJobPage() {
 
   const count = preview.data?.hosts.filter((h) => !h.skip).length ?? 0;
   const skipCount = preview.data?.hosts.filter((h) => h.skip).length ?? 0;
+  if (count !== hostCount) setHostCount(count);
+  /** What happens beyond the step itself, in plain words, for the review. */
+  const consequences = (): string[] => {
+    const them = count === 1 ? "it" : "them";
+    switch (kind) {
+      case "reboot":
+        return [`Everything running on ${them} stops until ${count === 1 ? "it comes" : "they come"} back.`, rb.wait ? "DROOL waits for each host to come back." : "DROOL doesn't wait for the hosts to come back."];
+      case "file_deploy":
+        return [
+          `${fd.artifact?.name || "The file"} goes to ${fd.path}${fd.elevated ? " as root" : ""}.`,
+          fd.overwrite === "replace" ? "Existing files are replaced; their previous versions are kept for rollback." : "Existing files are left alone.",
+          ...(fd.validate ? ["The new file is validated first; hosts where validation fails are not changed."] : []),
+          ...(fd.serviceAction ? [`Then ${fd.serviceAction} ${fd.serviceName} where the file changed.`] : []),
+        ];
+      case "system_update":
+        return [
+          ...(sys.allowRemovals ? ["Packages may be removed where an upgrade needs it."] : []),
+          ...(sys.reboot === "always" ? ["Every host reboots afterwards."] : sys.reboot === "if_required" ? ["Hosts that need it reboot afterwards."] : ["No host reboots."]),
+        ];
+      case "package":
+        return pkg.allowRemovals ? ["Other packages may be removed as well."] : [];
+      case "command":
+      case "script":
+        return [become ? `It runs as root (sudo) on ${them}.` : `It runs as the SSH user on ${them}.`, ...(readOnly ? ["Marked read-only: it may run alongside other jobs on the same host."] : [])];
+    }
+    return [];
+  };
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!count || !stepReady) return;
-    const n = `${count} host${count === 1 ? "" : "s"}`;
-    let question: string;
-    switch (kind) {
-      case "command":
-      case "script": {
-        const what = kind === "command" ? `"${command}"` : perOS ? "these scripts" : "this script";
-        question = `Run ${what} on ${n}${become ? " with sudo" : ""}?`;
-        break;
-      }
-      case "reboot":
-        question = `Reboot ${n}? Everything running on ${count === 1 ? "it" : "them"} stops until ${count === 1 ? "it comes" : "they come"} back.`;
-        break;
-      case "file_deploy":
-        question = `Deploy ${fd.artifact?.name || "this file"} to ${fd.path} on ${n}${fd.elevated ? " as root" : ""}?` +
-          (fd.overwrite === "replace" ? "\nExisting files are replaced; their previous versions are kept for rollback." : "\nExisting files are left alone.") +
-          (fd.validate ? "\nThe new file is validated first; hosts where validation fails are not changed." : "") +
-          (fd.serviceAction ? `\nThen ${fd.serviceAction} ${fd.serviceName} where the file changed.` : "");
-        break;
-      case "system_update":
-        question = `${describeStep(step)}\n\nRun on ${n}?` +
-          (sys.allowRemovals ? "\nPackages may be removed where an upgrade needs it." : "") +
-          (sys.reboot === "always" ? "\nEvery host reboots afterwards." : sys.reboot === "if_required" ? "\nHosts that need it reboot afterwards." : "");
-        break;
-      default:
-        question = `${describeStep(step)}\n\nRun on ${n}?` +
-          (kind === "package" && pkg.allowRemovals ? "\nOther packages may be removed as well." : "");
-    }
-    if (confirm(question)) submit.mutate();
+    // The review shows the preview of exactly these targets, not the last one.
+    if (!count || !stepReady || !preview.data || preview.isPlaceholderData) return;
+    submit.reset();
+    setReviewing(true);
   }
 
   const visibleHosts = (hosts.data?.items ?? []).filter(
@@ -217,54 +237,85 @@ export function NewJobPage() {
                   </Field>
                 </>
               )}
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-4 text-sm">
-                  <span className="text-muted">Only run on:</span>
-                  {(["debian", "redhat"] as const).map((f) => (
-                    <Checkbox key={f} checked={onlyOn.includes(f)}
-                      onChange={(on) => setOnlyOn((cur) => (on ? [...cur, f] : cur.filter((x) => x !== f)))}
-                      label={f === "debian" ? "Debian / Ubuntu" : "RHEL family / Fedora"} />
-                  ))}
-                  {onlyOn.length === 0 && <span className="text-xs text-muted">(all hosts)</span>}
-                </div>
-                {(kind === "command" || kind === "script") ? (
-                  <>
-                    <Checkbox checked={become} onChange={setBecome} label="Run as root (sudo)" />
-                    <Checkbox checked={readOnly} onChange={setReadOnly} label="Read-only"
-                      hint="Doesn't change the host, so it may run alongside other jobs on the same host." />
-                  </>
-                ) : kind === "file_deploy" ? null : (
-                  <p className="text-xs text-muted">Runs as root (directly or via the host's sudo setting).</p>
-                )}
-              </div>
+              {(kind === "command" || kind === "script") ? (
+                <Checkbox checked={become} onChange={setBecome} label="Run as root (sudo)" />
+              ) : kind === "file_deploy" ? null : (
+                <p className="text-xs text-muted">Runs as root (directly or via the host's sudo setting).</p>
+              )}
               {kind === "file_deploy" && stepReady && step.type === "file_deploy" && (
-                <DeployPreviewPanel targets={targets} step={step} hasTargets={hasTargets} />
+                <DeployPreviewPanel targets={targets} step={step} hasTargets={hasTargets} onResult={setDeploy} />
               )}
               {(kind === "package" || kind === "system_update") && stepReady && (
                 <SimulatePanel targets={targets} step={step} hasTargets={hasTargets}
                   allow={kind === "package" ? pkg.allowRemovals : sys.allowRemovals}
-                  setAllow={kind === "package" ? setPkgAllow : setSysAllow} />
+                  setAllow={kind === "package" ? setPkgAllow : setSysAllow} onResult={setSim} />
               )}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Name" hint="Optional: shown under Runs.">
-                  <Input value={name} onChange={(e) => setName(e.target.value)} />
-                </Field>
-                <Field label="Timeout (seconds)" hint={`Default ${defaultTimeouts[kind]}.`}>
-                  <Input type="number" min={1} max={86400} value={timeout} onChange={(e) => setTimeoutS(e.target.value)} />
-                </Field>
+              <Field label="Name" hint="Optional: shown under Runs.">
+                <Input value={name} onChange={(e) => setName(e.target.value)} />
+              </Field>
+              {/* Less common: the timeout, OS conditions, read-only. Closed, the
+                  header still lists what is set, so nothing changes unseen. */}
+              <div className="rounded-ui border border-line">
+                <button type="button" aria-expanded={advanced} aria-controls="run-advanced"
+                  onClick={() => setAdvanced((v) => !v)} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-medium">
+                  <span>Advanced options
+                    <span className="ml-2 font-normal text-muted">
+                      {[timeout && `timeout ${timeout} s`, onlyOn.length > 0 && "only some OS families", readOnly && "read-only"].filter(Boolean).join(" · ") || "timeout, OS families, read-only"}
+                    </span>
+                  </span>
+                  <span aria-hidden="true">{advanced ? "▴" : "▾"}</span>
+                </button>
+                {advanced && (
+                  <div id="run-advanced" className="space-y-3 border-t border-line px-3 py-3">
+                    <Field label="Timeout (seconds)" hint={`Default ${defaultTimeouts[kind]}.`}>
+                      <Input className="max-w-[10rem]" type="number" min={1} max={86400} value={timeout} onChange={(e) => setTimeoutS(e.target.value)} />
+                    </Field>
+                    <div className="flex flex-wrap items-center gap-4 text-sm">
+                      <span className="text-muted">Only run on:</span>
+                      {(["debian", "redhat"] as const).map((f) => (
+                        <Checkbox key={f} checked={onlyOn.includes(f)}
+                          onChange={(on) => setOnlyOn((cur) => (on ? [...cur, f] : cur.filter((x) => x !== f)))}
+                          label={f === "debian" ? "Debian / Ubuntu" : "RHEL family / Fedora"} />
+                      ))}
+                      {onlyOn.length === 0 && <span className="text-xs text-muted">(all hosts)</span>}
+                    </div>
+                    {(kind === "command" || kind === "script") && (
+                      <Checkbox checked={readOnly} onChange={setReadOnly} label="Read-only"
+                        hint="Doesn't change the host, so it may run alongside other jobs on the same host (and needs no rollout)." />
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </Card>
 
           <Card title="Rollout">
-            <div className="space-y-4">
-              <RolloutAdvice hosts={count} steps={[step]} strategy={strategy} apply={() => setRollout(recommendedRollout)} />
-              <RolloutFields v={rollout} set={setRollout} hosts={(preview.data?.hosts ?? []).filter((h) => !h.skip).map((h) => ({ id: h.id, name: h.name }))} />
-              {(preview.data?.waves.length ?? 0) > 1 && (
-                <div>
-                  <div className="mb-1 text-sm font-medium">Waves</div>
-                  <WavesList waves={preview.data!.waves} />
-                </div>
+            <div className="space-y-3" data-testid="run-rollout">
+              {count < 2 ? (
+                <p className="text-sm text-muted">{count === 1 ? "One host: no rollout to plan." : "Choose targets to see how the run rolls out."}</p>
+              ) : (
+                <>
+                  <p className="text-sm">
+                    {autoRollout ? <><strong>Recommended for {count} hosts:</strong> </> : <><strong>Rollout:</strong> </>}
+                    {rolloutText(strategy)}.
+                    {autoRollout && <span className="text-muted"> A bad change stops early instead of reaching every host.</span>}
+                  </p>
+                  <RolloutAdvice hosts={count} steps={[step]} strategy={strategy} apply={() => setRollout(recommendedRollout)} />
+                  {(preview.data?.waves.length ?? 0) > 1 && (
+                    <div>
+                      <div className="mb-1 text-sm font-medium">Waves</div>
+                      <WavesList waves={preview.data!.waves} />
+                    </div>
+                  )}
+                  <button type="button" className="text-sm text-accent underline underline-offset-2" aria-expanded={editRollout}
+                    onClick={() => {
+                      if (!editRollout && !rolloutTouched) setRolloutState(effective); // start from what is shown
+                      setEditRollout((v) => !v);
+                    }}>
+                    {editRollout ? "Hide rollout settings" : "Change rollout…"}
+                  </button>
+                  {editRollout && <RolloutFields v={rolloutTouched ? rollout : effective} set={setRollout} hosts={(preview.data?.hosts ?? []).filter((h) => !h.skip).map((h) => ({ id: h.id, name: h.name }))} />}
+                </>
               )}
             </div>
           </Card>
@@ -277,20 +328,20 @@ export function NewJobPage() {
               <span className="mt-1 block text-xs">You can still run it; the hosts will then show drift. <Link className="underline" to="/desired">Desired state</Link></span>
             </Alert>
           )}
-          {submit.error && <Alert>{errorMessage(submit.error)}</Alert>}
+          {submit.error && !reviewing && <Alert>{errorMessage(submit.error)}</Alert>}
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="submit" variant={kind === "reboot" ? "danger" : "primary"} disabled={!count || !stepReady || submit.isPending}>
-              {!count ? "Select targets" : `${kind === "reboot" ? "Reboot" : "Run on"} ${count} host${count === 1 ? "" : "s"}`}
+            <Button type="submit" variant={kind === "reboot" ? "danger" : "primary"} disabled={!count || !stepReady || submit.isPending || preview.isPlaceholderData}>
+              {!count ? "Select targets" : `Review: ${kind === "reboot" ? "reboot" : "run on"} ${count} host${count === 1 ? "" : "s"}…`}
             </Button>
             {can("schedules.manage") && (
               <Button type="button" disabled={!stepReady || !hasTargets}
-                onClick={() => navigate("/jobs/schedules/new", { state: { name, steps: [step], targets, strategy } })}>
+                onClick={() => navigate("/jobs/schedules/new", { state: { name, steps: [step], targets, strategy: carried } })}>
                 Schedule this run
               </Button>
             )}
             {can("workflows.manage") && (
               <Button type="button" variant="ghost" disabled={!stepReady}
-                onClick={() => navigate("/jobs/workflows/new", { state: { name, steps: [step], strategy } })}>
+                onClick={() => navigate("/jobs/workflows/new", { state: { name, steps: [step], strategy: carried } })}>
                 Save as workflow
               </Button>
             )}
@@ -338,6 +389,11 @@ export function NewJobPage() {
           )}
         </div>
       </form>
+      {reviewing && preview.data && (
+        <RunConfirmDialog step={step} preview={preview.data} strategy={strategy} consequences={consequences()}
+          sim={(kind === "package" || kind === "system_update") ? sim : null} deploy={kind === "file_deploy" ? deploy : null}
+          busy={submit.isPending} error={submit.error} onConfirm={() => submit.mutate()} onClose={() => setReviewing(false)} />
+      )}
     </>
   );
 }

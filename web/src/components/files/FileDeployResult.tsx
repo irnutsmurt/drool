@@ -6,6 +6,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { errorMessage, formatBytes } from "@/lib/format";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 interface FileState { exists?: boolean; sha256?: string; owner?: string; group?: string; mode?: string; size?: number; captured?: boolean; kept?: boolean }
 export interface DeployResult {
@@ -86,8 +87,11 @@ export function FileDeployResult({ r, standalone }: { r: DeployResult; standalon
         {r.deployment_id && !standalone && <Link className="inline-flex h-7 items-center text-xs text-accent" to={`/file-deployments/${r.deployment_id}`}>Details and diff</Link>}
         {canRollback && can("files.deploy") && can("jobs.execute") && (
           <Button size="sm" disabled={rollback.isPending} onClick={() => {
-            const what = r.before?.exists === false ? `remove ${r.path} (it didn't exist before)` : `put back the previous version of ${r.path}`;
-            if (confirm(`Roll back: ${what}? This only happens if the file still has the content this deployment installed.`)) rollback.mutate();
+            const what = r.before?.exists === false ? `Remove ${r.path}` : `Put back the previous version of ${r.path}`;
+            void confirmAction({ title: `Roll back: ${what.charAt(0).toLowerCase()}${what.slice(1)}?`, confirmLabel: "Roll back",
+              body: <p>{r.before?.exists === false ? "The file didn't exist before this deployment, so rolling back removes it. " : ""}This only happens if the file
+                still has the content this deployment installed: a file changed since is left alone.</p> })
+              .then((ok) => ok && rollback.mutate());
           }}>Roll back</Button>
         )}
       </div>

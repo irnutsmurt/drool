@@ -7,6 +7,7 @@ import { Field, Input } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { errorMessage, formatDateTime } from "@/lib/format";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 type Token = Schemas["APIToken"];
 
@@ -73,7 +74,9 @@ export function TokensPage() {
               header: "",
               cell: (t) => (
                 <Button size="sm" variant="danger" disabled={revoke.isPending}
-                  onClick={() => { if (confirm(`Revoke token "${t.name}"?`)) revoke.mutate(t.id); }}>
+                  onClick={() => void confirmAction({ title: `Revoke the API token “${t.name}”?`, confirmLabel: "Revoke token", danger: true,
+                    body: <p>Scripts and integrations using it stop working at once. A revoked token can&apos;t be restored: create a new one if it is still needed.</p> })
+                    .then((ok) => ok && revoke.mutate(t.id))}>
                   Revoke
                 </Button>
               ),

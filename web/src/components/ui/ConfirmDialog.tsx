@@ -10,10 +10,12 @@ import { Dialog } from "./Dialog";
  * error is shown where the action was asked for. The server still checks
  * everything (permissions, re-authentication, locks): this dialog is never
  * the only safety check. */
-export function ConfirmDialog({ title, children, confirmLabel, danger, busy, error, onConfirm, onClose, wide, testId }: {
+export function ConfirmDialog({ title, children, confirmLabel, cancelLabel = "Cancel", danger, busy, error, onConfirm, onClose, wide, testId }: {
   title: string;
   children: ReactNode;
   confirmLabel: string;
+  /** When the action itself is a cancellation: "Keep it running", say. */
+  cancelLabel?: string;
   danger?: boolean;
   busy?: boolean;
   error?: unknown;
@@ -26,7 +28,7 @@ export function ConfirmDialog({ title, children, confirmLabel, danger, busy, err
     <Dialog title={title} onClose={onClose} wide={wide} testId={testId ?? "confirm-dialog"}
       footer={
         <>
-          <Button onClick={onClose} data-autofocus>Cancel</Button>
+          <Button onClick={onClose} data-autofocus>{cancelLabel}</Button>
           <Button variant={danger ? "danger" : "primary"} disabled={busy} onClick={onConfirm}>{busy ? "Working…" : confirmLabel}</Button>
         </>
       }>
@@ -42,6 +44,7 @@ export interface ConfirmOptions {
   title: string;
   body: ReactNode;
   confirmLabel: string;
+  cancelLabel?: string;
   danger?: boolean;
   wide?: boolean;
 }
@@ -77,7 +80,7 @@ export function ConfirmHost() {
     setP(null);
   };
   return (
-    <ConfirmDialog title={p.title} confirmLabel={p.confirmLabel} danger={p.danger} wide={p.wide} onConfirm={() => done(true)} onClose={() => done(false)}>
+    <ConfirmDialog title={p.title} confirmLabel={p.confirmLabel} cancelLabel={p.cancelLabel} danger={p.danger} wide={p.wide} onConfirm={() => done(true)} onClose={() => done(false)}>
       {p.body}
     </ConfirmDialog>
   );

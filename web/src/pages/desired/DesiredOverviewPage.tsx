@@ -50,7 +50,8 @@ export function DesiredOverviewPage() {
     <>
       <PageHeader
         title="Desired State"
-        description="What your machines should look like — services, packages and exact files — whether they still do, and how to put them back."
+        description={<>What your machines should look like — services, packages and exact files — whether they still do, and how to put them back.
+          A restore is an ordinary run under <Link className={plainLink} to="/jobs">Runs</Link>, after a preview of exactly what changes.</>}
         actions={
           <>
             {can("desired.restore") && (
@@ -140,7 +141,7 @@ function HostTable({ rows, loading, attention }: { rows: DesiredHostRow[]; loadi
     <Table<DesiredHostRow>
       rows={rows}
       rowKey={(h) => h.host_id}
-      empty={loading ? "Loading…" : attention ? "Nothing needs attention: every managed host is compliant (or being checked)." : "No hosts match."}
+      empty={loading ? "Loading…" : attention ? "Nothing needs attention: every managed host is compliant." : "No hosts match."}
       columns={[
         { header: "Host", cell: (h) => <Link className={plainLink} to={`/hosts/${h.host_id}/desired`}>{h.name}</Link> },
         { header: "Status", cell: (h) => <span className="inline-flex flex-wrap items-center gap-1"><DesiredStatusBadge status={h.status} />{h.in_maintenance && <span className="text-xs text-muted">in maintenance</span>}</span> },
@@ -151,7 +152,9 @@ function HostTable({ rows, loading, attention }: { rows: DesiredHostRow[]; loadi
             : h.unknown ? <span className="text-xs text-muted">{h.unknown}</span> : <span className="text-muted">—</span>,
         },
         { header: "Resources", cell: (h) => <span className="text-muted">{h.counts.compliant}/{h.counts.total} compliant</span> },
-        { header: "Baselines", cell: (h) => <span className="text-sm text-muted">{h.baselines.map((b) => b.name).join(", ") || "—"}</span> },
+        { header: "Baselines", cell: (h) => h.baselines.length === 0 ? <span className="text-muted">—</span> : (
+          <span className="text-sm">{h.baselines.map((b, i) => <span key={b.id}>{i > 0 && ", "}<Link className={plainLink} to={`/desired/baselines/${b.id}`}>{b.name}</Link></span>)}</span>
+        ) },
         { header: "Checked", cell: (h) => <span className="text-muted">{h.checked_at ? fmtSince(h.checked_at) : "—"}</span> },
       ]}
     />

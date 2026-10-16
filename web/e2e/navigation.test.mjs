@@ -219,6 +219,14 @@ test("a read-only role: no destinations it can't view, a clear 403 on direct lin
     assert.ok(!(await search(page, "add user")).includes("/settings/users"));
     assert.equal((await search(page, "api token"))[0], "/settings/tokens", "everyone has their own API tokens");
     await page.keyboard.press("Escape");
+    // The settings directory offers only what the role may open.
+    await go(page, "/settings");
+    await page.waitForSelector('[data-testid="settings-directory"]');
+    const dir = await page.$$eval('[data-testid="settings-directory"] a', (as) => as.map((a) => a.getAttribute("href")));
+    for (const hidden of ["/settings/users", "/credentials", "/settings/notifications", "/audit", "/network?tab=settings", "/settings/system#secure"]) {
+      assert.ok(!dir.includes(hidden), `${hidden} not offered: ${dir}`);
+    }
+    for (const shown of ["/settings/account", "/settings/tokens", "/monitoring/settings", "/firewall?tab=settings"]) assert.ok(dir.includes(shown), `${shown} offered: ${dir}`);
     // A typed or linked address says why.
     for (const p of ["/credentials", "/audit", "/network", "/settings/users", "/jobs/new"]) {
       await go(page, p);
@@ -376,6 +384,17 @@ test("related pages link to each other", async () => {
   await go(page, `/hosts/${id}/network`);
   assert.ok(await page.$(`main a[href="/hosts/${id}/firewall"]`), "host traffic → host firewall");
   assert.ok(await page.$(`main a[href="/network?host=${id}"]`), "host traffic → fleet Network Activity");
+  // Settings: a directory of every setting, each a link to the page that
+  // edits it (no second editor).
+  await go(page, "/settings");
+  await page.waitForSelector('[data-testid="settings-directory"]');
+  const dir = await page.$$eval('[data-testid="settings-directory"] a', (as) => as.map((a) => a.getAttribute("href")));
+  for (const want of ["/settings/account", "/settings/tokens", "/settings/users", "/credentials", "/settings/notifications", "/monitoring/settings",
+    "/network?tab=settings", "/firewall?tab=settings", "/agents?tab=updates", "/settings/system", "/audit"]) {
+    assert.ok(dir.includes(want), `the directory links to ${want}: ${dir}`);
+  }
+  assert.equal(await page.$$eval("main form, main input, main textarea", (x) => x.length), 0, "the directory edits nothing itself");
+  await shot(page, "settings-directory");
   // The old monitoring-settings address still works.
   await go(page, "/settings/monitoring");
   await waitFor(page, async () => page.url().endsWith("/monitoring/settings"), "redirect");

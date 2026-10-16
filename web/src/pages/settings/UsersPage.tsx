@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Alert } from "@/components/ui/Alert";
 import { Dialog } from "@/components/ui/Dialog";
 import { errorMessage, formatDateTime } from "@/lib/format";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 type User = Schemas["User"];
 type Role = Schemas["Role"];
@@ -117,13 +118,17 @@ export function UsersPage() {
                   {u.mfa_enabled && u.id !== me?.user.id && (
                     <Button size="sm" disabled={resetMfa.isPending}
                       onClick={() => {
-                        if (confirm(`Turn off two-factor authentication for ${u.username}? Use this when they lost their authenticator and recovery codes. They are signed out and sign in with their password only, until they set it up again.`)) resetMfa.mutate(u.id);
+                        void confirmAction({ title: `Turn off two-factor authentication for ${u.username}?`, confirmLabel: "Reset two-factor", danger: true,
+                          body: <p>Use this when they lost their authenticator and recovery codes. They are signed out, and sign in with their password only until they set two-factor up again.</p> })
+                          .then((ok) => ok && resetMfa.mutate(u.id));
                       }}>
                       Reset two-factor
                     </Button>
                   )}
                   <Button size="sm" variant="danger" disabled={remove.isPending}
-                    onClick={() => { if (confirm(`Delete user ${u.username}?`)) remove.mutate(u.id); }}>
+                    onClick={() => void confirmAction({ title: `Delete the user ${u.username}?`, confirmLabel: "Delete user", danger: true,
+                      body: <p>{u.username} is signed out and can&apos;t sign in any more. What they did stays in the audit log under their name. Schedules they own stop running until an administrator assigns them a new owner.</p> })
+                      .then((ok) => ok && remove.mutate(u.id))}>
                     Delete
                   </Button>
                 </div>

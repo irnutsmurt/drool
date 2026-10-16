@@ -9,7 +9,7 @@
 // and pi-sd with monitoring data from testdata/monitor.json).
 import { test, after, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { api, base, click, field, fill, launch, session, shot, sleep, tabTo, text, waitFor, waitText } from "./lib.mjs";
+import { api, base, click, confirmIn, field, fill, launch, session, shot, sleep, tabTo, text, waitFor, waitText } from "./lib.mjs";
 
 let browser;
 let page;
@@ -35,7 +35,6 @@ beforeEach(async () => {
   page?.close().catch(() => {});
   page = await session(browser);
   await page.evaluate(() => localStorage.setItem("drool.theme", "light"));
-  page.on("dialog", (d) => d.accept());
   const hosts = (await api(page, "GET", "/hosts")).body.items;
   page.ids = Object.fromEntries(hosts.map((h) => [h.name, h.id]));
 });
@@ -278,6 +277,7 @@ test("review difference, restore managed state and accept current state on a rea
   await go(`/hosts/${web}/desired`);
   await openResource(path);
   await clickExact('ul[aria-label="Managed resources"] li button', "Reset to inherited");
+  await confirmIn(page, "Reset to inherited");
   await waitFor(page, async () => (await resource("web-1", `file:${path}`)).source.level === "assigned", "reset", 20000);
   assert.deepEqual(page.errors, []);
 });

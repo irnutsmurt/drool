@@ -5,7 +5,7 @@
 // backup; DROOL_E2E_SAME didn't.
 import { test, after, before } from "node:test";
 import assert from "node:assert/strict";
-import { base, click, launch, session, shot, sleep, text, waitFor, waitText, fill } from "./lib.mjs";
+import { base, click, confirmIn, launch, session, shot, sleep, text, waitFor, waitText, fill } from "./lib.mjs";
 
 const ahead = process.env.DROOL_E2E_AHEAD;
 const same = process.env.DROOL_E2E_SAME;
@@ -17,7 +17,6 @@ before(async () => {
   if (!ahead) return;
   browser = await launch();
   page = await session(browser);
-  page.on("dialog", (d) => d.accept());
 });
 after(async () => browser?.close());
 
@@ -55,6 +54,7 @@ test("accepting the host's state, after confirming who you are", { skip: !ahead 
   await page.waitForSelector('[data-testid="restore-reconciliation"]');
   await sleep(3500); // past the test controller's re-authentication window
   await click(page, "button", "Accept host's state");
+  await confirmIn(page, "Accept host's state");
   await page.waitForSelector('[data-testid="reauth-dialog"]');
   await fill(page, "Password", password);
   await click(page, '[data-testid="reauth-dialog"] button', "Confirm");

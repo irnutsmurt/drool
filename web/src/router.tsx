@@ -25,6 +25,7 @@ import { AccountPage } from "@/pages/settings/AccountPage";
 import { TokensPage } from "@/pages/settings/TokensPage";
 import { UsersPage } from "@/pages/settings/UsersPage";
 import { SystemPage } from "@/pages/settings/SystemPage";
+import { SettingsDirectoryPage } from "@/pages/settings/SettingsDirectoryPage";
 
 // Larger, less used pages load on demand to keep the main bundle small.
 const FilesPage = lazy(() => import("@/pages/files/FilesPage").then((x) => ({ default: x.FilesPage })));
@@ -117,7 +118,7 @@ export const router = createBrowserRouter([
         path: "settings",
         element: <SettingsLayout />,
         children: [
-          { index: true, element: <Navigate to="account" replace /> },
+          { index: true, element: <SettingsDirectoryPage /> },
           { path: "account", element: <AccountPage /> },
           { path: "tokens", element: <TokensPage /> },
           { path: "users", element: <RequirePermission permission="users.manage"><UsersPage /></RequirePermission> },

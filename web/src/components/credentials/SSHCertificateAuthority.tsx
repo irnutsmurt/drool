@@ -14,6 +14,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
 import { sshcaKey, useSSHCA } from "@/components/hosts/SSHSignIn";
 import { errorMessage, formatDateTime } from "@/lib/format";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 type CA = Schemas["SSHCA"];
 const stateText: Record<CA["state"], string> = { active: "issuing", next: "introduced", previous: "replaced", retired: "retired" };
@@ -77,9 +78,12 @@ export function SSHCertificateAuthority() {
                     {manage && (c.state === "previous" || c.state === "next") && (
                       <Button size="sm" variant="danger" disabled={retire.isPending}
                         onClick={() => {
-                          if (confirm(c.state === "next"
-                            ? `Abandon the rotation and destroy ${c.name}'s private key?`
-                            : `Retire ${c.name}? Its private key is destroyed; run the trust step on hosts afterwards so they stop trusting it too.`)) retire.mutate(c.id);
+                          void confirmAction(c.state === "next"
+                            ? { title: `Abandon the rotation to ${c.name}?`, confirmLabel: "Abandon rotation", danger: true,
+                              body: <p>{c.name}&apos;s private key is destroyed; the current certificate authority stays in use.</p> }
+                            : { title: `Retire ${c.name}?`, confirmLabel: "Retire", danger: true,
+                              body: <p>Its private key is destroyed. Run the trust step on hosts afterwards, so they stop trusting it too.</p> })
+                            .then((ok) => ok && retire.mutate(c.id));
                         }}>{c.state === "next" ? "Abandon" : "Retire"}</Button>
                     )}
                   </div>

@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Table } from "@/components/ui/Table";
 import { errorMessage, formatDateTime } from "@/lib/format";
 import { SSHCertificateAuthority } from "@/components/credentials/SSHCertificateAuthority";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 type Mode = "generate" | "import" | "password" | "sudo_password";
 
@@ -138,7 +139,9 @@ export function CredentialsPage() {
               cell: (c) => can("credentials.manage") && c.name !== "controller-default" && (
                 <Button size="sm" variant="danger" disabled={remove.isPending || c.used_by.length > 0}
                   title={c.used_by.length ? "In use by hosts" : undefined}
-                  onClick={() => { if (confirm(`Delete credential ${c.name}?`)) remove.mutate(c.id); }}>
+                  onClick={() => void confirmAction({ title: `Delete the credential ${c.name}?`, confirmLabel: "Delete credential", danger: true,
+                    body: <p>Its secret is erased from DROOL and can&apos;t be recovered. No host uses it now.</p> })
+                    .then((ok) => ok && remove.mutate(c.id))}>
                   Delete
                 </Button>
               ),

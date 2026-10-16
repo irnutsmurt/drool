@@ -51,12 +51,12 @@ export const destinations: Destination[] = [
     aliases: ["geoip", "asn", "enrichment", "network collection", "network retention", "mmdb"], permissions: ["network.read"] },
 
   // Automate
-  { id: "runs", title: "Runs", section: "Automate", to: "/jobs", description: "Every job DROOL runs: commands, updates, deployments and corrections.",
+  { id: "runs", title: "Runs", section: "Automate", to: "/jobs", description: "Each execution on chosen hosts: commands, updates, deployments and corrections.",
     aliases: ["run", "runs", "job", "jobs", "job history", "run history", "execution", "output", "activity"], permissions: ["jobs.read"] },
   { id: "runs-new", title: "New run", section: "Automate", to: "/jobs/new", description: "Run a command, script, update, package or service change on hosts.",
     aliases: ["new job", "run command", "execute", "command", "script", "install updates", "update packages", "reboot", "restart service"],
     permissions: ["jobs.execute"] },
-  { id: "schedules", title: "Schedules", section: "Automate", to: "/jobs/schedules", description: "Jobs and workflows that run at times you choose.",
+  { id: "schedules", title: "Schedules", section: "Automate", to: "/jobs/schedules", description: "When runs happen: their own steps or a workflow, at times you choose.",
     aliases: ["schedule", "scheduled", "recurring", "cron", "timer", "nightly", "every night", "scheduled updates", "schedule updates"],
     permissions: ["schedules.read"] },
   { id: "schedules-new", title: "New schedule", section: "Automate", to: "/jobs/schedules/new", description: "Run a job or workflow at times you choose.",
@@ -94,8 +94,11 @@ export const destinations: Destination[] = [
     aliases: ["audit", "who changed", "who did", "audit trail", "security log", "changes"], permissions: ["audit.read"] },
 
   // Settings
+  { id: "settings", title: "All settings", section: "Settings", to: "/settings",
+    description: "Every place DROOL is configured, grouped by what it is about.",
+    aliases: ["settings", "preferences", "configure", "configuration", "options", "admin settings"] },
   { id: "settings-account", title: "Account", section: "Settings", to: "/settings/account", description: "Your profile, password and appearance.",
-    aliases: ["settings", "profile", "password", "change password", "my account", "theme", "dark mode", "light mode", "appearance"] },
+    aliases: ["profile", "password", "change password", "my account", "theme", "dark mode", "light mode", "appearance", "two-factor", "2fa"] },
   { id: "settings-tokens", title: "API tokens", section: "Settings", to: "/settings/tokens", description: "Tokens for scripts and integrations to use the DROOL API.",
     aliases: ["api token", "api tokens", "api key", "api keys", "token", "rest api", "automation token"] },
   { id: "settings-users", title: "Users", section: "Settings", to: "/settings/users", description: "People who can sign in, and their roles.",

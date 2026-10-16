@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { errorMessage, formatBytes, formatDateTime } from "@/lib/format";
 import { describe, octal, symbolic } from "@/lib/modes";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 /** View and edit one UTF-8 text file. Not an IDE. */
 export function EditFilePage() {
@@ -98,7 +99,12 @@ export function EditFilePage() {
               <Alert tone="danger">
                 This file changed on the host after you opened it. Reload it or explicitly overwrite the newer version.
                 <div className="mt-2 flex gap-2">
-                  <Button size="sm" onClick={() => { if (!dirty || confirm("Discard your changes and load the current version?")) file.refetch(); }}>
+                  <Button size="sm" onClick={() => {
+                    if (!dirty) return void file.refetch();
+                    void confirmAction({ title: "Discard your changes?", confirmLabel: "Discard and reload", danger: true,
+                      body: <p>Your edits are thrown away and the version now on the host is loaded.</p> })
+                      .then((ok) => { if (ok) void file.refetch(); });
+                  }}>
                     Reload (discard my changes)
                   </Button>
                   <Button size="sm" variant="danger" onClick={() => save.mutate({ force: true })}>Overwrite the newer version</Button>

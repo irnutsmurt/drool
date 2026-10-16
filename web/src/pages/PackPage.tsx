@@ -16,6 +16,7 @@ import { Table } from "@/components/ui/Table";
 import { plainLink } from "@/components/ui/links";
 import { errorMessage } from "@/lib/format";
 import { ExpectedServicesCard } from "@/components/monitoring/ExpectedServices";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 /** One pack: its hosts, added and removed here after the pack exists (it can
  * be empty), and what the pack is used for. */
@@ -66,7 +67,9 @@ export function PackPage() {
               { header: "Tags", cell: (h) => <span className="flex flex-wrap gap-1">{h.tags.map((t) => <Badge key={t}>{t}</Badge>)}</span> },
               { header: "", cell: (h) => write && (
                 <Button size="sm" disabled={remove.isPending} aria-label={`Remove ${h.name} from ${g.name}`}
-                  onClick={() => { if (confirm(`Remove ${h.name} from ${g.name}? The host stays in DROOL; the pack's settings stop applying to it.`)) remove.mutate({ pack: g.id, host: h.id }); }}>
+                  onClick={() => void confirmAction({ title: `Remove ${h.name} from ${g.name}?`, confirmLabel: "Remove from the Pack",
+                    body: <p>{h.name} stays in DROOL. The Pack&apos;s settings (monitoring, desired state, firewall policy) stop applying to it, and runs or schedules that target the Pack no longer include it.</p> })
+                    .then((ok) => ok && remove.mutate({ pack: g.id, host: h.id }))}>
                   Remove
                 </Button>
               ) },

@@ -4,7 +4,7 @@
 // deleting the pack, and a host's packs can be changed from the host's page.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { base, launch, session, text, waitText, waitFor, click, fill, shot, api } from "./lib.mjs";
+import { base, launch, session, text, waitText, waitFor, click, confirmIn, fill, shot, api } from "./lib.mjs";
 
 let browser, page;
 const name = `e2e-pack-${Date.now().toString(36)}`;
@@ -13,7 +13,6 @@ let packID;
 before(async () => {
   browser = await launch();
   page = await session(browser);
-  page.on("dialog", (d) => d.accept()); // the remove confirmation
 });
 after(async () => {
   if (packID) await api(page, "DELETE", `/groups/${packID}`);
@@ -60,6 +59,8 @@ test("create an empty pack, then manage its hosts", async () => {
 
   // Remove one: the pack stays.
   await click(page, "main button", `Remove pi-sd from ${name}`);
+  await waitText(page, `Remove pi-sd from ${name}?`);
+  await confirmIn(page, "Remove from the Pack");
   await waitText(page, "Hosts (1)");
   assert.deepEqual(await tableHosts(), ["nas-01"]);
   await shot(page, "pack-members");
@@ -76,7 +77,10 @@ test("create an empty pack, then manage its hosts", async () => {
   await waitText(page, "Hosts (2)");
 
   // Empty again: still a pack.
-  for (const h of ["nas-01", "pi-sd"]) await click(page, "main button", `Remove ${h} from ${name}`);
+  for (const h of ["nas-01", "pi-sd"]) {
+    await click(page, "main button", `Remove ${h} from ${name}`);
+    await confirmIn(page, "Remove from the Pack");
+  }
   await waitText(page, "No hosts assigned yet");
   assert.equal((await api(page, "GET", `/groups/${packID}`)).status, 200);
   await page.goto(base + "/groups", { waitUntil: "networkidle0" });

@@ -61,9 +61,9 @@ export const navSections: NavSection[] = [
     id: "automate",
     heading: "Automate",
     items: [
-      { to: "/jobs", label: "Runs", icon: "runs", description: "Every job DROOL runs: commands, updates, deployments and corrections.", permission: "jobs.read",
+      { to: "/jobs", label: "Runs", icon: "runs", description: "Each execution on chosen hosts: commands, updates, deployments and corrections.", permission: "jobs.read",
         match: (p) => under("/jobs")(p) && !under("/jobs/schedules")(p) && !under("/jobs/workflows")(p) },
-      { to: "/jobs/schedules", label: "Schedules", icon: "schedules", description: "Jobs and workflows that run at times you choose.", permission: "schedules.read" },
+      { to: "/jobs/schedules", label: "Schedules", icon: "schedules", description: "When runs happen: their own steps or a workflow, at times you choose.", permission: "schedules.read" },
       { to: "/jobs/workflows", label: "Workflows", icon: "workflows", description: "Reusable lists of steps to run or schedule.", permission: "workflows.read" },
       { to: "/desired", label: "Desired State", icon: "desired", description: "Services, packages and files that should stay as you defined them.", permission: "desired.read" },
     ],

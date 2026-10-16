@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button, secondaryLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cx } from "@/components/ui/cx";
+import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ReadOnlyNote } from "@/components/ui/ReadOnlyNote";
@@ -167,6 +168,7 @@ function SettingsTab() {
   const qc = useQueryClient();
   const [ranges, setRanges] = useState<string | null>(null);
   const [timeout, setTimeout_] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ id: string; name: string; value: string } | null>(null);
   const save = useMutation({
     mutationFn: () => unwrap(api.PUT("/firewall/settings", { body: {
       internal_ranges: (ranges ?? s.data!.internal_ranges.join("\n")).split(/\s+/).filter(Boolean),
@@ -176,7 +178,10 @@ function SettingsTab() {
   });
   const setGroup = useMutation({
     mutationFn: (v: { id: string; t: number }) => unwrap(api.PUT("/firewall/groups/{id}", { params: { path: { id: v.id } }, body: { rollback_timeout_s: v.t } })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: fk.groups }),
+    onSuccess: () => {
+      setEditing(null);
+      void qc.invalidateQueries({ queryKey: fk.groups });
+    },
   });
   if (!s.data) return <p className="text-sm text-muted">Loading…</p>;
   return (
@@ -195,7 +200,6 @@ function SettingsTab() {
       </Card>
       <Card title="Rollback timeout per pack">
         <p className="mb-2 text-sm text-muted">A host's own timeout wins; otherwise the shortest of its packs'; otherwise the default.</p>
-        {setGroup.error && <Alert>{errorMessage(setGroup.error)}</Alert>}
         <Table
           rows={groups.data?.items ?? []}
           rowKey={(g) => g.id}
@@ -203,15 +207,37 @@ function SettingsTab() {
             { header: "Pack", cell: (g) => g.name },
             { header: "Timeout", cell: (g) => (g.rollback_timeout_s ? `${g.rollback_timeout_s}s` : <span className="text-muted">default</span>) },
             { header: "", cell: (g) => can("firewall.write") && (
-              <Button size="sm" variant="ghost" onClick={() => {
-                const v = prompt(`Rollback timeout for ${g.name} in seconds (empty: default)`, g.rollback_timeout_s ? String(g.rollback_timeout_s) : "");
-                if (v !== null) setGroup.mutate({ id: g.id, t: v.trim() ? Number(v) : 0 });
+              <Button size="sm" variant="ghost" aria-label={`Change the rollback timeout for ${g.name}`} onClick={() => {
+                setGroup.reset();
+                setEditing({ id: g.id, name: g.name, value: g.rollback_timeout_s ? String(g.rollback_timeout_s) : "" });
               }}>Change</Button>
             ) },
           ]}
         />
       </Card>
     </div>
+    {editing && (
+      <Dialog title={`Rollback timeout for ${editing.name}`} onClose={() => setEditing(null)} testId="pack-timeout-dialog"
+        footer={
+          <>
+            <Button onClick={() => setEditing(null)}>Cancel</Button>
+            <Button variant="primary" disabled={setGroup.isPending || (editing.value.trim() !== "" && !(Number(editing.value) > 0))}
+              onClick={() => setGroup.mutate({ id: editing.id, t: editing.value.trim() ? Number(editing.value) : 0 })}>
+              {setGroup.isPending ? "Saving…" : "Save"}
+            </Button>
+          </>
+        }>
+        <form className="space-y-3" onSubmit={(e) => {
+          e.preventDefault();
+          if (editing.value.trim() === "" || Number(editing.value) > 0) setGroup.mutate({ id: editing.id, t: editing.value.trim() ? Number(editing.value) : 0 });
+        }}>
+          <Field label="Seconds" hint={`Empty: the default (${s.data.default_timeout_s} seconds). A host's own timeout still wins.`}>
+            <Input type="number" min={30} data-autofocus value={editing.value} onChange={(e) => setEditing({ ...editing, value: e.target.value })} />
+          </Field>
+          {setGroup.error && <Alert>{errorMessage(setGroup.error)}</Alert>}
+        </form>
+      </Dialog>
+    )}
     </>
   );
 }

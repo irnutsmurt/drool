@@ -19,6 +19,7 @@ import { describeKey, resourceKey, splitKey, useBaseline, useBaselineRevision, u
 import { errorMessage } from "@/lib/format";
 import { appliesText } from "./BaselinesPage";
 import { historyTitle } from "./HostDesiredPage";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 /** One baseline: what it declares, where, how its hosts comply, its
  * revisions, and automatic restore. */
@@ -55,7 +56,9 @@ export function BaselineDetailPage() {
             {can("desired.restore") && c.drift + c.failed > 0 && !v.archived && <Button variant="primary" onClick={() => setRestore(true)}>Restore managed state…</Button>}
             {can("desired.manage") && !v.archived && <Link to={`/desired/baselines/${id}/edit`}><Button>Edit</Button></Link>}
             {can("desired.manage") && !v.archived && (
-              <Button variant="ghost" onClick={() => { if (confirm(`Archive “${v.name}”? It stops applying to hosts; its revisions and history are kept.`)) archive.mutate(); }}>Archive</Button>
+              <Button variant="ghost" onClick={() => void confirmAction({ title: `Archive the baseline “${v.name}”?`, confirmLabel: "Archive baseline",
+                body: <p>It stops applying to hosts: what it manages is no longer checked or restored. Its revisions and history are kept.</p> })
+                .then((ok) => ok && archive.mutate())}>Archive</Button>
             )}
           </>
         }

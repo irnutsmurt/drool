@@ -20,6 +20,7 @@ import { fmtTime } from "@/components/monitoring/format";
 import { OutputPanel } from "./OutputPanel";
 import { StepResult, describeStep } from "./StepResult";
 import { summarizeCounts } from "./summary";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 const activeStates = new Set(["queued", "waiting_lock", "connecting", "running", "rebooting", "waiting_host", "verifying"]);
 
@@ -90,10 +91,10 @@ export function JobDetailPage() {
             {active && (
               <Button variant="danger" disabled={action.isPending}
                 onClick={() => {
-                  const q = o?.schedule_id
-                    ? `Cancel this run? Running commands will be terminated.\nThe schedule “${o.schedule_name ?? ""}” stays enabled; its next run happens as planned.`
-                    : "Cancel this run? Running commands will be terminated.";
-                  if (confirm(q)) action.mutate("cancel");
+                  void confirmAction({ title: "Cancel this run?", confirmLabel: "Cancel the run", cancelLabel: "Keep it running", danger: true,
+                    body: <><p>Commands still running on its hosts are terminated; hosts that haven&apos;t started won&apos;t start. What already changed on a host stays changed.</p>
+                      {o?.schedule_id && <p>The schedule “{o.schedule_name ?? ""}” stays enabled; its next run happens as planned.</p>}</> })
+                    .then((ok) => ok && action.mutate("cancel"));
                 }}>
                 Cancel
               </Button>

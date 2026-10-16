@@ -7,7 +7,7 @@ import {
   useInvalidateAutomation, useTemplates, useWorkflow, useWorkflowRevision,
   type Operation, type Strategy, type Workflow, type WorkflowTemplate,
 } from "@/components/automation/queries";
-import { RolloutAdvice, RolloutFields, WavesList, recommendedRollout, rolloutFrom, rolloutText, strategyFrom, type RolloutState } from "@/components/automation/Rollout";
+import { RolloutAdvice, RolloutFields, WavesList, defaultRollout, mutates, recommendedRollout, rolloutFrom, rolloutText, strategyFrom, type RolloutState } from "@/components/automation/Rollout";
 import { StepEditor, draftFromOp, draftProblem, draftToOp, type StepDraft } from "@/components/automation/StepEditor";
 import { TargetPicker, hasTargets, type TargetSpec } from "@/components/automation/TargetPicker";
 import { fmtTime } from "@/components/monitoring/format";
@@ -21,6 +21,8 @@ import { plainLink } from "@/components/ui/links";
 import { useDebounced } from "@/hooks/useDebounced";
 import { errorMessage } from "@/lib/format";
 import { describeStep } from "@/pages/jobs/StepResult";
+import { RunReview, StepSummary, hostCount } from "@/components/jobs/RunConfirmDialog";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 /** What "Save as workflow" on a new job hands over. */
 export interface WorkflowDraft {
@@ -85,18 +87,29 @@ function WorkflowForm({ existing, draft }: { existing?: Workflow; draft: Workflo
   const [name, setName] = useState(existing?.name ?? draft.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? draft.description ?? "");
   const [steps, setSteps] = useState<StepDraft[]>(() => (existing?.steps ?? draft.steps ?? []).map(draftFromOp));
-  const [rollout, setRollout] = useState<RolloutState>(() => {
+  const [rollout, setRolloutState] = useState<RolloutState>(() => {
     // A workflow has no targets, so chosen canary hosts become a count.
     const r = rolloutFrom(existing?.strategy ?? draft.strategy);
     return r.canary === "hosts" ? { ...r, canary: "count", canaryCount: String(r.canaryHosts.length), canaryHosts: [] } : r;
   });
+  // A saved workflow, or one that came with a rollout (a template, a run),
+  // keeps the one it has; a new one that changes hosts gets the recommended
+  // rollout until someone chooses another.
+  const [rolloutChosen, setRolloutChosen] = useState(!!existing || !!draft.strategy);
+  const [editRollout, setEditRollout] = useState(false);
+  const setRollout = (v: RolloutState) => {
+    setRolloutState(v);
+    setRolloutChosen(true);
+  };
   const [notice, setNotice] = useState("");
   const [running, setRunning] = useState(false);
   const [viewRev, setViewRev] = useState<number>();
   const editable = can("workflows.manage") && !existing?.archived;
   const problem = steps.map(draftProblem).find(Boolean);
   const ops = useMemo(() => steps.map(draftToOp), [steps]);
-  const strategy = useMemo(() => strategyFrom(rollout), [rollout]);
+  const autoRollout = !rolloutChosen && mutates(ops);
+  const effective = rolloutChosen ? rollout : autoRollout ? recommendedRollout : defaultRollout;
+  const strategy = useMemo(() => strategyFrom(effective), [effective]);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -160,12 +173,23 @@ function WorkflowForm({ existing, draft }: { existing?: Workflow; draft: Workflo
             {editable && problem && <p className="mt-2 text-xs text-muted">To save: {problem}.</p>}
           </Card>
           <Card title="Default rollout">
-            <p className="mb-3 text-sm text-muted">Used when the workflow runs; a schedule starts with it and can change it.</p>
+            <p className="mb-3 text-sm text-muted">How it runs on several hosts. Running it or scheduling it starts from this rollout, which can be changed there.</p>
             {editable ? (
-              <>
+              <div className="space-y-3">
+                <p className="text-sm">
+                  <strong>{autoRollout ? "Recommended:" : "Rollout:"}</strong> {rolloutText(strategy)}.
+                  {autoRollout && <span className="text-muted"> A bad change stops early instead of reaching every host.</span>}
+                </p>
                 <RolloutAdvice hosts={2} steps={ops} strategy={strategy} apply={() => setRollout(recommendedRollout)} />
-                <div className="mt-3"><RolloutFields v={rollout} set={setRollout} hosts={[]} noExplicit /></div>
-              </>
+                <button type="button" className="text-sm text-accent underline underline-offset-2" aria-expanded={editRollout}
+                  onClick={() => {
+                    if (!editRollout && !rolloutChosen) setRolloutState(effective); // start from what is shown
+                    setEditRollout((v) => !v);
+                  }}>
+                  {editRollout ? "Hide rollout settings" : "Change rollout…"}
+                </button>
+                {editRollout && <RolloutFields v={rolloutChosen ? rollout : effective} set={setRollout} hosts={[]} noExplicit />}
+              </div>
             ) : <p className="text-sm">{rolloutText(strategy)}.</p>}
           </Card>
           {save.error && <Alert>{errorMessage(save.error)}</Alert>}
@@ -177,7 +201,9 @@ function WorkflowForm({ existing, draft }: { existing?: Workflow; draft: Workflo
               </Button>
               {existing && (
                 <Button type="button" variant="ghost" disabled={archive.isPending}
-                  onClick={() => { if (confirm(`Archive “${existing.name}”? Schedules using it keep running their revision; new schedules can't choose it.`)) archive.mutate(); }}>
+                  onClick={() => void confirmAction({ title: `Archive the workflow “${existing.name}”?`, confirmLabel: "Archive workflow",
+                    body: <p>Schedules that use it keep running the revision they use; new schedules and runs can&apos;t choose it any more.</p> })
+                    .then((ok) => ok && archive.mutate())}>
                   Archive
                 </Button>
               )}
@@ -223,12 +249,15 @@ function RevisionDialog({ id, rev, onClose }: { id: string; rev: number; onClose
   );
 }
 
-/** Run the latest revision now, as an ordinary job. */
+/** Run the latest revision now, as an ordinary job: targets and rollout,
+ * then the review (what, on which hosts, how it rolls out, what is in the
+ * way) in the same dialog, then Start. */
 function RunDialog({ wf, onClose }: { wf: Workflow; onClose: () => void }) {
   const navigate = useNavigate();
   const inv = useInvalidateAutomation();
   const [targets, setTargets] = useState<TargetSpec>({ hosts: [], groups: [], tags: [] });
   const [rollout, setRollout] = useState<RolloutState>(rolloutFrom(wf.strategy));
+  const [reviewing, setReviewing] = useState(false);
   const strategy = useMemo(() => strategyFrom(rollout), [rollout]);
   const key = useDebounced({ targets, strategy }, 300);
   const preview = useQuery({
@@ -245,34 +274,61 @@ function RunDialog({ wf, onClose }: { wf: Workflow; onClose: () => void }) {
     onSuccess: (j) => { inv(); navigate(`/jobs/${j.id}`); },
   });
   const count = preview.data?.hosts.filter((h) => !h.skip).length ?? 0;
+  // The review shows the preview of exactly these targets and this rollout.
+  const current = JSON.stringify(key) === JSON.stringify({ targets, strategy }) && !preview.isFetching;
+  const n = hostCount(count);
   return (
-    <Dialog title={`Run ${wf.name}`} onClose={onClose} wide>
-      <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (count && confirm(`Run “${wf.name}” (revision ${wf.latest_revision}) on ${count} host${count === 1 ? "" : "s"}?`)) run.mutate(); }}>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <h3 className="mb-2 text-sm font-semibold">Targets</h3>
-            <TargetPicker v={targets} set={setTargets} />
-          </div>
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold">Rollout</h3>
-            <RolloutAdvice hosts={count} steps={wf.steps} strategy={strategy} apply={() => setRollout(recommendedRollout)} />
-            <RolloutFields v={rollout} set={setRollout} hosts={(preview.data?.hosts ?? []).filter((h) => !h.skip).map((h) => ({ id: h.id, name: h.name }))} />
-            {preview.error && <Alert>{errorMessage(preview.error)}</Alert>}
-            {preview.data && (
-              <div>
-                <h3 className="mb-1 text-sm font-semibold">Waves</h3>
-                <WavesList waves={preview.data.waves} />
-                {preview.data.warnings.map((w) => <p key={w} className="mt-1 text-xs text-muted">{w}</p>)}
-              </div>
-            )}
-          </div>
+    <Dialog title={reviewing ? `Start “${wf.name}” on ${n}?` : `Run ${wf.name}`} onClose={onClose} wide testId="workflow-run"
+      footer={reviewing ? (
+        <>
+          <Button onClick={() => setReviewing(false)} data-autofocus>Back</Button>
+          <Button variant="primary" disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? "Starting…" : `Start run on ${n}`}</Button>
+        </>
+      ) : (
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="submit" form="workflow-run-form" variant="primary" disabled={!count || !current}>{count ? `Review: run on ${n}…` : "Choose targets"}</Button>
+        </>
+      )}>
+      {reviewing && preview.data ? (
+        <div className="space-y-3">
+          <RunReview preview={preview.data} strategy={strategy}
+            what={<>
+              <span>Workflow <strong>{wf.name}</strong>, revision {wf.latest_revision}: {wf.steps.length} step{wf.steps.length === 1 ? "" : "s"}, in order on each host</span>
+              <ol className="mt-1 list-decimal space-y-0.5 pl-5 text-xs">{wf.steps.map((st, i) => <li key={i}><StepSummary step={st} /></li>)}</ol>
+            </>}
+            consequences={["The run's page shows each host's result as it goes."]} />
+          {run.error && <Alert>{errorMessage(run.error)}</Alert>}
         </div>
-        {run.error && <Alert>{errorMessage(run.error)}</Alert>}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" disabled={!count || run.isPending}>{count ? `Run on ${count} host${count === 1 ? "" : "s"}` : "Choose targets"}</Button>
-        </div>
-      </form>
+      ) : (
+        <form id="workflow-run-form" className="space-y-4" onSubmit={(e) => {
+          e.preventDefault();
+          if (count && current) {
+            run.reset();
+            setReviewing(true);
+          }
+        }}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">Targets</h3>
+              <TargetPicker v={targets} set={setTargets} />
+            </div>
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold">Rollout</h3>
+              <RolloutAdvice hosts={count} steps={wf.steps} strategy={strategy} apply={() => setRollout(recommendedRollout)} />
+              <RolloutFields v={rollout} set={setRollout} hosts={(preview.data?.hosts ?? []).filter((h) => !h.skip).map((h) => ({ id: h.id, name: h.name }))} />
+              {preview.error && <Alert>{errorMessage(preview.error)}</Alert>}
+              {preview.data && (
+                <div>
+                  <h3 className="mb-1 text-sm font-semibold">Waves</h3>
+                  <WavesList waves={preview.data.waves} />
+                  {preview.data.warnings.map((w) => <p key={w} className="mt-1 text-xs text-muted">{w}</p>)}
+                </div>
+              )}
+            </div>
+          </div>
+        </form>
+      )}
     </Dialog>
   );
 }

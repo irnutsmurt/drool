@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Table } from "@/components/ui/Table";
 import { errorMessage, formatAgo, formatBytes, formatDateTime } from "@/lib/format";
 import { upload } from "@/lib/upload";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 const tabs = [
   { id: "agents", label: "Shepherds" },
@@ -244,7 +245,9 @@ function UpdatesTab() {
             { header: "Protocol", cell: (r) => `${r.protocol_min}–${r.protocol_max}` },
             { header: "Binary", cell: (r) => <span className="text-xs text-muted">{formatBytes(r.size)} · {r.sha256.slice(0, 12)} · key {r.key_id}</span> },
             { header: "", cell: (r) => can("agents.manage") && versions.includes(r.version) && (
-              <Button size="sm" onClick={() => { if (confirm(`Roll out ${r.version} to all agents? A canary goes first; the rollout pauses on failures (see the policy).`)) start.mutate(r.version); }}>Roll out</Button>) },
+              <Button size="sm" onClick={() => void confirmAction({ title: `Roll out Shepherd ${r.version} to every host?`, confirmLabel: `Roll out ${r.version}`,
+                body: <p>A canary host updates first; the rollout pauses on failures, as the update policy says. A Shepherd that isn&apos;t healthy after its update rolls back by itself.</p> })
+                .then((ok) => ok && start.mutate(r.version))}>Roll out</Button>) },
           ]}
         />
       </Card>
@@ -429,7 +432,9 @@ function TrustTab() {
           <div className="mt-3 flex gap-2">
             <Button disabled={rotate.isPending || (!s.root_key_online && !rootKey.trim())} onClick={() => rotate.mutate(false)}>Planned rotation</Button>
             <Button variant="danger" disabled={rotate.isPending || (!s.root_key_online && !rootKey.trim())}
-              onClick={() => { if (confirm("Revoke the current intermediate CA? Agents switch to the new one when they reconnect.")) rotate.mutate(true); }}>Compromise: rotate and revoke</Button>
+              onClick={() => void confirmAction({ title: "Rotate and revoke the intermediate CA?", confirmLabel: "Rotate and revoke", danger: true,
+                body: <p>For a compromised intermediate: a new one replaces it and the current one is revoked. Shepherds holding certificates from the revoked one get new ones from its replacement when they reconnect.</p> })
+                .then((ok) => ok && rotate.mutate(true))}>Compromise: rotate and revoke</Button>
           </div>
           {rotate.error && <div className="mt-2"><Alert>{errorMessage(rotate.error)}</Alert></div>}
         </Card>

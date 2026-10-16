@@ -18,6 +18,7 @@ import { desiredLayers, desiredScopes } from "@/components/desired/provenance";
 import { Provenance, ScopeLegend } from "@/components/ui/Provenance";
 import { describeKey, useDesiredHost, useDesiredResource, useInvalidateDesired, type DesiredResourceView } from "@/components/desired/queries";
 import { errorMessage } from "@/lib/format";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 /** A host's effective desired state: every resource, where its value comes
  * from, what differs, and the actions on it. */
@@ -151,7 +152,9 @@ function ResetButton({ hostId, k }: { hostId: string; k: string }) {
   return (
     <>
       <Button size="sm" type="button" disabled={reset.isPending}
-        onClick={() => { if (confirm(`Reset ${describeKey(k)} to its inherited desired state? The host may then show drift.`)) reset.mutate(); }}>
+        onClick={() => void confirmAction({ title: `Reset ${describeKey(k)} to its inherited desired state?`, confirmLabel: "Reset to inherited",
+          body: <p>This host&apos;s own setting is removed; the value it inherits (from its Packs or every host) applies again. If the host differs from that value, it then shows drift.</p> })
+          .then((ok) => ok && reset.mutate())}>
         Reset to inherited
       </Button>
       {reset.error && <span className="text-xs text-danger">{errorMessage(reset.error)}</span>}
@@ -203,7 +206,13 @@ function ResourceDetail({ hostId, r, onRestore, onReview, onAccept }: {
           state for this host.
         </Alert>
       )}
-      {r.status !== "compliant" && r.status !== "conflict" && r.note && (
+      {r.status === "unknown" && (
+        <p className="text-sm text-muted">
+          <strong className="text-fg">Not verified.</strong> {r.note || "DROOL couldn't check this resource."} Until DROOL can check it, it
+          isn&apos;t counted as compliant.
+        </p>
+      )}
+      {r.status !== "compliant" && r.status !== "conflict" && r.status !== "unknown" && r.note && (
         <p className={cx("text-sm", r.status === "failed" ? "text-danger" : "text-muted")}>{r.note}</p>
       )}
       {r.status === "reconciling" && r.job_id && <p className="text-sm">A correction is in progress: <Link className={plainLink} to={`/jobs/${r.job_id}`}>job</Link>.</p>}

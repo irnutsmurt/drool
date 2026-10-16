@@ -29,6 +29,13 @@ export async function session(browser, { width = 1440, height = 1000, mobile = f
   page.on("console", (m) => {
     if (m.type() === "error" && !/status of (401|403|404|409|422)/.test(m.text())) page.errors.push("console: " + m.text());
   });
+  // DROOL asks in its own dialogs: a browser alert, confirm or prompt is a
+  // defect. Leaving a page with unsaved changes is the one browser question.
+  page.on("dialog", async (d) => {
+    if (d.type() === "beforeunload") return d.accept();
+    page.errors.push(`native ${d.type()}: ${d.message()}`);
+    await d.dismiss();
+  });
   await page.goto(base + "/", { waitUntil: "networkidle0" });
   if ((await text(page)).includes("Sign in")) {
     await fill(page, "Username", as?.user ?? user);
@@ -90,6 +97,15 @@ export async function click(page, selector, label, ms = 10000) {
     if (Date.now() > end) throw new Error(`no clickable ${selector} "${label}"`);
     await sleep(200);
   }
+}
+
+/** Answers DROOL's confirmation dialog (Pattern B): clicks the button that
+ * names the action, then (unless wait is false) waits for the dialog to
+ * close. */
+export async function confirmIn(page, label, { testId = "confirm-dialog", wait = true } = {}) {
+  const sel = `[data-testid="${testId}"]`;
+  await click(page, `${sel} button`, label);
+  if (wait) await waitFor(page, async () => (await page.$(sel)) === null, `the "${label}" confirmation closing`);
 }
 
 /** Presses Tab until `pred(activeElement)` holds: proves a control is

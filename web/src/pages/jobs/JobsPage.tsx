@@ -30,8 +30,9 @@ export function JobsPage() {
     <PageHeader title="Runs" actions={newButton}
       description={host
         ? <>Runs that included <Link className={plainLink} to={`/hosts/${host}/activity`}>{hostName ?? "this host"}</Link> · <button type="button" className="underline underline-offset-2 hover:text-fg" onClick={() => setParams({})}>show all runs</button></>
-        : <>Every job DROOL runs — commands, updates, file deployments, scheduled runs and desired-state corrections — with its output and outcome.
-          {" "}<Link className={plainLink} to="/jobs/schedules">Schedules</Link> start runs at set times; <Link className={plainLink} to="/jobs/workflows">workflows</Link> are reusable lists of steps.</>} />
+        : <>A run is one execution on chosen hosts — a command, update, file deployment or reboot — with its output and outcome.
+          {" "}<Link className={plainLink} to="/jobs/schedules">Schedules</Link> start runs at set times, <Link className={plainLink} to="/jobs/workflows">workflows</Link> are
+          reusable lists of steps, and <Link className={plainLink} to="/desired">Desired State</Link> starts runs that put hosts back.</>} />
   );
   if (any.data && any.data.items.length === 0 && !host) {
     return (

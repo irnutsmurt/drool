@@ -38,7 +38,8 @@ describe("navigation search", () => {
 
   it("finds a section's destinations by its heading", () => {
     const r = searchDestinations("settings", destinations, admin).map((x) => x.dest.to);
-    expect(r[0]).toBe("/settings/account");
+    // "settings" opens the directory of every setting first.
+    expect(r[0]).toBe("/settings");
     for (const to of ["/settings/tokens", "/settings/users", "/settings/notifications", "/settings/system", "/monitoring/settings"]) expect(r).toContain(to);
     expect(searchDestinations("protect", destinations, admin).map((x) => x.dest.to)).toEqual(expect.arrayContaining(["/firewall", "/credentials", "/audit"]));
   });

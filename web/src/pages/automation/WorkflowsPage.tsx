@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router";
+import { plainLink } from "@/components/ui/links";
 import { useAuth } from "@/auth/AuthContext";
 import { useWorkflows, type Workflow } from "@/components/automation/queries";
 import { fmtTime } from "@/components/monitoring/format";
@@ -26,7 +27,8 @@ export function WorkflowsPage() {
   return (
     <>
       <PageHeader title="Workflows" actions={newButton}
-        description="Reusable, revisioned lists of steps — for example: update, reboot if required, then check that services run. Run one now or put it on a schedule." />
+        description={<>Reusable, revisioned lists of steps — for example: update, reboot if required, then check that services run. Run one now
+          or put it on a <Link className={plainLink} to="/jobs/schedules">schedule</Link>; each time it runs, the run is under <Link className={plainLink} to="/jobs">Runs</Link>.</>} />
       {list.error && <Alert>{errorMessage(list.error)}</Alert>}
       {!archived && list.data && rows.length === 0 ? (
         <EmptyState title="No workflows yet"

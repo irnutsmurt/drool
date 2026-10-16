@@ -8,7 +8,7 @@ import {
   type Operation, type Schedule, type ScheduleInput, type SchedulePreview, type Strategy,
 } from "@/components/automation/queries";
 import { NextRunsList, RecurrenceFields, browserZone, defaultRecur, recurFrom, recurrenceFrom, type RecurState } from "@/components/automation/RecurrenceFields";
-import { RolloutAdvice, RolloutFields, WavesList, defaultRollout, recommendedRollout, rolloutFrom, rolloutText, strategyFrom, type RolloutState } from "@/components/automation/Rollout";
+import { RolloutAdvice, RolloutFields, WavesList, defaultRollout, mutates, recommendedRollout, rolloutFrom, rolloutText, strategyFrom, type RolloutState } from "@/components/automation/Rollout";
 import { StepEditor, draftFromOp, draftProblem, draftToOp, type StepDraft } from "@/components/automation/StepEditor";
 import { TargetPicker, hasTargets, type TargetSpec } from "@/components/automation/TargetPicker";
 import { Alert } from "@/components/ui/Alert";
@@ -76,7 +76,15 @@ function ScheduleForm({ existing, draft }: { existing?: Schedule; draft: Schedul
   const [steps, setSteps] = useState<StepDraft[]>(() => (c?.steps ?? draft.steps ?? []).map(draftFromOp));
   const [wfId, setWfId] = useState(c?.workflow?.id ?? draft.workflowId ?? "");
   const [wfRev, setWfRev] = useState(c?.workflow?.revision ?? 0); // 0: the latest when saved
-  const [rollout, setRollout] = useState<RolloutState>(() => (c ? rolloutFrom(c.strategy) : draft.strategy ? rolloutFrom(draft.strategy) : defaultRollout));
+  const [rollout, setRolloutState] = useState<RolloutState>(() => (c ? rolloutFrom(c.strategy) : draft.strategy ? rolloutFrom(draft.strategy) : defaultRollout));
+  // A saved schedule, or one that came with a rollout (Schedule this run),
+  // keeps the one it has; a new one gets the recommended rollout for a
+  // change to several hosts until someone chooses another.
+  const [rolloutChosen, setRolloutChosen] = useState(!!c || !!draft.strategy);
+  const setRollout = (v: RolloutState) => {
+    setRolloutState(v);
+    setRolloutChosen(true);
+  };
   const [missed, setMissed] = useState<"skip" | "run_once">(c?.missed_policy === "run_once" ? "run_once" : "skip");
   const [late, setLate] = useState(c?.late_limit_minutes ? String(c.late_limit_minutes) : "");
   const [overlap, setOverlap] = useState<"skip" | "queue_one">(c?.overlap_policy === "queue_one" ? "queue_one" : "skip");
@@ -92,9 +100,12 @@ function ScheduleForm({ existing, draft }: { existing?: Schedule; draft: Schedul
   const windows = useSchedules("maintenance", false, !maint);
 
   const recurrence = useMemo(() => recurrenceFrom(recur), [recur]);
-  const strategy = useMemo(() => strategyFrom(rollout), [rollout]);
   const ops = useMemo(() => steps.map(draftToOp), [steps]);
   const runSteps = mode === "workflow" ? (pinned.data?.steps ?? wf.data?.steps ?? []) : ops;
+  const [eligibleCount, setEligibleCount] = useState(0);
+  const autoRollout = !rolloutChosen && eligibleCount >= 2 && mutates(runSteps);
+  const effective = rolloutChosen ? rollout : autoRollout ? recommendedRollout : defaultRollout;
+  const strategy = useMemo(() => strategyFrom(effective), [effective]);
   const stepProblem = steps.map(draftProblem).find(Boolean);
   const actionReady = maint || (mode === "workflow" ? !!wfId : steps.length > 0 && !stepProblem);
 
@@ -142,6 +153,7 @@ function ScheduleForm({ existing, draft }: { existing?: Schedule; draft: Schedul
   };
 
   const eligible = (preview.data?.targets ?? []).filter((t) => t.wave >= 0);
+  if (eligible.length !== eligibleCount) setEligibleCount(eligible.length);
   const recurring = recur.mode !== "once";
   const notOwner = existing && existing.owner?.id !== me?.user.id;
   const ready = name.trim() !== "" && hasTargets(targets) && actionReady && !save.isPending;
@@ -214,10 +226,18 @@ function ScheduleForm({ existing, draft }: { existing?: Schedule; draft: Schedul
           ) : (
             <Card title="What to run">
               <div className="space-y-4">
-                <div className="flex flex-wrap gap-4 text-sm">
-                  <label className="flex items-center gap-2"><input type="radio" name="what" checked={mode === "steps"} onChange={() => setMode("steps")} /> Steps</label>
-                  <label className="flex items-center gap-2"><input type="radio" name="what" checked={mode === "workflow"} onChange={() => setMode("workflow")} /> A saved workflow</label>
-                </div>
+                <fieldset className="grid gap-2 sm:grid-cols-2">
+                  <legend className="sr-only">What this schedule runs</legend>
+                  {([
+                    ["steps", "Steps", "Written here, for this schedule only."],
+                    ["workflow", "A saved workflow", "Reusable and revisioned: the schedule runs the revision it was saved with until you choose a newer one."],
+                  ] as const).map(([k, label, help]) => (
+                    <label key={k} className={`flex cursor-pointer items-start gap-2 rounded-ui border p-3 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent ${mode === k ? "border-accent bg-accent/10" : "border-line"}`}>
+                      <input type="radio" name="what" className="mt-0.5 accent-[var(--ui-accent)]" checked={mode === k} onChange={() => setMode(k)} />
+                      <span><span className="font-medium">{label}</span><span className="block text-xs text-muted">{help}</span></span>
+                    </label>
+                  ))}
+                </fieldset>
                 {mode === "steps" ? (
                   <StepEditor steps={steps} setSteps={setSteps} />
                 ) : (
@@ -236,7 +256,7 @@ function ScheduleForm({ existing, draft }: { existing?: Schedule; draft: Schedul
                 actions={<Button type="button" size="sm" variant="ghost" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>{advanced ? "Hide" : "Show"}</Button>}>
                 {!advanced ? (
                   <ul className="space-y-1 text-sm text-muted">
-                    <li>Rollout: {rolloutText(strategy)}.</li>
+                    <li>Rollout: {rolloutText(strategy)}.{autoRollout && " (Recommended for several hosts: a bad change stops early.)"}</li>
                     <li>{recurring ? (missed === "skip" ? "Runs missed while DROOL is down are skipped." : "One missed run is made up when DROOL returns.")
                       : late ? `Not started if DROOL returns more than ${late} minutes late.` : "Starts when DROOL returns if it was down at the time."}</li>
                     <li>{overlap === "skip" ? "Skipped while the previous run is still going." : "One run waits while the previous one is still going."}</li>
@@ -246,7 +266,7 @@ function ScheduleForm({ existing, draft }: { existing?: Schedule; draft: Schedul
                   <div className="space-y-6">
                     <section aria-label="Rollout">
                       <h3 className="mb-2 text-sm font-semibold">Rollout</h3>
-                      <RolloutFields v={rollout} set={setRollout} hosts={eligible.map((t) => ({ id: t.id, name: t.name }))} />
+                      <RolloutFields v={effective} set={setRollout} hosts={eligible.map((t) => ({ id: t.id, name: t.name }))} />
                     </section>
                     <section aria-label="Missed runs">
                       <h3 className="mb-2 text-sm font-semibold">If DROOL isn't running at the scheduled time</h3>
