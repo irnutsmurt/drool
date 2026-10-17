@@ -19,6 +19,8 @@ text under `web/`, and the browser tests in `web/e2e/`.
 - **Departing from it is a decision, not a drift.** If a change needs a different convention, say so explicitly, and
   update DESIGN-STANDARD.md in the same change with the reason. Don't redesign established patterns, navigation or the
   host workspace without a demonstrated problem.
+- **Keep it in proportion.** Don't chase minor cosmetic imperfections. A small usability issue isn't a release blocker
+  by itself; the standard's introduction says what is.
 
 ## Where things are
 

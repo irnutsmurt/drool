@@ -7,6 +7,11 @@ reasons behind them are in [DESIGN.md](DESIGN.md) §2.5 and §2.7, and the as-bu
 This standard describes what has been validated; it doesn't freeze every layout. When a convention has to change,
 change it here in the same change as the code, and say why. Don't let the code drift away from it quietly.
 
+Apply it in proportion. It guides new work and shouldn't stand in the way of a reasonable improvement, and minor
+cosmetic imperfections aren't worth chasing. A small usability issue isn't a release blocker by itself, and neither is
+a known limitation that is documented, safe and doesn't get in the way of normal use. Weakening a safeguard or the
+honest presentation of state (§8) always is.
+
 ---
 
 ## 1. The principle: simple by default, powerful by choice

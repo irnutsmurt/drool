@@ -199,7 +199,6 @@ What's tested and what's only expected to work, in detail:
 - **No package repository and no self-update** for the controller: you install new versions yourself.
   (Shepherds do update themselves, to releases signed with a key you hold.)
 - **Backups are made from the command line**, and DROOL doesn't schedule them for you.
-- **The web interface is functional, not polished** yet.
 
 Everything DROOL doesn't do (yet):
 [What DROOL Does](https://github.com/irnutsmurt/drool/wiki/What-DROOL-Does#what-drool-doesnt-do-yet).
