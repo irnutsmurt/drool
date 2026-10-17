@@ -13,12 +13,19 @@ import { Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Table } from "@/components/ui/Table";
 import { ManagementBadge } from "@/components/agents/ManagementBadge";
+import { useFleet } from "@/components/monitoring/queries";
+import { HealthBadge } from "@/components/monitoring/Status";
 import { errorMessage } from "@/lib/format";
 
 export function HostsPage() {
   const { can } = useAuth();
   const hosts = useHosts();
   const groups = useGroups();
+  // Health is monitoring's verdict (as on the Monitoring page), never the
+  // reachability of the last status check; DROOL's connection is its own
+  // column (Unreachable there), the last check is in each host's header.
+  const fleet = useFleet({ category: "all", sort: "name", limit: 500 }, can("monitoring.read"));
+  const health = new Map((fleet.data?.rows ?? []).map((r) => [r.host_id, r]));
   // The search box is in the address (?q=), so the navigation search's
   // "More hosts…" and a shared link open the same list.
   const [params, setParams] = useSearchParams();
@@ -65,8 +72,8 @@ export function HostsPage() {
       {header}
       <div className="mb-4 flex flex-wrap gap-3">
         <Input className="max-w-xs" aria-label="Search hosts" placeholder="Search name, address, tag…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <Select className="max-w-[12rem]" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">All statuses</option>
+        <Select className="max-w-[14rem]" aria-label="Connection" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="">Any connection status</option>
           <option value="ready">Ready</option>
           <option value="pending_hostkey">Needs host key</option>
           <option value="untested">Untested</option>
@@ -75,7 +82,7 @@ export function HostsPage() {
           <option value="auth_failed">Access denied</option>
           <option value="unsupported">Unsupported</option>
         </Select>
-        <Select className="max-w-[12rem]" value={group} onChange={(e) => setGroup(e.target.value)}>
+        <Select className="max-w-[12rem]" aria-label="Pack" value={group} onChange={(e) => setGroup(e.target.value)}>
           <option value="">All packs</option>
           {(groups.data?.items ?? []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
         </Select>
@@ -100,14 +107,26 @@ export function HostsPage() {
               header: "",
               className: "w-8 px-3 py-2",
               cell: (h: Host) => !h.jump_only && (
-                <input type="checkbox" aria-label={`Select ${h.name}`} className="accent-[var(--ui-accent)]"
-                  checked={picked.has(h.id)} onChange={() => togglePick(h.id)} />
+                <label className="inline-flex items-center gap-2">
+                  <input type="checkbox" aria-label={`Select ${h.name}`} className="accent-[var(--ui-accent)]"
+                    checked={picked.has(h.id)} onChange={() => togglePick(h.id)} />
+                  <span aria-hidden="true" className="rt-card-only text-xs text-muted">Select</span>
+                </label>
               ),
             }] : []),
             { header: "Name", cell: (h) => <Link className="font-medium text-accent" to={`/hosts/${h.id}`}>{h.name}</Link> },
             { header: "Address", cell: (h) => <span className="font-mono text-xs">{h.address}{h.port !== 22 && `:${h.port}`}</span> },
             { header: "OS", cell: (h) => <span className="text-muted">{osLabel(h)}</span> },
-            { header: "Health", cell: (h) => (h.jump_only ? <Badge>jump host</Badge> : <ReachabilityBadge host={h} />) },
+            // Without monitoring.read there is no health to show: the last
+            // status check instead, under its own name.
+            can("monitoring.read") ? {
+              header: "Health",
+              cell: (h: Host) => {
+                if (h.jump_only) return <Badge>jump host</Badge>;
+                const r = health.get(h.id);
+                return r ? <HealthBadge hasData={r.source !== ""} stale={r.stale} issues={r.issues} worst={r.worst} /> : <span className="text-muted">—</span>;
+              },
+            } : { header: "Last check", cell: (h: Host) => (h.jump_only ? <Badge>jump host</Badge> : <ReachabilityBadge host={h} />) },
             { header: "Managed via", cell: (h) => (h.jump_only ? "" : <ManagementBadge m={h.management} />) },
             { header: "Connection", cell: (h) => <HostStatusBadge status={h.status} /> },
             {

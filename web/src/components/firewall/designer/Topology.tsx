@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow, ReactFlowProvider, Background, Controls, MiniMap, Handle, Position, BaseEdge, EdgeLabelRenderer, MarkerType,
-  useNodesState, useReactFlow,
+  getViewportForBounds, useNodesState, useReactFlow,
   type Connection, type Edge, type EdgeProps, type Node, type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -103,7 +103,7 @@ const DesignerEdge = memo(function DesignerEdge({ id, sourceX, sourceY, targetX,
       {g.kind !== "member" && (
         <EdgeLabelRenderer>
           <button type="button" onClick={(ev) => { ev.stopPropagation(); data!.onSelect(); }}
-            aria-label={`${g.kind === "mgmt" ? "DROOL management path" : g.kind === "observed" ? "Observed connections" : g.action === "deny" ? "Deny rule" : "Allow rule"}: ${(g.kind === "observed" ? g.detail! : g.label).replace("\n", " · ")}. Show details`}
+            aria-label={`${g.label.split("\n").join(" ")}: ${g.kind === "mgmt" ? "DROOL management path" : g.kind === "observed" ? `observed connections, ${g.detail!.replace("\n", " · ")}` : g.action === "deny" ? "deny rule" : "allow rule"}. Show details`}
             className="nodrag nopan pointer-events-auto absolute max-w-64 cursor-pointer rounded border px-1.5 py-0.5 text-left text-[10px] leading-tight shadow-sm focus:outline focus:outline-2 focus:outline-accent"
             style={{
               transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`,
@@ -112,7 +112,7 @@ const DesignerEdge = memo(function DesignerEdge({ id, sourceX, sourceY, targetX,
               fontWeight: g.kind === "mgmt" && g.status === "blocked" ? 700 : 500,
             }}
             data-edge-label={g.kind} title={(g.kind === "observed" ? g.detail! : g.label).replace("\n", " · ")}>
-            {g.label.split("\n").map((l, i) => <span key={i} className={`block ${i > 0 ? "font-normal opacity-90" : ""}`}>{l}</span>)}
+            {g.label.split("\n").map((l, i) => <span key={i} className={`block ${i > 0 ? "font-normal opacity-90" : ""}`}>{i > 0 && " "}{l}</span>)}
           </button>
         </EdgeLabelRenderer>
       )}
@@ -121,6 +121,9 @@ const DesignerEdge = memo(function DesignerEdge({ id, sourceX, sourceY, targetX,
 });
 
 const nodeTypes = { designer: DesignerNode };
+
+/** Below this zoom the boxes' names are too small to read (≈ 9 px). */
+const READABLE_ZOOM = 0.75;
 const edgeTypes = { designer: DesignerEdge };
 
 function autoLayout(nodes: GNode[], edges: GEdge[]): Record<string, { x: number; y: number }> {
@@ -265,7 +268,9 @@ function TopologyInner(p: TopologyProps) {
         id: e.id, source: e.source, target: e.target, type: "designer", data: { g: e, offset, highlighted, onSelect: () => p.onSelect({ kind: "edge", edge: e }) },
         selected: p.selection?.kind === "edge" && p.selection.edge.id === e.id,
         markerEnd: e.kind === "member" ? undefined : { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
-        focusable: e.kind !== "member",
+        // Reached from the keyboard through its label (a button), not as a
+        // line: a focused line shows no focus of its own.
+        focusable: false,
         ariaLabel: e.kind === "mgmt" ? `Protected DROOL management path from ${e.source} to ${e.target}`
           : e.kind === "observed" ? `Observed connections from ${e.source} to ${e.target}: ${e.detail}` : `${e.action} from ${e.source} to ${e.target}: ${e.label}`,
       };
@@ -308,6 +313,36 @@ function TopologyInner(p: TopologyProps) {
     userMoved.current = false;
     rf.fitView({ padding: 0.1, duration: 200 });
   };
+  /** The selection and what it is directly connected to (a box's
+   * neighbours, a line's two ends). */
+  const around = useCallback((sel: NonNullable<Selection>) => {
+    if (sel.kind === "edge") return [sel.edge.source, sel.edge.target];
+    const near = new Set([sel.key]);
+    for (const e of graph.edges) {
+      if (e.source === sel.key) near.add(e.target);
+      if (e.target === sel.key) near.add(e.source);
+    }
+    return [...near];
+  }, [graph.edges]);
+  // When the side panel opens for something just selected and the whole
+  // policy would only fit at a size too small to read, the view frames the
+  // selection instead (Fit still shows everything); closing the panel
+  // frames the policy again.
+  const selection = useRef(p.selection);
+  selection.current = p.selection;
+  const refit = useCallback(() => {
+    const el = canvas.current;
+    const sel = selection.current;
+    if (el && sel) {
+      const nodes = mode === "both" && policyNodes.length > 0 ? policyNodes.map((n) => n.id) : rf.getNodes().map((n) => n.id);
+      const whole = getViewportForBounds(rf.getNodesBounds(nodes), el.clientWidth, el.clientHeight, 0.1, 1.2, 0.15);
+      if (whole.zoom < READABLE_ZOOM) {
+        rf.fitView({ nodes: around(sel).map((id) => ({ id })), padding: 0.3, duration: 0, maxZoom: 1 });
+        return;
+      }
+    }
+    fitPolicy(0);
+  }, [around, fitPolicy, mode, policyNodes, rf]);
   useEffect(() => {
     const el = canvas.current;
     if (!el) return;
@@ -315,27 +350,22 @@ function TopologyInner(p: TopologyProps) {
     const ro = new ResizeObserver(() => {
       if (el.clientWidth === width) return;
       width = el.clientWidth;
-      if (!userMoved.current) fitPolicy(0);
+      if (!userMoved.current) refit();
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [fitPolicy]);
+  }, [refit]);
   /** A box and what it is directly connected to. */
   const focusOn = (key: string) => {
     userMoved.current = true;
-    const near = new Set([key]);
-    for (const e of graph.edges) {
-      if (e.source === key) near.add(e.target);
-      if (e.target === key) near.add(e.source);
-    }
-    rf.fitView({ nodes: [...near].map((id) => ({ id })), padding: 0.3, duration: 300, maxZoom: 1.4 });
+    rf.fitView({ nodes: around({ kind: "node", key }).map((id) => ({ id })), padding: 0.3, duration: 300, maxZoom: 1.4 });
   };
   const focusSelection = () => {
     const sel = p.selection;
     if (!sel) return;
     userMoved.current = true;
     if (sel.kind === "node") focusOn(sel.key);
-    else rf.fitView({ nodes: [{ id: sel.edge.source }, { id: sel.edge.target }], padding: 0.4, duration: 300, maxZoom: 1.4 });
+    else rf.fitView({ nodes: around(sel).map((id) => ({ id })), padding: 0.4, duration: 300, maxZoom: 1.4 });
   };
 
   const relayout = () => {
@@ -446,7 +476,7 @@ function TopologyInner(p: TopologyProps) {
             if (/^(asn|ip|more|special):/.test(c.source) || /^(asn|ip|more|special):/.test(c.target)) return;
             p.onConnect(c.source, c.target);
           }}
-          nodesConnectable={p.canWrite && mode !== "observed"} edgesReconnectable={false} deleteKeyCode={null}
+          nodesConnectable={p.canWrite && mode !== "observed"} edgesReconnectable={false} edgesFocusable={false} deleteKeyCode={null}
           fitView={mode !== "both"} fitViewOptions={{ padding: 0.15, maxZoom: 1.2 }} minZoom={0.1} proOptions={{ hideAttribution: true }}
           style={{ background: "var(--ui-canvas)" }}
         >

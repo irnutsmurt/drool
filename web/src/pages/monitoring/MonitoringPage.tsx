@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { cx } from "@/components/ui/cx";
 import { errorMessage } from "@/lib/format";
 import { useFleet, type MonFleetHost } from "@/components/monitoring/queries";
-import { deviceHealth, SeverityBadge, StatusBadge, statusOf } from "@/components/monitoring/Status";
+import { deviceHealth, HealthBadge, SeverityBadge, StatusBadge } from "@/components/monitoring/Status";
 import { fmtPct, fmtSince, fmtTemp } from "@/components/monitoring/format";
 import { HelperInstallDialog } from "@/components/monitoring/HelperInstall";
 import { ConvertDialog } from "@/components/monitoring/ConvertDialog";
@@ -37,10 +37,7 @@ const categories = [
 const PAGE = 100;
 
 function Worst({ r }: { r: MonFleetHost }) {
-  if (r.source === "") return <StatusBadge status="unknown">No data</StatusBadge>;
-  if (r.stale) return <StatusBadge status="warning">Stale</StatusBadge>;
-  const s = statusOf(r.worst);
-  return <StatusBadge status={s}>{r.issues === 0 ? "Healthy" : `${r.issues} issue${r.issues === 1 ? "" : "s"}`}</StatusBadge>;
+  return <HealthBadge hasData={r.source !== ""} stale={r.stale} issues={r.issues} worst={r.worst} />;
 }
 
 export function MonitoringPage() {
@@ -143,8 +140,8 @@ export function MonitoringPage() {
                   <td data-label="" className="px-2 py-1.5">
                     <label className="inline-flex items-center gap-2">
                       <input type="checkbox" aria-label={`Select ${r.name}`} checked={sel.has(r.host_id)} onChange={() => toggle(r.host_id)} />
-                      {/* On a phone the row is a card and the column header is gone. */}
-                      <span aria-hidden="true" className="text-xs text-muted md:hidden">Select</span>
+                      {/* In a card (a phone, a narrow window) the column header is gone. */}
+                      <span aria-hidden="true" className="rt-card-only text-xs text-muted">Select</span>
                     </label>
                   </td>
                   <td data-primary="" className="px-2 py-1.5"><Link className="text-accent" to={`/hosts/${r.host_id}/monitoring`}>{r.name}</Link></td>

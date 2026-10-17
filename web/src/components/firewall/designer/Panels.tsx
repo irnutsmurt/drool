@@ -225,7 +225,7 @@ export function SimulateBox({ doc, hosts, from, to, service }: { doc: Doc; hosts
   };
   return (
     <div className="space-y-2 rounded-ui border border-line p-2" data-testid="simulate">
-      <div className="text-sm font-medium">Can it reach…? <span className="font-normal text-muted">(on this draft)</span></div>
+      <div className="text-sm font-medium">Can it reach…? <span className="font-normal text-muted">(simulated on this draft: nothing is applied)</span></div>
       <div className="grid grid-cols-2 gap-2">{side("From", src, setSrc, from)}{side("To", dst, setDst, to)}</div>
       <div className="flex items-end gap-2">
         <label className="flex flex-col gap-1 text-xs"><span className="text-muted">Protocol</span>

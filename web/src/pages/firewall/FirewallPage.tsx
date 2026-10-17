@@ -18,6 +18,7 @@ import { ReadOnlyNote } from "@/components/ui/ReadOnlyNote";
 import { DesignerPage } from "@/components/firewall/designer/DesignerPage";
 import { Table } from "@/components/ui/Table";
 import { errorMessage } from "@/lib/format";
+import { TabPanel, Tabs } from "@/components/ui/Tabs";
 
 const tabs = [
   { id: "hosts", label: "Hosts" },
@@ -39,19 +40,15 @@ export function FirewallPage() {
         description={<>What may talk to what, applied to plain-nftables hosts with <span className="font-medium text-fg">automatic rollback protection</span>: if a fresh
           management connection can&apos;t verify a change, the host reverts it by itself.</>}
         actions={can("network.read") && <Link to="/network" className={secondaryLink}>Observed traffic</Link>} />
-      <div role="tablist" aria-label="Firewall sections" className="-mx-1 mb-4 flex gap-1 overflow-x-auto border-b border-line px-1">
-        {tabs.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setParams({ tab: t.id })}
-            className={cx("-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm", tab === t.id ? "border-accent font-medium" : "border-transparent text-muted hover:text-fg")}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-      {tab === "hosts" && <HostsTab />}
-      {tab === "designer" && <DesignerPage />}
-      {tab === "simulate" && <SimulateTab />}
-      {tab === "transactions" && <TransactionsTab />}
-      {tab === "settings" && <SettingsTab />}
+      <Tabs label="Firewall sections" id="fw" className="-mx-1 mb-4 overflow-x-auto px-1" current={tab}
+        tabs={tabs.map((t) => ({ key: t.id, label: t.label }))} onSelect={(k) => setParams({ tab: k })} />
+      <TabPanel id="fw" current={tab}>
+        {tab === "hosts" && <HostsTab />}
+        {tab === "designer" && <DesignerPage />}
+        {tab === "simulate" && <SimulateTab />}
+        {tab === "transactions" && <TransactionsTab />}
+        {tab === "settings" && <SettingsTab />}
+      </TabPanel>
     </>
   );
 }
@@ -122,6 +119,10 @@ function SimulateTab() {
   const r: FwSimResult | undefined = sim.data;
   return (
     <Card title="Can A reach B?">
+      <p className="mb-3 text-sm text-muted" data-testid="simulate-explainer">
+        A simulation: DROOL works out the answer from the firewall policy it wants for these hosts. It sends nothing to the
+        hosts, tries no connection, and changes no policy.
+      </p>
       <div className="grid gap-3 md:grid-cols-[1fr_1fr_7rem_7rem_auto] md:items-end">
         {side(from, setFrom, "From")}
         {side(to, setTo, "To")}
@@ -132,9 +133,10 @@ function SimulateTab() {
       {sim.error && <div className="mt-3"><Alert>{errorMessage(sim.error)}</Alert></div>}
       {r && (
         <div className="mt-4 space-y-2 text-sm">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span className={cx("text-2xl font-semibold", r.answer === "YES" ? "text-ok" : r.answer === "NO" ? "text-danger" : "text-warn")}>{r.answer}</span>
             <span>{r.from} → {r.to} {proto.toUpperCase()}/{port}</span>
+            <span className="text-muted">{r.answer === "YES" ? "the policy allows it" : r.answer === "NO" ? "the policy blocks it" : "the policy allows some of these addresses"} (simulated)</span>
           </div>
           <ul className="space-y-1">
             {r.hops.map((h) => (
@@ -147,7 +149,7 @@ function SimulateTab() {
               </li>
             ))}
           </ul>
-          <p className="text-xs text-muted">Evaluated: {r.pairs.join(", ")}. Simulation uses the policy DROOL wants; notes show where hosts haven't applied it yet.</p>
+          <p className="text-xs text-muted">Evaluated: {r.pairs.join(", ")}. Simulated from the policy DROOL wants; notes show where hosts haven&apos;t applied it yet. Nothing was sent to the hosts.</p>
         </div>
       )}
     </Card>
@@ -190,7 +192,7 @@ function SettingsTab() {
     <div className="grid gap-4 lg:grid-cols-2">
       <Card title="Internal networks">
         <p className="mb-2 text-sm text-muted">The <strong>internet</strong> target is everything outside these ranges. Add routed LANs, VLANs and VPNs here.</p>
-        <textarea className="h-48 w-full rounded-ui border border-line bg-surface p-2 font-mono text-xs" disabled={!can("firewall.write")}
+        <textarea aria-label="Internal networks, one range per line" className="h-48 w-full rounded-ui border border-line bg-surface p-2 font-mono text-xs" disabled={!can("firewall.write")}
           value={ranges ?? s.data.internal_ranges.join("\n")} onChange={(e) => setRanges(e.target.value)} />
         <Field label="Default rollback timeout (seconds)" hint="How long a host waits for the commit over a new connection before restoring its previous policy.">
           <Input type="number" min={30} disabled={!can("firewall.write")} value={timeout ?? String(s.data.default_timeout_s)} onChange={(e) => setTimeout_(e.target.value)} />

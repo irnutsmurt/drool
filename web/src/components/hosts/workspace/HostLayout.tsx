@@ -5,6 +5,8 @@ import { api, unwrap } from "@/api/client";
 import { qk, useHost, type Host } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { ManagementBadge } from "@/components/agents/ManagementBadge";
+import { useHostMonitoring } from "@/components/monitoring/queries";
+import { HealthBadge, worstOf } from "@/components/monitoring/Status";
 import { useHostAgent } from "@/components/agents/queries";
 import { MaintenanceDialog } from "@/components/alerts/MaintenanceDialog";
 import { useAlertSummary } from "@/components/alerts/queries";
@@ -147,10 +149,7 @@ function HostHeader({ h, crumbs }: { h: Host; crumbs: Crumb[] }) {
       <Crumbs crumbs={crumbs} />
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
         <div className="min-w-0 flex-1 basis-[24rem]">
-          <h1 className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xl font-semibold">
-            <span className="break-all">{h.name}</span>
-            <HostStatusBadge status={h.status} />
-          </h1>
+          <h1 className="break-all text-xl font-semibold">{h.name}</h1>
           <HostFacts h={h} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -177,14 +176,17 @@ function HostHeader({ h, crumbs }: { h: Host; crumbs: Crumb[] }) {
   );
 }
 
-/** One line of what tells this host apart and whether it's reachable:
- * OS, address, how DROOL manages it, reachability, open alerts and
- * maintenance. Old data never reads as healthy: reachability says
- * stale or not checked. */
+/** What tells this host apart (OS, address, how DROOL manages it), then
+ * its state, each part named so none reads as another: Connection (can
+ * DROOL sign in and manage it: "Ready" means that and nothing more), Last
+ * check (did the latest status check reach it), Health (monitoring's
+ * verdict), open alerts, maintenance and a run working on it. Old data
+ * never reads as healthy: it says stale or not checked. */
 function HostFacts({ h }: { h: Host }) {
   const { can } = useAuth();
   const agent = useHostAgent(h.id);
   const alerts = useAlertSummary(can("alerts.read"));
+  const mon = useHostMonitoring(h.id, can("monitoring.read") && !h.jump_only);
   const m = agent.data?.management ?? h.management;
   const a = alerts.data?.hosts[h.id];
   const open = a ? a.critical + a.warning : 0;
@@ -193,39 +195,48 @@ function HostFacts({ h }: { h: Host }) {
   // themselves wait for it; their dialogs say so).
   const busy = useHostBusy(h.id, !h.jump_only, 10_000);
   const runs = (busy.data?.holders ?? []).filter((x) => x.kind === "run" && x.job_id);
-  const parts: ReactNode[] = [];
-  if (!h.jump_only) parts.push(<span key="os">{osLabel(h)}</span>);
-  else parts.push(<span key="jump">Jump host only</span>);
-  parts.push(<span key="addr" className="font-mono">{h.address}{h.port !== 22 && `:${h.port}`}</span>);
+  const o = mon.data;
+  const facts: ReactNode[] = [];
+  if (!h.jump_only) facts.push(<span key="os">{osLabel(h)}</span>);
+  else facts.push(<span key="jump">Jump host only</span>);
+  facts.push(<span key="addr" className="font-mono">{h.address}{h.port !== 22 && `:${h.port}`}</span>);
   if (!h.jump_only) {
-    parts.push(
+    facts.push(
       <span key="mgmt" className="inline-flex flex-wrap items-center gap-1.5">
         <span className="text-muted">Managed via</span>
         <ManagementBadge m={m} />
         {m.preferred === "agent" && m.fallback === "ssh" && m.active === "agent" && <span className="text-muted">with SSH fallback</span>}
       </span>,
     );
-    parts.push(<span key="reach" className="inline-flex items-center gap-1.5"><span className="text-muted">Last check</span><ReachabilityBadge host={h} /></span>);
+  }
+  const named = (key: string, label: string, value: ReactNode, testId?: string) => (
+    <span key={key} className="inline-flex items-center gap-1.5" data-testid={testId}><span className="text-muted">{label}</span>{value}</span>
+  );
+  const state: ReactNode[] = [named("conn", "Connection", <HostStatusBadge status={h.status} />, "host-connection")];
+  if (!h.jump_only) {
+    state.push(named("reach", "Last check", <ReachabilityBadge host={h} />, "host-last-check"));
+    if (o) state.push(named("health", "Health", <HealthBadge hasData={o.has_data} stale={o.stale} issues={o.issues.length} worst={worstOf(o.issues)} />, "host-health"));
   }
   if (open > 0) {
-    parts.push(
+    state.push(
       <Link key="alerts" to={`/alerts?host_id=${h.id}`} className={cx("inline-flex items-center gap-1 font-medium underline-offset-2 hover:underline", a!.critical ? "text-danger" : "text-warn")}>
         <span aria-hidden="true">{a!.critical ? "✕" : "⚠"}</span>
         {open} open alert{open === 1 ? "" : "s"}{a!.critical ? ` (${a!.critical} critical)` : ""}
       </Link>,
     );
   }
-  if (maint) parts.push(<Badge key="maint" tone="warn">In maintenance {untilText(maint.ends_at)}</Badge>);
+  if (maint) state.push(<Badge key="maint" tone="warn">In maintenance {untilText(maint.ends_at)}</Badge>);
   if (runs.length > 0) {
-    parts.push(
+    state.push(
       <Link key="busy" to={`/jobs/${runs[0]!.job_id}`} className="inline-flex items-center gap-1 text-accent underline-offset-2 hover:underline" data-testid="host-busy-run">
         <span aria-hidden="true">⏵</span>{runs[0]!.label} is running{runs.length > 1 ? ` (+${runs.length - 1} more)` : ""}
       </Link>,
     );
   }
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm" data-testid="host-facts">
-      {parts}
+    <div className="mt-1 space-y-1 text-sm" data-testid="host-facts">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1">{facts}</div>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1" data-testid="host-state">{state}</div>
     </div>
   );
 }
@@ -284,7 +295,7 @@ function HostSectionNav({ h, current }: { h: Host; current: HostSection }) {
           {sections.map((s) => (
             <li key={s.key}>
               <Link to={hostPath(h.id, s.path)} aria-current={s.key === current.key ? "page" : undefined} title={s.description}
-                className={cx("-mb-px inline-block whitespace-nowrap border-b-2 px-3 py-2 text-sm",
+                className={cx("-mb-px inline-block whitespace-nowrap border-b-2 px-3 py-2 text-sm pointer-coarse:py-3",
                   s.key === current.key ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg")}>
                 {s.label}
               </Link>
@@ -298,7 +309,7 @@ function HostSectionNav({ h, current }: { h: Host; current: HostSection }) {
           <select value={current.key} onChange={(e) => {
             const s = sections.find((x) => x.key === e.target.value);
             if (s) navigate(hostPath(h.id, s.path));
-          }} className="h-10 min-w-0 flex-1 rounded-ui border border-line bg-surface px-3 text-sm font-medium text-fg">
+          }} className="h-10 min-w-0 flex-1 rounded-ui border border-line bg-surface px-3 text-sm font-medium text-fg pointer-coarse:h-11">
             {sections.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
         </label>

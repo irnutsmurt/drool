@@ -98,10 +98,11 @@ export function useMonEvents(id: string, kind = "") {
   });
 }
 
-export function useFleet(params: { category?: string; q?: string; sort?: string; limit?: number; offset?: number }) {
+export function useFleet(params: { category?: string; q?: string; sort?: string; limit?: number; offset?: number }, enabled = true) {
   return useQuery({
     queryKey: monKeys.fleet(params),
     queryFn: () => unwrap(api.GET("/monitoring/summary", { params: { query: params as never } })),
+    enabled,
     ...live,
   });
 }
