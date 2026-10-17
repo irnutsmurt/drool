@@ -200,7 +200,7 @@ minutes.
 
 ## What DROOL does from now on
 
-![A host's page right after adding it (here backup-01, added the same way): Ready, Debian 12, managed via SSH, last check online; Run command, Install updates and Actions; the sections Overview, Monitoring, Files, Network, Firewall, Desired State, Management and Activity; "Nothing needs attention on this host right now"; Health now still waiting for the first monitoring data; the Desired State, Firewall, Network and Files summaries; the run that set up DROOL's own SSH account; and the System card](images/first-host-page.png)
+![A host's page right after adding it (here backup-01, added the same way): Debian 12, managed via SSH; Connection Ready, Last check online, Health Healthy; Run command, Install updates and Actions; the sections Overview, Monitoring, Files, Network, Firewall, Desired State, Management and Activity; "Nothing needs attention on this host right now"; Health now with its first monitoring data; the Desired State, Firewall, Network and Files summaries; the run that set up DROOL's own SSH account; and the System card](images/first-host-page.png)
 
 Apart from its own account, DROOL installs nothing on the host. Without you doing anything, DROOL:
 

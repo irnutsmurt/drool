@@ -1,7 +1,7 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.15**
-Status: Draft · 2026-10-16 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
+**Design Document v0.3.16**
+Status: Draft · 2026-10-17 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
 > DROOL is a web-first platform for managing, automating, monitoring, and eventually segmenting Linux systems through SSH or an agent.
@@ -13,6 +13,20 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.15 → v0.3.16 (1.0 final usability and accessibility pass, before the release candidate)
+
+A narrowly scoped correction after the second external review: no redesign, no new feature, the same routes,
+APIs and safety rules. The UI conventions it verified are now rules for future work in
+[DESIGN-STANDARD.md](DESIGN-STANDARD.md) (§2.7). As built (`ARCHITECTURE-ALPHA.md` §41.12):
+
+| # | As built | Section |
+|---|---|---|
+| 1 | **Host states named apart.** The header and the Hosts list show **Connection** (*Ready* means DROOL can manage the host, nothing more), **Last check** (did the status check reach it) and **Health** (monitoring's verdict in words: Healthy, Degraded, Unhealthy, Stale, No data) separately. A *Ready* host with a critical problem no longer looks fine | §2.7, §11.3 |
+| 2 | **Accessible:** every page has a title and a navigation is announced. Tab rows and menus are complete from the keyboard. Focus follows an inspector's steps and comes back from popovers and removals. Names start with the visible text. Links inside text are underlined. Accent text and badges reach AA contrast in both themes (the accent token changed) | §2.7 |
+| 3 | **Nothing behind a sideways scroll.** A table that doesn't fit its space becomes cards (dense lists their compact form) at 1440, 1280, 1024 and 390 px. Touch screens get 44 px controls | §2.7 |
+| 4 | **Previews say what they are.** "Can A reach B?" says it is a simulation that sends and changes nothing. The restore plan says nothing changes until Restore | §2.4, §19.2 |
+| 5 | **A readable topology beside the details:** selecting something with the side panel open frames it at a readable size instead of shrinking the whole policy; Fit still shows everything | §19.4 |
 
 ### v0.3.14 → v0.3.15 (1.0 UI/UX correction, before the release candidate)
 
@@ -312,7 +326,9 @@ The test for the UI is *"I haven't used DROOL in six months, but I can still fin
 
 DROOL may give things its own names — a **Pack** (host group), a **Shepherd** (the DROOL agent) — but never requires knowing the joke: the conventional term is shown next to the themed one, in page text and as a search alias, and technical surfaces (API, CLI, files, protocol) keep the conventional names. A **navigation search** finds pages and settings by any of those words, and by the questions people ask ("can A reach B?").
 
-States are honest: loading is not empty, stale is not healthy, unknown is not compliant. What a role can't view is absent from navigation and search; what it can view but not change is shown read-only and says so. Phone-sized screens get a real layout, not a shrunken desktop.
+States are honest: loading is not empty, stale is not healthy, unknown is not compliant. A host's states are separate and each is named where it is shown: **Connection** (DROOL can sign in and manage it: *Ready*), **Last check** and **Health** (monitoring's verdict), so being reachable never reads as being healthy. What a role can't view is absent from navigation and search; what it can view but not change is shown read-only and says so. Phone-sized screens get a real layout, not a shrunken desktop; no column or action sits behind a sideways scroll at any supported width.
+
+The validated conventions — navigation, page structure, building blocks, status words, the interaction patterns, responsive and accessibility requirements, terminology — are written as rules for future UI work in [DESIGN-STANDARD.md](DESIGN-STANDARD.md).
 
 A **host is a workspace**: one header that always says what the host is, how DROOL reaches it and how it is, over sections for everything about it (Overview, Monitoring, Files, Network, Firewall, Desired State, Management, Activity) — two levels at most, each at its own address. Search finds **records as well as pages** (hosts, Packs, services, active alerts, recent runs), within what the role may see.
 

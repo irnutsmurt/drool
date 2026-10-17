@@ -156,12 +156,22 @@ These are requirements, not aims. Check them at **1440, 1280, 1024 and 390 px**,
   - a table whose columns only make sense side by side (`Table mobile="scroll"`), and never for actions.
 - Text never overlaps and buttons are never cut off. Long server text wraps (`main` breaks long words). A truncated name
   keeps the full text in a `title`.
+- **Nothing that takes focus sits in a visually hidden box.** Cards hide a table's header, except a header cell with a
+  control in it (Select all), which stays above the cards (a rule in `index.css`). Give that control a label with
+  `rt-card-only` text, as Monitoring does.
 
 ### Touch
 
-- On touch screens (`pointer: coarse`), buttons, fields, tabs, menu items, navigation links, checkbox labels and a card's
-  title link are at least **44 × 44 px**. A global rule in `index.css` provides this; don't override `min-height` there.
-- Links inside sentences are exempt. Everything else is at least 24 × 24 px (WCAG 2.5.8).
+- On touch screens (`pointer: coarse`), buttons, fields, selects, tabs, menu items, navigation links, checkbox labels
+  and a card's title link are at least **44 px tall**. A global rule in `index.css` provides this; don't override
+  `min-height` there.
+- Icon-only buttons (✕, ⋯, ↑ ↓) are **44 × 44 px**: add `pointer-coarse:min-w-11`.
+- A checkbox is tapped through its label, so wrap it in a `<label>`. In a table, add a "Select" that shows only in a card
+  (`rt-card-only`), as the Hosts list does.
+- A button styled as a link (`underline`, `plainLink`) keeps the height of the text around it, like a link. When it
+  stands on its own beside other controls, as More filters does, give it `pointer-coarse:min-h-11`.
+- Links inside sentences are exempt. Everything else is at least 24 × 24 px, or has the spacing WCAG 2.5.8 accepts
+  instead: a 24 px circle on it touches no other target.
 
 ### Colour and contrast
 
@@ -183,6 +193,10 @@ These are requirements, not aims. Check them at **1440, 1280, 1024 and 390 px**,
   - Escape goes back from a step, otherwise closes;
   - focus returns to what opened it.
 - **Popovers** (the security status, the account menu): Escape closes them and returns focus to their button.
+- **When the focused element disappears** (the row a confirmed removal took away), focus goes to the dialog on top or to
+  the main content, never back to the top of the document (`watchFocusLoss` in `ui/modal.ts`). Don't work around it.
+- **A box that scrolls on its own**, such as a long list inside a dialog, is reachable from the keyboard: give it
+  `tabIndex={0}`, `role="region"` and a name.
 
 ### Screen readers
 
@@ -248,7 +262,8 @@ Before opening a pull request that touches `web/`:
 5. **Check the layout** at 1440, 1280, 1024 and 390 px in both themes: no sideways scroll, nothing cut off, every action
    in sight.
 6. **Check accessibility.** There is a keyboard path through the change, focus is visible and returns where it should,
-   every control has a name, contrast passes, and touch targets are big enough.
+   nothing that takes focus is out of sight, every control has a name, contrast passes, and touch targets are big
+   enough.
 7. **Test it.** A new flow gets a browser test in `web/e2e/`, with its keyboard path when a pattern is involved. Logic gets
    unit tests in `web/src/**/*.test.ts`. The browser suite's contrast and navigation tests stay green.
 8. **Document it.** Update the user guide (`docs/wiki/`) when user-visible behaviour changes, and this standard when a
@@ -262,4 +277,5 @@ go test -tags integration -run TestBrowser ./test/integration
 ```
 
 For changes that reach across the UI, repeat the 1.0 audit: axe-core's WCAG 2.2 A and AA rules, plus the layout,
-contrast, touch-target and focus checks at the four widths. See ARCHITECTURE-ALPHA.md §41.12.
+contrast, touch-target, focus and hidden-Tab-stop checks at the four widths. Read the per-control findings, not only
+the totals. See ARCHITECTURE-ALPHA.md §41.12.

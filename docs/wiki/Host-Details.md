@@ -6,19 +6,28 @@ section, the **Overview**, is a summary built to answer three questions in order
 attention?*, *is this host okay?*, and *what happened lately?*. Every summary links to the section
 with the details.
 
-![web-01's Overview: the header (Ready, Ubuntu 24.04.5 LTS, 10.10.40.21, managed via SSH, last check online, 1 open alert) with Run command, Install updates and Actions; the sections Overview, Monitoring, Files, Network, Firewall, Desired State, Management and Activity; Needs attention (/ 91% full, the open and acknowledged alert, 2 drifted resources); Health now with its tiles; the Alerts card; the Desired State, Firewall, Network and Files summaries; Recent runs, Recent events and the System card](images/host-page-web-01.png)
+![web-01's Overview: the header (web-01; Ubuntu 24.04.5 LTS, 10.10.40.21, managed via SSH; Connection Ready, Last check online, Health Degraded · 1 issue, 1 open alert) with Run command, Install updates and Actions; the sections Overview, Monitoring, Files, Network, Firewall, Desired State, Management and Activity; Needs attention (/ 91% full, the open alert, 2 drifted resources); Health now with its tiles; the Alerts card; the Desired State, Firewall, Network and Files summaries; Recent runs, Recent events and the System card](images/host-page-web-01.png)
 
 ## The top of the page
 
 The header is the same in every section of the host:
 
-- **The name and a status badge**, for example **Ready**. Other statuses are explained in
-  [Status Meanings](Status-Meanings.md#host-statuses). When something is wrong, a coloured note under
-  the header says what it means and what to do.
-- **One line of facts**: the operating system and address, for example
-  `Debian GNU/Linux 12 (bookworm)` and `10.10.20.15`; how DROOL manages the host (*Managed via*
-  **SSH** or **Shepherd**); whether the last check reached it (*Last check* **online**, **offline** or
-  **stale**); and, when there are any, its open alerts, maintenance, and a run working on it now.
+- **The host's name.**
+- **What the host is**: the operating system and address, for example
+  `Debian GNU/Linux 12 (bookworm)` and `10.10.20.15`, and how DROOL manages it (*Managed via*
+  **SSH** or **Shepherd**).
+- **Its state, each part named**, because they answer different questions:
+  - **Connection**: can DROOL sign in and manage this host? **Ready** means yes, and only that: a
+    *Ready* host can still be unhealthy.
+  - **Last check**: did the latest status check reach the host? **online**, **offline**, **stale** or
+    **not checked yet**.
+  - **Health**: how monitoring sees the host. **Healthy**, **Degraded** (its worst issue is a
+    warning), **Unhealthy** (something is critical), with the number of issues, or **Stale** and
+    **No data** when there is nothing recent to judge by.
+  - Then, when there are any, its open alerts, maintenance, and a run working on it now.
+
+  All the words are explained in [Status Meanings](Status-Meanings.md#host-statuses). When something is
+  wrong with the connection, a coloured note under the header says what it means and what to do.
 - **Buttons** (what you see depends on your role): **Run command**, **Install updates**, and
   **Actions**, a menu with the rest:
 

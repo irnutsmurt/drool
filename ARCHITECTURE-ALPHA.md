@@ -3631,3 +3631,166 @@ sideways scroll at 1440 and 1280 px. The review found eleven problems in the UI,
 waiting for a loading text to disappear before the loading began, and the search test assuming the
 fixture's services were already reported when it runs first.
 
+
+### 41.12 Final usability and accessibility pass
+
+The second external review (Claude, ChatGPT, Gemini) accepted the redesign provisionally and asked for one narrowly
+scoped pass before the release candidate: host status clarity, an accessibility audit, the firewall simulation and
+topology, the restore and change previews, and a written design standard. No feature was added, and the navigation,
+the host workspace, routes, APIs, policy semantics and safety checks are unchanged. Gemini's suggested enhancements
+(multi-column sorting, chart controls, editor syntax highlighting, richer rule evaluation) were not taken up.
+
+**Host states.** `hosts.status` is DROOL's connection and management readiness, from connection tests and the
+Shepherd's session: *Ready* means DROOL can sign in and manage the host. Two things made it read as health:
+
+- it sat in green next to the host's name, the first thing one reads, while a critical alert was open;
+- the Hosts list's "Health" column showed the last status poll's reachability (online, offline).
+
+Now:
+
+- **The header.** The name stands alone, and a second line names each state: **Connection** (`HostStatusBadge`),
+  **Last check** (`ReachabilityBadge`), **Health** and the open alerts. Health is `HealthBadge`, computed from the
+  host's monitoring overview the same way as a fleet row: Healthy, Healthy · N notices, Degraded · N issues,
+  Unhealthy · N issues, Stale or No data.
+- **The Hosts list.** Health is monitoring's verdict, from the fleet summary as on the Monitoring page. Without
+  `monitoring.read` the column is "Last check".
+- **Severity in words.** On the Monitoring page it was only in an `aria-hidden` icon and its colour.
+
+**The audit.** In the docs lab (the `ui-review-1.0-after` data), every main page (69 routes) was checked at 1440, 1280,
+1024 and 390 px (390 px with touch emulation), in both themes. The checks were:
+
+- axe-core 4.14: the WCAG 2.0, 2.1 and 2.2 A and AA rules, and best practices;
+- the browser suite's own contrast check;
+- content beyond the window, cut off or overlapping, and tables behind a sideways scroll;
+- touch target sizes (390 px);
+- focus visibility on every Tab stop (1440 px);
+- in the last run, Tab stops nobody can see (inside a visually hidden box) at every width.
+
+Eleven dialogs, inspectors and the search were also opened at every width and theme, and 47 scripted keyboard and
+screen-reader checks ran per theme: menus, dialogs, inspectors and their steps, host navigation, titles, popovers, the
+phone menu and a confirmed removal.
+
+**Found and fixed:**
+
+- **Titles and announcements.** Every page was titled "DROOL", and moving inside DROOL wasn't announced. Titles now come
+  from the page's heading, the host's section and the selected view, and a polite live region names the new page
+  (`PageTitle`).
+- **Contrast.** In the light theme, accent text on the page background was 4.40:1 and accent badges 3.86:1. A badge
+  inside a selected card was 3.44:1 (4.25:1 in the dark theme). The accent token changed from `#2f6fde` to `#2459bd`
+  (light) and from `#6b9ff2` to `#7dabf4` (dark).
+- **Links in text** were told apart by colour only (WCAG 1.4.1). They are now underlined.
+- **Accessible names** didn't start with the visible text (WCAG 2.5.3), on monitoring tiles, the fleet's alert counts,
+  Pack and health buttons, topology line labels, compact connection entries and the alert inspector's choices. Also
+  fixed:
+  - an `aria-label` on a `<p>` meant screen readers heard nothing of the inheritance legend;
+  - selects and a textarea without names;
+  - empty table headers and a table without a caption.
+- **Keyboard.**
+  - Three tab rows (Firewall, Shepherds, Network) and two smaller ones were ARIA tabs without arrow keys. They now use a
+    shared `Tabs` component.
+  - Menus had no name; they are now named by their button. Menu items showed focus only as a faint tint; they now show
+    the outline.
+  - Focus was lost when an inspector step opened or closed (an alert's Acknowledge…, a connection's Classify…). It now
+    moves into the step and returns to the step's button.
+  - Escape in the security and account popovers lost focus; it now returns to the button.
+  - After a confirmed removal, focus fell back to the document; it now goes to the main content.
+  - Monitoring's "Select all shown hosts" sat in the table header, which cards hide. On a phone, and at 1024 px once
+    this pass made that list cards there, it was a Tab stop nobody could see. A header cell with a control now stays
+    above the cards, labelled "Select all shown".
+  - Topology lines were Tab stops with no visible focus, beside their labelled buttons; only the labels are Tab stops
+    now.
+  - The YAML editor showed no focus.
+- **Layout.**
+  - At 1024 px, nine list pages hid columns behind a sideways scroll: Hosts, Monitoring, resolved Alerts, Network
+    Activity, Schedules, Audit, a host's Services, Files and Network. On Files that included each row's actions.
+  - At 1280 px the audit log was 52 px too wide.
+  - At 390 px the Files table was 627 px too wide; a schedule's history, the audit log and resolved alerts also
+    overflowed.
+  - The top bar wrapped at 1024 px.
+
+  Now `lib/tableFit.ts` turns every `.rtable` into cards on a phone and wherever it doesn't fit. Connections and services
+  switch to their compact lists instead (`useTableFits`). The Files and schedule-history tables became `rtable`s, long
+  badges wrap, and card content can't widen its card. The audit log's columns are tighter, so it fits at 1280 px. Below
+  1280 px the top bar's search is narrower and the role gives way.
+- **Touch.** At 390 px, about 1,750 controls per theme were under 44 px (1,753 light, 1,760 dark): buttons 28–36,
+  fields 36, tabs 30–38, navigation entries 32, menu items 36 and dialog close buttons 32. The designer's move arrows
+  were 26 × 28 px, and the Firewall page's host checkbox was a bare 13 × 13 px box. On touch screens
+  (`pointer: coarse`), buttons, fields, selects, tabs, menu items, navigation, checkbox labels, card titles and
+  inspector links are now 44 px tall, and icon-only buttons are 44 × 44 px, in cards too. The Firewall checkbox has a
+  label like the other lists. Text links in sentences and lists, and link-styled buttons inside text, keep their size
+  (WCAG 2.5.8 inline and spacing exceptions).
+
+**Firewall simulation and topology.**
+
+- **"Can A reach B?"** said "Simulation" only in a footnote after asking, and its green YES could read as a live test.
+  One sentence above the form now says it is a simulation from the policy DROOL wants that sends nothing, tries no
+  connection and changes no policy. The answer line says "the policy allows it (simulated)", and the designer's box
+  says "simulated on this draft: nothing is applied".
+- **The topology.** With the side panel open the canvas narrows (about 770 px at 1440), and fitting the whole policy put
+  it at about 0.4 (labels about 5 px). When a selection opens the panel and the whole policy would fit only below 0.75,
+  the view now frames the selection and its neighbours. Fit, or closing the panel, frames the policy again.
+- **Unchanged:** the canvas engine, the layout and the policy semantics.
+
+**Previews.** Verified:
+
+- the run review: operation, hosts, rollout, warnings, "Start run on N hosts";
+- the restore plan: each correction Now → Will be per host and resource, steps, rollout, warnings, what isn't included
+  and why, "Restore N resources";
+- the baseline editor's impact: nothing on the hosts changes until a restore.
+
+One ambiguity and one defect, in the restore dialog:
+
+- **Ambiguity.** "Restore managed state on every host" over "Checking the hosts and planning the correction…" could
+  read as a restore in progress. It now says "(nothing changes yet)" and "This is the plan: nothing changes until you
+  choose Restore".
+- **Defect.** The plan arrived, then vanished again for a second preview, because filling in the rollout changed the
+  request. It is now one preview: the rollout is sent once someone changes it, and the plan stays in sight while a new
+  one is worked out.
+
+No confirmation dialogs were added.
+
+**Examined and unchanged** (they met the requirements):
+
+- dialogs' focus trap and focus return;
+- inspectors' Escape and focus return;
+- the skip link;
+- the search (a combobox with an active descendant);
+- the phone navigation drawer;
+- chart patterns;
+- tab rows that scroll sideways on a phone (an established pattern).
+
+**The standard.** [DESIGN-STANDARD.md](DESIGN-STANDARD.md) writes the validated conventions down as rules:
+
+- the principle;
+- navigation and the host workspace;
+- hierarchy;
+- the building blocks and status words;
+- the three interaction patterns and reviews before execution;
+- responsive and accessibility requirements;
+- terminology;
+- honest state;
+- a checklist for additions.
+
+`CLAUDE.md` requires it for UI work.
+
+**Tests.**
+
+- **Web unit:** health words and worst severity, and the cards-or-table decision.
+- **Browser:** `accessibility.test.mjs` covers host states in the header and the list, titles and the announcement, tab
+  rows and menus from the keyboard, inspector step focus, popover focus, no table behind a sideways scroll and no Tab
+  stop out of sight at 1024 px, 44 px touch targets (in the header, dialogs, cards, filter rows and through checkbox
+  labels) and the simulation's wording. `health.test.mjs` follows the Pack button's new name. `monitoring.test.mjs`
+  checks that an SD card is never called healthy in the storage section, not anywhere on the page: the header now
+  names the host's Health, monitoring's verdict on the whole host.
+
+Qualification (final tree `433ca4e`): typecheck clean, the web unit tests pass (131), `gofmt` and `go vet` (also with
+the integration tag) clean, generated code current, `go test ./...` passes (51 packages; the only Go change is
+TestBrowser's file list), and the browser suite passes: TestBrowser 91 of 91 in 19 min (its first full run failed once
+on a test assumption the new header broke, fixed in `433ca4e`) and TestRestoreReconciliation. The accessibility audit's
+last run, on the final code, found no text below AA contrast, no content cut off, overlapping or behind a sideways
+scroll, no untitled page and no Tab stop out of sight at any width; what remains is listed in the pass's report: canvas
+labels on the topology and text-sized links within WCAG 2.5.8's exceptions. The audit, its raw data and the screenshots
+caught five regressions the pass itself had introduced, each fixed before qualification: Alerts tab labels overlapping
+on a phone, Pack card titles squeezed, the audit log's Details column growing to its JSON width, the move arrows losing
+their touch width in cards, and Monitoring's Select all hidden in the header at 1024 px. Branch CI and the tag
+qualification need a push and a tag, which wait for authorization.

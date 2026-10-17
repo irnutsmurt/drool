@@ -32,7 +32,9 @@ From the top:
   **Reset filters** shows every host again.
 - **The host table:** search by name (**Host**), choose **Sort by** (*Needs attention first*, *Name*,
   *CPU*, *Memory*, *Disk space used*, *Temperature*). Each row shows:
-  - **Health** — *Healthy*, or the number of issues with the worst severity;
+  - **Health** — *Healthy*; *Degraded · 1 issue* when the worst issue is a warning; *Unhealthy · 2
+    issues* when something is critical; *Stale* or *No data* when there is nothing recent to judge by
+    ([Status Meanings](Status-Meanings.md#host-statuses));
   - **Alerts** — open alerts, and *maintenance* if the host is in maintenance;
   - **Monitoring** — *Shepherd · continuous* or *SSH · polled*, plus notes such as *reduced
     fidelity* or *helpers would help: nvme-cli*;

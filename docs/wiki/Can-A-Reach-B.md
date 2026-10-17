@@ -2,7 +2,8 @@
 
 **Can A reach B?** answers a simple question from the policy: *can web-01 reach database-01 on TCP
 5432?* It's the quickest way to check a rule before you apply it, or to find out why something can't
-connect. Asking never changes anything.
+connect. It is a simulation, and the page says so: DROOL works the answer out from the policy it wants
+for these hosts. It sends nothing to the hosts, tries no connection and changes no policy.
 
 ## Before you start
 
@@ -20,8 +21,8 @@ Everyone can ask (**firewall.read**).
 
 ## Reading the answer
 
-The answer is **YES**, **NO**, or a warning-coloured answer when it depends on something DROOL can't
-decide. Below it, each step of the way:
+The answer is **YES** (*the policy allows it*), **NO** (*the policy blocks it*) or **PARTLY** (the
+policy allows some of the addresses involved), marked *(simulated)*. Below it, each step of the way:
 
 - **leaving** the source host: allowed or blocked, and why (*outbound traffic is not restricted on
   this host*);
