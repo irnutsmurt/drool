@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"drool/internal/audit"
@@ -130,13 +131,37 @@ func (s *Service) recordStatus(ctx context.Context, hostID string, st map[string
 	crev, _ := strconv.ParseInt(st["committed_revision"], 10, 64)
 	if crev > 0 {
 		cur, err := s.d.Store.R.GetStateVersion(ctx, db.GetStateVersionParams{HostID: hostID, Domain: "firewall"})
+		foreign := st["committed_epoch"] != "" && st["committed_epoch"] != s.epoch
 		switch {
-		case st["committed_epoch"] != "" && st["committed_epoch"] != s.epoch:
+		case foreign && err == nil && s.collectedBeforeMove(ctx, cur, st["committed_epoch"], crev, st["committed_hash"]):
+			// The move to this epoch is newer; nothing to mark.
+		case foreign:
 			s.markState(ctx, hostID, "epoch_mismatch", st["committed_epoch"], crev, st["committed_hash"])
 		case err != nil || crev > cur.Revision:
 			s.markState(ctx, hostID, "host_ahead", s.epoch, crev, st["committed_hash"])
 		}
 	}
+}
+
+// collectedBeforeMove reports whether a status in another epoch shows the
+// host's firewall as it was before restore reconciliation moved it to this
+// controller's epoch: the epoch is the one this controller was restored
+// from, and the move of exactly that committed policy (revision and hash)
+// is recorded. Such a report was collected before the move and handled
+// after it: the hello's status is handled while reconciliation runs, and a
+// status collected just before the move can arrive after it. Marked as a
+// mismatch, it would refuse every later transaction on a host that moved.
+// A policy committed since in the old epoch has another revision and is
+// still flagged, and an apply checks the host's fresh status first.
+func (s *Service) collectedBeforeMove(ctx context.Context, cur db.StateVersion, epoch string, rev int64, hash string) bool {
+	if cur.Status != "ok" || cur.ReportedEpoch != s.epoch || cur.ReportedRevision != rev ||
+		strings.TrimPrefix(cur.ReportedHash, "sha256:") != strings.TrimPrefix(hash, "sha256:") {
+		return false
+	}
+	var restored int
+	err := s.d.Store.Reader.QueryRowContext(ctx, `SELECT count(*) FROM controller_restores WHERE epoch = ? AND previous_epoch = ?`,
+		s.epoch, epoch).Scan(&restored)
+	return err == nil && restored > 0
 }
 
 // staleStatus reports whether status st was collected before the recorded

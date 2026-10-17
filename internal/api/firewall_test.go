@@ -821,6 +821,70 @@ func TestFirewallStatusOrder(t *testing.T) {
 	check("a clock set back", "", fmt.Sprint(1002-3600))
 }
 
+// A restored controller's reconciliation moves a host's firewall to its
+// epoch. A status collected before the move and handled after it shows
+// the epoch the controller was restored from, with the policy that moved:
+// it marks nothing (seen in CI under the race detector: the hello's status,
+// handled while reconciliation ran, marked the moved host as belonging to
+// another epoch, and every later transaction was refused). A host that
+// hasn't moved yet, a policy committed since in the backup's epoch, and an
+// epoch this controller wasn't restored from are still a mismatch.
+func TestFirewallStatusFromBeforeTheMove(t *testing.T) {
+	h := newHarness(t)
+	h.mkUser("admin", auth.RoleAdmin)
+	c := h.login("admin")
+	var host hostJSON
+	c.do("POST", "/api/v1/hosts", map[string]any{"name": "fw-moved", "address": "192.0.2.82", "port": 22, "user": "deploy"}).json(t, &host)
+	ctx := context.Background()
+	epoch, backup := h.fw.Epoch(), "epoch-of-the-backup"
+	if _, err := h.st.Writer.ExecContext(ctx, `INSERT INTO controller_restores (id, restored_at, backup_created_at, previous_epoch, epoch, status)
+		VALUES ('rst_moved', 1, 0, ?, ?, 'reconciling')`, backup, epoch); err != nil {
+		t.Fatal(err)
+	}
+	// The controller's record of the host's policy (revision 1, hash h1) in
+	// an epoch, as the backup brought it or as reconciliation moved it.
+	record := func(ep string) {
+		t.Helper()
+		if err := h.st.W.UpsertStateVersion(ctx, db.UpsertStateVersionParams{HostID: host.ID, Domain: "firewall", Epoch: ep, Revision: 1,
+			ContentHash: "sha256:h1", UpdatedAt: 1}); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.st.W.ReportStateVersion(ctx, db.ReportStateVersionParams{ReportedEpoch: ep, ReportedRevision: 1, ReportedHash: "h1",
+			Status: "ok", HostID: host.ID, Domain: "firewall"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := 2000
+	report := func(ep string, rev int, hash string) {
+		t.Helper()
+		now++
+		st := map[string]string{"tool_version": "1", "now": fmt.Sprint(now), "journal_state": "committed", "expected_live": hash, "live_hash": hash,
+			"committed_epoch": ep, "committed_revision": fmt.Sprint(rev), "committed_hash": hash}
+		b, _ := json.Marshal(map[string]any{"status": st})
+		h.fw.OnTelemetry(host.ID, "firewall", b)
+	}
+	check := func(what, want string) {
+		t.Helper()
+		sv, err := h.st.R.GetStateVersion(ctx, db.GetStateVersionParams{HostID: host.ID, Domain: "firewall"})
+		if err != nil || sv.Status != want {
+			t.Fatalf("%s: status %q (%v), want %q", what, sv.Status, err, want)
+		}
+	}
+	record(backup)
+	report(backup, 1, "h1")
+	check("not moved yet", "epoch_mismatch")
+	record(epoch)
+	report(backup, 1, "h1")
+	check("the moved policy, collected before the move", "ok")
+	report(epoch, 1, "h1")
+	check("collected after the move", "ok")
+	report(backup, 2, "h2")
+	check("a policy committed since in the backup's epoch", "epoch_mismatch")
+	record(epoch)
+	report("another-epoch", 1, "h1")
+	check("an epoch this controller wasn't restored from", "epoch_mismatch")
+}
+
 func auditCount(t *testing.T, h *harness, action string) int {
 	t.Helper()
 	var n int
