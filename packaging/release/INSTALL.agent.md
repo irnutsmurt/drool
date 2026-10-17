@@ -23,4 +23,4 @@ Use it to:
 
 `drool-agent version` prints the version; `drool-agent status` shows the Shepherd's identity,
 certificate, trust, controller addresses and what it may do (`/etc/drool/agent.yaml`).
-Third-party licenses: `THIRD_PARTY_NOTICES.txt`.
+DROOL's license (GNU GPL version 3): `LICENSE`. Third-party licenses: `THIRD_PARTY_NOTICES.txt`.

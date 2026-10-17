@@ -240,7 +240,8 @@ func TestContainerImage(t *testing.T) {
 		expect(t, info.Version == rel.Version && info.Channel == rel.Channel && info.Commit == rel.Commit && !info.Modified,
 			"the image's controller says %+v; the release is %s %s %s", info, rel.Version, rel.Channel, rel.Commit)
 		expect(t, in.Config.Labels["org.opencontainers.image.version"] == rel.Version &&
-			in.Config.Labels["org.opencontainers.image.revision"] == rel.Commit, "image labels %v", in.Config.Labels)
+			in.Config.Labels["org.opencontainers.image.revision"] == rel.Commit &&
+			in.Config.Labels["org.opencontainers.image.licenses"] == rel.License, "image labels %v", in.Config.Labels)
 	}
 	resp, err := c.client.Get(c.base() + "/agent/install.sh")
 	if err != nil {

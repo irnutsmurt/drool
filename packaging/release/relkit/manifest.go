@@ -22,23 +22,25 @@ import (
 
 // cmdSBOMNormalize makes SPDX documents reproducible: the creation time
 // becomes the source's commit time and the namespace a stable URI (syft
-// writes the current time and a random UUID).
+// writes the current time and a random UUID). It also records DROOL's own
+// license on DROOL's own packages, which syft can't know.
 func cmdSBOMNormalize(args []string) error {
 	fs := flag.NewFlagSet("sbom-normalize", flag.ContinueOnError)
 	epoch := fs.Int64("epoch", -1, "SOURCE_DATE_EPOCH")
 	ns := fs.String("namespace", "", "documentNamespace prefix; the file name is appended")
+	license := fs.String("license", "NOASSERTION", "SPDX license id of DROOL itself")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *epoch < 0 || *ns == "" || fs.NArg() == 0 {
-		return errors.New("usage: relkit sbom-normalize -epoch N -namespace URI FILE...")
+		return errors.New("usage: relkit sbom-normalize -epoch N -namespace URI [-license ID] FILE...")
 	}
 	for _, f := range fs.Args() {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			return err
 		}
-		out, err := normalizeSPDX(b, time.Unix(*epoch, 0).UTC(), strings.TrimSuffix(*ns, "/")+"/"+filepath.Base(f))
+		out, err := normalizeSPDX(b, time.Unix(*epoch, 0).UTC(), strings.TrimSuffix(*ns, "/")+"/"+filepath.Base(f), *license)
 		if err != nil {
 			return fmt.Errorf("%s: %w", f, err)
 		}
@@ -49,7 +51,7 @@ func cmdSBOMNormalize(args []string) error {
 	return nil
 }
 
-func normalizeSPDX(b []byte, created time.Time, namespace string) ([]byte, error) {
+func normalizeSPDX(b []byte, created time.Time, namespace, license string) ([]byte, error) {
 	var doc map[string]any
 	if err := json.Unmarshal(b, &doc); err != nil {
 		return nil, err
@@ -63,6 +65,14 @@ func normalizeSPDX(b []byte, created time.Time, namespace string) ([]byte, error
 	}
 	ci["created"] = created.Format(time.RFC3339)
 	doc["documentNamespace"] = namespace
+	if license != "" && license != "NOASSERTION" {
+		pkgs, _ := doc["packages"].([]any)
+		for _, p := range pkgs {
+			if pm, ok := p.(map[string]any); ok && droolsOwn(pm) {
+				pm["licenseDeclared"], pm["licenseConcluded"] = license, license
+			}
+		}
+	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
@@ -71,6 +81,25 @@ func normalizeSPDX(b []byte, created time.Time, namespace string) ([]byte, error
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// droolsOwn reports whether an SPDX package is DROOL itself: its Go module
+// (in each binary), its web UI's npm package, or the directory of release
+// binaries an SBOM describes. Not an image: that holds the base image's
+// packages too, each with a license of its own.
+func droolsOwn(p map[string]any) bool {
+	if p["SPDXID"] == "SPDXRef-DocumentRoot-Directory-drool" {
+		return true
+	}
+	refs, _ := p["externalRefs"].([]any)
+	for _, r := range refs {
+		rm, _ := r.(map[string]any)
+		if loc, _ := rm["referenceLocator"].(string); rm["referenceType"] == "purl" &&
+			(strings.HasPrefix(loc, "pkg:golang/drool@") || strings.HasPrefix(loc, "pkg:npm/drool-web@")) {
+			return true
+		}
+	}
+	return false
 }
 
 // SumsFile is the checksum list the release manager signs.

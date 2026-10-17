@@ -69,11 +69,11 @@ func modeString(m int64) string { return fmt.Sprintf("%o", m) }
 func TestNormalizeSPDX(t *testing.T) {
 	in := []byte(`{"spdxVersion":"SPDX-2.3","documentNamespace":"https://anchore.com/syft/dir/x-5f1b2a","creationInfo":{"created":"2026-10-10T12:34:56Z","creators":["Tool: syft-1.54.1"]},"packages":[{"name":"a<b"}]}`)
 	at := time.Unix(1760000000, 0).UTC()
-	a, err := normalizeSPDX(in, at, "https://drool.invalid/spdx/x.spdx.json")
+	a, err := normalizeSPDX(in, at, "https://drool.invalid/spdx/x.spdx.json", "NOASSERTION")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, _ := normalizeSPDX(bytes.Replace(in, []byte("5f1b2a"), []byte("99aa00"), 1), at, "https://drool.invalid/spdx/x.spdx.json")
+	b, _ := normalizeSPDX(bytes.Replace(in, []byte("5f1b2a"), []byte("99aa00"), 1), at, "https://drool.invalid/spdx/x.spdx.json", "NOASSERTION")
 	if !bytes.Equal(a, b) {
 		t.Errorf("namespace not replaced:\n%s\n%s", a, b)
 	}
@@ -90,8 +90,51 @@ func TestNormalizeSPDX(t *testing.T) {
 	if !bytes.Contains(a, []byte(`"a<b"`)) {
 		t.Errorf("HTML-escaped: %s", a)
 	}
-	if _, err := normalizeSPDX([]byte(`{"bomFormat":"CycloneDX"}`), at, "x"); err == nil {
+	if _, err := normalizeSPDX([]byte(`{"bomFormat":"CycloneDX"}`), at, "x", ""); err == nil {
 		t.Error("a CycloneDX document accepted")
+	}
+}
+
+// DROOL's own packages get DROOL's license; nothing else does, the image
+// itself included (it holds the base image's packages too).
+func TestSPDXOwnLicense(t *testing.T) {
+	purl := func(loc string) string {
+		return `"externalRefs":[{"referenceCategory":"PACKAGE-MANAGER","referenceType":"purl","referenceLocator":"` + loc + `"}]`
+	}
+	in := []byte(`{"spdxVersion":"SPDX-2.3","creationInfo":{"created":"x"},"packages":[
+	 {"SPDXID":"SPDXRef-Package-go-module-drool-1","name":"drool","licenseDeclared":"NOASSERTION","licenseConcluded":"NOASSERTION",` + purl("pkg:golang/drool@v1.0.0") + `},
+	 {"SPDXID":"SPDXRef-Package-npm-drool-web-2","name":"drool-web","licenseDeclared":"NOASSERTION","licenseConcluded":"NOASSERTION",` + purl("pkg:npm/drool-web@0.0.0") + `},
+	 {"SPDXID":"SPDXRef-DocumentRoot-Directory-drool","name":"drool","licenseDeclared":"NOASSERTION","licenseConcluded":"NOASSERTION"},
+	 {"SPDXID":"SPDXRef-DocumentRoot-Image-drool-image","name":"drool-image","licenseDeclared":"NOASSERTION","licenseConcluded":"NOASSERTION"},
+	 {"SPDXID":"SPDXRef-Package-go-module-x","name":"drool-tools","licenseDeclared":"MIT","licenseConcluded":"NOASSERTION",` + purl("pkg:golang/drool-tools@v0.1.0") + `},
+	 {"SPDXID":"SPDXRef-Package-go-module-y","name":"golang.org/x/crypto","licenseDeclared":"BSD-3-Clause","licenseConcluded":"NOASSERTION",` + purl("pkg:golang/golang.org/x/crypto@v0.40.0") + `}]}`)
+	out, err := normalizeSPDX(in, time.Unix(0, 0), "ns", "GPL-3.0-only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Packages []struct {
+			ID       string `json:"SPDXID"`
+			Declared string `json:"licenseDeclared"`
+			Conclude string `json:"licenseConcluded"`
+		} `json:"packages"`
+	}
+	json.Unmarshal(out, &doc)
+	want := map[string]string{"SPDXRef-Package-go-module-drool-1": "GPL-3.0-only", "SPDXRef-Package-npm-drool-web-2": "GPL-3.0-only",
+		"SPDXRef-DocumentRoot-Directory-drool": "GPL-3.0-only", "SPDXRef-DocumentRoot-Image-drool-image": "NOASSERTION",
+		"SPDXRef-Package-go-module-x": "MIT", "SPDXRef-Package-go-module-y": "BSD-3-Clause"}
+	for _, p := range doc.Packages {
+		if p.Declared != want[p.ID] {
+			t.Errorf("%s declares %s, want %s", p.ID, p.Declared, want[p.ID])
+		}
+		if want[p.ID] == "GPL-3.0-only" && p.Conclude != "GPL-3.0-only" {
+			t.Errorf("%s concludes %s", p.ID, p.Conclude)
+		}
+	}
+	// Without a license, nothing changes.
+	same, _ := normalizeSPDX(in, time.Unix(0, 0), "ns", "NOASSERTION")
+	if bytes.Contains(same, []byte("GPL-3.0-only")) {
+		t.Error("NOASSERTION assigned a license")
 	}
 }
 

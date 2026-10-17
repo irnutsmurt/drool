@@ -29,4 +29,5 @@ Open the address, enter the setup code and create the administrator account.
   in `/var/lib/drool` stays until you delete it.
 
 `README.md` introduces DROOL; the user guide has everything else, step by step:
-https://github.com/irnutsmurt/drool/wiki. Third-party licenses: `THIRD_PARTY_NOTICES.txt`.
+https://github.com/irnutsmurt/drool/wiki. DROOL's license (GNU GPL version 3): `LICENSE`. Third-party
+licenses: `THIRD_PARTY_NOTICES.txt`.

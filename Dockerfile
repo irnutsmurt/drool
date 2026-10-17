@@ -68,9 +68,13 @@ FROM ${BASE_IMAGE}
 ARG VERSION=v0.0.0-dev
 ARG COMMIT=unknown
 ARG DATE=unknown
+# DROOL's license as an SPDX id (packaging/release/license; build.sh and
+# make image pass it).
+ARG LICENSE=NOASSERTION
 LABEL org.opencontainers.image.title="DROOL" \
       org.opencontainers.image.description="DROOL controller: manage, automate and monitor Linux hosts over SSH or the DROOL agent" \
       org.opencontainers.image.source="https://github.com/irnutsmurt/drool" \
+      org.opencontainers.image.licenses="${LICENSE}" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}" \
       org.opencontainers.image.created="${DATE}"

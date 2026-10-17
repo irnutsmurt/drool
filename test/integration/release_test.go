@@ -300,6 +300,13 @@ func TestReleaseArtifacts(t *testing.T) {
 			found[p.Name] = lic
 		}
 		expect(t, doc.SPDXVersion == "SPDX-2.3", "%s is %s", f.Name, doc.SPDXVersion)
+		// DROOL's own packages carry DROOL's license (relkit sbom-normalize).
+		for _, p := range doc.Packages {
+			if p.Name == "drool" || p.Name == "drool-web" {
+				expect(t, p.LicenseDeclared == r.License, "%s: DROOL's own package %s declares %q, the release's license is %q",
+					f.Name, p.Name, p.LicenseDeclared, r.License)
+			}
+		}
 		expect(t, found["golang.org/x/crypto"] == "BSD-3-Clause" && found["google.golang.org/grpc"] != "" &&
 			found["google.golang.org/grpc"] != "NOASSERTION", "%s: Go module licenses %q %q", f.Name, found["golang.org/x/crypto"], found["google.golang.org/grpc"])
 		if strings.Contains(f.Name, "_image_") {

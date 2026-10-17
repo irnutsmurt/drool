@@ -9,6 +9,7 @@ This package runs the DROOL controller as a systemd service.
 | Service | `drool.service` (user `drool`), `/usr/lib/systemd/system/drool.service` |
 | Data: database, `master.key`, TLS certificate, backups, logs | `/var/lib/drool` |
 | Configuration (optional) | `/etc/drool/config.yaml` (example: `/usr/share/drool/config.example.yaml`) |
+| DROOL's license (GNU GPL version 3) | `/usr/share/drool/LICENSE` |
 | Third-party licenses | `/usr/share/drool/THIRD_PARTY_NOTICES.txt` |
 | Logs | `/var/lib/drool/logs/`; startup messages and the setup code: `journalctl -u drool` |
 

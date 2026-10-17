@@ -122,12 +122,12 @@ for key in source description; do
   annotations+=(--annotation "index:org.opencontainers.image.$key=$val")
 done
 annotations+=(--annotation "index:org.opencontainers.image.version=$v" --annotation "index:org.opencontainers.image.revision=$commit"
-  --annotation "index:org.opencontainers.image.created=$date")
+  --annotation "index:org.opencontainers.image.created=$date" --annotation "index:org.opencontainers.image.licenses=$license_id")
 
 # BuildKit: the docker buildx plugin, or a pinned standalone buildx.
 buildx=("$repo/packaging/release/buildx")
 bargs=(--platform "$PLATFORMS" --build-arg "VERSION=$v" --build-arg "COMMIT=$commit" --build-arg "DATE=$date"
-  --build-arg "CHANNEL=$channel" "${no_cache[@]}")
+  --build-arg "CHANNEL=$channel" --build-arg "LICENSE=$license_id" "${no_cache[@]}")
 
 note "binaries for $PLATFORMS"
 "${buildx[@]}" build --progress=plain "${bargs[@]}" --target artifacts --output "type=local,dest=$work/bin" "$src" \
@@ -230,7 +230,7 @@ for arch in "${ARCHES[@]}"; do
   syft "oci-archive:/release/${image##*/}" --platform "linux/$arch" --source-name drool-image \
     --source-version "$pkgver" >"$out/drool_${pkgver}_image_linux_$arch.spdx.json"
 done
-"$relkit" sbom-normalize -epoch "$epoch" -namespace "https://drool.invalid/spdx/$pkgver" "$out"/*.spdx.json
+"$relkit" sbom-normalize -epoch "$epoch" -namespace "https://drool.invalid/spdx/$pkgver" -license "$license_id" "$out"/*.spdx.json
 
 note "release.json and SHA256SUMS"
 "$relkit" manifest -dir "$out" -image "$image" -version "$v" -channel "$channel" -commit "$commit" -epoch "$epoch" \

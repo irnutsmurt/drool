@@ -2441,7 +2441,7 @@ Runtimes (§34.13 for the evidence): Docker Engine rootful (the release tests' o
 - Signing: `packaging/release/sign.sh` signs `SHA256SUMS` offline with the DROOL release key (OpenSSH Ed25519, `ssh-keygen -Y sign -n drool-release`) after checking every file, and verifies against `packaging/keys/allowed_signers`; users verify with `ssh-keygen -Y verify` (README). The key never enters the repository, CI or a controller; until its public half is in `allowed_signers`, nothing verifies and no build is official. It is separate from the operators' Shepherd release keys (§23.7, unchanged: operators sign the Shepherd binaries they deploy, including official ones), the Agent Root CA, the SSH user CA and the master key. `release.json` says how a release is signed; a build never is.
 - SBOMs: SPDX 2.3 JSON (syft) for each platform's binaries (Go modules with licenses from the module cache, and the npm packages bundled in the web UI — development-only ones excluded) and for each platform's image (adding the base image's Debian packages).
 - `THIRD_PARTY_NOTICES.txt` (in the archives, the packages, the image's `/usr/share/doc/drool/` and the release) carries every bundled component's license texts.
-- DROOL's own license: none in the repository. `LICENSE` plus its SPDX id in `packaging/release/license` is a release prerequisite; until then packages and SBOMs say `NOASSERTION`, and a stable build refuses.
+- DROOL's own license: the GNU GPL version 3, since its owner added `LICENSE` on 2026-10-17, with the SPDX id `GPL-3.0-only` in `packaging/release/license` (§42.1). Packages, the image's `org.opencontainers.image.licenses` label and DROOL's own packages in the SBOMs carry it. Without `LICENSE`, packages and SBOMs say `NOASSERTION` and a stable build refuses; with `LICENSE` but no SPDX id, every build refuses.
 
 ### 34.7 Support matrix, and why
 
@@ -3807,3 +3807,19 @@ caught five regressions the pass itself had introduced, each fixed before qualif
 on a phone, Pack card titles squeezed, the audit log's Details column growing to its JSON width, the move arrows losing
 their touch width in cards, and Monitoring's Select all hidden in the header at 1024 px. Branch CI and the tag
 qualification need a push and a tag, which wait for authorization.
+
+## 42. Before the release candidate: Shepherd updates and release prerequisites
+
+### 42.1 License
+
+The owner added `LICENSE` on GitHub (2026-10-17, `dec927a`): the FSF's GPLv3 text, byte for byte. That commit
+broke `main`'s release job on purpose: `build.sh` refuses a source with `LICENSE` but no SPDX id, so a license
+can't be shipped without being declared. `packaging/release/license` now says `GPL-3.0-only`: version 3, as chosen,
+without the "or any later version" grant, which only the owner can add (`GPL-3.0-or-later`). The id goes into the
+native packages (`license:`), the image's label and its index annotation (`org.opencontainers.image.licenses`), and
+DROOL's own packages in the SBOMs (its Go module in each binary, the web UI's npm package and the binaries' directory;
+`relkit sbom-normalize -license`; not the image's root, which holds the base image's packages too). `LICENSE` is in
+the archives, the packages (`/usr/share/drool/LICENSE`), the image (`/usr/share/doc/drool/LICENSE`) and the release
+directory. The README, the release notes template, the archives' and the package's notes say which license applies.
+Tests: `relkit` (DROOL's own packages only, nothing without a license), `TestReleaseArtifacts` (DROOL's packages in
+every SBOM declare the release's license), `TestContainerImage` (the label).

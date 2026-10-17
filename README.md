@@ -75,8 +75,8 @@ key apart from them).
 - **There is no stable release yet.** The `main` branch and its container image,
   `ghcr.io/irnutsmurt/drool:main`, are development builds. They're tested automatically but change with
   every commit and aren't signed with a release key, and `drool version` calls them *development*.
-- **Still to come before 1.0:** the project's license, its release-signing key, and the first signed,
-  tagged release ([RELEASING.md](RELEASING.md) describes how releases are made).
+- **Still to come before 1.0:** the project's release-signing keys and the first signed, tagged release
+  ([RELEASING.md](RELEASING.md) describes how releases are made).
 
 ## What DROOL does
 
@@ -272,3 +272,9 @@ tokens (`web/src/styles/index.css`), each with a light and a dark value that the
 against WCAG AA contrast, and primitives in `web/src/components/ui/`: restyling means changing those,
 not pages. Implementation decisions are
 logged in [ARCHITECTURE-ALPHA.md](ARCHITECTURE-ALPHA.md).
+
+## License
+
+DROOL is free software, licensed under the **GNU General Public License, version 3**
+([`LICENSE`](LICENSE); SPDX `GPL-3.0-only`). The components it bundles keep their own licenses, listed
+with their texts in each release's `THIRD_PARTY_NOTICES.txt`.

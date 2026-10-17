@@ -5,6 +5,8 @@ GO      ?= go
 VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --always --dirty 2>/dev/null || echo v0.0.0-dev)
 COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+# DROOL's license as an SPDX id, for the image's label.
+LICENSE_ID ?= $(shell cat packaging/release/license 2>/dev/null || echo NOASSERTION)
 LDFLAGS := -s -w \
 	-X drool/internal/version.Version=$(VERSION) \
 	-X drool/internal/version.Commit=$(COMMIT) \
@@ -51,7 +53,7 @@ test-race:
 # releases: make release.
 image:
 	packaging/release/buildx build --load --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) \
-		--build-arg DATE=$(DATE) -t drool:local .
+		--build-arg DATE=$(DATE) --build-arg LICENSE=$(LICENSE_ID) -t drool:local .
 
 # Every release artifact for linux/amd64 and linux/arm64 from a clean clone of
 # HEAD (or RELEASE_ARGS='--commit REV --version vX.Y.Z-rc.N ...'): dist/<version>/.

@@ -59,7 +59,7 @@ M16 and the tagged Technical Alpha (`v0.1.0-alpha`), is supported and tested.
 | `drool_<v>_linux_{amd64,arm64}.spdx.json` | SBOMs (SPDX 2.3) of the binaries: Go modules and the npm packages bundled into the web UI, with licenses |
 | `drool_<v>_image_linux_{amd64,arm64}.spdx.json` | SBOMs of the image per platform, including the base image's packages |
 | `THIRD_PARTY_NOTICES.txt` | the license texts of everything bundled |
-| `LICENSE` | DROOL's own license (when the source has one) |
+| `LICENSE` | DROOL's own license, the GNU GPL version 3 (SPDX id `GPL-3.0-only`, from `packaging/release/license`) |
 | `release.json` | version, channel, commit, schema, protocol, the pinned toolchain, the image's digests, every file's sha256 |
 | `SHA256SUMS` | sha256 of every file above (`sha256sum --check`) |
 | `SHA256SUMS.sig` | added offline by the release manager: [Signing](#signing) |

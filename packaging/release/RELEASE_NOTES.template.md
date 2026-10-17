@@ -91,6 +91,7 @@ ssh-keygen -Y verify -f allowed_signers -I release@drool -n drool-release -s SHA
 ```
 
 The release key: `<the allowed_signers line>` (also in `packaging/keys/allowed_signers`).
+DROOL is licensed under the GNU General Public License, version 3 (`LICENSE`, SPDX `GPL-3.0-only`).
 SBOMs (SPDX 2.3) and `THIRD_PARTY_NOTICES.txt` list everything bundled and its license.
 
 ## Qualification
