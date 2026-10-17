@@ -2,7 +2,7 @@
 
 The conventions of DROOL's web UI as built and verified for 1.0. They are rules for every change under `web/`. The
 reasons behind them are in [DESIGN.md](DESIGN.md) §2.5 and §2.7, and the as-built record is in
-[ARCHITECTURE-ALPHA.md](ARCHITECTURE-ALPHA.md) §41.
+[ARCHITECTURE-ALPHA.md](ARCHITECTURE-ALPHA.md) §41 and §42.
 
 This standard describes what has been validated; it doesn't freeze every layout. When a convention has to change,
 change it here in the same change as the code, and say why. Don't let the code drift away from it quietly.
@@ -22,6 +22,21 @@ honest presentation of state (§8) always is.
   made is never replaced by a default.
 - **Plain words first.** A themed name (Pack, Shepherd) always comes with its conventional term (§7).
 - **Production-conscious.** The common case being a homelab never justifies an unsafe shortcut (§8).
+
+### Workflow first
+
+Consistent, accessible controls aren't enough: first ask whether a person should have to touch a control at all.
+
+- **Start from the task.** For each workflow, name what a normal user is trying to do, what DROOL should do for them, and
+  which decisions are really theirs. Everything else is a default, not a field.
+- **The common path needs no expert knowledge.** It works without the user guide and without DROOL's internals: no
+  signing keys, manifests, canary or batch sizes, timeouts, protocol versions or file uploads to keep things working.
+  Shepherd updates are the example: on, from the stable channel, with nothing else to set.
+- **Expert controls stay, one step away.** Tuning, overrides and do-it-yourself paths (custom releases, rollout numbers,
+  safety timers) go under Advanced settings or a disclosure on the same page. Never removed, never a prerequisite.
+- **Say when the simple path can't work.** If an automatic default can't do its job here (no release key, no source, a
+  host that refuses), the page says so next to the setting, in words a person can act on. A setting that is on is not
+  proof that it works (§8).
 
 ## 2. Navigation
 
@@ -258,20 +273,22 @@ How to write UI text:
 
 Before opening a pull request that touches `web/`:
 
-1. **Reuse first.** Use a §4 building block or a §5 pattern if one fits. Create a new shared component only when a pattern
+1. **Question the workflow** (§1, Workflow first): the task, what DROOL does for the user, the decisions that are
+   theirs. No internal detail is a routine control, and the default path works without the user guide.
+2. **Reuse first.** Use a §4 building block or a §5 pattern if one fits. Create a new shared component only when a pattern
    repeats. Put it in `components/ui` with a doc comment that states the rule it embodies.
-2. **Put it in the right place.** A new page goes in `nav.ts` and navigation search. A host feature is a workspace
+3. **Put it in the right place.** A new page goes in `nav.ts` and navigation search. A host feature is a workspace
    section or part of one. A setting lives on its owning page and gets an entry in the settings directory.
-3. **Handle every state honestly:** loading, empty, error, stale, unknown and read-only (§8).
-4. **Use the glossary's words (§7).** Accessible names start with the visible text.
-5. **Check the layout** at 1440, 1280, 1024 and 390 px in both themes: no sideways scroll, nothing cut off, every action
+4. **Handle every state honestly:** loading, empty, error, stale, unknown and read-only (§8).
+5. **Use the glossary's words (§7).** Accessible names start with the visible text.
+6. **Check the layout** at 1440, 1280, 1024 and 390 px in both themes: no sideways scroll, nothing cut off, every action
    in sight.
-6. **Check accessibility.** There is a keyboard path through the change, focus is visible and returns where it should,
+7. **Check accessibility.** There is a keyboard path through the change, focus is visible and returns where it should,
    nothing that takes focus is out of sight, every control has a name, contrast passes, and touch targets are big
    enough.
-7. **Test it.** A new flow gets a browser test in `web/e2e/`, with its keyboard path when a pattern is involved. Logic gets
+8. **Test it.** A new flow gets a browser test in `web/e2e/`, with its keyboard path when a pattern is involved. Logic gets
    unit tests in `web/src/**/*.test.ts`. The browser suite's contrast and navigation tests stay green.
-8. **Document it.** Update the user guide (`docs/wiki/`) when user-visible behaviour changes, and this standard when a
+9. **Document it.** Update the user guide (`docs/wiki/`) when user-visible behaviour changes, and this standard when a
    convention changes.
 
 Checks: `cd web && npm run typecheck && npm test`, then the browser suite:

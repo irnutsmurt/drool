@@ -5,8 +5,9 @@ DROOL doesn't update itself: there is no "update now" button and no package repo
 way you installed it. This page shows how, what DROOL does on the first start of a new version, and
 how to go back if you need to.
 
-Updating the **controller** and updating **Shepherds** (the agents on your hosts) are separate.
-Update the controller first; see [Updating Shepherds](Updating-Shepherds.md) for the second part.
+You update the **controller** (DROOL itself). Its **Shepherds** (the agents on your hosts) then follow
+by themselves: DROOL rolls out the Shepherd version it came with, one host first and then in batches
+([Updating Shepherds](Updating-Shepherds.md)).
 
 ## Before you start
 
@@ -54,8 +55,12 @@ Afterwards, **Settings → System** shows the version that's running.
 - **Databases from builds older than `v0.1.0-alpha`** aren't guaranteed to upgrade: their database
   changes were rewritten during early development. From `v0.1.0-alpha` on, database changes are only
   ever added.
-- **Older Shepherds keep working.** A newer controller works with Shepherds that speak the same
-  protocol, and tells you what an older one can't do. See [Shepherd Incompatible](Shepherd-Incompatible.md).
+- **Shepherds follow.** About a minute after it starts, DROOL checks the release page for the signed
+  description of its own Shepherd and, with automatic updates on (the default), updates the Shepherds:
+  **Shepherds → Updates** shows it. Until they're updated, older Shepherds keep working: a newer
+  controller works with Shepherds that speak the same protocol, and tells you what an older one can't
+  do ([Shepherd Incompatible](Shepherd-Incompatible.md)). A development image (`:main`) isn't an official
+  release, so its Shepherds aren't updated this way ([Updating Shepherds](Updating-Shepherds.md)).
 
 ## If something went wrong: going back
 

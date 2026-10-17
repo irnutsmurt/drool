@@ -67,7 +67,7 @@ roll a host back to an old backup, or repeat an operation whose outcome it can't
 
 - **The Agent Root CA key**, once you've exported it from the controller (a different secret, for a
   different job): see [Taking the Agent Root CA Offline](Taking-the-Agent-Root-CA-Offline.md).
-- **Your release-signing key** for Shepherd updates, if you use one ([Updating Shepherds](Updating-Shepherds.md)).
+- **Your own release-signing key** for custom Shepherd releases, if you made one ([Updating Shepherds](Updating-Shepherds.md#custom-releases)).
 
 Both should be kept offline, and separately from the backups.
 

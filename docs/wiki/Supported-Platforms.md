@@ -79,8 +79,8 @@ database's.
   DROOL never sends it an operation it can't do. It uses SSH where the host allows it, or refuses and says
   to update the Shepherd. The Shepherds page shows what each one lacks
   ([Shepherd Incompatible](Shepherd-Incompatible.md)).
-- **Update the controller first, then the Shepherds** ([Updating DROOL](Updating-DROOL.md),
-  [Updating Shepherds](Updating-Shepherds.md)). After going back to an older controller, Shepherds that
+- **Update the controller; the Shepherds follow** by themselves ([Updating DROOL](Updating-DROOL.md),
+  [Updating Shepherds](Updating-Shepherds.md)). DROOL never updates Shepherds past its own version. After going back to an older controller, Shepherds that
   were already updated keep working with it.
 
 ## Related

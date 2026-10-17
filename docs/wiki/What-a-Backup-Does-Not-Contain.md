@@ -7,7 +7,7 @@ back.
 |---|---|---|
 | **The master key** (`master.key`) | Whoever has a backup *and* the key has your credentials; keeping them apart protects you if a backup leaks | Keep a copy of the key apart from your backups ([Keeping a copy](Master-Key.md#keeping-a-copy)). Or, deliberately, `drool backup --include-master-key` and store that file encrypted |
 | **The Agent Root CA key**, once you took it offline | So a backup can never be used to mint Shepherd trust | Keep your two offline copies ([Taking the Agent Root CA Offline](Taking-the-Agent-Root-CA-Offline.md)) |
-| **Your release-signing key** for Shepherd updates | It must never be on the controller | Keep it offline ([Updating Shepherds](Updating-Shepherds.md)) |
+| **Your own release-signing key**, for custom Shepherd releases | It must never be on the controller | Keep it offline ([Updating Shepherds](Updating-Shepherds.md#custom-releases)) |
 | **Your own TLS certificate and key** (`server.tls.mode: provided`) | They're your files, not DROOL's | Back them up with the rest of the machine, or reissue them |
 | **GeoIP and ASN databases** | They're downloads | DROOL downloads its own again by itself; put your own back if you had any ([GeoIP and ASN](GeoIP-and-ASN.md)) |
 | **DROOL's log files** | Not needed to restore | Your normal log handling |

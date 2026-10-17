@@ -13,8 +13,13 @@ release manager, who signs each release by hand ([`RELEASING.md`](../../RELEASIN
 
 This key is not any of DROOL's runtime keys, and it doesn't replace them:
 
-- **Shepherd release-signing keys** (`drool release keygen`) are yours: each DROOL operator decides,
-  with their own key, which Shepherd binaries their hosts may update to. The DROOL release key only
-  says that a download is what the DROOL project built.
+- The **DROOL Shepherd release key** signs official Shepherd updates. Its public half is in
+  [`internal/release/official_keys.txt`](../../internal/release/official_keys.txt), built into DROOL and every
+  Shepherd; its private half is offline with the release manager too. The DROOL release key only says that a
+  download is what the DROOL project built; the Shepherd release key says which Shepherd binaries a host may
+  update to by itself.
+- **Your own Shepherd release-signing keys** (`drool release keygen`) are for Shepherd builds you sign
+  yourself. Each host trusts them locally, and a host can refuse official releases altogether
+  (`updates: {official: deny}` in its agent.yaml).
 - The **Agent Root CA**, the **SSH user CA** and the **master key** are created by each controller
   and never leave it except into your own offline storage.

@@ -112,7 +112,7 @@ key apart from them).
   connection. ([What DROOL Can See](https://github.com/irnutsmurt/drool/wiki/What-DROOL-Can-See))
 - **Shepherds, optional agents.** A Shepherd connects *out* to DROOL, so a host behind NAT needs no open
   port. It monitors continuously, works within limits set on the host itself that DROOL can narrow but
-  never widen, and updates itself only to releases signed with a key you hold.
+  never widen, and updates itself when DROOL is updated, only to releases the DROOL project (or you) signed.
   ([SSH vs Shepherds](https://github.com/irnutsmurt/drool/wiki/SSH-vs-Shepherds))
 - **Security.** SSH host-key pinning, optional short-lived SSH certificates, two-factor sign-in,
   re-authentication before high-impact actions, roles, encrypted credentials, and a tamper-evident audit
@@ -197,7 +197,7 @@ What's tested and what's only expected to work, in detail:
   Tailscale are detected and refused.
 - **Local accounts only:** no single sign-on yet.
 - **No package repository and no self-update** for the controller: you install new versions yourself.
-  (Shepherds do update themselves, to releases signed with a key you hold.)
+  (Shepherds do update themselves: they follow DROOL's version, automatically.)
 - **Backups are made from the command line**, and DROOL doesn't schedule them for you.
 
 Everything DROOL doesn't do (yet):

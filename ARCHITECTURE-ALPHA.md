@@ -1402,7 +1402,7 @@ Meaningful choices made during implementation, newest last.
 | M17 | Channels from the tag only: `vX.Y.Z` stable, `vX.Y.Z-rc.N` prerelease, anything else development; `--version` names untagged candidates and never makes them a release | A channel is a statement about where a build came from |
 | M17 | `drool-agent version` keeps printing exactly the version; details are behind `--json` | Every Shepherd so far runs the new binary's `version` during an update and requires exactly its signed version back: a richer output would have made every older Shepherd's update to 1.0 fail its preflight |
 | M17 | `drool release sign` takes OS and architecture (and, for a build at a release tag, the version) from the binary's build information and refuses a mismatching manifest, another program, or a build from modified source | `--arch` used to default to amd64; a wrong manifest is only discovered on the host, after the download. `-trimpath` keeps `-ldflags` out of the build information, so untagged builds still need `--version` |
-| M17 | Release integrity: `SHA256SUMS` over every file (including `release.json`), signed offline with an OpenSSH key (`ssh-keygen -Y sign`, namespace `drool-release`, `packaging/keys/allowed_signers`); no project signature on Shepherd update manifests | OpenSSH is everywhere and verifies without trusting DROOL itself; the release key is a separate trust domain from the operators' Shepherd release keys, which keep deciding what their hosts run; no key is ever in CI or on a controller |
+| M17 | Release integrity: `SHA256SUMS` over every file (including `release.json`), signed offline with an OpenSSH key (`ssh-keygen -Y sign`, namespace `drool-release`, `packaging/keys/allowed_signers`); ~~no project signature on Shepherd update manifests~~ (**superseded** before 1.0: official Shepherd releases, below and §42) | OpenSSH is everywhere and verifies without trusting DROOL itself; the release key is a separate trust domain from the operators' Shepherd release keys, which keep deciding what their hosts run; no key is ever in CI or on a controller |
 | M17 | Native packages (nfpm) own only `/usr/bin/drool`, `/usr/lib/drool`, the unit, `/usr/share/drool` and the docs; `/var/lib/drool`, `/etc/drool` and the `drool` account are created by the scripts and never removed — by `remove` or by `purge` | Removing a package must not cost the database, the master key or the backups; deleting them is the operator's explicit act (the scripts say how) |
 | M17 | Installing a package doesn't start the service; upgrading restarts a running one | The same on Debian and RHEL; no listener appears before the operator has seen the configuration; an upgrade picks up the new binary and its pre-upgrade backup at once |
 | M17 | The controller finds the Shepherd binaries next to `drool` or in `../lib/drool` | Packages put them in `/usr/lib/drool`, the archive in `/usr/local/lib/drool`, the image next to the binary; no configuration needed |
@@ -1428,6 +1428,13 @@ Meaningful choices made during implementation, newest last.
 | After M17 | A Shepherd's `effective` capabilities are an empty object until its first hello (enrollment records only the ceiling); the API schema says so (`ceiling` and `effective`: `AgentCaps` or `{}`), and the UI shows *Not reported yet* instead of the list | The host page polls every 5 s and counts an enrolled identity as live: a poll between `drool-agent install` enrolling and the service's hello rendered the capability list from `{}`, and the page failed ("Cannot read properties of undefined (reading 'enabled')") right after a successful installation (dogfooding). With the schema honest, the type checker finds every place that reads them |
 | After M17 | A Pack is created with a name and an optional description alone and can stay empty; it lands on its own page (`/groups/:id`), which says *No hosts assigned yet* and has **Add hosts**, and removes hosts one at a time without deleting the Pack. Membership changes one host at a time: `POST /groups/{id}/members` (adds, keeps the other members) and `DELETE /groups/{id}/members/{host_id}`, from the Pack's page or a host's (**Change…** next to its Packs); `PATCH /groups/{id}` with `host_ids` still replaces the whole set | Dogfooding: creating a Pack opened a checkbox list of every host, so a Pack felt like a one-off selection instead of an object of its own. The schema already allowed empty Packs (`groups` and `group_members` are separate tables, and members were optional on create), so the fix is the UI and two routes; changing one member at a time also stops two people's edits from replacing each other |
 | After M17 | The SSH account's sudo rule is minimal (`<user> ALL=(ALL:ALL) NOPASSWD: ALL`); a `requiretty` exception is added only if sudo, run as the account without a terminal, asks for one and the host's own visudo accepts it; the rule's effect is proven by that no-terminal sudo instead of root's `sudo -l -U`; a configuration with problems before is compared problem by problem (§36.2) | Dogfooding: on sudo-rs (Ubuntu's default since 25.10), which has no `requiretty`, visudo rejected the line DROOL wrote on every host, and the setup stopped safely. Root's `sudo -l -U` also fails without a terminal where `requiretty` is global, and with problems already on the host nothing caught a rule that made the configuration worse |
+| Before the RC | Official Shepherd releases: the DROOL project signs each release's Shepherd binaries offline with a **Shepherd release key** (`drool release keygen` format), whose public half is built into DROOL and every Shepherd (`internal/release/official_keys.txt`); a separate key from the OpenSSH key over `SHA256SUMS` and from operators' keys. Shepherds trust it unless their host says `updates: {official: deny}` | Without it every operator had to create a key, make each host trust it, sign each binary and upload it before any Shepherd could update: automatic updates had nothing to install. A key of its own keeps the trust domains apart: rotating or losing one doesn't touch the other, and the controller still can't add a key to a host (§42.3) |
+| Before the RC | Shepherds follow the controller: the official update is the Shepherd that ships with the controller, when the controller is itself an official release; the controller fetches only its signed description (`<source>/download/<tag>/drool-agent_<v>_linux_<arch>.release.json`, default the GitHub releases page) and verifies it against the built-in key, its own version and channel, its protocol range and its own binary. Never a binary from the internet, never newer than the controller | Keeps "update the controller first", needs no download of code, works without internet access (one small file uploaded by hand), and means a stolen project key plus the release page can't push code to a fleet: the binary is the one the operator installed with DROOL (§42.3) |
+| Before the RC | Automatic stable updates are the default (canary 1, batches of 5, pause at the first failure, 120 s health window). Migration 0026 writes `manual` for installations that rolled out releases of their own without saving a policy; a saved policy is never changed | The expected behaviour of a new installation; an existing explicit choice, or an existing manual practice, is kept (§42.5) |
+| Before the RC | A Shepherd's refusal before it changes anything (untrusted key, `updates.policy: deny`, failed before, downgrade, upgrade path, protocol, platform, busy) is a *skipped* host, not a failed update; 1.0 Shepherds say which (`UpdateReport.refusal`), older ones are known by their fixed words. 1.0 Shepherds also report their release trust in the hello, so the controller doesn't offer what they'd refuse | With automatic updates on, one host's local decision paused every rollout at the canary (§42.4) |
+| Before the RC | The canary wave needs a host that takes the update: short of one, the next connected pending host becomes the canary; rollouts include only Shepherds behind the version, connected and trusting ones first | An offline or already-current canary let the batches start without any canary result (§42.4) |
+| Before the RC | A version that failed on a host is tried there again only by a person's **Try again** (`UpdateOffer.retry`); the Shepherd still refuses it by itself | Before, a failed version was refused forever, even when a controller restart during the health window had caused the rollback (§42.4) |
+| Before the RC | Release discovery is a check of the source every 6 h (hourly while the own release isn't published, 30 s after start, **Check now**), its result kept in `agent_release_check`; `agent.update_source` names a mirror or `off` | One small, bounded HTTP client like the GeoIP downloads; what the source says counts only after it verifies, so the source decides availability, never trust (§42.3) |
 
 ---
 
@@ -1492,7 +1499,7 @@ Install paths: `curl … /agent/install.sh` (pinned with `--pinnedpubkey` agains
 
 On the host: `/usr/libexec/drool-agent/versions/<v>/drool-agent` with `current` and `previous` symlinks, state in `/var/lib/drool-agent` (identity, certificates, manifest, ledger, `update/`), ceiling in `/etc/drool/agent.yaml`, release keys in `/etc/drool/release-keys.d/`, logs in `/var/log/drool-agent/`. None of these directories is reachable through the agent's file operations.
 
-States per host: current, update available, staged, updating, healthy, rolled back, failed, offline. Policy: manual or automatic (channel or exact version), canary size, batch size, max failures, health window. Release upload requires a registered release key; `min_upgrade_from` and version comparison refuse unsupported downgrades.
+States per host: current, update available, staged, updating, healthy, rolled back, failed, offline. Policy: manual or automatic (channel or exact version), canary size, batch size, max failures, health window. Release upload requires a registered release key; `min_upgrade_from` and version comparison refuse unsupported downgrades. Before the release candidate this became official releases, verified by the controller and every Shepherd, with automatic stable updates by default (§42).
 
 ### 23.8 Agent-side audit
 
@@ -2329,7 +2336,7 @@ About five goroutines and one file per connected Shepherd, flat during load, bac
 
 ### 33.11 Self-update
 
-Shepherds update themselves only to releases signed with a release key the operator holds (separate from the agent CA), staged, health-checked and rolled back automatically, through controller-managed rollouts (§23, unchanged). The controller doesn't update itself: there is no controller update path in the UI, the API or the binary; upgrading is replacing the binary or image, with the automatic pre-upgrade backup (§33.6). Nothing half-built was left behind.
+Shepherds update themselves only to releases signed with a release key the operator holds (separate from the agent CA), staged, health-checked and rolled back automatically, through controller-managed rollouts (§23, unchanged; official releases signed by the DROOL project followed before 1.0, §42). The controller doesn't update itself: there is no controller update path in the UI, the API or the binary; upgrading is replacing the binary or image, with the automatic pre-upgrade backup (§33.6). Nothing half-built was left behind.
 
 ### 33.12 Container deployment
 
@@ -2438,7 +2445,7 @@ Runtimes (§34.13 for the evidence): Docker Engine rootful (the release tests' o
 ### 34.6 Integrity, signing, SBOM, notices, license
 
 - `SHA256SUMS` covers every file, `release.json` included; `release.json` lists every file's hash and kind, the version, channel, commit, source date, schema, protocol range and features, the pinned toolchain and the image's index, manifest and config digests (the index digest is what a registry serves when the archive is pushed unchanged: `skopeo copy oci-archive:… docker://…`).
-- Signing: `packaging/release/sign.sh` signs `SHA256SUMS` offline with the DROOL release key (OpenSSH Ed25519, `ssh-keygen -Y sign -n drool-release`) after checking every file, and verifies against `packaging/keys/allowed_signers`; users verify with `ssh-keygen -Y verify` (README). The key never enters the repository, CI or a controller; until its public half is in `allowed_signers`, nothing verifies and no build is official. It is separate from the operators' Shepherd release keys (§23.7, unchanged: operators sign the Shepherd binaries they deploy, including official ones), the Agent Root CA, the SSH user CA and the master key. `release.json` says how a release is signed; a build never is.
+- Signing: `packaging/release/sign.sh` signs `SHA256SUMS` offline with the DROOL release key (OpenSSH Ed25519, `ssh-keygen -Y sign -n drool-release`) after checking every file, and verifies against `packaging/keys/allowed_signers`; users verify with `ssh-keygen -Y verify` (README). The key never enters the repository, CI or a controller; until its public half is in `allowed_signers`, nothing verifies and no build is official. It is separate from the DROOL Shepherd release key (official Shepherd updates, §42.3) and the operators' own Shepherd release keys (§23.7), the Agent Root CA, the SSH user CA and the master key. `release.json` says how a release is signed; a build never is.
 - SBOMs: SPDX 2.3 JSON (syft) for each platform's binaries (Go modules with licenses from the module cache, and the npm packages bundled in the web UI — development-only ones excluded) and for each platform's image (adding the base image's Debian packages).
 - `THIRD_PARTY_NOTICES.txt` (in the archives, the packages, the image's `/usr/share/doc/drool/` and the release) carries every bundled component's license texts.
 - DROOL's own license: the GNU GPL version 3, since its owner added `LICENSE` on 2026-10-17, with the SPDX id `GPL-3.0-only` in `packaging/release/license` (§42.1). Packages, the image's `org.opencontainers.image.licenses` label and DROOL's own packages in the SBOMs carry it. Without `LICENSE`, packages and SBOMs say `NOASSERTION` and a stable build refuses; with `LICENSE` but no SPDX id, every build refuses.
@@ -3823,3 +3830,204 @@ the archives, the packages (`/usr/share/drool/LICENSE`), the image (`/usr/share/
 directory. The README, the release notes template, the archives' and the package's notes say which license applies.
 Tests: `relkit` (DROOL's own packages only, nothing without a license), `TestReleaseArtifacts` (DROOL's packages in
 every SBOM declare the release's license), `TestContainerImage` (the label).
+
+### 42.2 Shepherd updates: what was wrong
+
+Checked against the code before anything changed (`agentsvc/updates.go`, `agent/update.go`, the API, the Updates tab
+and the tests):
+
+- **"Automatic" re-rolled uploaded releases; nothing discovered or downloaded anything.** The policy (default *manual*)
+  picked the newest *uploaded* release in a free-text channel. A release existed only after an operator created a key
+  offline (`drool release keygen`), registered it, made every host trust it (an install option or
+  `sudo drool-agent trust-release-key` per host), unpacked each architecture's binary from the release, signed it and
+  uploaded binary and manifest. Shepherds trusted only built-in keys (`release_keys.txt`, empty) and the host's own;
+  M17 had decided "no project signature on Shepherd update manifests". So official releases could never be installed
+  without that work, and updating the controller left every Shepherd on its old version.
+- **The automatic policy had never run in a test.** No test set it.
+- **Rollout logic that unattended updates would have exposed:**
+  - an offline canary didn't block the batches (waves skip pending offline hosts), so a batch could start with no
+    canary result; the canary was the host with the smallest random ID, possibly one already current (marked healthy
+    "already running" at once), with the same effect;
+  - a host-local refusal (`updates.policy: deny`, an untrusted key, a version that failed there before) was a failed
+    update: with the default canary and failure limit of one, a single such host paused every rollout;
+  - a version that failed on a host was refused there forever, even a person's retry, though a controller restart
+    during the health window is enough to roll an update back;
+  - after an automatic rollout to a version finished, hosts enrolled later or behind were never updated automatically;
+  - the wave advance ran from the ticker and from report goroutines without a lock (a double offer was possible).
+- **The page didn't say any of this.** It offered "Automatic: new releases are rolled out by themselves", a free-text
+  channel, a release-key card and a binary upload as the main path, and nothing about whether anything was ever
+  checked.
+
+### 42.3 Official releases: trust and discovery
+
+**Three trust domains**, none on a controller:
+
+| Key | Signs | Trusted by |
+|---|---|---|
+| DROOL release key (OpenSSH) | a release's `SHA256SUMS` | people who download DROOL (`allowed_signers`) |
+| DROOL Shepherd release key (new; `drool release keygen` format) | each Shepherd binary's update description | DROOL and every Shepherd: public half built in, `internal/release/official_keys.txt` |
+| An operator's own release keys | their own Shepherd builds (custom releases) | the hosts that trust them locally (`/etc/drool/release-keys.d`) |
+
+- `internal/release/official.go` embeds `official_keys.txt` (empty until the owner adds the key) and exposes it; the
+  Shepherd's `TrustedReleaseKeys(official)` is the built-in keys unless agent.yaml says `updates.official: deny`
+  (a new, strictly parsed setting), plus the host's own. Nothing the controller sends can change either. Test builds
+  can add a key only with the `drooltestofficial` build tag and an `-X` the integration tests pass; without the tag
+  the variable doesn't exist and the linker ignores the `-X`. `drool version --json`, `drool-agent version --json`
+  and `release.json` list the built-in key ids; `drool-agent status` says whether official releases are trusted.
+- **Shepherds follow the controller.** The official update is the Shepherd binary the controller ships with, when the
+  controller is a stable or prerelease build. `agentsvc/official.go` checks the release source
+  (`agent.update_source`, default `https://github.com/irnutsmurt/drool/releases`, `off` to disable): 30 s after start
+  (1 s with `DROOL_TEST_UPDATE_TIMING=fast`), every 6 h, hourly while its own release isn't published or the source is
+  unreachable, and on **Check now**. For each architecture it ships it fetches
+  `download/<tag>/drool-agent_<v>_linux_<arch>.release.json` (64 KiB at most) and stores it only if the signature
+  verifies against the built-in keys and it names exactly this version, channel and architecture, a protocol range
+  this controller speaks, and the sha256 and size of the binary it shipped; the binary goes from disk into the
+  artifact store, and the release is an ordinary one. Nothing executable is downloaded: the source decides only
+  whether an update is available. Without internet access the same description is uploaded by hand (manifest only,
+  `POST /agents/releases` with an empty body: accepted only for a binary the controller ships).
+- **A newer DROOL** is read from `<source>/latest` without following the redirect (GitHub answers with the newest
+  release's tag; a mirror may answer the tag as text), and reported only after its amd64 description verifies. It
+  is never installed: the operator updates DROOL, and the Shepherds follow.
+- **States** (`official.state`): `verified`, `not_published`, `rejected` (a description was found and failed: audit
+  `agent.release.official_rejected`, a problem on the page, nothing stored), `unreachable`, `development` (a
+  development build has no official release; nothing is fetched), `no_key` (no built-in key; nothing is fetched),
+  `off`, `no_binaries`, `pending`. The result is kept in the setting `agent_release_check`.
+- **Shepherds before 1.0** have no built-in key and don't report their trust: they're offered official releases, and
+  when they refuse (an untrusted key) they're skipped with the reason. Updating them once with a custom release, or
+  reinstalling them, brings them onto the official key.
+
+### 42.4 Rollouts
+
+- **Who is in a rollout**: active Shepherds behind its version (none already current), on a platform with a release,
+  that can take it. `Blocker()` says why one can't, before anything is offered: no release for its platform; updates
+  turned off on the host; it doesn't trust the key (the host refuses official releases, it was built without the
+  project key, or a custom key it doesn't have); `min_upgrade_from`; a protocol it doesn't speak; the version failed
+  there before (unless retried). A person's rollout lists such hosts as *skipped* with the reason; an automatic one
+  leaves them out and the status page names them. A rollout that a person starts for hosts in another running or
+  paused update is refused with which and why.
+- **Order and the canary**: connected Shepherds that report their trust first, then other connected ones, then offline
+  ones, by name. Wave 0 must hold `canary` hosts that take the update (healthy, in progress, or connected and pending);
+  short of that, the next connected pending host of a later wave joins wave 0, so batches never start without a canary
+  result.
+- **Refusals are skips.** 1.0 Shepherds send `UpdateReport.refusal` (`untrusted_key`, `updates_denied`,
+  `failed_before`, `downgrade`, `upgrade_path`, `protocol`, `platform`, `busy`); older ones are known by the words they
+  have always used, and only before they trust the manifest. A refusal marks the host *skipped* (never a failure, never
+  a pause) and its identity *refused*. A bad signature or a corrupted download is still a failure. 1.0 Shepherds report
+  their release trust in the hello (`ReleaseTrust`: key ids, official, official denied, updates denied), kept in
+  `agent_identities.release_trust_json` (migration 0026).
+- **Try again**: `POST /agents/rollouts` with `retry` sets `agent_rollouts.retry`; its offers carry `UpdateOffer.retry`,
+  and only then does a Shepherd install a version that failed on it before.
+- **The automatic policy** keeps Shepherds on the newest release in its channel (prerelease includes stable; any other
+  name is exact) that the controller speaks, or the exact version. It never fights a person: a paused or cancelled
+  rollout to the target stops it for that version (a cancel's reason now says who), and hosts in someone's running
+  rollout are left alone. Hosts behind the target that no rollout covers, and that an automatic rollout didn't already
+  try, get a rollout of their own (new hosts, returning ones). An older automatic rollout still running or paused is
+  cancelled as *superseded by the update to …* when a newer target appears.
+- Waves and the policy run under one lock (`rollMu`); a verified official release triggers a pass at once.
+
+### 42.5 Policy, defaults, migration 0026
+
+- **Default**: automatic, stable, canary 1, batches of 5, pause after 1 failure, 120 s health window. Channels offered:
+  `stable` and `prerelease` (what the release pipeline stamps); the API still takes another lower-case name for custom
+  releases, and validates the exact version.
+- **Kept preferences**: a saved policy row is never changed. Migration 0026 writes `manual` for an installation that
+  has agent releases or update rollouts but never saved a policy: it was updating by hand. It also adds
+  `agent_identities.release_trust_json` and `agent_rollouts.retry`. The schema upgrade test counts the extra setting
+  row; `TestShepherdUpdatePolicyMigration` covers never used, uploaded, rolled out, saved automatic and install
+  rollouts only.
+
+### 42.6 API and the Updates page
+
+- `GET /agents/updates/status` (agents.read): policy and whether it was saved, channels, state (`none`, `current`,
+  `available`, `updating`, `attention`, `blocked`) with a one-line summary, the target, the controller's version,
+  the official state, the check (enabled, source, checking, last success, last error, next), a newer DROOL, counts
+  (current, to update, updating, waiting for an offline host, can't update, offline), the hosts that can't update and
+  why (with a retry version where the update failed), problems (paused, failed, rolled back, verification), running
+  rollouts and the last eight. `POST /agents/updates/check` (agents.manage) starts a check. Releases say `official`
+  and `shepherds_behind`; rollouts `retry`; identities `release_trust`.
+- **Shepherds → Updates** (`components/agents/Updates.tsx`), ordered by DESIGN-STANDARD §3: status in a word and a
+  sentence; a newer DROOL; a notice when official updates can't work here (no key, development build, not published,
+  unreachable, off, rejected), next to the settings; **Update Shepherds automatically**; **Update channel** (Stable
+  (recommended), Release candidates); **Last checked** with **Check now**; counts; **Update N Shepherds to …** when
+  automatic updates are off. **Needs attention** lists paused updates (Resume, Cancel…), failed and rolled-back hosts
+  (Try again…) and verification failures, then the hosts that can't update and why. **Updating now** and **Recent
+  updates** count each rollout and list its hosts. **Advanced settings** (`?advanced=1`): the rollout numbers and an
+  exact version, custom releases with their keys and upload (manifest-only accepted), and the official release source
+  with the built-in key ids. Saving a setting asks for no confirmation; starting, cancelling and retrying an update do.
+  A viewer gets the same page read-only. Bulk installs moved to **Shepherds → Installing Shepherds**; the conversion
+  dialog's stale "Agents → Rollouts" link went with them.
+
+### 42.7 Release engineering
+
+- `sign.sh RELEASE_DIR RELEASE_KEY SHEPHERD_KEY` signs both Shepherd binaries (from the release's own archives, with its
+  version and channel, through the release's own `drool release sign`) into
+  `drool-agent_<v>_linux_<arch>.release.json`, after checking that the Shepherd key is among `release.json`'s
+  `official_release_keys` (a warning for development builds; `OFFICIAL_RELEASE_KEYS` replaces the list in tests), and
+  only then writes `SHA256SUMS.sig`. `TestReleaseSigning` covers the refusal and the descriptions.
+- `build.sh` refuses a stable build without a Shepherd release key in `official_keys.txt` (Shepherds built without it
+  could never take an official update) and with the placeholder maintainer `maintainers@drool.invalid`; both are
+  warnings for other builds. `TestReleaseArtifacts` checks that the controller, the Shepherds and `release.json` name
+  the same built-in keys, and at least one for a stable release.
+- The workflows name their runner image (`ubuntu-24.04`): GitHub moves `ubuntu-latest` to Ubuntu 26 from 2026-10-19,
+  and a qualification must not change runner image halfway (§42.1's license fix restored `main`'s release job).
+
+### 42.8 Workflow audit
+
+The primary workflows, asked: what is the user trying to do, what should DROOL do for them, which decisions are
+theirs, are internals exposed as routine controls, does the default path work without the user guide, are dangers and
+unknowns honest, are settings where people look for them.
+
+| Workflow | Finding | Done |
+|---|---|---|
+| Shepherd updates and trust | Updates didn't work by default; the page was built around keys, manifests and rollout numbers (§42.2) | §42.3–42.6 |
+| Shepherd installation | The install dialog asked, as a routine field, for a release-signing key to trust: with official updates, only custom builds need one | Under *Advanced: also trust your own release-signing key*, with a line saying updates need nothing else |
+| Shepherd installation (bulk) | Convert to Shepherd asked for canary and batch sizes up front | The rollout in words (*One host first, then 5 at a time; it stops at the first failure*), the numbers behind **Change the rollout…** |
+| Firewall | A host's mode form put the rollback timer's seconds beside the mode, and outbound choices as raw values (`allow`, `restrict`) | Outbound in words (*Allow (recommended)*, *Restrict to what policies allow*); the timer under *Advanced: rollback timeout (120 s, default)* |
+| First run, adding a host | The recommended path (DROOL's own account) comes first and its name is prefilled; *Connect through* (a jump host) and *DROOL's account name* could move under Advanced | After 1.0 |
+| Monitoring and alerts | Service monitoring is opt-in, routing and delivery history are under Advanced (§40, §41) | — |
+| Runs, files, schedules | The run review summarises the rollout; its numbers are under Advanced options; a choice is kept (§41) | — |
+| Desired State | The restore plan reviews before anything changes; automatic restore is under Advanced (§41) | — |
+| Shepherds list | Shows the protocol number and certificate dates beside each version: detail most people don't need | After 1.0 |
+
+### 42.9 Tests
+
+- **Unit:** `release` (official keys, test-key injection only under the build tag); `agent` (refusal codes, retry of a
+  failed version, official trust allowed and denied, the hello's trust report, no claim without a built-in key);
+  `agentcaps` (`updates.official`); `agentsvc` (refusals by code and by older Shepherds' words, real failures never
+  taken for one; channels; `Blocker` for every reason, retry); `store` (migration 0026 preserving, the upgrade test's
+  extra row); `relkit` (DROOL's license on its own SBOM packages only).
+- **In process** (`internal/api/shepherd_updates_test.go`, real gRPC Shepherds that verify, download and stage what
+  they're offered; only the helper that would switch this machine's Shepherd is replaced): defaults and validation;
+  the official check against a release source the test controls (not published, verified and stored, a newer
+  release reported, a forged newer release ignored and said); every rejection (another key, a tampered description,
+  another version, another channel, another binary, an incompatible protocol, not a description) storing nothing and
+  showing a problem; no request at all for a development build, without a key, or turned off; unreachable; the whole
+  automatic path (canary first, batch only after it is healthy, an offline host catching up, a host refusing official
+  releases left out and explained, no repeat); a canary rollback pausing the rest, Try again; a saved manual policy
+  kept, Update now, nothing to do once current; a release candidate on Stable and on Release candidates; a manifest
+  uploaded without its binary; RBAC for viewers and operators.
+- **Integration, real binaries in containers:** `TestOfficialShepherdUpdates` (test builds that trust a key made for
+  the run, a local stand-in for the release page): install DROOL v1.4.0 and three Shepherds, publish v1.5.0, update
+  DROOL — the two Shepherds that trust official releases update by themselves, canary then batch, the version links
+  say so, the third is left alone with its reason, nothing was uploaded or registered (audit). `TestAgentUpdates`
+  now expects an untrusted key and `updates.policy: deny` to be refused up front with the reason. Every test that
+  uploads releases of its own turns automatic updates off first, and the upload helper refuses otherwise.
+- **Release:** `TestReleaseSigning` (the Shepherd key refused when it isn't built into a release, the descriptions
+  verified against it and naming the release's channel), `TestReleaseArtifacts` (the same built-in keys in the
+  controller, the Shepherds and `release.json`), `TestContainerImage` (the license label).
+- **Browser:** `shepherd-updates` in TestBrowser; the contrast test covers the page with Advanced open; `monitoring`
+  follows the conversion dialog. The screenshot lab (not committed) walked a fleet through every state at 1440, 1280,
+  1024 and 390 px in both themes with no sideways scroll and no page errors.
+
+### 42.10 What the owner still decides
+
+- **The DROOL Shepherd release key**: created offline (`drool release keygen`), its public line committed to
+  `internal/release/official_keys.txt` before the release candidate. Until then every build says official releases
+  can't be verified, and a stable build refuses. Its private half signs each release's Shepherd descriptions
+  (`sign.sh`).
+- **The DROOL release key** (OpenSSH), its public half in `packaging/keys/allowed_signers` (unchanged).
+- **The packages' maintainer**: a real contact in `build.sh` or `DROOL_MAINTAINER`; a stable build refuses the
+  placeholder.
+- **GPL-3.0-only or -or-later**: `LICENSE` is the FSF's GPLv3 text; "only" was taken as the literal reading.
+- Pre-1.0 Shepherds (development builds, the dogfooding fleet) can't take official updates: one custom release or a
+  reinstall each, once.

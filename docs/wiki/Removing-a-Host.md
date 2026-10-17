@@ -139,7 +139,7 @@ no way to manage this host: it has no Shepherd and no SSH access is set up.* Set
 **When the Shepherd can't be asked**, DROOL removes it over SSH, as root, as long as SSH works: the
 Shepherd is offline, or it's older than this way of removing itself (*This Shepherd (version …) can't
 remove itself: it's from before Shepherds could. Update it (Shepherds → Updates) and ask again, or
-remove it over SSH or by hand*; [Updating Shepherds](Updating-Shepherds.md)).
+remove it over SSH or by hand*; Shepherds update themselves when DROOL does: [Updating Shepherds](Updating-Shepherds.md)).
 DROOL reads what is on the host first, removes it, checks that nothing is left, and the result is
 *The Shepherd is gone …* or what remains.
 

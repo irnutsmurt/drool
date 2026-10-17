@@ -18,10 +18,12 @@ says to update the Shepherd.
 
 ## Updating
 
-Shepherd updates use binaries **you sign** with your own release-signing key, so a compromised DROOL
-can't make Shepherds run unsigned code. The one-time setup and the rollouts are explained in
-[Updating Shepherds](Updating-Shepherds.md). Without a signing key that the host trusts, a Shepherd
-can't be updated by DROOL: set the key up first.
+Shepherds update themselves when DROOL is updated: DROOL rolls out the Shepherd it came with, and each
+Shepherd installs it only if the DROOL project's signature on it checks out, so a compromised DROOL
+can't make Shepherds run code nobody signed. **Shepherds → Updates** shows how far it got, and why a
+Shepherd can't update if one can't ([Updating Shepherds](Updating-Shepherds.md)). A Shepherd from before
+DROOL had official releases (a development or pre-1.0 build) doesn't know the project's key: update it
+once with a custom release, or reinstall it from its host's page.
 
 ## After restoring DROOL from a backup
 

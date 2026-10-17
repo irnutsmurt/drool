@@ -13,6 +13,7 @@ The words DROOL uses, in plain English.
 | **Controller** | The machine (or container) DROOL itself runs on: `drool.example.net` in the examples |
 | **Controller epoch** | An identity for "this controller since its last restore". Hosts only take commands from the current epoch once reconciled ([What Happens After Restore](What-Happens-After-Restore.md)) |
 | **Credential** | Something DROOL signs in with: an SSH key, a password, or a sudo password ([SSH Credentials](SSH-Credentials.md)) |
+| **Custom release** | A Shepherd build signed with your own release-signing key, which you upload and the hosts that trust your key install ([Custom releases](Updating-Shepherds.md#custom-releases)) |
 | **Desired State** | DROOL's feature for keeping hosts the way baselines say ([What Desired State Is](What-Desired-State-Is.md)) |
 | **Destination** | Where notifications go: email, Discord, Slack, Telegram, a webhook ([Notification Routing](Notification-Routing.md)) |
 | **Development image** | The container image `ghcr.io/irnutsmurt/drool:main`, built automatically from the newest DROOL code that passed its tests. Not a release ([Installing DROOL](Installing-DROOL.md#development-image-or-release)) |
@@ -28,6 +29,7 @@ The words DROOL uses, in plain English.
 | **Management path** | DROOL's own way into a host (SSH from the controller, or the Shepherd's connection), protected by the firewall ([Management Path Protection](Management-Path-Protection.md)) |
 | **Master key** | The file that encrypts DROOL's secrets ([The Master Key](Master-Key.md)) |
 | **Monitored service** | A service DROOL alerts on: **Monitor** ticked (expected to run), or expected to be stopped. Others are listed with their state and never alert ([Service Monitoring](Service-Monitoring.md)) |
+| **Official release** | A Shepherd version signed by the DROOL project: the Shepherd that comes with an official DROOL release. Shepherds update to it by themselves ([Updating Shepherds](Updating-Shepherds.md)) |
 | **Operator** | A user role: runs things, can't change security settings ([Users and Roles](Users-and-Roles.md)) |
 | **Pack** | A named group of hosts, such as `media-servers` ([Packs](Packs.md)). Called *groups* in the API and `group:` in firewall YAML |
 | **Policy** (firewall) | The rules for who may reach whom ([Firewall Policy](Firewall-Policy.md)) |

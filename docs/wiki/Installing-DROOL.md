@@ -92,7 +92,8 @@ Once DROOL has releases, each one is a set of files on the
 | `compose.yaml`, `drool.container` | The Docker Compose and Podman files, naming that image |
 | `drool_1.0.0-1_amd64.deb`, `drool-1.0.0-1.x86_64.rpm`, and their arm64 (`aarch64`) twins | The packages |
 | `drool_1.0.0_linux_amd64.tar.gz`, `…_arm64.tar.gz` | The release archive |
-| `drool-agent_1.0.0_linux_amd64.tar.gz`, `…_arm64.tar.gz` | The Shepherd alone, for [signing Shepherd updates](Updating-Shepherds.md) |
+| `drool-agent_1.0.0_linux_amd64.tar.gz`, `…_arm64.tar.gz` | The Shepherd alone, for installing it by hand |
+| `drool-agent_1.0.0_linux_amd64.release.json`, `…_arm64.release.json` | The Shepherds' signed update descriptions: DROOL fetches them itself to [update its Shepherds](Updating-Shepherds.md) |
 | `*.spdx.json`, `THIRD_PARTY_NOTICES.txt` | What each file contains (SBOMs), and the licences of the software DROOL includes |
 | `release.json`, `SHA256SUMS`, `SHA256SUMS.sig` | What the release is, every file's checksum, and the signature of those checksums |
 

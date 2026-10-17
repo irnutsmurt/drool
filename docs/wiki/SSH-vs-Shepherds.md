@@ -33,7 +33,7 @@ In the examples, `media-01` has a Shepherd; `media-02`, `database-01` and `web-0
 | **What DROOL may do** | Whatever the SSH account may do (with sudo: everything) | At most what the host's own `/etc/drool/agent.yaml` allows ([presets](Shepherd-Capability-Presets.md)) |
 | **Monitoring** | A snapshot every 5 minutes; disk health hourly (only with passwordless sudo) | Continuous: samples every 10 seconds, services every 30 seconds, disk health every 30 minutes; kept on the host while DROOL is unreachable and delivered later |
 | **Network Activity** | A snapshot when you click **Take snapshot** | Continuous |
-| **Updates of the agent itself** | — | Only to releases signed with a key *you* hold ([Updating Shepherds](Updating-Shepherds.md)) |
+| **Updates of the agent itself** | — | Automatic when DROOL is updated, only to releases signed by the DROOL project or with your own key; the host can refuse them ([Updating Shepherds](Updating-Shepherds.md)) |
 | **CPU architectures** | Any (amd64, arm64 tested; others expected to work) | amd64 and arm64 only |
 | **Needs systemd** | For services and reboots | For services, reboots and its resource limits |
 

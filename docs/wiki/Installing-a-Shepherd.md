@@ -45,14 +45,15 @@ There are three ways to install one:
    If the host can't reach that address and port, cancel and fix it first
    ([Before you start](#before-you-start)).
 
-   ![The "Install a Shepherd (DROOL agent) on web-01" dialog: how the install works, the address Shepherds connect to, the Monitor, Managed and Full presets and what each allows (Full marked root-equivalent), the optional release-signing key, and Cancel and Install with the managed preset in its footer](images/shepherd-install-dialog.png)
+   ![The "Install a Shepherd (DROOL agent) on nas-01" dialog: how the install works, the address Shepherds connect to, the Monitor, Managed and Full presets and what each allows (Full marked root-equivalent), a note that the Shepherd takes official DROOL updates by itself, the closed Advanced section for your own release-signing key, and Cancel and Install with the managed preset in its footer](images/shepherd-install-dialog.png)
 
 3. Choose a preset. **Managed** is selected by default: services, reboots and packages from the
    repositories already configured on the host, but no shell commands and no file access. Pick
    **Full** if you want to run commands and scripts and use the file manager through the Shepherd;
    **Monitor** if it should only report.
-4. Leave **Also trust a release-signing key** empty unless you sign your own Shepherd builds
-   ([Updating Shepherds](Updating-Shepherds.md)).
+4. Nothing else is needed for updates: the Shepherd takes official DROOL updates by itself
+   ([Updating Shepherds](Updating-Shepherds.md)). **Advanced: also trust your own release-signing key**
+   is only for Shepherd builds you sign yourself ([custom releases](Updating-Shepherds.md#custom-releases)).
 5. Click **Install with the managed preset** (the button names the preset you chose). It can take a
    few minutes.
 

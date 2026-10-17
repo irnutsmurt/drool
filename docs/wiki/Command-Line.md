@@ -32,9 +32,9 @@ see [Restoring a Controller](Restoring-a-Controller.md) and [Key Rotation](Key-R
 | `drool agent-ca remove-root --confirm FINGERPRINT` | Remove the root key from the controller | [Taking the Agent Root CA Offline](Taking-the-Agent-Root-CA-Offline.md) |
 | `drool agent-ca rotate --root-key FILE [--revoke-old]` | New intermediate CA and trust manifest | [Shepherd PKI](Shepherd-PKI.md#replacing-the-intermediate-ca) |
 | `drool agent-ca sign-manifest` / `import-manifest` | Sign a trust manifest on an offline machine / import it | [Shepherd PKI](Shepherd-PKI.md) |
-| `drool release keygen -o NAME` | Create a release-signing key pair for Shepherd updates (on a machine other than the controller) | [Updating Shepherds](Updating-Shepherds.md) |
-| `drool release sign --key KEY BINARY` | Sign a Shepherd binary | [Updating Shepherds](Updating-Shepherds.md) |
-| `drool release verify` | Check a signed release against a public key | [Updating Shepherds](Updating-Shepherds.md) |
+| `drool release keygen -o NAME` | Create your own release-signing key pair, for custom Shepherd releases (on a machine other than the controller). Official updates need none | [Custom releases](Updating-Shepherds.md#custom-releases) |
+| `drool release sign --key KEY BINARY` | Sign a Shepherd binary of your own (`--channel testing` keeps automatic updates from rolling it out) | [Custom releases](Updating-Shepherds.md#custom-releases) |
+| `drool release verify` | Check a signed release against a public key | [Custom releases](Updating-Shepherds.md#custom-releases) |
 | `drool version [--json]` | Version, release channel, commit, database schema and Shepherd protocol | [Updating DROOL](Updating-DROOL.md) |
 | `drool serve` | Run the controller (the service does this for you) | |
 
@@ -46,7 +46,7 @@ see [Restoring a Controller](Restoring-a-Controller.md) and [Key Rotation](Key-R
 | Command | What it does |
 |---|---|
 | `sudo drool-agent status` | Identity, certificate, trust, endpoints and capabilities |
-| `sudo drool-agent trust-release-key FILE` | Trust a release-signing key for Shepherd updates ([Updating Shepherds](Updating-Shepherds.md)) |
+| `sudo drool-agent trust-release-key FILE` | Also trust your own release-signing key, for custom Shepherd releases ([Custom releases](Updating-Shepherds.md#custom-releases)). `drool-agent status` shows whether the host takes official DROOL releases, and every key it trusts |
 | `sudo journalctl -u drool-agent -n 50` | The Shepherd's log (the newest 50 lines) |
 
 ## Related

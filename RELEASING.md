@@ -63,6 +63,7 @@ M16 and the tagged Technical Alpha (`v0.1.0-alpha`), is supported and tested.
 | `release.json` | version, channel, commit, schema, protocol, the pinned toolchain, the image's digests, every file's sha256 |
 | `SHA256SUMS` | sha256 of every file above (`sha256sum --check`) |
 | `SHA256SUMS.sig` | added offline by the release manager: [Signing](#signing) |
+| `drool-agent_<v>_linux_{amd64,arm64}.release.json` | the Shepherds' signed update descriptions, added offline by the release manager: [Signing](#signing). Controllers fetch them from the release page to update their Shepherds |
 
 ## Building
 
@@ -142,46 +143,62 @@ The VM layers need hours and run on a machine you control before a release is pu
 
 ## Signing
 
-The **DROOL release key** signs `SHA256SUMS`, which covers every file. It is an OpenSSH Ed25519 key
-(a hardware-backed `ed25519-sk` key works too), kept offline by the release manager: never in this
-repository, never in CI, never on a DROOL controller.
+A release is signed offline by the release manager, with two keys, each a trust domain of its own. Neither is ever
+in this repository, in CI or on a DROOL controller.
+
+- **The DROOL release key** signs `SHA256SUMS`, which covers every file: it tells the people who download DROOL
+  that the files are what the project built. An OpenSSH Ed25519 key (a hardware-backed `ed25519-sk` key works too);
+  users check it with `ssh-keygen -Y verify` against [`packaging/keys/allowed_signers`](packaging/keys/allowed_signers).
+- **The Shepherd release key** signs each Shepherd binary's update description
+  (`drool-agent_<v>_linux_<arch>.release.json`): it tells Shepherds that an update is an official one. A DROOL
+  release-signing key (`drool release keygen`); its public half is built into DROOL and every Shepherd
+  ([`internal/release/official_keys.txt`](internal/release/official_keys.txt)), so a controller can verify its own
+  Shepherd's official release and each Shepherd checks it again before it updates.
 
 ```sh
-packaging/release/sign.sh dist/<version> /path/to/drool-release-key    # writes SHA256SUMS.sig
+packaging/release/sign.sh dist/<version> /path/to/drool-release-key /path/to/shepherd-release.key
 ```
 
-It checks every file against `SHA256SUMS` first, signs with namespace `drool-release`, and verifies
-the signature the way users will, against [`packaging/keys/allowed_signers`](packaging/keys/allowed_signers).
-Users check a download with `sha256sum --check` and `ssh-keygen -Y verify`
-([user guide: Checking a release's files](docs/wiki/Installing-DROOL.md#checking-a-releases-files)).
+It checks every file against `SHA256SUMS`, signs both Shepherd binaries (from the release's own archives, with the
+release's version and channel) after checking that the Shepherd key is one this release has built in
+(`release.json` `official_release_keys`), then writes `SHA256SUMS.sig` (namespace `drool-release`) and verifies it the
+way users will. Nothing is written into the release until both keys have done their part.
 
-**The release key** is created once, offline:
+**The keys** are created once, offline:
 
 ```sh
 ssh-keygen -t ed25519 -C release@drool -f drool-release-key     # a passphrase, on an offline machine
+drool release keygen -o shepherd-release -name "DROOL project"   # the same machine; keep shepherd-release.key offline
 ```
 
-and its public half is added to `packaging/keys/allowed_signers` as one line —
-`release@drool namespaces="drool-release" ssh-ed25519 AAAA…` — in a commit before the first signed
-release. Replacing it: add the new key's line, sign the next release with it, keep the old line
-until releases signed with it are no longer offered, and say so in the release notes.
+- The release key's public half goes into `packaging/keys/allowed_signers` as one line —
+  `release@drool namespaces="drool-release" ssh-ed25519 AAAA…` — in a commit before the first signed release.
+- The Shepherd key's public half (the line in `shepherd-release.pub`) goes into
+  `internal/release/official_keys.txt` **before the first release candidate**: Shepherds built without it can never
+  take an official update (they'd need a custom release or a reinstall), and a stable build refuses without it.
+- Replacing a key: add the new key's line, sign the next release with it, keep the old line until releases signed
+  with it are no longer offered (for the Shepherd key: until no supported Shepherd needs it), and say so in the
+  release notes.
 
-This is a different trust domain from the keys DROOL itself uses:
+This is separate from the keys DROOL itself uses:
 
-- **Shepherd updates** are signed by each operator with their own release-signing key
-  (`drool release keygen`/`sign`): the operator, not the DROOL project, decides which Shepherd
-  binaries their hosts may run. The official Shepherd binaries come in the release, checked by
-  `SHA256SUMS` and its signature; operators sign the ones they deploy.
+- **Operators' own Shepherd release keys** (`drool release keygen`/`sign`) are for Shepherd builds they make or sign
+  themselves (custom releases). Each host trusts them locally (`drool-agent trust-release-key`); a host can refuse
+  official releases (`updates: {official: deny}` in its agent.yaml) and keep only its operator's.
 - The **Agent Root CA**, the **SSH user CA** and the **master key** belong to each controller.
 
-Until the release key exists, `allowed_signers` lists no key and nothing verifies: no build is an
-official release.
+Until the keys exist, `allowed_signers` and `official_keys.txt` list none: nothing verifies, no build is an official
+release, and a controller says that official Shepherd updates can't be verified.
 
 ## Publishing
 
 No release is published automatically (only `main`'s development image, above). For a release:
 
-1. Upload every file of `dist/<version>/` and `SHA256SUMS.sig` to the release page.
+1. Upload every file of `dist/<version>/`, `SHA256SUMS.sig` and both `drool-agent_<v>_linux_<arch>.release.json` to
+   the release page, under the release's tag: controllers look for the descriptions at
+   `https://github.com/irnutsmurt/drool/releases/download/<tag>/drool-agent_<v>_linux_<arch>.release.json` (until they
+   are there, a controller of that version says its official Shepherd release isn't published yet), and for the newest
+   stable release at `…/releases/latest`.
 2. If the image goes to a registry, copy the OCI archive without rebuilding it, so its digest stays
    the one in `release.json` — e.g. `skopeo copy oci-archive:drool_<v>_image.oci.tar docker://REGISTRY/drool:<v>`
    — and add the registry name to the README and the release notes.
@@ -191,6 +208,10 @@ No release is published automatically (only `main`'s development image, above). 
 
 - [ ] `LICENSE` present and `packaging/release/license` holds its SPDX id (a stable build refuses otherwise).
 - [ ] The release key's public half in `packaging/keys/allowed_signers`.
+- [ ] The Shepherd release key's public half in `internal/release/official_keys.txt`, **before the release candidate**
+      (a stable build refuses without it; `release.json` lists it under `official_release_keys`).
+- [ ] The packages' maintainer is a real contact (`DROOL_MAINTAINER` or the default in `build.sh`; a stable build
+      refuses the placeholder `maintainers@drool.invalid`).
 - [ ] Docs describe this release: README (status, quick start, supported platforms, limitations), the
       user guide (installing, updating, supported platforms), DESIGN, ARCHITECTURE-ALPHA, the
       maintainer field (`DROOL_MAINTAINER` or the default in `build.sh`).
@@ -205,4 +226,6 @@ No release is published automatically (only `main`'s development image, above). 
       `TestReleaseArtifacts|TestReleaseSigning|TestContainerImage|TestReleasePackages|TestReleaseUpgrade` on the final artifacts
       (the version changed, so the bytes did).
 - [ ] Reproducibility: a second `build.sh --no-cache` gives the same `SHA256SUMS`.
-- [ ] `sign.sh`, then publish; the release notes from the template.
+- [ ] `sign.sh` with both keys, then publish, the Shepherd descriptions included; the release notes from the template.
+- [ ] After publishing: a controller of the release finds and verifies its official Shepherd release
+      (Shepherds → Updates says *signed by the DROOL project and verified*).

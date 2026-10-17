@@ -1,6 +1,6 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.16**
+**Design Document v0.3.17**
 Status: Draft · 2026-10-17 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
@@ -13,6 +13,20 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.16 → v0.3.17 (Shepherd updates that work by default, before the release candidate)
+
+A functional and usability correction: Shepherd updates needed an operator-held key, a signature per binary, a
+manual upload and a manual rollout, and "automatic" only re-rolled uploaded releases. As built
+(`ARCHITECTURE-ALPHA.md` §42):
+
+| # | As built | Section |
+|---|---|---|
+| 1 | **Shepherds follow DROOL.** When DROOL is an official release, its own Shepherd is the official update: DROOL fetches only that Shepherd's signed description from its release source, checks it against the DROOL project's Shepherd release key built into it and against the binary it shipped with, and rolls it out by itself. Nothing executable is downloaded; Shepherds never move past the controller | §28 |
+| 2 | **Official signature, three trust domains.** The project's Shepherd release key (offline, pinned in DROOL and every Shepherd) is separate from the OpenSSH key that signs a release's checksums and from operators' own release keys. A host can refuse official releases (`updates: {official: deny}`); the controller can't add a key to a host | §4.4, §28 |
+| 3 | **Automatic stable updates by default:** canary of one, batches of five, pause at the first failure. A saved choice is kept, and an installation that already updated by hand stays manual | §28 |
+| 4 | **Updates page: status first,** the two settings a person needs, problems with their actions, history; rollout numbers, an exact version and custom releases under Advanced settings | §2.7, §28 |
+| 5 | **The design standard asks "should the user touch this at all?"** before how a control looks (DESIGN-STANDARD §1) | §2.7 |
 
 ### v0.3.15 → v0.3.16 (1.0 final usability and accessibility pass, before the release candidate)
 
@@ -434,6 +448,8 @@ Controller TLS server key  ≠  Job/policy signing key  ≠  Intermediate CA key
 ```
 
 If all three live on one host, a full compromise still exposes them all. Separation protects against **partial** exposure (a backup, a log, one misconfigured file). It is not counted as protection against full controller compromise.
+
+Release keys are never on a controller at all (§28): the DROOL project's **release key** (OpenSSH; signs a release's checksums for the people who download it) and its **Shepherd release key** (signs official Shepherd updates; its public half is built into DROOL and every Shepherd) are kept offline by the release manager, and an operator's own Shepherd release keys by the operator. Each is a separate trust domain.
 
 ### 4.5 L2 limitation (explicit)
 
@@ -1537,12 +1553,14 @@ Temporary firewall rollback, console-initiated agent reset, emergency admin role
 Agent self-update ships with the agent in Alpha 2.
 
 - **Separate trust.** Releases are signed with a release-signing key whose private half is not on the controller (§4.4). Agents verify the signed manifest and the binary themselves; a compromised controller can offer a release but can't make an agent run unsigned code. Trusting another release key takes explicit local or admin action and is flagged as security-sensitive.
+- **Official releases (1.0).** The DROOL project signs each release's Shepherd binaries offline with its **Shepherd release key**, whose public half is built into DROOL and every Shepherd. A Shepherd trusts it unless its host says `updates: {official: deny}`; operators' own keys (on the host only) still work, for their own builds. It is a trust domain of its own: not the OpenSSH key that signs a release's checksums for the people who download it, and not an operator's key. Nothing the controller sends can add a key to a host.
+- **Shepherds follow the controller.** The official update for a fleet is the Shepherd shipped with the controller, when the controller is itself an official release (stable, or prerelease on that channel). The controller fetches only that binary's signed description from its release source (the project's release page, a mirror, or an upload without internet access), checks it against the built-in key, its own version and channel, its protocol range and the binary it shipped with, and rolls it out. Nothing executable is downloaded, so a release source — or a stolen project key without the controller — can't push code to hosts; Shepherds never move past the controller, which is updated first. The same check reports a newer DROOL for the operator to install.
 - **Signed manifest.** It covers version, protocol range, OS, architecture, SHA-256, size and upgrade compatibility. The artifact is verified against it before anything is installed.
 - **Safe install.** The new version is staged next to the current one, and the previous one is kept. The switch is atomic and followed by a restart. The update counts only after a local health check and a controller-visible one (the new agent completed a session). Otherwise it reverts automatically, and the rollback doesn't depend on the new binary. A power loss leaves the old or the new version complete. Unsupported downgrades are refused; automatic rollback to the kept previous version is allowed.
-- **Rollout.** Controller-managed: manual or automatic (a channel or a desired version), canary first and then bounded batches, pausing on failures. One host's failure never becomes a fleet-wide failure. Offline hosts catch up when they return.
+- **Rollout.** Controller-managed: automatic by default (the stable channel, or a desired version) or manual, canary first and then bounded batches, pausing on failures. One host's failure never becomes a fleet-wide failure. Offline hosts catch up when they return. A host that can't take a release (it doesn't trust the key, refuses updates, needs another version first) is skipped and said, not counted as a failure; a version that failed on a host is tried there again only when a person asks.
 - **Compatibility.** The agent protocol is versioned independently of the product, negotiated per session, and has a documented compatibility range. Incompatible agents are shown as such and use SSH where it is configured.
 - **The 1.x promise.** A 1.x controller works with every agent that speaks protocol 1, older or newer: capabilities are announced and checked (never inferred from a version), nothing is sent to an agent that can't do it, and the agent's status says what it lacks. Upgrade the controller first; agents already updated keep working with a controller that was rolled back. Pre-1.0 agents are supported as far as they are tested (M15 and M16 builds).
-- **Official binaries, operator's signature.** Each DROOL release ships agent binaries, verifiable through the release's signed checksums; an operator signs the ones their hosts may update to with their own release key.
+- **Official binaries, official signature.** Each DROOL release ships agent binaries, verifiable through the release's signed checksums, with signed update descriptions for its Shepherds. An operator who prefers their own builds signs them with their own key and can make their hosts refuse official ones. (Until v0.3.17 an operator had to sign even the official binaries.)
 
 ---
 
