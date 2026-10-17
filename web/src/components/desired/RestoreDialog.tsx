@@ -78,9 +78,13 @@ export function RestoreDialog({ selection, title, onClose }: {
               {" "}This is the plan: nothing changes until you choose Restore. Each host runs only its own corrections; DROOL checks every host again afterwards and only then calls it restored.
             </p>
           )}
+          {/* A long list scrolls inside its box, which the keyboard can reach;
+              on a phone each correction is a card (nothing behind a sideways
+              scroll). */}
           {n > 0 && (
-            <div className="max-h-56 overflow-y-auto rounded-ui border border-line">
-              <table className="w-full text-left text-sm" aria-label="Corrections">
+            <div className="max-h-56 overflow-y-auto rounded-ui border border-line" role="region" aria-label="Corrections" tabIndex={0}>
+              <table className="rtable w-full text-left text-sm">
+                <caption className="sr-only">Each correction: the host, the resource, what it is now and what it will be</caption>
                 <thead>
                   <tr className="border-b border-line text-xs uppercase tracking-wide text-muted">
                     <th className="px-3 py-1.5 font-medium">Host</th>
@@ -92,10 +96,10 @@ export function RestoreDialog({ selection, title, onClose }: {
                 <tbody>
                   {plan.items.map((it) => (
                     <tr key={it.host_id + it.key} className="border-b border-line last:border-0">
-                      <td className="px-3 py-1.5">{it.host_name}</td>
-                      <td className="px-3 py-1.5 font-mono text-xs">{describeKey(it.key)}</td>
-                      <td className="px-3 py-1.5 text-muted" title={diffLine(it.diffs)}>{it.current}</td>
-                      <td className="px-3 py-1.5">{it.want}</td>
+                      <td data-primary="" className="px-3 py-1.5">{it.host_name}</td>
+                      <td data-label="Resource" className="px-3 py-1.5 font-mono text-xs">{describeKey(it.key)}</td>
+                      <td data-label="Now" className="px-3 py-1.5 text-muted" title={diffLine(it.diffs)}>{it.current}</td>
+                      <td data-label="Will be" className="px-3 py-1.5">{it.want}</td>
                     </tr>
                   ))}
                 </tbody>
