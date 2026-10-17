@@ -101,17 +101,22 @@ function ModeForm({ p }: { p: FwPlan }) {
           {Object.entries(modeInfo).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </Select>
       </Field>
-      <div className="grid grid-cols-2 gap-2">
-        <Field label="Outbound traffic" hint={outbound === "restrict" ? "Only what policies allow (plus the management path)." : "Not filtered (denies still apply)."}>
-          <Select value={outbound} disabled={!can("firewall.write")} onChange={(e) => setOutbound(e.target.value as "allow" | "restrict")}>
-            <option value="allow">allow</option>
-            <option value="restrict">restrict</option>
-          </Select>
-        </Field>
-        <Field label="Rollback timeout (s)" hint={`now ${p.rollback_timeout_s}s (${p.rollback_timeout_from})`}>
-          <Input type="number" min={30} value={timeout} disabled={!can("firewall.write")} placeholder="inherit" onChange={(e) => setTimeout_(e.target.value)} />
-        </Field>
-      </div>
+      <Field label="Outbound traffic" hint={outbound === "restrict" ? "Only what policies allow (plus the management path)." : "Not filtered (denies still apply)."}>
+        <Select value={outbound} disabled={!can("firewall.write")} onChange={(e) => setOutbound(e.target.value as "allow" | "restrict")}>
+          <option value="allow">Allow (recommended)</option>
+          <option value="restrict">Restrict to what policies allow</option>
+        </Select>
+      </Field>
+      {/* The safety timer's length: inherited (pack, then the global
+          default); a tuning detail, not part of choosing a mode. */}
+      <details className="text-sm" open={timeout !== ""}>
+        <summary className="cursor-pointer text-muted">Advanced: rollback timeout ({p.rollback_timeout_s} s, {p.rollback_timeout_from})</summary>
+        <div className="mt-2 max-w-xs">
+          <Field label="Rollback timeout (s)" hint="How long the host waits for DROOL to confirm a change over a new connection before it restores its previous rules. Empty: inherited.">
+            <Input type="number" min={30} value={timeout} disabled={!can("firewall.write")} placeholder="inherit" onChange={(e) => setTimeout_(e.target.value)} />
+          </Field>
+        </div>
+      </details>
       <p className="text-xs text-muted">Learning: {p.learning === "continuous" ? "continuous (Shepherd)" : p.learning === "snapshot" ? "connection snapshots only (SSH host)" : "off"}</p>
       {save.error && <Alert>{errorMessage(save.error)}</Alert>}
       {can("firewall.write") && dirty && <Button size="sm" variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>Save</Button>}

@@ -19,6 +19,7 @@ export function ConvertDialog({ hostIds, onClose }: { hostIds: string[]; onClose
   const [preset, setPreset] = useState("managed");
   const [canary, setCanary] = useState(1);
   const [batch, setBatch] = useState(5);
+  const [advanced, setAdvanced] = useState(false);
   const preview = useMutation({
     mutationFn: () => unwrap(api.POST("/agents/conversions/preview", { body: { host_ids: hostIds } })),
     onSuccess: setPv,
@@ -53,16 +54,25 @@ export function ConvertDialog({ hostIds, onClose }: { hostIds: string[]; onClose
                 <option value="full">Full (root-equivalent)</option>
               </Select>
             </Field>
-            <Field label="Canary hosts" hint="Converted first, alone"><Input type="number" min={1} max={50} value={canary} onChange={(e) => setCanary(Number(e.target.value) || 1)} /></Field>
-            <Field label="Batch size" hint="Hosts at a time after the canary"><Input type="number" min={1} max={50} value={batch} onChange={(e) => setBatch(Number(e.target.value) || 5)} /></Field>
           </div>
+          <p>
+            {canary === 1 ? "One host first" : `${canary} hosts first`}, then {batch} at a time; it stops at the first failure.{" "}
+            <button type="button" className="underline underline-offset-2 hover:text-fg pointer-coarse:min-h-11" aria-expanded={advanced}
+              onClick={() => setAdvanced(!advanced)}>{advanced ? "Hide the rollout settings" : "Change the rollout…"}</button>
+          </p>
+          {advanced && (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label="Canary hosts" hint="Converted first, alone"><Input type="number" min={1} max={50} value={canary} onChange={(e) => setCanary(Number(e.target.value) || 1)} /></Field>
+              <Field label="Batch size" hint="Hosts at a time after the canary"><Input type="number" min={1} max={50} value={batch} onChange={(e) => setBatch(Number(e.target.value) || 5)} /></Field>
+            </div>
+          )}
           <p className="text-xs text-muted">
             Each host gets the agent over its already trusted SSH connection with a short-lived, single-use token on stdin; the agent creates
             its own identity key and must connect back over mutual TLS before the host counts as converted. SSH stays configured as the
             fallback. The rollout pauses at the first failure, and a failed host stays managed over SSH.
           </p>
           {start.error && <Alert>{errorMessage(start.error)}</Alert>}
-          {start.data && <Alert tone="ok">Started. Follow it under <Link className="underline" to="/agents">Agents → Rollouts</Link>.</Alert>}
+          {start.data && <Alert tone="ok">Started. Follow it under <Link className="underline" to="/agents">Shepherds → Installing Shepherds</Link>.</Alert>}
           <div className="flex justify-end gap-2">
             <Button onClick={onClose}>{start.data ? "Close" : "Cancel"}</Button>
             {!start.data && <Button variant="primary" disabled={n === 0 || start.isPending} onClick={() => start.mutate()}>{start.isPending ? "Starting…" : `Convert ${n} host${n === 1 ? "" : "s"}`}</Button>}

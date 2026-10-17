@@ -293,8 +293,12 @@ test("bulk: helpers and Shepherd (agent) conversion previews", async () => {
   await page.waitForSelector('[role="dialog"]');
   await waitText(page, "Compatible:");
   const t = await page.$eval('[role="dialog"]', (d) => d.innerText);
-  assert.match(t, /Canary hosts/);
+  // The rollout in words; its numbers only when asked for.
+  assert.match(t, /One host first, then 5 at a time; it stops at the first failure/);
+  assert.doesNotMatch(t, /Canary hosts/);
   assert.match(t, /single-use token/);
+  await click(page, '[role="dialog"] button', "Change the rollout…");
+  await waitText(page, "Canary hosts");
   await shot(page, "monitoring-convert-preview");
   await page.keyboard.press("Escape");
   assert.deepEqual(page.errors, []);
