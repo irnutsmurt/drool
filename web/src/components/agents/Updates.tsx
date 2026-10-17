@@ -84,10 +84,12 @@ function useSavePolicy() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (p: Policy) => unwrap(api.PUT("/agents/updates/policy", { body: p })),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ak.updateStatus });
-      void qc.invalidateQueries({ queryKey: ak.policy });
-    },
+    // Pending until the page has the saved policy back, so a control can
+    // show the saved choice the whole time.
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ak.updateStatus }),
+      qc.invalidateQueries({ queryKey: ak.policy }),
+    ]),
   });
 }
 
@@ -134,7 +136,10 @@ function Overview({ st, manage }: { st: UpdateStatus; manage: boolean }) {
     mutationFn: () => unwrap(api.POST("/agents/updates/check")),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ak.updateStatus }),
   });
-  const p = st.policy;
+  // The two settings save at once and stay enabled while they do: a control
+  // disabled under the keyboard focus loses it to the top of the document.
+  // Until the saved policy is back, they show the choice being saved.
+  const p = save.isPending && save.variables ? save.variables : st.policy;
   const look = stateLook[st.state];
   const notice = officialNotice(st);
   const automatic = p.policy === "automatic";
@@ -169,7 +174,7 @@ function Overview({ st, manage }: { st: UpdateStatus; manage: boolean }) {
           <dt className="font-medium sm:pt-0.5">Automatic updates</dt>
           <dd>
             {manage ? (
-              <Checkbox checked={automatic} disabled={save.isPending} onChange={(v) => save.mutate({ ...p, policy: v ? "automatic" : "manual" })}
+              <Checkbox checked={automatic} onChange={(v) => save.mutate({ ...p, policy: v ? "automatic" : "manual" })}
                 label="Update Shepherds automatically"
                 hint={automatic
                   ? `On (recommended): one Shepherd updates first, then batches of ${p.batch_size}; updates pause if one fails.`
@@ -182,7 +187,7 @@ function Overview({ st, manage }: { st: UpdateStatus; manage: boolean }) {
           <dd>
             {manage ? (
               <>
-                <Select className="max-w-xs" aria-label="Update channel" value={p.channel} disabled={save.isPending}
+                <Select className="max-w-xs" aria-label="Update channel" value={p.channel}
                   onChange={(e) => save.mutate({ ...p, channel: e.target.value })}>
                   {channels.map((ch) => <option key={ch} value={ch}>{channelLabel(ch)}</option>)}
                 </Select>
@@ -200,7 +205,9 @@ function Overview({ st, manage }: { st: UpdateStatus; manage: boolean }) {
                   : st.check.last_success ? <span title={formatDateTime(st.check.last_success)}>{formatAgo(st.check.last_success)}</span>
                     : <span className="text-muted">Not checked yet: DROOL checks shortly after it starts.</span>}
               {manage && st.check.enabled && (
-                <Button size="sm" onClick={() => check.mutate()} disabled={check.isPending || st.check.checking}>Check now</Button>
+                // Enabled while a check runs, for the keyboard focus: presses
+                // meanwhile ask for at most one more check.
+                <Button size="sm" onClick={() => check.mutate()}>Check now</Button>
               )}
             </div>
             {st.official.state === "verified" && <p className="text-xs text-muted">{st.official.detail}</p>}

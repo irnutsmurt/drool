@@ -215,6 +215,10 @@ These are requirements, not aims. Check them at **1440, 1280, 1024 and 390 px**,
 - **Popovers** (the security status, the account menu): Escape closes them and returns focus to their button.
 - **When the focused element disappears** (the row a confirmed removal took away), focus goes to the dialog on top or to
   the main content, never back to the top of the document (`watchFocusLoss` in `ui/modal.ts`). Don't work around it.
+- **A setting keeps the focus while it saves.** A checkbox, select or button that is disabled while its own request
+  runs loses the focus to the top of the document. Keep it enabled and show the choice being saved; if a second
+  request could do harm, the server refuses or merges it (Shepherds → Updates). Older buttons that still disable
+  themselves are recorded in ARCHITECTURE-ALPHA §42.8.
 - **A box that scrolls on its own**, such as a long list inside a dialog, is reachable from the keyboard: give it
   `tabIndex={0}`, `role="region"` and a name.
 

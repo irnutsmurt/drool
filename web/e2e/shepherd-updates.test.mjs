@@ -61,19 +61,39 @@ test("the update page: status first, two settings, the rest under Advanced", asy
   await shot(admin, "updates-first-screen");
 
   // Turning automatic updates off and on saves at once: no confirmation for
-  // a setting.
-  await auto.click();
-  await waitFor(admin, async () => (await policy()).policy === "manual", "automatic updates off");
-  await waitText(admin, "Shepherds update only when someone starts an update");
-  await (await admin.$('[data-testid="updates-overview"] input[type=checkbox]')).click();
-  await waitFor(admin, async () => (await policy()).policy === "automatic", "automatic updates back on");
+  // a setting. From the keyboard, the focus stays on the box while it saves,
+  // and the box shows the choice: saving is held back here to see that.
+  const onBox = () => document.activeElement?.matches('[data-testid="updates-overview"] input[type=checkbox]') ?? false;
+  const slowSave = (r) => {
+    if (r.method() === "PUT" && r.url().endsWith("/agents/updates/policy")) sleep(800).then(() => r.continue());
+    else r.continue();
+  };
+  await admin.setRequestInterception(true);
+  admin.on("request", slowSave);
+  try {
+    await auto.focus();
+    await admin.keyboard.press("Space");
+    await sleep(400);
+    assert.ok(await admin.evaluate(onBox), "the focus stays on the box while it saves");
+    assert.equal(await auto.evaluate((x) => x.checked), false, "the box shows the choice being saved");
+    await waitFor(admin, async () => (await policy()).policy === "manual", "automatic updates off");
+    await waitText(admin, "Shepherds update only when someone starts an update");
+    await admin.keyboard.press("Space");
+    await waitFor(admin, async () => (await policy()).policy === "automatic", "automatic updates back on");
+    await waitText(admin, "On (recommended)");
+    assert.ok(await admin.evaluate(onBox), "the focus is still on the box");
+  } finally {
+    admin.off("request", slowSave);
+    await admin.setRequestInterception(false);
+  }
   await admin.select('select[aria-label="Update channel"]', "prerelease");
   await waitFor(admin, async () => (await policy()).channel === "prerelease", "the release candidate channel");
   await admin.select('select[aria-label="Update channel"]', "stable");
   await waitFor(admin, async () => (await policy()).channel === "stable", "back to stable");
 
   // Advanced settings: one keyboard step away, in the address.
-  await tabTo(admin, () => document.activeElement?.textContent?.includes("Advanced settings"), "the Advanced settings button");
+  await tabTo(admin, () => document.activeElement?.matches("button[aria-expanded]") && document.activeElement.textContent.includes("Advanced settings"),
+    "the Advanced settings button");
   assert.equal(await admin.evaluate(() => document.activeElement.getAttribute("aria-expanded")), "false");
   await admin.keyboard.press("Enter");
   await waitText(admin, "How updates roll out");
@@ -86,8 +106,11 @@ test("the update page: status first, two settings, the rest under Advanced", asy
   assert.match(adv, /none in this build/);
   await shot(admin, "updates-advanced");
   // Saving the rollout settings keeps the rest of the policy.
+  // A number input: triple-click doesn't select it; End and Backspace clear it.
   const canary = await admin.$('xpath///label[.//span[text()="Hosts first (canary)"]]//input');
-  await canary.click({ clickCount: 3 });
+  await canary.click();
+  await admin.keyboard.press("End");
+  await admin.keyboard.press("Backspace");
   await canary.type("2");
   await click(admin, "button", "Save rollout settings");
   await waitFor(admin, async () => { const p = await policy(); return p.canary === 2 && p.policy === "automatic" && p.channel === "stable"; }, "the canary saved");
@@ -121,7 +144,8 @@ test("installing a Shepherd needs no key; your own key is optional, under Advanc
   await click(admin, "main button", "Install Shepherd (DROOL agent)");
   await waitText(admin, "takes official DROOL updates by itself");
   const dialog = await admin.$('[data-testid="install-shepherd"]');
-  const visible = await dialog.evaluate((d) => [...d.querySelectorAll("input")].filter((i) => i.offsetParent !== null && i.type !== "radio").length);
+  // checkVisibility: a closed <details> keeps its content laid out (offsetParent is set) but hidden.
+  const visible = await dialog.evaluate((d) => [...d.querySelectorAll("input")].filter((i) => i.checkVisibility() && i.type !== "radio").length);
   assert.equal(visible, 0, "no key field until Advanced is opened");
   await click(admin, '[data-testid="install-shepherd"] summary', "Advanced: also trust your own release-signing key");
   await waitText(admin, "Your release-signing public key");
