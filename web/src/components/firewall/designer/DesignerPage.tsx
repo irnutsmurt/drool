@@ -19,6 +19,7 @@ import { RulesView } from "./RulesView";
 import { YamlView } from "./YamlView";
 import { RuleDialog } from "./RuleDialog";
 import { Inspector, MgmtAlerts, PreviewPanel } from "./Panels";
+import { TabPanel, Tabs } from "@/components/ui/Tabs";
 
 const views = [
   { id: "topology", label: "Topology" },
@@ -201,20 +202,16 @@ export function DesignerPage() {
           )}
         </div>
         {showPanel && <aside id="designer-side" className="rounded-ui border border-line bg-surface p-3" aria-label="Details and preview">
-          <div role="tablist" aria-label="Side panel" className="mb-3 flex gap-1 border-b border-line">
-            {(["preview", "details"] as const).map((s) => (
-              <button key={s} role="tab" aria-selected={side === s} onClick={() => setSide(s)}
-                className={cx("-mb-px border-b-2 px-2 py-1 text-sm", side === s ? "border-accent font-medium" : "border-transparent text-muted")}>
-                {s === "preview" ? "Preview" : "Details"}
-              </button>
-            ))}
-          </div>
-          {side === "preview" ? (
-            <PreviewPanel check={d.check} canApply={can("firewall.write")} onApply={(ids) => setApplyTo(ids)} />
-          ) : (
-            <Inspector selection={selection} doc={d.draft} services={services} hosts={hosts} management={d.management}
-              onEditRule={(index) => setRuleDialog({ index })} onClose={() => setSelection(null)} />
-          )}
+          <Tabs label="Side panel" id="designer-side" className="mb-3" small current={side} onSelect={setSide}
+            tabs={[{ key: "preview", label: "Preview" }, { key: "details", label: "Details" }]} />
+          <TabPanel id="designer-side" current={side}>
+            {side === "preview" ? (
+              <PreviewPanel check={d.check} canApply={can("firewall.write")} onApply={(ids) => setApplyTo(ids)} />
+            ) : (
+              <Inspector selection={selection} doc={d.draft} services={services} hosts={hosts} management={d.management}
+                onEditRule={(index) => setRuleDialog({ index })} onClose={() => setSelection(null)} />
+            )}
+          </TabPanel>
         </aside>}
       </div>
 

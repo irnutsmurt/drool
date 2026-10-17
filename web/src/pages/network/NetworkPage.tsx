@@ -20,6 +20,7 @@ import {
 } from "@/components/network/queries";
 import { plainLink } from "@/components/ui/links";
 import { Dialog } from "@/components/ui/Dialog";
+import { TabPanel, Tabs } from "@/components/ui/Tabs";
 
 const tabs = [
   { id: "activity", label: "Connections" },
@@ -47,17 +48,11 @@ export function NetworkPage() {
             <Link to="/firewall?tab=simulate" className={secondaryLink}>Can A reach B?</Link>
           </>
         )} />
-      <div role="tablist" aria-label="Network views" className="mb-4 flex gap-1 overflow-x-auto border-b border-line">
-        {tabs.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
-            className={cx("-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm", tab === t.id ? "border-accent font-medium" : "border-transparent text-muted hover:text-fg")}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <div role="tabpanel" aria-label={tabs.find((t) => t.id === tab)!.label}>
+      <Tabs label="Network views" id="net" className="mb-4 overflow-x-auto" current={tab}
+        tabs={tabs.map((t) => ({ key: t.id, label: t.label }))} onSelect={setTab} />
+      <TabPanel id="net" current={tab}>
         {tab === "activity" ? <Activity /> : tab === "classifications" ? <ClassificationsTab /> : <SettingsTab />}
-      </div>
+      </TabPanel>
     </>
   );
 }

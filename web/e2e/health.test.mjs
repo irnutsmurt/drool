@@ -158,7 +158,7 @@ test("group: overrides only when chosen, with an impact preview; hosts show the 
   await api(page, "PATCH", `/groups/${g.id}`, { host_ids: [page.ids["gpu-01"], page.ids["nas-01"]] });
   try {
     await go("/groups");
-    await click(page, "button", "Monitoring overrides for e2e-render");
+    await click(page, "button", "Customize monitoring: e2e-render");
     await waitFor(page, async () => /Monitoring overrides: e2e-render/.test((await page.$('[role="dialog"]')) ? await dialogText() : ""), "group dialog");
     assert.match(await dialogText(), /2 hosts/);
     await click(page, '[role="dialog"] button', "Customize High CPU utilization");

@@ -20,7 +20,7 @@
   --ui-line: #dde1e7;
   --ui-text: #16191d;
   --ui-muted: #5d6673;
-  --ui-accent: #2f6fde;
+  --ui-accent: #2459bd;
   --ui-accent-fg: #ffffff;
   --ui-danger: #b93232;
   --ui-danger-fg: #ffffff;
@@ -65,7 +65,7 @@
     --ui-line: #2e353d;
     --ui-text: #e6e9ed;
     --ui-muted: #9aa4b0;
-    --ui-accent: #6b9ff2;
+    --ui-accent: #7dabf4;
     --ui-accent-fg: #0b0e12;
     --ui-danger: #f07878;
     --ui-danger-fg: #1c0b0b;
@@ -105,7 +105,7 @@
   --ui-line: #2e353d;
   --ui-text: #e6e9ed;
   --ui-muted: #9aa4b0;
-  --ui-accent: #6b9ff2;
+  --ui-accent: #7dabf4;
   --ui-accent-fg: #0b0e12;
   --ui-danger: #f07878;
   --ui-danger-fg: #1c0b0b;
@@ -195,6 +195,13 @@ body {
   --xy-edge-label-background-color: var(--ui-surface);
 }
 
+/* A box on the topology shows keyboard focus like every other control
+ * (React Flow turns its outline off). */
+.react-flow .react-flow__node.selectable:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
 /* Connection handles big enough to grab. */
 .react-flow__node .react-flow__handle {
   width: 11px;
@@ -234,81 +241,124 @@ body {
   textarea:focus-visible {
     outline-offset: 0;
   }
+  /* A link inside a sentence is underlined: its colour alone doesn't set
+   * it apart from the words around it (WCAG 1.4.1). Links that stand on
+   * their own (a table's name, a card's action) don't need it. */
+  :where(p) a:not(:where(.inline-flex, .no-underline)) {
+    text-decoration-line: underline;
+    text-underline-offset: 2px;
+  }
+  /* Touch screens: what a finger taps — buttons, fields, tabs, menu
+   * items, navigation, a checkbox's label, a card's title link — is at
+   * least 44 px tall (and icon-only buttons as wide: pointer-coarse:min-w-11
+   * where they are made; a minimum width here would let words in a row of
+   * tabs shrink into each other). Nothing changes with a mouse; links and
+   * link-styled buttons inside sentences keep their size, and the topology
+   * canvas keeps its own. */
+  @media (pointer: coarse) {
+    :where(button, select, summary, [role="tab"], [role="menuitem"], input:not([type="checkbox"], [type="radio"], [type="range"], [type="hidden"], [type="file"])):not(:where(.underline, .react-flow *)) {
+      min-height: 44px;
+    }
+    :where(label:has(> input[type="checkbox"], > input[type="radio"])) {
+      min-height: 44px;
+    }
+    :where(label:has(> input[type="checkbox"]:only-child), label:has(> input[type="checkbox"] + .rt-card-only)) {
+      min-width: 44px;
+      justify-content: center;
+    }
+    :where(nav a, td[data-primary] a, a.inline-flex):not(:where(.react-flow *)) {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+    }
+  }
 }
 
 /*
- * Narrow screens: tables marked .rtable (the Table component's default)
- * become a stack of cards, one per row, each cell a "Header: value" line
- * (the header comes from data-label). The row's primary cell titles the
- * card. Tables whose columns only make sense side by side scroll
- * sideways instead (Table mobile="scroll").
+ * Tables marked .rtable (the Table component's default) never hide columns
+ * behind a sideways scroll: on a phone, and wherever their columns don't
+ * fit the width they have (a 1024 px window beside the sidebar, a side
+ * panel), they become a stack of cards, one per row, each cell a
+ * "Header: value" line (the header comes from data-label). The row's
+ * primary cell titles the card. lib/tableFit.ts decides, per table, by
+ * setting data-cards. Tables whose columns only make sense side by side
+ * scroll sideways instead (Table mobile="scroll").
  */
-@media (max-width: 767.98px) {
-  table.rtable,
-  table.rtable > tbody,
-  table.rtable > tbody > tr,
-  table.rtable > tbody > tr > td {
-    display: block;
-    width: 100%;
-  }
-  table.rtable > thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-  table.rtable > tbody > tr {
-    display: flex;
-    flex-direction: column;
-    border: 1px solid var(--ui-line);
-    border-radius: var(--ui-radius);
-    padding: 0.5rem 0.75rem;
-    margin-bottom: 0.5rem;
-  }
-  table.rtable > tbody > tr > td {
-    display: grid;
-    grid-template-columns: minmax(6rem, 34%) minmax(0, 1fr);
-    column-gap: 0.75rem;
-    align-items: baseline;
-    justify-items: start;
-    padding: 0.2rem 0;
-    text-align: left;
-  }
-  table.rtable > tbody > tr > td::before {
-    content: attr(data-label);
-    color: var(--ui-muted);
-    font-size: 12px;
-  }
-  /* A value made of several blocks (two services, a figure and its bar)
-     stays in the value column instead of wrapping under the label. */
-  table.rtable > tbody > tr > td > * {
-    grid-column: 2;
-  }
-  table.rtable > tbody > tr > td[data-primary] {
-    order: -1;
-    display: block;
-    font-size: 15px;
-    padding-bottom: 0.35rem;
-  }
-  table.rtable > tbody > tr > td[data-primary]::before,
-  table.rtable > tbody > tr > td[data-label=""]::before {
-    content: none;
-  }
-  table.rtable > tbody > tr > td[data-label=""] {
-    display: block;
-  }
-  table.rtable > tbody > tr > td:empty {
-    display: none;
-  }
-  table.rtable > tbody > tr:has(> td.rt-empty) {
-    border: 0;
-    padding: 0;
-  }
-  table.rtable > tbody > tr > td.rt-empty {
-    display: block;
-    text-align: center;
-    padding: 1.5rem 0.75rem;
-  }
+table.rtable[data-cards],
+table.rtable[data-cards] > tbody,
+table.rtable[data-cards] > tbody > tr,
+table.rtable[data-cards] > tbody > tr > td {
+  display: block;
+  width: 100%;
+}
+table.rtable[data-cards] > thead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+table.rtable[data-cards] > tbody > tr {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius);
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+table.rtable[data-cards] > tbody > tr > td {
+  display: grid;
+  grid-template-columns: minmax(6rem, 34%) minmax(0, 1fr);
+  column-gap: 0.75rem;
+  align-items: baseline;
+  justify-items: start;
+  padding: 0.2rem 0;
+  text-align: left;
+}
+table.rtable[data-cards] > tbody > tr > td::before {
+  content: attr(data-label);
+  color: var(--ui-muted);
+  font-size: 12px;
+}
+/* A value made of several blocks (two services, a figure and its bar)
+   stays in the value column instead of wrapping under the label, and
+   never wider than it: a long value wraps or truncates inside the card. */
+table.rtable[data-cards] > tbody > tr > td > * {
+  grid-column: 2;
+  max-width: 100%;
+  min-width: 0;
+}
+table.rtable[data-cards] > tbody > tr > td[data-primary] {
+  order: -1;
+  display: block;
+  font-size: 15px;
+  padding-bottom: 0.35rem;
+}
+table.rtable[data-cards] > tbody > tr > td[data-primary]::before,
+table.rtable[data-cards] > tbody > tr > td[data-label=""]::before {
+  content: none;
+}
+table.rtable[data-cards] > tbody > tr > td[data-label=""] {
+  display: block;
+}
+table.rtable[data-cards] > tbody > tr > td:empty {
+  display: none;
+}
+table.rtable[data-cards] > tbody > tr:has(> td.rt-empty) {
+  border: 0;
+  padding: 0;
+}
+table.rtable[data-cards] > tbody > tr > td.rt-empty {
+  display: block;
+  text-align: center;
+  padding: 1.5rem 0.75rem;
+}
+/* Words a card needs that the table's header row says otherwise (a row's
+ * "Select" box). */
+.rt-card-only {
+  display: none;
+}
+table.rtable[data-cards] .rt-card-only {
+  display: inline;
 }

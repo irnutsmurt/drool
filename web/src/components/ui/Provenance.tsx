@@ -56,7 +56,8 @@ export function Provenance({ layers, label, note, compact }: { layers: Provenanc
 /** The order scopes inherit in, most specific last ("most specific wins"). */
 export function ScopeLegend({ scopes, label = "Inheritance" }: { scopes: string[]; label?: string }) {
   return (
-    <p className="flex flex-wrap items-center gap-1 text-xs text-muted" aria-label={`${label}: ${scopes.join(", then ")}; the most specific wins`}>
+    <p className="flex flex-wrap items-center gap-1 text-xs text-muted">
+      <span className="sr-only">{`${label}: ${scopes.join(", then ")}; the most specific wins`}</span>
       <span aria-hidden="true" className="mr-1">{label}:</span>
       {scopes.map((s, i) => (
         <Fragment key={s}>

@@ -3,7 +3,7 @@ import { Alert } from "@/components/ui/Alert";
 import { cx } from "@/components/ui/cx";
 import { errorMessage } from "@/lib/format";
 import { useHostMonitoring, type MonHostOverview } from "./queries";
-import { StatusIcon, statusOf } from "./Status";
+import { StatusIcon, statusOf, statusWord } from "./Status";
 import { fmtSince } from "./format";
 
 const tileTab: Record<string, string> = {
@@ -27,14 +27,14 @@ export function MonitoringTiles({ hostId, o, compact }: { hostId: string; o: Mon
       {o.tiles.map((t) => (
         <li key={t.key}>
           <Link to={`/hosts/${hostId}/monitoring?tab=${tileTab[t.key] ?? "overview"}`}
-            className="flex h-full flex-col gap-1 rounded-ui border border-line p-3 hover:border-accent focus-visible:outline-2 focus-visible:outline-accent"
-            aria-label={`${t.label}: ${t.text}${t.status !== "ok" ? ` (${t.status})` : ""}${t.detail ? `. ${t.detail}` : ""}. Open details`}>
+            className="flex h-full flex-col gap-1 rounded-ui border border-line p-3 hover:border-accent focus-visible:outline-2 focus-visible:outline-accent">
             <span className="flex items-center justify-between text-xs text-muted">
               {t.label}
               <StatusIcon status={statusOf(t.status)} />
             </span>
             <span className={cx("font-semibold tabular-nums", compact ? "text-base leading-snug" : "text-lg")}>{t.text}</span>
             {t.detail && <span className="truncate text-xs text-muted" title={t.detail}>{t.detail}</span>}
+            <span className="sr-only">{`. ${statusWord(statusOf(t.status))}. Show details`}</span>
           </Link>
         </li>
       ))}

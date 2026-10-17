@@ -121,24 +121,27 @@ export function MenuButton({ label, items, align = "end", size = "md", testId, a
     }
   };
 
+  // Keyboard focus: the shared outline, drawn inside the item (a background
+  // tint alone is too faint to see).
   const itemClass = (x: MenuItem) => cx(
-    "flex w-full flex-col items-start rounded-ui px-3 py-2 text-left text-sm outline-none",
+    "flex w-full flex-col items-start rounded-ui px-3 py-2 text-left text-sm focus-visible:-outline-offset-2",
     x.disabled ? "cursor-not-allowed opacity-50" : "hover:bg-surface-2 focus:bg-surface-2",
     x.danger && !x.disabled ? "text-danger" : "text-fg",
   );
   return (
     <div ref={box} className="relative inline-block">
-      <button ref={button} type="button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} data-testid={testId}
+      <button ref={button} id={`${id}-button`} type="button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} data-testid={testId}
         aria-label={ariaLabel} onClick={() => setOpen((v) => !v)}
         onKeyDown={(e) => { if (e.key === "ArrowDown" && !open) { e.preventDefault(); setOpen(true); } }}
         className={cx("inline-flex items-center justify-center gap-1.5 rounded-ui font-medium text-fg hover:bg-surface-2",
           ghost ? "" : "border border-line bg-surface",
-          size === "sm" ? "h-7 px-2.5 text-xs" : "h-9 px-3.5 text-sm")}>
+          size === "sm" ? "h-7 px-2.5 text-xs" : "h-9 px-3.5 text-sm",
+          ariaLabel && "pointer-coarse:min-w-11")}>
         {label}
         {!ghost && <ChevronDownIcon width={14} height={14} />}
       </button>
       {open && createPortal(
-        <div ref={list} id={id} role="menu" aria-orientation="vertical" onKeyDown={onKey}
+        <div ref={list} id={id} role="menu" aria-labelledby={`${id}-button`} aria-orientation="vertical" onKeyDown={onKey}
           style={{ position: "fixed", top: pos?.top ?? 0, left: pos?.left ?? 0, visibility: pos ? "visible" : "hidden" }}
           className="z-50 w-64 max-w-[calc(100vw-1rem)] rounded-ui border border-line bg-surface p-1 shadow-lg">
           {shown.map((x, i) => (

@@ -28,7 +28,7 @@ export function YamlView({ text, onChange, problems, broken, readOnly }: {
         Comments and custom formatting are not kept. Names can be written bare when unambiguous (<code>web1</code>), or as <code>host:web1</code>, <code>group:web</code>, <code>network:admin-lan</code>; addresses as CIDRs; and <code>internet</code>, <code>internal</code>, <code>any</code>.
       </p>
       {broken && <div role="alert" className="rounded-ui border border-danger bg-danger-bg px-3 py-1.5 text-sm">This YAML doesn&apos;t parse yet; the topology and rules show the last version that did.</div>}
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-ui border border-line bg-surface font-mono text-[13px] leading-5">
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-ui border border-line bg-surface font-mono text-[13px] leading-5 has-[textarea:focus-visible]:border-accent has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-accent/25">
         <div ref={gutter} aria-hidden className="select-none overflow-hidden border-r border-line bg-surface-2 px-2 py-2 text-right text-muted">
           {Array.from({ length: lines }, (_, i) => (
             <div key={i} className={bad.has(i + 1) ? "font-bold text-danger" : undefined}>{i + 1}</div>

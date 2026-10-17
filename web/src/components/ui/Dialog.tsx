@@ -67,7 +67,7 @@ export function Dialog({ title, children, onClose, wide, footer, testId }: {
         )}
         {/* Last in the tab order: the first field keeps the initial focus. */}
         <button type="button" onClick={onClose} aria-label="Close dialog"
-          className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-ui text-muted hover:bg-surface-2 hover:text-fg">
+          className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-ui text-muted hover:bg-surface-2 hover:text-fg pointer-coarse:h-11 pointer-coarse:w-11">
           <CloseIcon />
         </button>
       </div>

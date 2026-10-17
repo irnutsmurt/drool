@@ -116,7 +116,7 @@ function SSHAccessCard({ h }: { h: Host }) {
         <dt className="text-muted">SSH</dt><dd className="min-w-0 break-all"><span className="font-mono text-xs">{h.user}@{h.address}:{h.port}</span></dd>
         <dt className="text-muted">Credential</dt>
         <dd>
-          {h.credential_id && can("credentials.use") ? <Link className="text-accent" to="/credentials">{credName(h.credential_id)}</Link> : credName(h.credential_id) || "—"}
+          {h.credential_id && can("credentials.use") ? <Link className={plainLink} to="/credentials">{credName(h.credential_id)}</Link> : credName(h.credential_id) || "—"}
           {h.ssh_auth === "certificate" && h.credential_id && <span className="text-muted"> (kept as a way back; DROOL signs in with certificates)</span>}
         </dd>
         <dt className="text-muted">Privilege</dt>

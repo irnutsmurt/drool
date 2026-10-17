@@ -9,11 +9,11 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CodeBlock } from "@/components/ui/CodeBlock";
-import { cx } from "@/components/ui/cx";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { errorMessage, formatAgo } from "@/lib/format";
 import { ApplyDialog, ExplainTable, modeInfo, PolicyEditor, statusLabels, TxList } from "./parts";
 import { fk, useFwHost, useFwSuggestions, useFwTransactions, type FwPlan, type FwSuggestion } from "./queries";
+import { TabPanel, Tabs } from "@/components/ui/Tabs";
 
 /** A host's firewall (DESIGN §15–19), on its own page: mode,
  *  environment, what is enforced and why, observations, and transactions. */
@@ -35,13 +35,9 @@ export function HostFirewall({ host }: { host: Host }) {
         <Status p={p} host={host} />
       </Card>
       <Card>
-        <div role="tablist" aria-label="Firewall details" className="-mt-1 flex gap-1 overflow-x-auto border-b border-line">
-          {([["explain", "Effective policy"], ["observed", "Observed connections"], ["history", "Transactions"], ["advanced", "Generated nftables"]] as const).map(([id, label]) => (
-            <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-              className={cx("-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm", tab === id ? "border-accent font-medium" : "border-transparent text-muted hover:text-fg")}>{label}</button>
-          ))}
-        </div>
-        <div className="pt-3" role="tabpanel">
+        <Tabs label="Firewall details" id="hostfw" className="-mt-1 overflow-x-auto" current={tab} onSelect={setTab}
+          tabs={[{ key: "explain", label: "Effective policy" }, { key: "observed", label: "Observed connections" }, { key: "history", label: "Transactions" }, { key: "advanced", label: "Generated nftables" }]} />
+        <TabPanel id="hostfw" current={tab} className="pt-3">
           {tab === "explain" && <ExplainSection p={p} />}
           {tab === "observed" && <Observed p={p} />}
           {tab === "history" && <History hostId={host.id} />}
@@ -53,7 +49,7 @@ export function HostFirewall({ host }: { host: Host }) {
               <p className="text-xs text-muted">rules {p.rendered.rules_hash.slice(0, 16)} · sets {p.rendered.sets_hash.slice(0, 16)}</p>
             </div>
           )}
-        </div>
+        </TabPanel>
       </Card>
     </div>
   );

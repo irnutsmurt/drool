@@ -73,7 +73,7 @@ export function TokensPage() {
             {
               header: "",
               cell: (t) => (
-                <Button size="sm" variant="danger" disabled={revoke.isPending}
+                <Button size="sm" variant="danger" disabled={revoke.isPending} aria-label={`Revoke: ${t.name}`}
                   onClick={() => void confirmAction({ title: `Revoke the API token “${t.name}”?`, confirmLabel: "Revoke token", danger: true,
                     body: <p>Scripts and integrations using it stop working at once. A revoked token can&apos;t be restored: create a new one if it is still needed.</p> })
                     .then((ok) => ok && revoke.mutate(t.id))}>

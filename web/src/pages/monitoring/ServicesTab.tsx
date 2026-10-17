@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useAuth } from "@/auth/AuthContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useTableFits } from "@/hooks/useTableFits";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -98,6 +99,7 @@ export function ServicesTab({ id, o, hostName }: { id: string; o: MonHostOvervie
   const [acting, setActing] = useState<MonService | null>(null);
   const [custom, setCustom] = useState<MonService | null>(null);
   const phone = useMediaQuery("(max-width: 767.98px)");
+  const fit = useTableFits();
   const q = useServices(id, filter, all);
   const { can } = useAuth();
   const v = q.data;
@@ -149,7 +151,7 @@ export function ServicesTab({ id, o, hostName }: { id: string; o: MonHostOvervie
       {q.error && <Alert>{errorMessage(q.error)}</Alert>}
       {v && !v.supported && <p className="text-sm text-muted">{v.note || "No service inventory for this host."}</p>}
       {v?.supported && (
-        <div className="space-y-3">
+        <div ref={fit.outer} className="space-y-3">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <Input className="h-8 max-w-[16rem]" aria-label="Find a service" placeholder="Find a service…" value={find}
               onChange={(e) => setFindText(e.target.value)} />
@@ -167,7 +169,7 @@ export function ServicesTab({ id, o, hostName }: { id: string; o: MonHostOvervie
             <Checkbox label={`Show all units (advanced${v.hidden ? `, ${v.hidden} hidden` : ""})`} checked={all} onChange={(on) => { setAll(on); setLimit(0); }} />
             <span className="ml-auto text-xs text-muted">{v.source === "ssh" ? "Polled over SSH" : "Reported by the Shepherd"} · {fmtSince(v.updated_at)}</span>
           </div>
-          <div className="hidden overflow-x-auto md:block">
+          <div ref={fit.inner} className={cx("hidden overflow-x-auto", fit.fits && "md:block")}>
             <table className="w-full text-left text-sm">
               <caption className="sr-only">Services ({filter})</caption>
               <thead>
@@ -200,8 +202,9 @@ export function ServicesTab({ id, o, hostName }: { id: string; o: MonHostOvervie
               </tbody>
             </table>
           </div>
-          {/* Phones: one compact entry per service, the essentials only. */}
-          <ul className="divide-y divide-line md:hidden" aria-label="Services">
+          {/* Phones, and where the table doesn't fit: one compact entry per
+              service, the essentials only. */}
+          <ul className={cx("divide-y divide-line", fit.fits && "md:hidden")} aria-label="Services">
             {shown.length === 0 && <li className="py-6 text-center text-sm text-muted">No services match.</li>}
             {shown.map((u) => (
               <li key={u.name} data-unit={u.name} className={cx("py-2.5", u.name === wanted && "bg-accent/10")}>

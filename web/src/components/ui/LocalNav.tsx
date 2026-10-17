@@ -20,10 +20,10 @@ export function LocalNav({ label, tabs }: { label: string; tabs: LocalTab[] }) {
         {tabs.map((t) => (
           <li key={t.to}>
             <Link to={t.to} aria-current={t.current ? "page" : undefined}
-              className={cx("-mb-px inline-block whitespace-nowrap border-b-2 px-3 py-2 text-sm",
+              className={cx("-mb-px inline-block whitespace-nowrap border-b-2 px-3 py-2 text-sm pointer-coarse:py-3",
                 t.current ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg")}>
               {t.label}
-              {t.count != null && <span className="ml-1.5 tabular-nums text-muted">{t.count}</span>}
+              {t.count != null && <span className="ml-1.5 tabular-nums text-muted" data-count="">{t.count}</span>}
             </Link>
           </li>
         ))}

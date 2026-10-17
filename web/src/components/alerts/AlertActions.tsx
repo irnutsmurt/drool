@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Inspector } from "@/components/ui/Inspector";
 import { Field } from "@/components/ui/Field";
-import { plainLink } from "@/components/ui/links";
+import { cx } from "@/components/ui/cx";
+import { plainLink, touchLink } from "@/components/ui/links";
 import { errorMessage } from "@/lib/format";
 import { fmtSince, fmtTime } from "@/components/monitoring/format";
 import { MaintenanceForm } from "./MaintenanceDialog";
@@ -38,7 +39,7 @@ export function AlertActionsButton({ a, onOpen }: { a: Alert; onOpen: (a: Alert)
 function Choice({ title, help, onClick, disabled, note }: { title: string; help: ReactNode; onClick: () => void; disabled?: boolean; note?: string }) {
   return (
     <li>
-      <button type="button" onClick={onClick} disabled={disabled} aria-label={title}
+      <button type="button" onClick={onClick} disabled={disabled}
         className="flex w-full flex-col items-start gap-0.5 rounded-ui border border-line bg-surface px-3 py-2 text-left hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50">
         <span className="text-sm font-medium">{title}</span>
         <span className="text-xs text-muted">{help}</span>
@@ -71,7 +72,7 @@ export function AlertInspector({ a, onClose }: { a: Alert; onClose: () => void }
             : (
               <div className="space-y-5 text-sm">
                 <dl className="grid grid-cols-[minmax(6.5rem,8rem)_1fr] gap-y-1.5" data-testid="alert-summary">
-                  <dt className="text-muted">Host</dt><dd><Link className={plainLink} to={`/hosts/${a.host_id}`}>{a.host_name}</Link></dd>
+                  <dt className="text-muted">Host</dt><dd><Link className={cx(plainLink, touchLink)} to={`/hosts/${a.host_id}`}>{a.host_name}</Link></dd>
                   <dt className="text-muted">What</dt><dd>{categoryLabel[a.category] ?? a.category}{a.subject && <span className="font-mono text-xs"> · {a.subject}</span>}</dd>
                   {a.value_text && (<><dt className="text-muted">Now</dt><dd>{a.value_text}</dd></>)}
                   <dt className="text-muted">Since</dt><dd>{fmtTime(a.observed_at ?? a.issue_started_at)} <span className="text-muted">({fmtSince(a.observed_at ?? a.issue_started_at)})</span></dd>
@@ -98,9 +99,9 @@ export function AlertInspector({ a, onClose }: { a: Alert; onClose: () => void }
                 <section aria-label="Look further">
                   <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Look further</h3>
                   <ul className="space-y-1.5">
-                    <li><Link className={plainLink} to={`/hosts/${a.host_id}`}>View host {a.host_name}</Link></li>
-                    <li><Link className={plainLink} to={alertMonitoringLink(a).to}>{alertMonitoringLink(a).label}</Link></li>
-                    <li><Link className={plainLink} to={`/alerts/${a.id}`}>Open the alert</Link> <span className="text-xs text-muted">— its timeline, deliveries and other occurrences</span></li>
+                    <li><Link className={cx(plainLink, touchLink)} to={`/hosts/${a.host_id}`}>View host {a.host_name}</Link></li>
+                    <li><Link className={cx(plainLink, touchLink)} to={alertMonitoringLink(a).to}>{alertMonitoringLink(a).label}</Link></li>
+                    <li><Link className={cx(plainLink, touchLink)} to={`/alerts/${a.id}`}>Open the alert</Link> <span className="text-xs text-muted">— its timeline, deliveries and other occurrences</span></li>
                   </ul>
                 </section>
               </div>

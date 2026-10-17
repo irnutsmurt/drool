@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router";
 import { useAuth, useSetupStatus } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/Button";
@@ -18,6 +18,7 @@ export function SetupPage() {
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  useEffect(() => { document.title = "Set up DROOL"; }, []);
 
   if (me) return <Navigate to="/" replace />;
   if (status.isPending) return <div className="p-8 text-muted">Loading…</div>;

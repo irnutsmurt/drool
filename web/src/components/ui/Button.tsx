@@ -20,7 +20,9 @@ export function Button({
     <button
       className={cx(
         "inline-flex items-center justify-center gap-1.5 rounded-ui font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
-        size === "sm" ? "h-7 px-2.5 text-xs" : "h-9 px-3.5 text-sm",
+        // On touch screens a small button is 44 px tall (index.css) and wide
+        // enough for a finger too.
+        size === "sm" ? "h-7 px-2.5 text-xs pointer-coarse:px-3.5" : "h-9 px-3.5 text-sm",
         variants[variant],
         className,
       )}

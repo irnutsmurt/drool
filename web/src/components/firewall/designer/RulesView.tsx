@@ -83,8 +83,8 @@ function PoliciesCard({ doc, edit, services, hosts, canWrite, highlight = [], fr
                   <td data-label="" className="whitespace-nowrap py-2">
                     {canWrite && (
                       <>
-                        <Button size="sm" variant="ghost" aria-label={`Move ${r.name} up`} disabled={i === 0} onClick={() => edit(moveRule(doc, i, -1))}>↑</Button>
-                        <Button size="sm" variant="ghost" aria-label={`Move ${r.name} down`} disabled={i === doc.policy.length - 1} onClick={() => edit(moveRule(doc, i, 1))}>↓</Button>
+                        <Button size="sm" variant="ghost" aria-label={`Move ${r.name} up`} className="pointer-coarse:min-w-11" disabled={i === 0} onClick={() => edit(moveRule(doc, i, -1))}>↑</Button>
+                        <Button size="sm" variant="ghost" aria-label={`Move ${r.name} down`} className="pointer-coarse:min-w-11" disabled={i === doc.policy.length - 1} onClick={() => edit(moveRule(doc, i, 1))}>↓</Button>
                         <Button size="sm" variant="ghost" onClick={() => setDialog({ index: i })}>Edit<span className="sr-only"> {r.name}</span></Button>
                         <Button size="sm" variant="ghost" onClick={() => edit(deleteRule(doc, i))}>Delete<span className="sr-only"> {r.name}</span></Button>
                       </>

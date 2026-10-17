@@ -153,11 +153,12 @@ export function FilesPage() {
       <Card>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={() => go(parentOf(dir))} disabled={dir === "/"} title="Up one level">↑ Up</Button>
-          <nav aria-label="Current path" className="flex min-w-0 flex-1 flex-wrap items-center font-mono text-sm">
-            <button className="text-accent" onClick={() => go("/")}>/</button>
+          {/* At least 12rem: on a phone the path takes its own row instead of a part per line. */}
+          <nav aria-label="Current path" className="flex min-w-0 flex-1 basis-48 flex-wrap items-center font-mono text-sm">
+            <button className="inline-flex min-h-6 min-w-6 items-center justify-center rounded-ui px-1 text-accent hover:bg-surface-2" aria-label="/ (the root folder)" onClick={() => go("/")}>/</button>
             {crumbs.map((c, i) => (
               <span key={i} className="flex items-center">
-                <button className="text-accent" onClick={() => go("/" + crumbs.slice(0, i + 1).join("/"))}>{c}</button>
+                <button className="inline-flex min-h-6 items-center rounded-ui px-1 text-accent hover:bg-surface-2" onClick={() => go("/" + crumbs.slice(0, i + 1).join("/"))}>{c}</button>
                 {i < crumbs.length - 1 && <span className="px-0.5 text-muted">/</span>}
               </span>
             ))}
@@ -210,7 +211,8 @@ function FileTable({ entries, canWrite, elevated, hostId, onOpen, onAction }: {
   if (entries.length === 0) return <p className="text-sm text-muted">This directory is empty.</p>;
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="rtable w-full text-sm">
+        <caption className="sr-only">Files in this folder</caption>
         <thead className="text-left text-xs uppercase text-muted">
           <tr>
             <th className="py-2 pr-3">Name</th>
@@ -218,13 +220,13 @@ function FileTable({ entries, canWrite, elevated, hostId, onOpen, onAction }: {
             <th className="py-2 pr-3">Owner</th>
             <th className="py-2 pr-3">Permissions</th>
             <th className="py-2 pr-3">Modified</th>
-            <th className="py-2" />
+            <th className="py-2"><span className="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
           {entries.map((e) => (
             <tr key={e.name} className="group">
-              <td className="max-w-md py-1.5 pr-3">
+              <td data-primary="" className="max-w-md py-1.5 pr-3">
                 <button className={cx("text-left", e.kind !== "other" && "text-accent hover:underline")} onClick={() => onOpen(e)}
                   title={e.kind === "file" ? "View / edit" : e.kind === "symlink" ? `Go to ${e.target}` : undefined}>
                   <span className="mr-1.5">{kindIcon(e)}</span>
@@ -232,19 +234,19 @@ function FileTable({ entries, canWrite, elevated, hostId, onOpen, onAction }: {
                 </button>
                 {e.kind === "symlink" && <span className="ml-2 font-mono text-xs text-muted">→ {e.target}</span>}
               </td>
-              <td className="whitespace-nowrap py-1.5 pr-3 text-right tabular-nums text-muted">{e.kind === "file" ? formatBytes(e.size) : ""}</td>
-              <td className="py-1.5 pr-3 font-mono text-xs">{e.owner}:{e.group}</td>
+              <td data-label="Size" className="whitespace-nowrap py-1.5 pr-3 text-right tabular-nums text-muted">{e.kind === "file" ? formatBytes(e.size) : ""}</td>
+              <td data-label="Owner" className="py-1.5 pr-3 font-mono text-xs">{e.owner}:{e.group}</td>
               {e.kind === "symlink" ? (
-                <td className="py-1.5 pr-3 text-xs text-muted">link (the target's permissions apply)</td>
+                <td data-label="Permissions" className="py-1.5 pr-3 text-xs text-muted">link (the target's permissions apply)</td>
               ) : (
-                <td className="py-1.5 pr-3" title={describe(e.mode, e.kind === "dir")}>
+                <td data-label="Permissions" className="py-1.5 pr-3" title={describe(e.mode, e.kind === "dir")}>
                   <span className="font-mono text-xs">{symbolic(e.mode)}</span>
                   <span className="ml-1.5 font-mono text-xs text-muted">{octal(e.mode)}</span>
-                  <span className="block whitespace-nowrap text-xs text-muted">{brief(e.mode, e.kind === "dir")}</span>
+                  <span className="block text-xs text-muted">{brief(e.mode, e.kind === "dir")}</span>
                 </td>
               )}
-              <td className="whitespace-nowrap py-1.5 pr-3 text-muted">{formatDateTime(e.mtime)}</td>
-              <td className="whitespace-nowrap py-1.5 text-right">
+              <td data-label="Modified" className="whitespace-nowrap py-1.5 pr-3 text-muted">{formatDateTime(e.mtime)}</td>
+              <td data-label="" className="whitespace-nowrap py-1.5 text-right">
                 <span className="inline-flex items-center gap-1">
                   {e.kind === "file" && (
                     <a className="inline-flex h-7 items-center rounded-ui px-2 text-xs text-accent hover:bg-surface-2"
@@ -368,7 +370,8 @@ export function ModeEditor({ mode, setMode, isDir }: { mode: string; setMode: (m
   return (
     <div className="space-y-2">
       <table className="text-sm">
-        <thead><tr><th /><th className="px-2 text-xs font-medium text-muted">{labels[0]}</th><th className="px-2 text-xs font-medium text-muted">{labels[1]}</th><th className="px-2 text-xs font-medium text-muted">{labels[2]}</th></tr></thead>
+        <caption className="sr-only">Permissions</caption>
+        <thead><tr><th><span className="sr-only">Who</span></th><th className="px-2 text-xs font-medium text-muted">{labels[0]}</th><th className="px-2 text-xs font-medium text-muted">{labels[1]}</th><th className="px-2 text-xs font-medium text-muted">{labels[2]}</th></tr></thead>
         <tbody>
           {["Owner", "Group", "Everyone else"].map((w, i) => (
             <tr key={w}>

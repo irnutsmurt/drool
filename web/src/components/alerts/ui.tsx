@@ -50,7 +50,7 @@ export function fmtDuration(ms: number | null | undefined): string {
 }
 
 export function AlertStateBadge({ a }: { a: Alert }) {
-  if (a.state === "resolved" && clearedBy(a)) return <Badge tone="neutral">{resolutionWord[a.resolution!]} (not a recovery)</Badge>;
+  if (a.state === "resolved" && clearedBy(a)) return <Badge tone="neutral" wrap>{resolutionWord[a.resolution!]} (not a recovery)</Badge>;
   if (a.state === "resolved") return <StatusBadge status="ok">Resolved</StatusBadge>;
   if (a.state === "acknowledged") return <Badge tone="neutral">✓ Acknowledged</Badge>;
   return <Badge tone="neutral">● Active</Badge>;
@@ -88,13 +88,16 @@ export function MaintenanceNote({ a }: { a: Alert }) {
 /** The host's open alert counts, compact (fleet rows, host pages). */
 export function AlertCounts({ critical, warning, hostId }: { critical: number; warning: number; hostId?: string }) {
   if (!critical && !warning) return <span className="text-xs text-muted">None</span>;
+  // The link's name is what it shows ("1 critical 2 warning"), then what
+  // they are: a screen reader hears the visible words first.
   const body = (
     <span className="inline-flex items-center gap-2 text-xs">
       {critical > 0 && <span className="inline-flex items-center gap-1 text-danger"><StatusIcon status="critical" />{critical} critical</span>}
       {warning > 0 && <span className="inline-flex items-center gap-1 text-warn"><StatusIcon status="warning" />{warning} warning</span>}
+      <span className="sr-only">open alerts</span>
     </span>
   );
-  return hostId ? <Link to={`/alerts?view=active&host_id=${hostId}`} className="hover:underline" aria-label={`${critical} critical and ${warning} warning alerts`}>{body}</Link> : body;
+  return hostId ? <Link to={`/alerts?view=active&host_id=${hostId}`} className="hover:underline">{body}</Link> : body;
 }
 
 export function untilText(endsAt: number | null | undefined): string {

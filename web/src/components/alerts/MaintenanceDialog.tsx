@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
+import { cx } from "@/components/ui/cx";
+import { touchLink } from "@/components/ui/links";
 import { errorMessage } from "@/lib/format";
 import { useStartMaintenance, type MaintenanceInput } from "./queries";
 
@@ -71,7 +73,7 @@ export function MaintenanceForm({ hostIds = [], groupIds = [], defaultReason = "
         {!choose ? (
           <div className="text-sm">
             <span className="font-medium">For: </span>{names.join(", ") || "…"}{" "}
-            <button type="button" className="text-accent underline" onClick={() => setChoose(true)}>Change</button>
+            <button type="button" className={cx("text-accent underline", touchLink)} onClick={() => setChoose(true)}>Change</button>
           </div>
         ) : (
           <fieldset className="space-y-2">

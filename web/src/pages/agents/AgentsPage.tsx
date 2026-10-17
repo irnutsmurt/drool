@@ -12,13 +12,13 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CodeBlock } from "@/components/ui/CodeBlock";
-import { cx } from "@/components/ui/cx";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Table } from "@/components/ui/Table";
 import { errorMessage, formatAgo, formatBytes, formatDateTime } from "@/lib/format";
 import { upload } from "@/lib/upload";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { TabPanel, Tabs } from "@/components/ui/Tabs";
 
 const tabs = [
   { id: "agents", label: "Shepherds" },
@@ -36,19 +36,15 @@ export function AgentsPage() {
       <PageHeader title="Shepherds"
         description={<>DROOL agents installed on managed hosts: enrollment, trust, capabilities and updates. A Shepherd is the DROOL agent
           (<span className="font-mono text-xs">drool-agent</span>); it reports continuously and runs work for DROOL within the limits its host allows.</>} />
-      <div role="tablist" aria-label="Shepherd sections" className="-mx-1 mb-4 flex gap-1 overflow-x-auto border-b border-line px-1">
-        {tabs.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setParams({ tab: t.id })}
-            className={cx("-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm", tab === t.id ? "border-accent font-medium" : "border-transparent text-muted hover:text-fg")}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-      {tab === "agents" && <AgentsTab />}
-      {tab === "enroll" && <EnrollTab />}
-      {tab === "updates" && <UpdatesTab />}
-      {tab === "trust" && <TrustTab />}
-      {tab === "endpoints" && <EndpointsTab />}
+      <Tabs label="Shepherd sections" id="shepherds" className="-mx-1 mb-4 overflow-x-auto px-1" current={tab}
+        tabs={tabs.map((t) => ({ key: t.id, label: t.label }))} onSelect={(k) => setParams({ tab: k })} />
+      <TabPanel id="shepherds" current={tab}>
+        {tab === "agents" && <AgentsTab />}
+        {tab === "enroll" && <EnrollTab />}
+        {tab === "updates" && <UpdatesTab />}
+        {tab === "trust" && <TrustTab />}
+        {tab === "endpoints" && <EndpointsTab />}
+      </TabPanel>
     </>
   );
 }

@@ -12,6 +12,9 @@ const look: Record<Status, { icon: string; cls: string; word: string }> = {
   unknown: { icon: "?", cls: "bg-surface-2 text-muted", word: "Unknown" },
 };
 
+/** The status in words, for screen readers next to an icon-only status. */
+export const statusWord = (s: Status) => look[s].word;
+
 export function statusOf(s: string | undefined): Status {
   return s === "ok" || s === "info" || s === "warning" || s === "critical" ? s : "unknown";
 }
@@ -45,6 +48,36 @@ export const deviceHealth: Record<string, { status: Status; word: string }> = {
 export const capabilityWord: Record<string, string> = {
   full: "Full", partial: "Partial", vendor: "Vendor-specific", limited: "Limited", unavailable: "Unavailable",
 };
+
+/** The most serious severity among active issues ("ok" when none). */
+export function worstOf(issues: { severity: string }[]): string {
+  const rank: Record<string, number> = { ok: 0, info: 1, warning: 2, critical: 3 };
+  return issues.reduce((w, i) => ((rank[i.severity] ?? 0) > (rank[w] ?? 0) ? i.severity : w), "ok");
+}
+
+/** A host's health as monitoring sees it: no data, stale, healthy,
+ * degraded (its worst issue is a warning) and unhealthy (something is
+ * critical) stay apart, in words as well as icon and colour. The Monitoring
+ * page, the Hosts list and a host's header all use this one; DROOL's
+ * connection to the host and the last reachability check are separate
+ * indicators, never folded into it. */
+export function HealthBadge(h: HealthInput) {
+  const { status, text } = healthOf(h);
+  return <StatusBadge status={status}>{text}</StatusBadge>;
+}
+
+export interface HealthInput { hasData: boolean; stale: boolean; issues: number; worst: string }
+
+/** HealthBadge's status and words. */
+export function healthOf({ hasData, stale, issues, worst }: HealthInput): { status: Status; text: string } {
+  if (!hasData) return { status: "unknown", text: "No data" };
+  if (stale) return { status: "warning", text: "Stale" };
+  const n = `${issues} issue${issues === 1 ? "" : "s"}`;
+  if (worst === "critical") return { status: "critical", text: `Unhealthy · ${n}` };
+  if (worst === "warning") return { status: "warning", text: `Degraded · ${n}` };
+  if (issues > 0) return { status: "info", text: `Healthy · ${issues} notice${issues === 1 ? "" : "s"}` };
+  return { status: "ok", text: "Healthy" };
+}
 
 export function SeverityBadge({ severity }: { severity: string }) {
   return <StatusBadge status={statusOf(severity)}>{severity === "critical" ? "Critical" : severity === "warning" ? "Warning" : "Info"}</StatusBadge>;

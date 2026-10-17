@@ -53,7 +53,9 @@ function topLayer(): HTMLElement | undefined {
  * to where it was when it closes — after the layer below is interactive
  * again, so that works for nested layers too. When that element can't take
  * focus (a button disabled while its request waits for the prompt), focus
- * goes to the dialog now on top instead of being lost. */
+ * goes to the dialog now on top instead of being lost; when it is gone (the
+ * row a confirmed Delete removed), to the page's main content, so the next
+ * Tab continues there rather than at the top of the document. */
 export function useModalLayer(ref: RefObject<HTMLElement | null>, focusFirst: () => HTMLElement | null | undefined) {
   useLayoutEffect(() => {
     const el = ref.current;
@@ -66,6 +68,29 @@ export function useModalLayer(ref: RefObject<HTMLElement | null>, focusFirst: ()
       if (before?.isConnected) before.focus();
       const top = topLayer();
       if (top && document.activeElement !== before) (top.querySelector<HTMLElement>('[role="dialog"]') ?? top).focus();
+      else if (!top && document.activeElement !== before) document.getElementById("main")?.focus({ preventScroll: true });
     };
   }, []); // once per mount; focusFirst reads refs
+}
+
+/** When what has focus disappears — the row a confirmed removal took away
+ * once the list refreshed, a button replaced by its result — focus goes to
+ * the dialog on top if one is open, else to the page's main content: never
+ * to the document, where the next Tab would start again at the top. */
+export function watchFocusLoss(): () => void {
+  let last: Element | null = null;
+  const onIn = (e: FocusEvent) => { last = e.target as Element; };
+  document.addEventListener("focusin", onIn);
+  const mo = new MutationObserver(() => {
+    if (!last || last.isConnected || (document.activeElement && document.activeElement !== document.body)) return;
+    last = null;
+    const top = topLayer();
+    const to = top ? (top.querySelector<HTMLElement>('[role="dialog"]') ?? top) : document.getElementById("main");
+    to?.focus({ preventScroll: true });
+  });
+  mo.observe(document.body, { childList: true, subtree: true });
+  return () => {
+    document.removeEventListener("focusin", onIn);
+    mo.disconnect();
+  };
 }

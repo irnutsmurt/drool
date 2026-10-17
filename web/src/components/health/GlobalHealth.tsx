@@ -153,11 +153,10 @@ export function GroupHealthButton({ groupId, name }: { groupId: string; name: st
   const groups = useHealthGroups();
   const [open, setOpen] = useState(false);
   const info = groups.data?.groups.find((g) => g.group_id === groupId);
+  const label = info && info.overrides > 0 ? `Monitoring overrides (${info.overrides})` : "Customize monitoring";
   return (
     <>
-      <Button size="sm" variant="ghost" onClick={() => setOpen(true)} aria-label={`Monitoring overrides for ${name}`}>
-        {info && info.overrides > 0 ? `Monitoring overrides (${info.overrides})` : "Customize monitoring"}
-      </Button>
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)} aria-label={`${label}: ${name}`}>{label}</Button>
       {open && <GroupHealthDialog groupId={groupId} name={name} onClose={() => setOpen(false)} />}
     </>
   );

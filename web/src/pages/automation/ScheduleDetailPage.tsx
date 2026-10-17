@@ -182,19 +182,19 @@ function History({ id, maint }: { id: string; maint: boolean }) {
       <p className="mb-3 text-xs text-muted">Every time this schedule was due: when, what happened and why. {maint ? "" : "Each run is also an ordinary job under Runs."}</p>
       {q.error && <Alert>{errorMessage(q.error)}</Alert>}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
+        <table className="rtable w-full text-left text-sm">
           <caption className="sr-only">Schedule history</caption>
           <thead>
             <tr className="border-b border-line text-xs uppercase tracking-wide text-muted">
               <th className="px-3 py-2 font-medium">Scheduled for</th>
               <th className="px-3 py-2 font-medium">Started</th>
               <th className="px-3 py-2 font-medium">Outcome</th>
-              <th className="px-3 py-2 font-medium">{maint ? "" : "Run"}</th>
+              <th className="px-3 py-2 font-medium">{maint ? <span className="sr-only">Run</span> : "Run"}</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={4} className="px-3 py-6 text-center text-muted">{q.isPending ? "Loading…" : "Nothing yet. The first run appears here when it's due."}</td></tr>
+              <tr><td colSpan={4} className="rt-empty px-3 py-6 text-center text-muted">{q.isPending ? "Loading…" : "Nothing yet. The first run appears here when it's due."}</td></tr>
             ) : rows.map((o) => <OccurrenceRow key={o.id} o={o} />)}
           </tbody>
         </table>
@@ -211,12 +211,12 @@ function History({ id, maint }: { id: string; maint: boolean }) {
 function OccurrenceRow({ o }: { o: Occurrence }) {
   return (
     <tr className="border-b border-line align-top last:border-0">
-      <td className="whitespace-nowrap px-3 py-2">
+      <td data-primary="" className="whitespace-nowrap px-3 py-2">
         {o.manual ? <span className="text-muted">—</span> : fmtTime(o.scheduled_for)}
         {o.manual && <span className="block text-xs text-muted">Run now{o.triggered_by ? ` by ${o.triggered_by}` : ""}</span>}
       </td>
-      <td className="whitespace-nowrap px-3 py-2 text-muted">{o.dispatched_at ? fmtTime(o.dispatched_at) : "—"}</td>
-      <td className="px-3 py-2">
+      <td data-label="Started" className="whitespace-nowrap px-3 py-2 text-muted">{o.dispatched_at ? fmtTime(o.dispatched_at) : "—"}</td>
+      <td data-label="Outcome" className="px-3 py-2">
         <div className="flex flex-col items-start gap-1">
           <OccurrenceBadge o={o} />
           <span>{o.outcome}</span>
@@ -224,7 +224,7 @@ function OccurrenceRow({ o }: { o: Occurrence }) {
           {o.skipped_hosts > 0 && <span className="text-xs text-muted">{o.skipped_hosts} host{o.skipped_hosts === 1 ? "" : "s"} skipped: maintenance active</span>}
         </div>
       </td>
-      <td className="px-3 py-2">{o.job_id && <Link className="text-accent" to={`/jobs/${o.job_id}`}>View run</Link>}</td>
+      <td data-label="" className="px-3 py-2">{o.job_id && <Link className="text-accent" to={`/jobs/${o.job_id}`}>View run</Link>}</td>
     </tr>
   );
 }

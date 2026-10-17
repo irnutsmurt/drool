@@ -89,7 +89,7 @@ export function UsersPage() {
             {
               header: "Role",
               cell: (u) => (
-                <Select className="h-8 w-32" value={u.role} disabled={update.isPending}
+                <Select className="h-8 w-32" aria-label={`Role of ${u.username}`} value={u.role} disabled={update.isPending}
                   onChange={(e) => update.mutate({ id: u.id, body: { role: e.target.value as Role } })}>
                   {roles.map((r) => <option key={r} value={r}>{r}</option>)}
                 </Select>

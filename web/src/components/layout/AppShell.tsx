@@ -4,6 +4,7 @@ import { Link, Outlet, useLocation } from "react-router";
 import { useAuth } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/Button";
 import { ConfirmHost } from "@/components/ui/ConfirmDialog";
+import { watchFocusLoss } from "@/components/ui/modal";
 import { cx } from "@/components/ui/cx";
 import {
   BellIcon, ChevronDownIcon, ChipIcon, ClockIcon, CloseIcon, GearIcon, HomeIcon, KeyIcon, LogIcon, MenuIcon, NetworkIcon, PackIcon, PlayIcon, PulseIcon,
@@ -14,6 +15,8 @@ import { useAlertSummary } from "@/components/alerts/queries";
 import { StatusIcon } from "@/components/monitoring/Status";
 import { isActive, visibleSections, type NavIcon, type NavItem } from "./nav";
 import { CommandPalette, shortcutLabel, typingIn } from "./CommandPalette";
+import { PageTitle } from "./PageTitle";
+import { watchTableFit } from "@/lib/tableFit";
 import { useSecurityItems, useSystemInfo, type SecurityItem } from "./security";
 
 export { useSystemInfo } from "./security";
@@ -30,6 +33,10 @@ export function AppShell() {
 
   // Navigating closes the narrow-screen menu.
   useEffect(() => setNavOpen(false), [location.pathname, location.search]);
+  // Tables that don't fit their space show as cards (lib/tableFit.ts).
+  useEffect(() => watchTableFit(), []);
+  // Focus never falls back to the document when what had it disappears.
+  useEffect(() => watchFocusLoss(), []);
 
   // Ctrl+K / ⌘K anywhere; "/" when not typing in a field.
   useEffect(() => {
@@ -52,7 +59,7 @@ export function AppShell() {
       <a href="#main" className="sr-only z-[70] rounded-ui bg-accent px-3 py-2 text-sm font-medium text-accent-fg focus:not-sr-only focus:fixed focus:left-2 focus:top-2">
         Skip to content
       </a>
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-line bg-surface lg:flex">
+      <aside aria-label="Sidebar" className="hidden w-56 shrink-0 flex-col border-r border-line bg-surface lg:flex">
         <Link to="/" className="px-4 py-4 text-base font-semibold">DROOL</Link>
         <SidebarNav />
         <div className="border-t border-line px-4 py-3 text-xs text-muted">{info.data ? info.data.version.replace(/^v?/, "v") : ""}</div>
@@ -67,13 +74,13 @@ export function AppShell() {
           </div>
         )}
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-3 sm:px-4 lg:px-6">
-          <button type="button" className="-ml-1 inline-flex h-9 w-9 items-center justify-center rounded-ui text-fg hover:bg-surface-2 lg:hidden"
+          <button type="button" className="-ml-1 inline-flex h-9 w-9 items-center justify-center rounded-ui text-fg hover:bg-surface-2 lg:hidden pointer-coarse:h-11 pointer-coarse:w-11"
             aria-label="Open navigation" aria-expanded={navOpen} aria-controls="mobile-nav" onClick={() => setNavOpen(true)}>
             <MenuIcon width={20} height={20} />
           </button>
-          <Link to="/" className="mr-1 font-semibold lg:hidden">DROOL</Link>
+          <Link to="/" className="mr-1 font-semibold lg:hidden pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center">DROOL</Link>
           <button type="button" onClick={() => setPalette(true)} aria-keyshortcuts="Control+K Meta+K /" data-testid="search-button"
-            className="inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-ui border border-line bg-surface px-2 text-sm text-muted hover:bg-surface-2 hover:text-fg md:w-80 md:px-2.5">
+            className="inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-ui border border-line bg-surface px-2 text-sm text-muted hover:bg-surface-2 hover:text-fg md:w-56 md:px-2.5 xl:w-80 pointer-coarse:min-w-11 pointer-coarse:justify-center md:pointer-coarse:justify-start">
             <SearchIcon className="shrink-0" />
             <span className="sr-only md:not-sr-only md:truncate">Search hosts, services, pages…</span>
             <kbd className="ml-auto hidden rounded border border-line px-1 text-[11px] md:inline">{shortcutLabel()}</kbd>
@@ -81,16 +88,18 @@ export function AppShell() {
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <SecurityStatus />
             <div className="hidden md:block"><ThemeSwitcher compact /></div>
-            <span className="hidden text-sm md:inline">
-              {me?.user.username} <span className="text-muted">({me?.user.role})</span>
+            {/* Beside the sidebar (1024–1279 px) the role gives way, so nothing wraps. */}
+            <span className="hidden whitespace-nowrap text-sm md:inline">
+              {me?.user.username} <span className="hidden text-muted xl:inline">({me?.user.role})</span>
             </span>
-            <span className="hidden md:inline-flex"><Button size="sm" variant="ghost" onClick={() => void logout()}>Sign out</Button></span>
+            <span className="hidden md:inline-flex"><Button size="sm" variant="ghost" className="whitespace-nowrap" onClick={() => void logout()}>Sign out</Button></span>
             <AccountMenu />
           </div>
         </header>
         <main id="main" tabIndex={-1} className="min-w-0 flex-1 overflow-y-auto p-4 outline-none lg:p-6">
           <Outlet />
         </main>
+        <PageTitle />
       </div>
       {palette && <CommandPalette onClose={closePalette} />}
       <ConfirmHost />
@@ -217,7 +226,7 @@ function MobileNav({ onClose, version }: { onClose: () => void; version?: string
         <div className="flex items-center justify-between px-4 py-3">
           <span className="text-base font-semibold">DROOL</span>
           <button type="button" data-autofocus aria-label="Close navigation" onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-ui hover:bg-surface-2">
+            className="inline-flex h-9 w-9 items-center justify-center rounded-ui hover:bg-surface-2 pointer-coarse:h-11 pointer-coarse:w-11">
             <CloseIcon width={20} height={20} />
           </button>
         </div>
@@ -234,11 +243,17 @@ function SecurityStatus() {
   const items = useSecurityItems();
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
   const id = useId();
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    // Escape closes it; focus inside it goes back to the button.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (box.current?.contains(document.activeElement)) toggle.current?.focus();
+      setOpen(false);
+    };
     document.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey);
     return () => {
@@ -251,11 +266,11 @@ function SecurityStatus() {
   const label = `${items.length} security issue${items.length === 1 ? "" : "s"}`;
   return (
     <div ref={box} className="relative">
-      <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)} data-testid="security-status"
-        className={cx("inline-flex h-8 items-center gap-1.5 rounded-ui border px-2 text-xs font-medium",
+      <button ref={toggle} type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)} data-testid="security-status"
+        className={cx("inline-flex h-8 items-center justify-center gap-1.5 rounded-ui border px-2 text-xs font-medium pointer-coarse:min-w-11",
           danger ? "border-danger/40 bg-danger-bg text-danger" : "border-warn/40 bg-warn-bg text-warn")}>
         <ShieldIcon />
-        <span className="sr-only sm:not-sr-only">{label}</span>
+        <span className="sr-only whitespace-nowrap sm:not-sr-only">{label}</span>
         <ChevronDownIcon className="hidden sm:block" width={12} height={12} />
       </button>
       {open && (
@@ -285,13 +300,18 @@ function AccountMenu() {
   const { me, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
   const id = useId();
   const location = useLocation();
   useEffect(() => setOpen(false), [location.pathname]);
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (box.current?.contains(document.activeElement)) toggle.current?.focus();
+      setOpen(false);
+    };
     document.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey);
     return () => {
@@ -301,7 +321,7 @@ function AccountMenu() {
   }, [open]);
   return (
     <div ref={box} className="relative md:hidden">
-      <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}
+      <button ref={toggle} type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}
         className="inline-flex h-9 items-center gap-1 rounded-ui px-2 text-sm hover:bg-surface-2">
         <span className="max-w-[6rem] truncate">{me?.user.username}</span>
         <span className="sr-only">: account menu</span>

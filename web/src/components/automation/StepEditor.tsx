@@ -184,8 +184,8 @@ export function StepEditor({ steps, setSteps }: { steps: StepDraft[]; setSteps: 
               <span className="text-sm font-semibold">Step {i + 1}: {stepLabel(s.kind)}</span>
               {checkKinds.some((c) => c.kind === s.kind) && <span className="text-xs text-muted">checked by DROOL</span>}
               <span className="ml-auto flex gap-1">
-                <Button type="button" size="sm" variant="ghost" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Move step ${i + 1} up`}>↑</Button>
-                <Button type="button" size="sm" variant="ghost" disabled={i === steps.length - 1} onClick={() => move(i, 1)} aria-label={`Move step ${i + 1} down`}>↓</Button>
+                <Button type="button" size="sm" variant="ghost" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Move step ${i + 1} up`} className="pointer-coarse:min-w-11">↑</Button>
+                <Button type="button" size="sm" variant="ghost" disabled={i === steps.length - 1} onClick={() => move(i, 1)} aria-label={`Move step ${i + 1} down`} className="pointer-coarse:min-w-11">↓</Button>
                 <Button type="button" size="sm" variant="ghost" onClick={() => setSteps(steps.filter((x) => x.key !== s.key))} aria-label={`Remove step ${i + 1}`}>Remove</Button>
               </span>
             </div>

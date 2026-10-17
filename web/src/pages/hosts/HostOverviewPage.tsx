@@ -249,8 +249,8 @@ function FilesTile({ h }: { h: Host }) {
       ) : (
         <>
           <p>{items.length} file{items.length === 1 ? "" : "s"} deployed by DROOL{failed > 0 && <span className="text-danger"> · {failed} failed</span>}</p>
-          <ul className="space-y-0.5 text-xs">
-            {items.slice(0, 3).map((d) => <li key={d.id} className="truncate"><Link className={plainLink} to={`/file-deployments/${d.id}`}>{d.path}</Link></li>)}
+          <ul className="space-y-1 text-xs">
+            {items.slice(0, 3).map((d) => <li key={d.id} className="truncate"><Link className={cx(plainLink, "inline-block py-0.5")} to={`/file-deployments/${d.id}`}>{d.path}</Link></li>)}
           </ul>
         </>
       )}

@@ -112,7 +112,7 @@ export function HealthChecksTable({ checks, k, title, only }: {
                   </div>
                 </td>
                 <td data-label="" className="whitespace-nowrap px-2 py-2 text-right">
-                  <Button size="sm" onClick={() => setEditing(c)} aria-label={`${edit ? "Customize" : "View"} ${c.label}`}>{c.customized ? "Edit" : edit ? "Customize" : "View"}</Button>
+                  <Button size="sm" onClick={() => setEditing(c)} aria-label={`${c.customized ? "Edit" : edit ? "Customize" : "View"} ${c.label}`}>{c.customized ? "Edit" : edit ? "Customize" : "View"}</Button>
                   {edit && c.override_id && (
                     <Button size="sm" variant="ghost" className="ml-1" disabled={del.isPending} onClick={() => del.mutate(c.override_id!)} aria-label={`Reset ${c.label} to inherited`}>
                       Reset

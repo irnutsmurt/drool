@@ -51,11 +51,11 @@ export function GroupsPage() {
             actions={(
               <div className="flex flex-wrap justify-end gap-2">
                 {can("monitoring.read") && <GroupHealthButton groupId={g.id} name={g.name} />}
-                <Button size="sm" onClick={() => navigate(`/groups/${g.id}`)} aria-label={`Open pack ${g.name}`}>
+                <Button size="sm" onClick={() => navigate(`/groups/${g.id}`)} aria-label={`${can("hosts.write") ? "Manage hosts" : "Open"}: ${g.name}`}>
                   {can("hosts.write") ? "Manage hosts" : "Open"}
                 </Button>
                 {can("hosts.write") && (
-                  <Button size="sm" variant="danger" onClick={() => setDeleting(g)} aria-label={`Delete pack ${g.name}`}>Delete</Button>
+                  <Button size="sm" variant="danger" onClick={() => setDeleting(g)} aria-label={`Delete: ${g.name}`}>Delete</Button>
                 )}
               </div>
             )}>

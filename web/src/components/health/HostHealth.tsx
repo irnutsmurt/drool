@@ -65,7 +65,7 @@ export function HostHealthPanel({ hostId }: { hostId: string }) {
                   <span className="font-medium">{s.label}</span>
                   <IdentityBadge s={s} />
                   {s.customized && <Badge tone="accent">Customized</Badge>}
-                  <Button size="sm" className="ml-auto" onClick={() => setSubject(s)} aria-label={`Customize health check for ${s.label}`}>
+                  <Button size="sm" className="ml-auto" onClick={() => setSubject(s)} aria-label={`${s.customized ? "Edit" : "Customize"} health check for ${s.label}`}>
                     {s.customized ? "Edit" : "Customize"}
                   </Button>
                 </li>
@@ -112,8 +112,8 @@ export function SubjectHealthButton({ hostId, kind, subjectRef: r, label }: { ho
   if (!s) return null;
   return (
     <>
-      <Button size="sm" variant="ghost" onClick={() => setOpen(true)} aria-label={`Customize health check for ${label}`}>
-        {s.customized ? "⚙ Customized" : "Customize health check"}
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)} aria-label={`${s.customized ? "Customized" : "Customize"} health check for ${label}`}>
+        {s.customized ? <><span aria-hidden="true">⚙ </span>Customized</> : "Customize health check"}
       </Button>
       {open && <SubjectHealthDialog hostId={hostId} subject={s} onClose={() => setOpen(false)} />}
     </>

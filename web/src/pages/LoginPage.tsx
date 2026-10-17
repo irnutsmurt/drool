@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router";
 import { useAuth, useSetupStatus } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/Button";
@@ -18,6 +18,7 @@ export function LoginPage() {
   const [challenge, setChallenge] = useState<string>();
   const [code, setCode] = useState("");
   const [useRecovery, setUseRecovery] = useState(false);
+  useEffect(() => { document.title = "Sign in – DROOL"; }, []);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const setup = useSetupStatus();

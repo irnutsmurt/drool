@@ -4,6 +4,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { cx } from "@/components/ui/cx";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useTableFits } from "@/hooks/useTableFits";
 import { errorMessage } from "@/lib/format";
 import { ClassBadge, CountryLabel, DirectionLabel, Endpoint, NetworkLabel, PolicyBadge, ProcessLabel, RemoteLabel, ScopeBadge, scopeText, when } from "./labels";
 import { useNetFlows, type NetEnrichState, type NetFilter, type NetFlow } from "./queries";
@@ -15,13 +16,15 @@ const PHONE_PAGE = 25;
 
 /** Observed connections for a filter, paged on the server (cursor). Each
  * row opens the connection in an inspector beside the list; the first
- * cell is a button, so the table works from the keyboard. On a phone each
- * connection is a compact entry (direction, remote end, host, process,
- * what it is) instead of a card with every column. */
+ * cell is a button, so the table works from the keyboard. On a phone, and
+ * wherever the table's columns don't fit (a 1024 px window beside the
+ * sidebar), each connection is a compact entry (direction, remote end,
+ * host, process, what it is) instead. */
 export function FlowTable({ filter, showHost = true, empty, pageSize = 50 }: {
   filter: NetFilter; showHost?: boolean; empty?: React.ReactNode; pageSize?: number;
 }) {
   const phone = useMediaQuery("(max-width: 767.98px)");
+  const fit = useTableFits();
   const size = phone ? Math.min(pageSize, PHONE_PAGE) : pageSize;
   const [cursors, setCursors] = useState<string[]>([]); // cursors of the pages before the current one
   const [cursor, setCursor] = useState<string | undefined>();
@@ -39,14 +42,14 @@ export function FlowTable({ filter, showHost = true, empty, pageSize = 50 }: {
 
   if (q.error) return <Alert>{errorMessage(q.error)}</Alert>;
   return (
-    <div className="space-y-2" data-testid="flow-table">
-      {phone ? (
+    <div ref={fit.outer} className="space-y-2" data-testid="flow-table">
+      {phone || !fit.fits ? (
         <ul className="divide-y divide-line" aria-label="Observed connections">
           {rows.length === 0 ? <li className="px-3 py-8 text-center text-sm text-muted">{none}</li>
             : rows.map((f) => <Compact key={f.id} f={f} showHost={showHost} active={open === f.id} onOpen={() => setOpen(f.id)} />)}
         </ul>
       ) : (
-        <div className="overflow-x-auto">
+        <div ref={fit.inner} className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <caption className="sr-only">Observed connections</caption>
             <thead>
@@ -127,7 +130,7 @@ function Compact({ f, showHost, active, onOpen }: { f: NetFlow; showHost: boolea
   const remote = f.peer_host?.name ?? f.remote_ip;
   return (
     <li data-flow-id={f.id} className={cx(active && "bg-accent/10")}>
-      <button type="button" onClick={onOpen} aria-label={detailsLabel(f)}
+      <button type="button" onClick={onOpen}
         className="flex w-full flex-col gap-1 px-1 py-2.5 text-left hover:bg-surface-2 focus:outline focus:outline-2 focus:outline-accent">
         <span className="flex items-baseline gap-2">
           <span aria-hidden="true" className="text-muted">{f.direction === "in" ? "↘" : "↗"}</span>
