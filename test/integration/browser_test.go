@@ -26,6 +26,7 @@ var netflowsFile string
 // TestBrowser runs the web UI's browser tests (web/e2e: Firewall Designer,
 // network monitoring, monitoring, alerts, health, scheduling and
 // workflows, desired state, navigation and the narrow-screen shell,
+// accessibility (host states, titles, keyboard, narrow layouts, touch),
 // Light/Dark/System theme, contrast in both themes) against a real
 // controller and container hosts: jump-a,
 // server-a..c behind it, web-1 direct. It needs Chromium (CHROME, default
@@ -82,7 +83,7 @@ func TestBrowser(t *testing.T) {
 	if d := os.Getenv("DROOL_E2E_SHOTS"); d != "" {
 		shots = d
 	}
-	files := []string{"addhost", "designer", "network", "monitoring", "alerts", "health", "automation", "desired", "navigation", "workspace", "packs", "reauth-dialog", "security", "shepherd-endpoint", "theme", "contrast"}
+	files := []string{"addhost", "designer", "network", "monitoring", "alerts", "health", "automation", "desired", "navigation", "workspace", "accessibility", "packs", "reauth-dialog", "security", "shepherd-endpoint", "theme", "contrast"}
 	if only := os.Getenv("DROOL_E2E_FILES"); only != "" {
 		files = strings.Split(only, ",") // e.g. "automation,contrast" while iterating
 	}
