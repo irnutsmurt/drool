@@ -3450,6 +3450,19 @@ workflow semantics, Shepherd trust or update-signing changes, DRIPS/plugins, M18
   Go's transport can use a response racing the cancelled connection's close, so "delivered" at exactly
   the timeout. The receiver now records the payload and never answers (`http.ErrAbortHandler`). Not a
   product defect: a real 2xx at the deadline is honestly "delivered" (d8e15d4).
+- **A firewall report from before a restore's move** (`TestRestoreReconciliationFirewall` under
+  `-race`: branch CI of `59baa30`, and 3 of 20 local runs). A Shepherd's firewall status collected
+  before reconciliation moved its host to the restored controller's epoch could be handled after the
+  move was recorded. The hello's status is recorded by a goroutine while reconciliation runs, and a
+  status collected just before the move can arrive after it. `recordStatus` then marked the moved host's
+  firewall as belonging to another epoch, and every later transaction on it was refused ("reconciliation
+  required"). Nothing cleared it: Retry and Accept refuse a reconciled host, and adopting the host's
+  state refuses an epoch mismatch. Latent since M16. A report in the epoch the controller was restored
+  from (`controller_restores`), showing exactly the revision and hash whose move is recorded, now marks
+  nothing. A policy committed since in that epoch, or an epoch the controller wasn't restored from, is
+  still a mismatch, and an apply checks the host's fresh status first. `TestFirewallStatusFromBeforeTheMove`
+  covers the cases. With the hello forced to arrive after the move, the restore test failed every run
+  before and passes after; unforced, it passed 40 of 40 runs under `-race` (c9e1d29).
 
 ### 41.2 Navigation and search
 
