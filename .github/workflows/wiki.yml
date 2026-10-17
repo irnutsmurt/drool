@@ -23,7 +23,7 @@ jobs:
   publish:
     # GitHub only: the Gitea/Forgejo mirror has no GitHub wiki.
     if: github.server_url == 'https://github.com'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # pinned: what the release is qualified on; move to a new image deliberately (RELEASING.md)
     steps:
       - uses: actions/checkout@v4
         with:

@@ -10,7 +10,7 @@ on:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # pinned: what the release is qualified on; move to a new image deliberately (RELEASING.md)
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4

@@ -135,7 +135,9 @@ multi-threaded TCG (an emulator race, not something a real machine does).
 publishes that build's image, once it has passed, as a development image:
 `ghcr.io/irnutsmurt/drool:sha-<commit>` and `:main` (never a version tag or `latest`; the job's
 token may write packages and only read the repository). `.github/workflows/release.yml` runs the container and package
-layers on the release's artifacts.
+layers on the release's artifacts. The workflows name their runner image (`ubuntu-24.04`), not
+`ubuntu-latest`: a qualification must not change runner image halfway, and moving to a newer one is a
+change of its own, with a green run, before a release candidate.
 The VM layers need hours and run on a machine you control before a release is published.
 
 ## Signing

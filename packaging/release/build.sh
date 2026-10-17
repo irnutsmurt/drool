@@ -108,6 +108,13 @@ else
   note "warning: no LICENSE in the source; packages and SBOMs say NOASSERTION. Not distributable as is."
 fi
 
+# The packages' maintainer field names who answers for them: a stable
+# release needs a real contact (DROOL_MAINTAINER, or the default above).
+if [[ $MAINTAINER == *@drool.invalid* ]]; then
+  [[ $channel != stable ]] || die "the packages' maintainer is the placeholder \"$MAINTAINER\": a stable release needs a real contact (DROOL_MAINTAINER, or the default in build.sh)"
+  note "warning: the packages' maintainer is the placeholder \"$MAINTAINER\" (DROOL_MAINTAINER)"
+fi
+
 arg() { sed -n "s/^ARG $1=//p" "$src/Dockerfile" | head -n1; }
 go_image=$(arg GO_IMAGE) node_image=$(arg NODE_IMAGE) base_image=$(arg BASE_IMAGE)
 [[ -n $go_image && -n $node_image && -n $base_image ]] || die "Dockerfile lacks pinned GO_IMAGE/NODE_IMAGE/BASE_IMAGE"
