@@ -299,6 +299,29 @@ table.rtable[data-cards] > thead {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+/* A header cell with a control in it (Select all) stays in sight above the
+   cards, so the control is never a Tab stop nobody can see; the column
+   names stay hidden. */
+table.rtable[data-cards] > thead:has(input, button, select) {
+  position: static;
+  display: block;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  white-space: normal;
+}
+table.rtable[data-cards] > thead:has(input, button, select) > tr {
+  display: block;
+  border: 0;
+}
+table.rtable[data-cards] > thead:has(input, button, select) > tr > th {
+  display: none;
+}
+table.rtable[data-cards] > thead:has(input, button, select) > tr > th:has(input, button, select) {
+  display: block;
+  padding: 0 0 0.5rem;
+}
 table.rtable[data-cards] > tbody > tr {
   display: flex;
   flex-direction: column;
@@ -323,10 +346,14 @@ table.rtable[data-cards] > tbody > tr > td::before {
 }
 /* A value made of several blocks (two services, a figure and its bar)
    stays in the value column instead of wrapping under the label, and
-   never wider than it: a long value wraps or truncates inside the card. */
+   never wider than it: a long value wraps or truncates inside the card.
+   A button keeps its own minimum width (an icon-only button is 44 px wide
+   on touch screens); max-width still keeps it inside the card. */
 table.rtable[data-cards] > tbody > tr > td > * {
   grid-column: 2;
   max-width: 100%;
+}
+table.rtable[data-cards] > tbody > tr > td > :not(button) {
   min-width: 0;
 }
 table.rtable[data-cards] > tbody > tr > td[data-primary] {

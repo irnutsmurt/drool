@@ -231,7 +231,14 @@ test("storage health: honest limited devices, failing disk, probe wear warning",
   assert.match(t, /Wear remaining\s+Not available/);
   assert.match(t, /Filesystem\s+Read\/write/);
   assert.match(t, /Write\/read probe\s+Passed/);
-  assert.ok(!/SD health: Good|Healthy/.test(t), "an SD card is never called healthy");
+  // The storage section never calls an SD card healthy. (The header above
+  // it names the host's Health: monitoring's verdict on the whole host.)
+  const section = await page.evaluate(() => {
+    const main = document.querySelector("main").cloneNode(true);
+    main.querySelector('[data-testid="host-header"]')?.remove();
+    return main.textContent;
+  });
+  assert.ok(!/SD health: Good|Healthy/.test(section), "an SD card is never called healthy");
   // A shorter probe interval is allowed, with the wear warning.
   const sel = await page.evaluateHandle(() => [...document.querySelectorAll("label")].find((l) => l.textContent.startsWith("Interval"))?.querySelector("select"));
   await sel.asElement().select("900");

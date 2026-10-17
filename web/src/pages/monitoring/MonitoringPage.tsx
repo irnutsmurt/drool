@@ -118,8 +118,14 @@ export function MonitoringPage() {
             <caption className="sr-only">Hosts ({category})</caption>
             <thead>
               <tr className="border-b border-line text-xs text-muted">
-                <th className="px-2 py-1"><input type="checkbox" aria-label="Select all shown hosts" checked={allSel}
-                  onChange={() => setSel((s) => { const n = new Set(s); rows.forEach((r) => (allSel ? n.delete(r.host_id) : n.add(r.host_id))); return n; })} /></th>
+                <th className="px-2 py-1">
+                  <label className="inline-flex items-center gap-2">
+                    <input type="checkbox" aria-label="Select all shown hosts" checked={allSel}
+                      onChange={() => setSel((s) => { const n = new Set(s); rows.forEach((r) => (allSel ? n.delete(r.host_id) : n.add(r.host_id))); return n; })} />
+                    {/* In cards this cell stays above them (index.css). */}
+                    <span aria-hidden="true" className="rt-card-only text-xs font-normal normal-case text-muted">Select all shown</span>
+                  </label>
+                </th>
                 <th className="px-2 py-1 font-medium">Host</th>
                 <th className="px-2 py-1 font-medium">Health</th>
                 {as && <th className="px-2 py-1 font-medium">Alerts</th>}
@@ -233,11 +239,11 @@ function FleetFilters({ category, counts, hosts, setCat, q, reset }: {
       <div role="group" aria-label="Show hosts" className="flex flex-wrap items-center gap-2">
         {visible.map(chip)}
         <button type="button" aria-expanded={more} aria-controls="fleet-more-filters" onClick={() => setMore((v) => !v)}
-          className="rounded-ui px-2 py-1.5 text-sm text-muted underline underline-offset-2 hover:text-fg">
+          className="rounded-ui px-2 py-1.5 text-sm text-muted underline underline-offset-2 hover:text-fg pointer-coarse:min-h-11">
           {more ? "Fewer filters" : `More filters (${others.length})`}
         </button>
         {(category !== "all" || q) && (
-          <button type="button" onClick={reset} className="rounded-ui px-2 py-1.5 text-sm text-muted underline underline-offset-2 hover:text-fg">Reset filters</button>
+          <button type="button" onClick={reset} className="rounded-ui px-2 py-1.5 text-sm text-muted underline underline-offset-2 hover:text-fg pointer-coarse:min-h-11">Reset filters</button>
         )}
       </div>
       {more && (

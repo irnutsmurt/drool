@@ -76,7 +76,12 @@ function HostsTab() {
           rowKey={(h) => h.host_id}
           empty={hosts.isPending ? "Loading…" : "No hosts yet. Each host you add appears here with its firewall mode (Off until you choose) and status."}
           columns={[
-            { header: "", cell: (h) => can("firewall.write") && h.mode === "enforce" ? <input type="checkbox" aria-label={`Select ${h.host_name}`} checked={sel.includes(h.host_id)} onChange={() => toggle(h.host_id)} /> : null },
+            { header: "", cell: (h) => can("firewall.write") && h.mode === "enforce" ? (
+              <label className="inline-flex items-center gap-2">
+                <input type="checkbox" aria-label={`Select ${h.host_name}`} checked={sel.includes(h.host_id)} onChange={() => toggle(h.host_id)} />
+                <span aria-hidden="true" className="rt-card-only text-xs text-muted">Select</span>
+              </label>
+            ) : null },
             { header: "Host", cell: (h) => <Link className="font-medium underline" to={`/hosts/${h.host_id}/firewall`}>{h.host_name}</Link> },
             { header: "Mode", cell: (h) => modeInfo[h.mode]?.label ?? h.mode },
             { header: "Environment", cell: (h) => !h.checked ? <span className="text-muted">not checked</span>

@@ -150,7 +150,7 @@ test("focus follows an inspector's step and comes back from a popover", async ()
   assert.deepEqual(page.errors, []);
 });
 
-test("at 1024 px tables that don't fit become cards: nothing behind a sideways scroll", async () => {
+test("at 1024 px tables that don't fit become cards: nothing behind a sideways scroll, no Tab stop out of sight", async () => {
   const p = await session(browser, { width: 1024, height: 900 });
   try {
     const web = ids["web-1"];
@@ -163,10 +163,30 @@ test("at 1024 px tables that don't fit become cards: nothing behind a sideways s
           const ox = getComputedStyle(e).overflowX;
           return (ox === "auto" || ox === "scroll") && e.clientWidth > 0 && e.scrollWidth > e.clientWidth + 2 && e.querySelector("table");
         }).map((e) => `${e.clientWidth}/${e.scrollWidth}: ${(e.innerText || "").slice(0, 40).replace(/\s+/g, " ")}`),
+        // A control inside a box hidden for the cards (the table header) is a
+        // Tab stop nobody can see. A hidden radio or checkbox is seen through
+        // its label.
+        unseen: [...document.querySelectorAll("main :is(a[href], button, input, select, textarea, [tabindex]:not([tabindex='-1']))")].filter((el) => {
+          if (el.disabled || !el.checkVisibility()) return false;
+          for (let e = el.type === "checkbox" || el.type === "radio" ? el.closest("label") ?? el : el; e && e.tagName !== "MAIN"; e = e.parentElement) {
+            if (getComputedStyle(e).clipPath === "inset(50%)") return true;
+          }
+          return false;
+        }).map((el) => el.getAttribute("aria-label") || el.innerText.trim()),
       }));
       assert.ok(r.page <= 1, `${path}: the page scrolls sideways`);
       assert.deepEqual(r.sideways, [], `${path}: a table scrolls sideways at 1024 px`);
+      assert.deepEqual(r.unseen, [], `${path}: a Tab stop nobody can see`);
     }
+    // Monitoring's Select all stays in sight, named, above its cards.
+    await go(p, "/monitoring");
+    await p.waitForSelector('input[aria-label="Select all shown hosts"]');
+    await sleep(800);
+    const all = await p.$eval('input[aria-label="Select all shown hosts"]', (e) => {
+      const r = e.closest("label").getBoundingClientRect();
+      return { cards: !!e.closest("table.rtable[data-cards]"), w: Math.round(r.width), h: Math.round(r.height), text: e.closest("label").innerText.trim() };
+    });
+    if (all.cards) assert.ok(all.w > 20 && all.h > 10 && all.text === "Select all shown", JSON.stringify(all));
     // The files list is cards here, each with its actions.
     await go(p, `/hosts/${web}/files?path=/etc`);
     await waitFor(p, async () => (await p.$$("table.rtable[data-cards] tbody tr")).length > 0, "file cards");
@@ -203,6 +223,45 @@ test("touch screens: the controls a finger taps are at least 44 px", async () =>
     await p.keyboard.press("Escape");
     assert.deepEqual(p.errors, []);
   } finally {
+    await p.close();
+  }
+});
+
+test("touch screens: a link-styled button among controls, icon-only buttons in cards, checkboxes through their label", async (t) => {
+  const p = await session(browser, { width: 390, height: 844, mobile: true });
+  // A checkbox is tapped through its label.
+  const sizes = (sel) => p.$$eval(sel, (els) => els.map((e) => {
+    const r = (e.type === "checkbox" ? e.closest("label") ?? e : e).getBoundingClientRect();
+    return { name: e.getAttribute("aria-label") || e.innerText.trim(), w: Math.round(r.width), h: Math.round(r.height) };
+  }));
+  const cur = await api(p, "GET", "/firewall/document");
+  let restore;
+  try {
+    await go(p, "/monitoring");
+    await p.waitForSelector('button[aria-controls="fleet-more-filters"]');
+    const [more] = await sizes('button[aria-controls="fleet-more-filters"]');
+    assert.ok(more.h >= 44, `More filters: ${more.h} px tall`);
+    await waitFor(p, async () => (await p.$$('main input[type="checkbox"][aria-label^="Select "]')).length > 0, "the fleet's checkboxes");
+    for (const c of await sizes('main input[type="checkbox"][aria-label^="Select "]')) assert.ok(c.w >= 44 && c.h >= 44, `${c.name}: ${c.w}×${c.h}`);
+
+    // The rules list is cards on a phone; the move arrows keep 44 × 44 there.
+    if ((cur.body.document.policy ?? []).length === 0) {
+      const r = await api(p, "PUT", "/firewall/document", { yaml: "policy:\n  - name: e2e-touch\n    from: internet\n    to: web-1\n    allow: [https]\n", revision: cur.body.revision });
+      assert.equal(r.status, 200, JSON.stringify(r.body));
+      restore = r.body.revision;
+    }
+    await go(p, "/firewall?tab=designer&view=rules");
+    await p.waitForSelector('table.rtable[data-cards] button[aria-label^="Move "]');
+    for (const b of await sizes('table.rtable[data-cards] button[aria-label^="Move "]')) assert.ok(b.w >= 44 && b.h >= 44, `${b.name}: ${b.w}×${b.h}`);
+
+    // The firewall's hosts: a checkbox for each host in enforce mode.
+    await go(p, "/firewall");
+    const boxes = await sizes('main input[type="checkbox"][aria-label^="Select "]');
+    if (boxes.length === 0) t.diagnostic("no host in enforce mode: the firewall's checkboxes weren't measured");
+    for (const c of boxes) assert.ok(c.w >= 44 && c.h >= 44, `${c.name}: ${c.w}×${c.h}`);
+    assert.deepEqual(p.errors, []);
+  } finally {
+    if (restore) await api(p, "PUT", "/firewall/document", { yaml: cur.body.yaml, revision: restore });
     await p.close();
   }
 });
