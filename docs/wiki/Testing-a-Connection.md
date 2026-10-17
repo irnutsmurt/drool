@@ -2,7 +2,8 @@
 
 The connection test checks, one step at a time, everything DROOL needs to manage a host over SSH,
 and explains the first thing that's wrong. It runs automatically when you add a host, and you can
-run it any time with **Test connection** on the host's page.
+run it any time with **Actions → Test connection** on the host's page (a host that doesn't work yet
+shows **Test connection** as its main button).
 
 ## Before you start
 
@@ -25,7 +26,7 @@ run it any time with **Test connection** on the host's page.
 | **Init System** | Looks for systemd | *systemd* |
 
 The test only reads: it changes nothing on the host. Afterwards DROOL updates the host's status and
-records the time under **Last test** on the host's **Management** card.
+records the time under **Last test** on the **SSH access** card of the host's **Management** section.
 
 ## Reading a failed test
 
@@ -45,14 +46,15 @@ again a few minutes later passed. Where to go for each failed check:
 | Privilege Escalation | The user may not use sudo, sudo wants a password DROOL doesn't have, `requiretty`, a slow host | [Sudo Failed](Sudo-Failed.md) |
 | Init System | No systemd (a container) | Commands, scripts and packages still work; service management and reboots don't |
 
-After fixing the cause (on the host, or with **Edit** on the host's page), click **Test again** (in
-the Add host wizard) or **Test connection** (on the host's page).
+After fixing the cause (on the host, or with **Actions → Edit host details** on the host's page),
+click **Test again** (in the Add host wizard, or in the test's own dialog) or **Test connection** (on
+the host's page).
 
 ## Testing isn't the only check
 
 You don't need to test hosts regularly. DROOL checks every host's status every 5 minutes by itself,
-and the host's status changes on its own once a problem is fixed. **Refresh** on the host's page
-collects inventory and status right away instead of waiting.
+and the host's status changes on its own once a problem is fixed. **Actions → Refresh inventory**
+on the host's page collects inventory and status right away instead of waiting.
 
 ## Related
 

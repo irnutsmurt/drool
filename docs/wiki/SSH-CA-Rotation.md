@@ -17,11 +17,12 @@ one, without any host losing access at any point. Rotate if the CA's private key
 2. **Set up trust again** on your hosts (**Set up trust on hosts…**). Hosts now trust **both** CAs.
 3. **Start issuing with the new CA.** The button **Start issuing with it** works only once *every host in
    certificate mode has accepted it*.
-4. **Retire the old CA.** *Its private key is destroyed; run the trust step on hosts afterwards so they
-   stop trusting it too.*
+4. **Retire the old CA.** DROOL asks *Retire …?*: *Its private key is destroyed. Run the trust step on
+   hosts afterwards, so they stop trusting it too.* Click **Retire**.
 5. **Set up trust once more**, so hosts drop the old CA.
 
-Changed your mind before step 3? **Abandon** the rotation: the new CA's private key is destroyed.
+Changed your mind before step 3? **Abandon** the rotation (**Abandon rotation** in DROOL's dialog):
+the new CA's private key is destroyed, and the current CA stays in use.
 
 ## Good to know
 

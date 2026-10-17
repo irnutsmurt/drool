@@ -43,7 +43,7 @@ afterwards, for example *Stop: done. DROOL checked on media-01: jellyfin.service
 ### The expected state stays as it is
 
 Stopping, disabling or starting a service never changes whether DROOL [monitors](Service-Monitoring.md#monitor) it or what it
-[expects](Service-Monitoring.md#customize-the-expected-state) of it. Running and expectation are separate on purpose: a service you
+[expects](Service-Monitoring.md#customize-monitoring-the-expected-state) of it. Running and expectation are separate on purpose: a service you
 stop for a minute shouldn't quietly stop being monitored.
 
 - Before **Stop**, **Disable** or **Disable & Stop** on a service expected to run, the confirmation
@@ -68,7 +68,8 @@ stop for a minute shouldn't quietly stop being monitored.
    | **Enable at boot** / **Disable at boot** | Changes whether it starts at boot; doesn't start or stop it now |
    | **Enable at boot and start** / **Disable at boot and stop** | Both at once |
 
-4. Choose the **Targets**, then **Run on …** and confirm.
+4. Choose the **Targets**, then click **Review: run on …**, check DROOL's review, and click **Start
+   run on …**.
 
 If the change contradicts [Desired State](What-Desired-State-Is.md) (for example stopping a service a
 baseline says must run), New run warns you before you start, for example *On media-01:

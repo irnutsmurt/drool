@@ -43,7 +43,8 @@ There are two ways to add a host:
 
 If you leave the page early, the host stays in DROOL with the status **Needs host key** (or
 **Untested** after step 2). Open it from **Hosts** and finish there: its page shows what's missing,
-including **Set up a dedicated DROOL SSH account** if you left before step 4.
+and if you left before step 4, its **Management** section offers **Set up a dedicated DROOL SSH
+account…**.
 
 Steps 1 to 3 change nothing on the host: DROOL only logs in, reads information, and logs out. Step 4
 creates DROOL's account, and only once you've confirmed it.
@@ -94,11 +95,13 @@ the same host *key*, so pointing the address at a different machine can't fool i
 
 ## Changing a host later
 
-Open the host and click **Edit**. The same form opens with every field; click **Save**. Changes
-take effect on DROOL's next connection to the host. Run **Test connection** afterwards to check.
+Open the host and choose **Actions → Edit host details** (or **Edit host details** in its
+**Management** section). The same form opens with every field; click **Save**. Changes take effect
+on DROOL's next connection to the host. Run **Test connection** afterwards to check.
 
 Tags and the description can also be changed there. To change which Packs a host belongs to, use
-**Change…** next to **Packs** on the host's page, or the Pack's own page ([Packs](Packs.md#add-and-remove-hosts)).
+**Change…** next to **Packs** on the **Membership** card of the host's **Management** section, or the
+Pack's own page ([Packs](Packs.md#add-and-remove-hosts)).
 
 ## Many hosts
 

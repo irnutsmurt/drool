@@ -36,10 +36,13 @@ Above the tabs, one line sums up what's open, for example *6 open: 1 critical, 5
 suppressed by maintenance*. It also tells you when *no notification destination* is set up yet, or
 when a destination is failing.
 
-Each open alert has **Actions…** on its row: **Acknowledge…** (*I'm on it*), **Snooze…** (maintenance
-for its host until a time you choose) and **Ignore…** (*this is on purpose*: change the setting behind
-it, for that host only), without opening the alert ([Acknowledging an Alert](Acknowledging-an-Alert.md)).
-Closed alerts have none.
+Each open alert has **Actions…** on its row. It opens the alert in a panel beside the list (the
+list stays in view): what's wrong, where, since when and who was told, then **Acknowledge…** (*I'm
+on it*), **Snooze…** (maintenance for its host until a time you choose) and **Ignore…** (*this is on
+purpose*: change the setting behind it, for that host only), each a step in the same panel with
+**Back** ([Acknowledging an Alert](Acknowledging-an-Alert.md)). Links lead on: **View host …**,
+**View monitoring** (for a failed service, **View** *the service*: the host's services with that one
+found), and **Open the alert** for its full page. Closed alerts have no **Actions…**.
 
 ![The Alerts page: 3 open (2 critical, 1 warning) and a destination failing, the Active tab with filters for Severity, Host, Pack, Category and Maintenance, and two alerts on nas-01, backup.service failed and /srv/media is over 95% full, with their severity, host, problem, age, state, notification status and an Actions… button](images/alerts-list.png)
 
@@ -54,7 +57,7 @@ Each row shows:
 |---|---|
 | **Severity** | **Critical** (✕) or **Warning** (⚠), always as a word and an icon, never colour alone |
 | **Host** | The host; click it to open the host's page |
-| **Problem** | What's wrong, with the category and the current value, for example *Disk space · 96%*. Click it to open the alert |
+| **Problem** | What's wrong, with the category and the current value, for example *Disk space · 96%*. Click it to look at the alert in the panel beside the list; open it in a new tab (Ctrl-click, ⌘-click on a Mac) for its page |
 | **Age** | How long the condition has existed (on the history tab: **Duration**, how long it lasted) |
 | **State** | **● Active**, **✓ Acknowledged** (with who), **Resolved**, or a *Cleared* state ([Recovered vs Cleared by Configuration](Recovered-vs-Cleared-by-Configuration.md)); *⏸ Suppressed by maintenance* if maintenance covers the host |
 | **Notification** | Whether people were told (next table) |
@@ -71,7 +74,7 @@ Each row shows:
 
 ## An alert's page
 
-Click a problem to open its alert.
+Click a problem, then **Open the alert** in the panel beside the list.
 
 ![The alert "/srv/media is over 95% full" on nas-01: Critical, Active, Delivery retrying; the timeline, the notifications (delivered to Home Assistant, retrying to Ops mailbox after "connection refused"), the details and the Acknowledge box](images/alert-detail.png)
 
@@ -90,7 +93,9 @@ Click a problem to open its alert.
   been open. **Source** links to the health issue on the host's monitoring page.
 - **Acknowledge**: see [Acknowledging an Alert](Acknowledging-an-Alert.md).
 - **Other occurrences**: earlier alerts for the same problem on the same host.
-- **View host** and **View monitoring** take you to the host.
+- **View host** and **View monitoring** take you to the host. For a failed service the second reads
+  **View** *the service* (for example **View jellyfin.service**) and opens the host's services with
+  that one found, where its **Actions…** are; storage and hardware alerts open those tabs.
 
 ## How often DROOL messages you
 
@@ -110,11 +115,12 @@ condition go away**, or when its check is changed so the condition no longer cou
 ([Recovered vs Cleared by Configuration](Recovered-vs-Cleared-by-Configuration.md)). This way, a
 failing system can never be marked healthy by mistake. To say "I'm on it", acknowledge it.
 
-To stop being alerted about something that isn't a problem for you, **Ignore…** on the alert's row
-changes the setting behind it for that host (ignore a service, or turn that check off for that disk or
-filesystem), and the alert closes as *cleared by configuration*. Or change the health check yourself
-([Health Overrides](Health-Overrides.md)), for example turn off *High CPU utilization* on a machine
-that is supposed to be busy. Services alert only when you monitor them ([Service Monitoring](Service-Monitoring.md)).
+To stop being alerted about something that isn't a problem for you, **Actions… → Ignore…** on the
+alert's row changes the setting behind it for that host (ignore a service, or turn that check off
+for that disk or filesystem), and the alert closes as *cleared by configuration*. Or change the
+health check yourself ([Health Overrides](Health-Overrides.md)), for example turn off *High CPU
+utilization* on a machine that is supposed to be busy. Services alert only when you monitor them
+([Service Monitoring](Service-Monitoring.md)).
 
 ## Before you start
 
@@ -132,7 +138,7 @@ that is supposed to be busy. Services alert only when you monitor them ([Service
 - Alert history is kept for **180 days**, delivery details for **30 days** (an administrator can
   change both under **Settings → Notifications → Advanced → Settings**).
 - **Removing a host deletes its alert history** ([Removing a Host](Removing-a-Host.md)).
-- A host's page has an **Alerts** card with its open alerts, a **History** link, and **Start
+- A host's **Overview** has an **Alerts** card with its open alerts, a **History** link, and **Start
   maintenance**.
 
 ## Next

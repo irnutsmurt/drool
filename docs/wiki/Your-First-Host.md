@@ -115,8 +115,8 @@ step:
 When the checks pass, DROOL says it's **ready to set up its own account**. Click **Continue**.
 
 If something failed, DROOL explains why under the check. Fix the cause on the host (or the host's
-settings with **Edit**, on its page) and click **Test again**. You don't lose anything by leaving the
-page: the host stays in DROOL, and its page offers the next step.
+settings with **Actions → Edit host details**, on its page) and click **Test again**. You don't lose
+anything by leaving the page: the host stays in DROOL, and its page offers the next step.
 
 ## Step 4: Let DROOL create its own account
 
@@ -147,12 +147,12 @@ click one to open its page.)
 
 **If something goes wrong,** nothing is switched: `web-01` keeps signing in as `alex`, with the
 password you typed. DROOL says which step failed and why. If it had already created `drooladmin`,
-the account stays on the host, and **Try again** (or **Set up a dedicated DROOL SSH account** on the
-host's page) continues with it once you've fixed the cause.
+the account stays on the host, and **Try again** (or **Set up a dedicated DROOL SSH account…** in the
+host's **Management** section) continues with it once you've fixed the cause.
 [DROOL's Own SSH Account](Dedicated-SSH-Account.md#when-the-setup-stops) lists the usual causes.
 
 **Not now?** Click **Not now**. DROOL keeps signing in as `alex` with what you typed, and the
-host's page offers **Set up a dedicated DROOL SSH account** whenever you're ready.
+host's **Management** section offers **Set up a dedicated DROOL SSH account…** whenever you're ready.
 
 ### Prefer to keep using your own account?
 
@@ -176,9 +176,10 @@ Now ask `web-01` something harmless: how full its disks are.
 
    `df -h` lists every filesystem on the host with its size, how much is used and how much is free.
    It only reads; it changes nothing.
-3. Tick **Read-only** (this command changes nothing, so DROOL may run it alongside other work). Leave
-   **Run as root (sudo)** unticked: `df` doesn't need root.
-4. Click **Run on 1 host**, and confirm.
+3. Open **Advanced options** and tick **Read-only** (this command changes nothing, so DROOL may run
+   it alongside other work). Leave **Run as root (sudo)** unticked: `df` doesn't need root.
+4. Click **Review: run on 1 host…**. DROOL's review, *Start this run on 1 host?*, sums up what runs
+   where; click **Start run on 1 host**.
 
 DROOL opens the run and shows `web-01`'s output as it arrives: the same table `df -h` prints in a
 terminal. **succeeded** with exit code 0 means it worked. If it failed instead, the run says why
@@ -192,28 +193,30 @@ Click **Monitoring** in the sidebar. `web-01` has a row there, with *SSH · poll
 5 minutes, without installing anything.
 
 Click `web-01` to open its monitoring page: tiles for CPU, memory, storage, network and services,
-history charts, and any health issues it found ([Host Monitoring](Host-Monitoring.md)). You can also
-get there with **View monitoring** on the host's page. If it says *No monitoring data yet*, DROOL
-hasn't polled the host yet: click **Collect now** at the top, or wait up to 5 minutes.
+history charts, and any health issues it found ([Host Monitoring](Host-Monitoring.md)). It's the
+host's **Monitoring** section: from the host's page, click **Monitoring**. If it says *No monitoring
+data yet*, DROOL hasn't polled the host yet: click **Collect now** at the top, or wait up to 5
+minutes.
 
 ## What DROOL does from now on
 
-![web-01's page right after adding it: Ready, the action buttons, the Health card and the Management card](images/host-page-web-01.png)
+![A host's page right after adding it (here backup-01, added the same way): Ready, Debian 12, managed via SSH, last check online; Run command, Install updates and Actions; the sections Overview, Monitoring, Files, Network, Firewall, Desired State, Management and Activity; "Nothing needs attention on this host right now"; Health now still waiting for the first monitoring data; the Desired State, Firewall, Network and Files summaries; the run that set up DROOL's own SSH account; and the System card](images/first-host-page.png)
 
 Apart from its own account, DROOL installs nothing on the host. Without you doing anything, DROOL:
 
 - **takes an inventory**: distribution, kernel, CPU, memory, disks and filesystems, network
-  interfaces, services and listening ports (shown on the host page);
+  interfaces, services and listening ports (on the host's **Overview**, **System** card; services
+  under **Monitoring**, listening ports under **Network**);
 - **checks the host's status every 5 minutes**: reachable or not, uptime, load, disk space, failed
   services, and whether a reboot is required;
 - **checks for updates every 6 hours** (counts of pending and security updates);
 - **polls monitoring every 5 minutes** over SSH: CPU, memory, disks, network, services
   ([Monitoring Through SSH vs Shepherd](Monitoring-Through-SSH-vs-Shepherd.md)).
 
-The **Management** card on the host page shows how DROOL reaches the host, now as its own account
+The host's **Management** section shows how DROOL reaches the host, now as its own account
 `drooladmin` with its own key:
 
-![The Management card for web-01: managed via SSH as drooladmin@10.10.40.21:22 with controller-default, passwordless sudo, direct connection, the trusted host key, and the Install Shepherd (DROOL agent) button](images/host-management-ssh.png)
+![The Management section of a host just added (here backup-01): Connection — managed via SSH, operations over SSH, Test connection; SSH access — drooladmin@10.10.60.20:22 with controller-default, passwordless sudo, a direct connection, the trusted host key and the last test; Shepherd (DROOL agent) — none installed, with Install Shepherd (DROOL agent) and Manual install…; Membership — the infrastructure Pack and its tags; and the Danger zone](images/first-host-management.png)
 
 ## Next
 

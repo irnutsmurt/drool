@@ -39,12 +39,13 @@ There are three ways to install one:
 
 ## From the host's page (easiest)
 
-1. Open the host (in the examples, `media-02`) and find the **Management** card.
-2. Click **Install Shepherd (DROOL agent)**. The dialog says where the Shepherd will connect, for
-   example **Shepherds will connect to: drool.example.net:9443**. If the host can't reach that
-   address and port, cancel and fix it first ([Before you start](#before-you-start)).
+1. Open the host (in the examples, `media-02`) and its **Management** section.
+2. On the **Shepherd (DROOL agent)** card, click **Install Shepherd (DROOL agent)**. The dialog says
+   where the Shepherd will connect, for example **Shepherds will connect to: drool.example.net:9443**.
+   If the host can't reach that address and port, cancel and fix it first
+   ([Before you start](#before-you-start)).
 
-   ![The "Install a Shepherd (DROOL agent) on media-02" dialog with the Monitor, Managed and Full presets and what each allows, the optional release-signing key, and the Install with the managed preset button](images/shepherd-install-dialog.png)
+   ![The "Install a Shepherd (DROOL agent) on web-01" dialog: how the install works, the address Shepherds connect to, the Monitor, Managed and Full presets and what each allows (Full marked root-equivalent), the optional release-signing key, and Cancel and Install with the managed preset in its footer](images/shepherd-install-dialog.png)
 
 3. Choose a preset. **Managed** is selected by default: services, reboots and packages from the
    repositories already configured on the host, but no shell commands and no file access. Pick
@@ -69,9 +70,9 @@ The dialog then says **The agent is installed and connected.** with the installe
 **Done**. If it failed, the dialog shows the error and nothing is switched over: the host stays on
 SSH.
 
-Afterwards the **Management** card looks like this:
+Afterwards the host's **Management** section looks like this:
 
-![media-01's Management card: managed via Shepherd, connected, SSH as fallback, operations through the Shepherd, and buttons to turn off SSH fallback, manage over SSH only or revoke the identity](images/host-management-shepherd.png)
+![media-01's Management section: Connection (managed via Shepherd, connected, SSH as fallback only while the agent is unreachable, operations through the Shepherd; Test connection, Turn off SSH fallback, Manage over SSH only); the Shepherd card (its version, compatible, connected, the certificate's expiry, Shepherd details, Uninstall Shepherd… and Revoke Shepherd identity); SSH access; Membership; and the Danger zone](images/host-management-shepherd.png)
 
 ## A host that DROOL can't reach over SSH
 
@@ -82,7 +83,7 @@ to connect, or the ports you chose instead.
 1. **Open DROOL by the address your hosts can reach** (for example `https://drool.example.net:8080`,
    not `https://localhost:8080`): the installer command uses the address in your browser.
 2. Go to **Shepherds → Add a host with a Shepherd** (or, for a host that's already in DROOL,
-   **Manual install…** on its Management card).
+   **Manual install…** on the **Shepherd (DROOL agent)** card of its **Management** section).
 3. Choose a preset and click **Create token and installer**. The dialog says where the Shepherd will
    connect (**Shepherds will connect to: …**): the host must be able to reach it.
 4. Copy the command. It is shown **only once** and expires after one hour. It looks like this:
@@ -99,9 +100,9 @@ can't come from anyone else, which is stricter than normal certificate checking.
 the fingerprint of DROOL's Agent Root CA, so the Shepherd trusts only your DROOL.
 
 A Shepherd enrolled this way becomes a **new host** in DROOL, named after the machine's hostname
-(with `-2`, `-3`… added if that name is already taken), unless the
-token was created for a host that already exists (**Manual install…** on that host's page). DROOL
-never decides that two hosts are the same because their names or addresses match.
+(with `-2`, `-3`… added if that name is already taken), unless the token was created for a host that
+already exists (**Manual install…** in that host's **Management** section). DROOL never decides that
+two hosts are the same because their names or addresses match.
 
 **Without `curl | sudo sh`:** under the command's **Details**, DROOL shows the token on its own. Copy
 `drool-agent-linux-amd64` (or `-arm64`) to the host and run, as root:
@@ -172,8 +173,8 @@ once:
   (Podman: `Environment=DROOL_AGENT_PUBLIC_PORT=2043`). Don't change `DROOL_AGENT_PORT`: it's where
   DROOL listens inside the container, and stays 9443.
 
-Then open the host's page and click **Install Shepherd (DROOL agent)** again. The dialog should now
-say **Shepherds will connect to: 10.10.0.10:2043**, and the installer
+Then open the host's **Management** section and click **Install Shepherd (DROOL agent)** again. The
+dialog should now say **Shepherds will connect to: 10.10.0.10:2043**, and the installer
 `(agent endpoint 10.10.0.10:2043)`. If the dialog has no **Shepherds will connect to** line, DROOL's
 image is still an old one.
 

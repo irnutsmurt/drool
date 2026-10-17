@@ -8,7 +8,8 @@ separate topic ([Storage Health](Storage-Health.md)).
 
 - **Monitoring** (the fleet page): the **Disk** column shows each host's fullest filesystem, for
   example *96% /srv/media*, and the **Low disk space** filter lists the hosts that are short.
-- A host's **Overview** tile **Storage** shows its fullest filesystem.
+- A host's **Storage** tile, on its **Overview** and monitoring **Summary**, shows its fullest
+  filesystem.
 - A host's **Metrics** tab has a **Filesystems** card: a chart of space used per mount point, and a
   table with **Mount**, **Device**, **Used**, **Free**, **Inodes** and **State** (*Read/write* or
   *Read-only*), each with **Customize health check**.

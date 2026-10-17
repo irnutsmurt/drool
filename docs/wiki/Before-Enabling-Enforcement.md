@@ -11,7 +11,7 @@ to **Enforce**.
 1. **Make sure you can reach the host another way.** A console (a hypervisor's console, a monitor and
    keyboard, an IPMI or cloud console) lets you [recover by hand](Recovering-From-a-Firewall-Problem.md#locked-out-anyway)
    if you ever need to.
-2. **Check the host's firewall environment.** Open the host's page → **View firewall** → **Check**
+2. **Check the host's firewall environment.** Open the host's **Firewall** section → **Check**
    under **Firewall environment**. You want *Enforcement is supported here: plain nftables, no other
    firewall manager.* If it says *refused*, read why:
    - *nftables (nft) is not installed*: install the `nftables` package

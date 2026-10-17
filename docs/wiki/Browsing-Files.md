@@ -17,10 +17,10 @@ audit log.
 
 ## Open it
 
-On a host's page, click **Files** (in the examples: **Hosts → media-02 → Files**). The page is called
-*Files on media-02*.
+Open the host's **Files** section (in the examples: **Hosts → media-02 → Files**). The breadcrumb
+above it says *Hosts › media-02 › Files*.
 
-![The file manager on media-02 in /etc/jellyfin with administrator privileges on: the warning banner, the path, Go to path, Refresh, New folder, Upload…, and network.xml with its size, owner root:root, permissions rw-r--r-- 0644 and actions](images/file-manager.png)
+![web-01's Files section in /etc/ssh with administrator privileges on: the warning banner, Up and the path, Go to path, Refresh, New folder and Upload…, and the entries with their size, owner root:root, permissions (rw-r--r-- 0644, described), modification time, Download for files and a ⋯ menu for the other actions](images/file-manager.png)
 
 - **The current path** is always shown (`/etc / jellyfin`); click a part of it to go there, or type a
   path into **Go to path…** and press Enter. **↑ Up** goes one level up.
@@ -28,8 +28,9 @@ On a host's page, click **Files** (in the examples: **Hosts → media-02 → Fil
   `0644`) with a plain description below (*owner: read, write · group & others: read*), and when it
   was last modified.
 - **Click a folder** to open it; **click a file** to view or edit it ([Editing Files](Editing-Files.md)).
-- **Actions** on each entry: **Download**, **Rename** (also moves), **Permissions**, **Owner**,
-  **Delete**. At the top: **Refresh**, **New folder**, **Upload…**.
+- **Actions** on each entry: **Download** (files), and the entry's **⋯** menu with **Rename or
+  move…**, **Permissions…**, **Owner…** and **Delete…**. At the top: **Refresh**, **New folder**,
+  **Upload…**.
 
 ## Who you are on the host
 

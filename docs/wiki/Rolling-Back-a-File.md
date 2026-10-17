@@ -14,9 +14,10 @@ group and permissions). One click puts it back.
 
 ## Find the deployment
 
-- On the host's page, the **Deployed files** card lists every file DROOL deployed there, with its
-  state. Click a path.
-- Or open the deployment run from **Runs**.
+- On the host's **Overview**, the **Files** tile counts the files DROOL deployed there and lists the
+  first few. Click a path.
+- Or open the deployment run (from **Runs**, or the host's **Activity** section) and click **Details
+  and diff** in the host's result.
 
 ![The deployment of /etc/jellyfin/network.xml on media-02: file installed, before (did not exist), after (checksum, root:root 0644, 262 B), validation passed, the Roll back button, the diff, and the file's history on media-02](images/file-deployment-record.png)
 
@@ -30,7 +31,9 @@ The page shows:
 
 ## Roll back
 
-Click **Roll back** and confirm. DROOL starts an ordinary, audited run that:
+Click **Roll back**. DROOL asks first, for example *Roll back: put back the previous version of
+/etc/jellyfin/network.xml?*, and reminds you that a file changed since is left alone. Click **Roll
+back** again: DROOL starts an ordinary, audited run that:
 
 1. checks the file on the host is still exactly what that deployment installed (otherwise: refused);
 2. restores the previous content, owner, group and permissions, in one step, after running the

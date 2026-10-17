@@ -1,7 +1,7 @@
 # Firewall modes
 
-Each host has a firewall **mode**, chosen on its firewall page (host page → **View firewall** → **Mode
-and environment**). New hosts start in **Off**.
+Each host has a firewall **mode**, chosen in its **Firewall** section (**Mode and environment**). New
+hosts start in **Off**.
 
 | Mode | What DROOL does |
 |---|---|
@@ -20,7 +20,7 @@ before choosing Enforce.
 
 ## Change a host's mode
 
-1. Open the host's page and click **View firewall**.
+1. Open the host's **Firewall** section.
 2. Under **Mode and environment**, choose the **Mode**.
 3. Optionally change:
    - **Outbound traffic**: **allow** (*Not filtered (denies still apply)*, the default) or **restrict**

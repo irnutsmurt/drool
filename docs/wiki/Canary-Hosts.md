@@ -4,24 +4,29 @@ A **canary** is a host that tries a change first, on its own. If the canary fail
 run before any other host starts**, so a bad update or a broken command reaches one machine instead of
 all of them. The name comes from the canaries miners took underground as an early warning.
 
-You'll find the canary setting in the **Rollout** card of **Runs → New run**, under **Advanced** on a
-[schedule](Schedules.md#advanced-options), and in a [workflow's](Workflows.md) **Default rollout**.
+You'll find the canary setting in the **Rollout** card of **Runs → New run** and in a
+[workflow's](Workflows.md) **Default rollout** (both behind **Change rollout…**), and under
+**Advanced** on a [schedule](Schedules.md#advanced-options).
 
 ## Choose canary hosts
 
 Under **Canary**:
 
-- **No canary**: every host starts in the first wave (the default for a new run).
+- **No canary**: every host starts in the first wave (the default for a run that changes nothing,
+  such as a read-only command).
 - **The first hosts by name**: the first **Number of canary hosts** (1–10) in alphabetical order. On
   the `media-servers` Pack, one canary means `media-01`.
 - **Hosts I choose**: tick up to 10 of the run's targets, for example the host you'd least mind
   breaking, or the one most like the others.
 
-The quickest way is **Use recommended rollout**, which DROOL offers for a change to two or more
-hosts: *try one host first, then five at a time, and pause if two fail.*
+For a change to two or more hosts, DROOL starts with its recommended rollout: *Recommended for 3
+hosts: 1 canary host first, then batches of 5, up to 5 at a time, pause after 2 failures.* If you
+choose a rollout without a canary, batches or a failure limit, DROOL keeps your choice and offers
+**Use recommended rollout** beside it: *try one host first, then five at a time, and pause if two
+fail.*
 
-The box below the targets (the schedule's **Preview**, or **Waves** when running a workflow) shows the
-exact order: *Canary: media-01*, then *Batch 1: media-02, nas-01*.
+**Waves** (in the **Rollout** card of a new run, and when running a workflow) and the schedule's
+**Preview** show the exact order: *Canary: media-01*, then *Batch 1: media-02, nas-01*.
 
 ## What happens
 
@@ -58,8 +63,8 @@ and how it went.
   Pack), DROOL doesn't drop the safety net: the first hosts by name become the canaries instead, and
   the preview says so.
 - If every target is a canary (one host, one canary), there's no separate canary wave.
-- Read-only commands and checks don't need a canary: DROOL only suggests the recommended rollout for
-  steps that change something.
+- Read-only commands and checks don't need a canary: DROOL only uses and suggests the recommended
+  rollout for steps that change something.
 
 ## Related
 

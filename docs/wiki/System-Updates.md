@@ -10,12 +10,14 @@ the host afterwards when the update requires it.
 - The hosts need **APT or DNF**, sudo or a root login, and access to their repositories. Shepherd
   hosts need the **Managed** or **Full** preset.
 - **Find out which hosts need updates:** the **Hosts** list has an **UPDATES** column (for example
-  *1 (1 security)*), the Overview has an **Updates and reboots** card, and each host's page shows
-  *Updates: 0 pending, none security · checked 12 min ago*. DROOL checks every 6 hours.
+  *1 (1 security)*), the Overview has an **Updates and reboots** card, and each host's **Overview**
+  shows, under **Health now**, **Updates** *0 pending · checked 12 min ago*. DROOL checks every 6
+  hours.
 
 ## Steps
 
-1. **Runs → New run → System update**, or **Install updates** on a host's page.
+1. **Runs → New run → System update**, or **Install updates** on a host's page or a Pack's page
+   (the host or the Pack is already chosen as the target).
 2. Choose the **Mode**:
 
    | Mode | What it does |
@@ -27,14 +29,15 @@ the host afterwards when the update requires it.
 3. **Refresh package metadata first** is ticked by default (`apt-get update` / `dnf makecache`).
    Leave it on, or the hosts update only to what they already knew about.
 4. **Reboot afterwards:** **Never**, **Only if the update requires it**, or **Always**.
-5. Choose the **Targets**, and for more than a few hosts a **Rollout** (one host first, then
-   batches): updates are exactly the kind of change you want to try on one host first
-   ([Canary Hosts](Canary-Hosts.md)).
+5. Choose the **Targets**. For two or more hosts, the **Rollout** starts as DROOL's recommended one
+   (one host first, then batches): updates are exactly the kind of change you want to try on one host
+   first ([Canary Hosts](Canary-Hosts.md)). **Change rollout…** adjusts it.
 6. Click **Preview changes**: a dry run per host listing *N to upgrade, N new, N to remove*. Nothing
    is changed. The preview uses each host's current package lists; the run refreshes them first, so a
    few more updates may appear then. New removals would still stop the run unless allowed.
 7. If a host would remove packages, decide about **Allow these removals**.
-8. **Run on …** and confirm. The confirmation repeats the mode, and whether hosts will reboot.
+8. Click **Review: run on …**. DROOL's review repeats the mode, what the preview found, how the run
+   rolls out, and whether hosts will reboot. Click **Start run on …**.
 
 ## What DROOL does on each host
 

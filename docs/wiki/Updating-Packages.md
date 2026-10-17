@@ -21,7 +21,7 @@ root, and on Shepherd hosts the **Managed** or **Full** preset.
    missing package.
 5. If any host would remove other packages, decide about **Allow these removals** (see
    [Removing Packages](Removing-Packages.md)).
-6. **Run on …** and confirm.
+6. **Review: run on …**, then **Start run on …** in DROOL's review.
 
 ## What DROOL does
 

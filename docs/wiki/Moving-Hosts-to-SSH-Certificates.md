@@ -17,8 +17,8 @@ before relying on it, so a host is never stranded. In the examples, Alex moves `
 ## 1. Set up trust
 
 For several hosts: **Credentials → SSH certificate authority → Set up trust on hosts…**, tick the
-hosts, and start (*one host first; then 5 at a time, pausing after 2 failures*). For one host: on its
-page, in the **Management** card, click **Set up CA trust**.
+hosts, and start (*one host first; then 5 at a time, pausing after 2 failures*). For one host: in its
+**Management** section, on the **SSH access** card, click **Set up CA trust**.
 
 This is an ordinary run, *Trust DROOL's SSH certificate authority*. On each host it:
 
@@ -32,26 +32,26 @@ If sshd rejects the result, the run puts the previous files back. A host that al
 CA file is left alone: add DROOL's key to that file yourself (**Trusting it by hand** in the card shows
 the key and the line).
 
-The host's **Management** card then shows **CA trust: accepted**.
+The host's **SSH access** card then shows **CA trust: accepted**.
 
 ## 2. Use certificates
 
-1. On the host's page, in the **Management** card, click **Use certificates…**.
+1. In the host's **Management** section, on the **SSH access** card, click **Use certificates…**.
 2. Leave **Principal** empty to use the host's SSH user (for example `drooladmin`). Set it only if the
    host maps certificates with `AuthorizedPrincipalsFile`.
 3. Click **Check and switch**. DROOL connects once more with a fresh certificate, and switches only if
    that works.
 
-![web-01's Management card: credential controller-default (kept as a way back; DROOL signs in with certificates); signs in with a fresh certificate from DROOL's SSH CA for each connection; CA trust accepted, checked just now; Check CA trust again and Go back to the credential](images/host-management-certificate.png)
+![web-01's Management section: Connection (managed via SSH) and SSH access — drooladmin@10.10.40.21:22, credential controller-default (kept as a way back; DROOL signs in with certificates), signs in with a fresh certificate from DROOL's SSH CA for each connection, CA trust accepted, with Check CA trust again and Go back to the credential; beside them the Shepherd card with Install Shepherd (DROOL agent), and Membership](images/host-management-certificate.png)
 
 From now on DROOL doesn't use the host's stored credential: the card says *kept as a way back; DROOL
 signs in with certificates*.
 
 ## Going back
 
-**Go back to the credential** in the host's **Management** card switches back to the stored
-credential. Keep that credential (and its key in the host's `authorized_keys`) as your way back. If you
-remove it, DROOL warns that its CA is then the only way in.
+**Go back to the credential** on the host's **SSH access** card (under **Management**) switches back
+to the stored credential. Keep that credential (and its key in the host's `authorized_keys`) as your
+way back. If you remove it, DROOL warns that its CA is then the only way in.
 
 ## Jump hosts
 

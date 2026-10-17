@@ -14,7 +14,8 @@ their tags.
 ## Add or change tags
 
 - **When adding a host**, type them in **Tags**, separated by commas: `web, ubuntu`.
-- **Later**, open the host, click **Edit**, change **Tags** and click **Save**.
+- **Later**, open the host, choose **Actions → Edit host details**, change **Tags** and click
+  **Save**.
 
 A tag is either a single word (`web`) or a `key:value` pair (`env:prod`, `role:web`):
 
@@ -29,6 +30,7 @@ DROOL treats each tag as plain text: `role:web` is one tag, matched as a whole.
 | Where | How |
 |---|---|
 | **Hosts** list | The **TAGS** column, and the search box (*Search name, address, tag…*) |
+| **Search** (**Ctrl+K**) | Finds hosts by their tags too ([First Login](First-Login.md#3-find-your-way-around)) |
 | **New run** | **Tags** under the targets: *Hosts with any of these tags*. Type one or more, e.g. `media debian`; a host needs only one of them to be included |
 | **Schedules** and file deployments | The same target picker as runs |
 

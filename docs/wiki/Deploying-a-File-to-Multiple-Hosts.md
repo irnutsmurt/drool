@@ -48,12 +48,13 @@ In the examples, Alex deploys a new `/etc/jellyfin/network.xml` to `media-01` an
     | *only owner/permissions change* | Same content, different owner, group or mode |
     | *inaccessible* | DROOL can't read or write there (often: needs administrator privileges, or the folder is missing) |
 
-    ![The deployment form for network-v3.xml to /etc/jellyfin/network.xml with administrator privileges and a validation command, and the preview: media-01 "different: would replace" with a diff adding two lines](images/file-deploy-preview.png)
+    ![The deployment form for network-v3.xml to /etc/jellyfin/network.xml with administrator privileges and a validation command, and the preview for media-01 and media-02, each "different: would replace" with a diff adding a subnet and a known proxy; the recommended rollout for 2 hosts (media-01 first as the canary) and Review: run on 2 hosts…](images/file-deploy-preview.png)
 
-11. Click **Run on 2 hosts**. The confirmation sums it up: *Deploy network-v3.xml to
-    /etc/jellyfin/network.xml on 2 hosts as root? Existing files are replaced; their previous
-    versions are kept for rollback. The new file is validated first; hosts where validation fails are
-    not changed.*
+11. Click **Review: run on 2 hosts…**. DROOL's review, *Start this run on 2 hosts?*, sums it up:
+    *network-v3.xml goes to /etc/jellyfin/network.xml as root. Existing files are replaced; their
+    previous versions are kept for rollback. The new file is validated first; hosts where validation
+    fails are not changed.* Its **Preview** line repeats what the preview found. Click **Start run on
+    2 hosts**.
 
 ## What DROOL does on each host
 
@@ -64,13 +65,15 @@ In the examples, Alex deploys a new `/etc/jellyfin/network.xml` to `media-01` an
 5. Checks the result (checksum, owner, mode).
 6. Reloads or restarts the service, if you asked and the file actually changed.
 
-Hosts that already had identical content are reported as **no change**. For a change to many hosts,
-use a rollout (one host first) like any other run ([Canary Hosts](Canary-Hosts.md)).
+Hosts that already had identical content are reported as **no change**. For a change to two or
+more hosts, DROOL starts with its recommended rollout (one host first), like any other run
+([Canary Hosts](Canary-Hosts.md)).
 
 ## Afterwards
 
-Each host's page lists **Deployed files**, and each deployment has its own page with before and after
-checksums, the diff, the validation output and a **Roll back** button
+The **Files** tile on each host's **Overview** counts the files DROOL deployed there, with links to
+the first few. Each deployment has its own page (also linked from the run, **Details and diff**) with
+before and after checksums, the diff, the validation output and a **Roll back** button
 ([Rolling Back a File](Rolling-Back-a-File.md)).
 
 ## Limits

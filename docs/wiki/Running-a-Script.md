@@ -28,9 +28,10 @@ Shepherd hosts the **Full** preset (the shell capability).
 
    You don't need a `#!` line: the interpreter you chose runs the script.
 4. Pick the **Targets** (for example the `media-servers` Pack), and set **Run as root (sudo)**,
-   **Read-only**, **Name** and **Timeout (seconds)** as for a command. Scripts default to a 600-second
-   timeout.
-5. Click **Run on 3 hosts** and confirm *Run this script on 3 hosts?*.
+   **Name**, and under **Advanced options** **Timeout (seconds)** and **Read-only**, as for a command.
+   Scripts default to a 600-second timeout.
+5. Click **Review: run on 3 hosts…**, check DROOL's review (*Start this run on 3 hosts?*), and click
+   **Start run on 3 hosts**.
 
 ## A different script per operating system
 
@@ -60,7 +61,8 @@ Anything the script prints to standard error is highlighted in the output.
 ## Things to keep in mind
 
 - **Scripts can do anything** the account (or root, with sudo) can. DROOL can't preview what a
-  script will change. For a change to many hosts, use a [rollout](Canary-Hosts.md): one host first.
+  script will change. For a change to two or more hosts, DROOL starts with its recommended
+  [rollout](Canary-Hosts.md): one host first. Keep it.
 - **Interactive programs won't work**: there's no keyboard on the other end. Use non-interactive
   options (`apt-get -y`, `--yes`), or better, the dedicated [package](Installing-Packages.md) and
   [service](Managing-Services.md) operations, which DROOL simulates and verifies.

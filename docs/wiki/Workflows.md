@@ -33,9 +33,11 @@ servers* workflow does this on each media server:
 3. Under **Workflow**, enter a **Name** (*Update media servers*) and optionally a **Description**.
 4. Under **Steps**, choose a kind of step in the **Add a step** list, click **Add step**, and fill it
    in. Repeat for each step. Use **↑** and **↓** to reorder and **Remove** to delete a step.
-5. Under **Default rollout**, choose how hosts take turns ([Canary Hosts](Canary-Hosts.md),
-   [Batches and Failure Thresholds](Batches-and-Failure-Thresholds.md)). A schedule starts with this
-   rollout and can change it.
+5. Under **Default rollout**, check how hosts take turns ([Canary Hosts](Canary-Hosts.md),
+   [Batches and Failure Thresholds](Batches-and-Failure-Thresholds.md)). A new workflow whose steps
+   change hosts starts with DROOL's recommended rollout (*Recommended: 1 canary host first, then
+   batches of 5, up to 5 at a time, pause after 2 failures*); **Change rollout…** sets another.
+   Running or scheduling the workflow starts from this rollout, and can change it there.
 6. Click **Create workflow**.
 
 ![The workflow "Update media servers": its steps (system update with reboot if required, verify host is reachable, verify services ssh, verify health), the default rollout, and the Revisions card](images/workflow-editor.png)
@@ -77,7 +79,10 @@ services couldn't be checked* (see [Monitoring Is Stale](Monitoring-Is-Stale.md)
 
 1. Open the workflow and click **Run now**.
 2. Choose the **Targets**, check the **Rollout** and the **Waves**.
-3. Click **Run on 3 hosts**.
+3. Click **Review: run on 3 hosts…**. The same dialog then shows DROOL's review, *Start “Update media
+   servers” on 3 hosts?*: the workflow's revision and steps, the hosts, the rollout, and any warnings.
+   **Back** returns to the targets.
+4. Click **Start run on 3 hosts**.
 
 ## Change a workflow: revisions
 
@@ -85,8 +90,9 @@ Every saved change is a new **revision** (**Save as a new revision**). Revisions
 runs keep exactly the steps they ran. A schedule keeps running the revision it was saved with until
 someone chooses the newer one. See [Workflow Revisions](Workflow-Revisions.md).
 
-**Archive** retires a workflow: schedules using it keep running their revision; new schedules can't
-choose it. **Show archived** on the Workflows page lists archived workflows.
+**Archive** retires a workflow, after DROOL asks *Archive the workflow “Update media servers”?*
+(**Archive workflow**): schedules using it keep running their revision; new schedules and runs can't
+choose it any more. **Show archived** on the Workflows page lists archived workflows.
 
 ## Next
 

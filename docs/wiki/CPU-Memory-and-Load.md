@@ -1,7 +1,7 @@
 # CPU, memory and load
 
 How busy a host is, and whether it's running out of memory. You'll find the numbers on the host's
-monitoring page: the **CPU** and **Memory** tiles on **Overview**, and charts on **Metrics**.
+monitoring page: the **CPU** and **Memory** tiles on **Summary**, and charts on **Metrics**.
 
 ![media-01's Metrics tab: range buttons from Hour to 30 days, the CPU and memory charts with CPUs, available memory, uptime, pressure and load figures, the load average chart and the filesystems](images/monitoring-metrics.png)
 

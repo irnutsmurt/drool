@@ -21,8 +21,10 @@ host key*. The most common reasons:
 ## Desired State: Unknown
 
 On **Desired State → Overview**, the **Unknown** filter lists hosts DROOL couldn't verify, with the
-reason under **What differs**. Unknown resources aren't restored automatically, and can't be accepted:
-DROOL has to see the state first. **Check now** on the host's Desired State page tries again right away.
+reason under **What differs**. On the host, the resource says *Not verified*, why, and *Until DROOL
+can check it, it isn't counted as compliant.* Unknown resources aren't restored automatically, and
+can't be accepted: DROOL has to see the state first. **Check now** on the host's Desired State page
+tries again right away.
 
 ## Related
 

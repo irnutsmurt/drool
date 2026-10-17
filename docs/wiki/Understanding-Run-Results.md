@@ -70,7 +70,9 @@ file. That's a success, not a skipped host.
 ## Buttons
 
 - **Cancel** (while running) — stops starting new hosts and terminates commands that are running.
-  *Running commands will be terminated.* For a scheduled run, the schedule stays enabled.
+  DROOL asks first, *Cancel this run?*: *Commands still running on its hosts are terminated; hosts
+  that haven't started won't start. What already changed on a host stays changed.* Click **Cancel
+  the run**, or **Keep it running**. For a scheduled run, the schedule stays enabled.
 - **Resume** (while paused) — continues with the hosts that haven't started. Failed hosts stay failed.
 - **Re-run unsuccessful hosts** (when finished) — a **new** run with the same definition, on every host
   that didn't succeed: failed, timed out, cancelled, skipped or interrupted. The new run says it's a

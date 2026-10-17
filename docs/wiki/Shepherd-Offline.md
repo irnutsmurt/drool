@@ -1,7 +1,7 @@
 # Shepherd offline
 
-A host's Shepherd shows **offline** (on **Shepherds**, and in the host's **Management** card): DROOL
-hasn't heard from the `drool-agent` service for a while. Monitoring for that host stops being
+A host's Shepherd shows **offline** (on **Shepherds**, and in the host's **Management** section):
+DROOL hasn't heard from the `drool-agent` service for a while. Monitoring for that host stops being
 continuous, and operations go over SSH if the host allows [SSH fallback](SSH-Fallback.md), or wait.
 
 ## Usual causes

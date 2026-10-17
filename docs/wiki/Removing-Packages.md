@@ -21,7 +21,8 @@ root, and on Shepherd hosts the **Managed** or **Full** preset.
    says *N hosts would remove other packages*, and lists them per host.
 5. Read the list. If it's what you expect, tick **Allow these removals**. If not, change the package
    list, or remove fewer hosts.
-6. Click **Run on 1 host** and confirm.
+6. Click **Review: run on 1 host…**. DROOL's review, *Start this run on 1 host?*, repeats what the
+   preview found. Click **Start run on 1 host**.
 
 ## What DROOL does on each host
 

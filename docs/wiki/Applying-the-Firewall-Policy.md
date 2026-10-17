@@ -15,7 +15,7 @@ policy to `web-01`.
 
 ## Apply to one host
 
-1. Open the host's page → **View firewall**.
+1. Open the host's **Firewall** section.
 2. Look at the **Effective policy** tab: what will be allowed and denied, and why.
 3. In the **Enforcement** card, click **Apply policy** (the first time), **Apply changes** (when the
    policy changed since the last apply), or **Apply again** (to re-verify an unchanged policy).

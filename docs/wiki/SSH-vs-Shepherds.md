@@ -39,7 +39,8 @@ In the examples, `media-01` has a Shepherd; `media-02`, `database-01` and `web-0
 
 ## What a host with a Shepherd looks like
 
-On the host page, the **Management** card says how DROOL reaches the host:
+In the host's **Management** section, the **Connection** card says how DROOL reaches the host (the
+header's *Managed via* says it in short):
 
 - **Managed via** — *SSH* or *Shepherd (DROOL agent)*.
 - **Fallback** — for Shepherd hosts: *SSH (only while the agent is unreachable, never to work around

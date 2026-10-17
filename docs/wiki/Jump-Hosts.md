@@ -21,7 +21,8 @@ machine called `bastion-01` (10.10.1.10) were reachable from the controller and 
 
 1. Add the jump host (`bastion-01`). If DROOL should only use it to reach others, and not manage or
    monitor it itself, open **Advanced** in the form and tick **Jump host only**.
-2. Add (or **Edit**) the target host (`database-01`) and choose `bastion-01` under **Connect through**.
+2. Add the target host (`database-01`), or edit it (**Actions → Edit host details**), and choose
+   `bastion-01` under **Connect through**.
 3. Trust the target's own host key and test the connection. The test's first step, **Reachable**,
    now means "reachable through `bastion-01`".
 

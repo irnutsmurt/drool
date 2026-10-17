@@ -29,7 +29,8 @@ In the examples, Alex installs `htop` on the media servers.
 6. If a host would **remove other packages**, a red box says so (*1 host would remove other
    packages*). Without your permission, the run stops on that host before changing anything. Tick
    **Allow these removals** only if you've read the list and agree.
-7. Click **Run on 2 hosts** and confirm.
+7. Click **Review: run on 2 hosts…**. DROOL's review, *Start this run on 2 hosts?*, sums up what
+   runs where, how it rolls out, and what the preview found. Click **Start run on 2 hosts**.
 
 ## What DROOL does on each host
 

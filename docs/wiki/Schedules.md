@@ -47,10 +47,16 @@ Open **Schedules → New schedule**.
    appear below as you edit.
 3. **Targets**: tick hosts and Packs, or type tags. **Packs and tags are looked up again at every
    run**: a host you add to `media-servers` next month takes part from then on.
-4. **What to run**: **Steps** (add them as in a run: commands, scripts, packages, system updates,
-   services, reboots, file deployments, and checks), or **A saved workflow**.
-5. For a change to several hosts, DROOL suggests a careful rollout: **Use recommended rollout** (one
-   host first, then five at a time, pausing if two fail). See [Canary Hosts](Canary-Hosts.md) and
+4. **What to run**, one of two:
+   - **Steps**, *written here, for this schedule only*: add them as in a run (commands, scripts,
+     packages, system updates, services, reboots, file deployments, and checks);
+   - **A saved workflow**, *reusable and revisioned*: the schedule runs the revision it was saved
+     with until you choose a newer one.
+5. **Rollout**: for a change to two or more hosts, a new schedule starts with DROOL's recommended
+   rollout (one host first, then five at a time, pausing if two fail); a saved workflow brings its own
+   default rollout. The **Advanced** card shows which. If you choose a rollout without a canary,
+   batches or a failure limit, DROOL keeps it and offers **Use recommended rollout** above that card.
+   See [Canary Hosts](Canary-Hosts.md) and
    [Batches and Failure Thresholds](Batches-and-Failure-Thresholds.md).
 6. Check the **Preview** on the right, then click **Create schedule**.
 
@@ -86,13 +92,13 @@ Open a schedule from **Schedules** to see:
 - **Run now** (runs it immediately, as **you**, with your permissions; hosts in maintenance are *not*
   skipped, and the next scheduled run doesn't change), **Disable** / **Enable**, and **Edit**. Only
   the schedule's owner and administrators can edit it or enable it again.
-- **Settings**: the next run, the targets (*resolved again at every run*), the rollout, what happens
-  if DROOL was down or the previous run is still going, the maintenance window, the **Owner** and the
-  **Revision**.
+- **Settings**: the next run, the targets (*resolved again at every run*), **What runs** (its own
+  steps, or a saved workflow and the revision it runs), the rollout, what happens if DROOL was down or
+  the previous run is still going, the maintenance window, the **Owner** and the **Revision**.
 - **History**: every time the schedule was due, when it started, what happened (*succeeded*, *failed
   on 2 hosts*, *skipped* and why, *missed*, *blocked*), and **View run**.
 
-![The schedule Daily disk check: enabled, df -h / every day at 06:00; its settings (next run, targets, rollout, missed and overlapping runs, maintenance window, owner alex, revision 1) and its history with one run started by "Run now by alex", completed with failures: 2 succeeded, 1 failed](images/schedule-detail.png)
+![The schedule Daily disk check: enabled, df -h / every day at 06:00 (America/Los_Angeles); its settings (next run; targets, the media-servers Pack, resolved again at every run; what runs, its own steps; rollout; missed and overlapping runs; maintenance window; owner alex; revision 1); and its history: runs missed while DROOL wasn't running, and one run started by "Run now by alex", completed with failures: 2 succeeded, 1 failed](images/schedule-detail.png)
 
 **Schedules** lists every schedule with its state, next run, when, targets, how its runs went, the
 last result and the owner. **Show archived** lists archived ones.

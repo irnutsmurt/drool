@@ -9,9 +9,11 @@ what to do about it (unless [automatic restore](Automatic-Restore.md) is on for 
 ## Where you see it
 
 - **Desired State → Overview**: *2 hosts with drift (3 resources)*, and the hosts under **Needs
-  attention** with **What differs** (*/etc/motd (drift), package telnet (drift)*).
+  attention** with **What differs** (*/etc/motd (drift), package telnet (drift)*) and their
+  **Baselines**, each a link to the baseline.
 - The **Overview** page, among the things that need attention.
-- The host's **Desired State** card and page, with every resource that differs.
+- The **Desired State** tile on the host's **Overview**, and the host's **Desired State** section,
+  with every resource that differs.
 
 ![web-01's desired state with two drifted resources: /etc/motd is missing, and the prohibited package telnet is installed](images/host-desired.png)
 

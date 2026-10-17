@@ -57,7 +57,7 @@ folder was made.
 | After a restore, Shepherds can't connect, because the Shepherd CA was replaced after the backup was made | Issue a new intermediate CA with the offline root key (**Shepherds → Trust (PKI)**, or `drool agent-ca rotate --root-key FILE`): its trust manifest supersedes the one the Shepherds hold ([Shepherd PKI](Shepherd-PKI.md)) |
 | An update went wrong | [Going back](Updating-DROOL.md#if-something-went-wrong-going-back) |
 | The audit history failed verification | [If verification fails](Audit-Log.md#if-verification-fails) |
-| A Shepherd was compromised | Revoke it (on its host's page, or under **Shepherds**), and enroll it again after reinstalling the host. If you later restore an older backup, revoke it again: Shepherds older than M16 don't report a revocation made after the backup |
+| A Shepherd was compromised | Revoke it (in its host's **Management** section, or under **Shepherds**), and enroll it again after reinstalling the host. If you later restore an older backup, revoke it again: Shepherds older than M16 don't report a revocation made after the backup |
 | The master key may have leaked | Rotate it ([Key Rotation](Key-Rotation.md)), and keep the saved previous key with the older backups, offline |
 
 These situations need a person on purpose: DROOL won't guess which side of a disagreement is right,

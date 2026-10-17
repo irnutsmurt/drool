@@ -14,7 +14,7 @@ Everyone who can sign in can see monitoring (**monitoring.read**). The buttons t
 
 ## The page
 
-![The Monitoring page: 6 of 6 hosts reporting, alert counts, filter buttons (Needs attention 1, Low disk space 1, Storage health 1, Service failures 0…), the host table with health, alerts, monitoring method, CPU, memory, disk, temperature, services (nas-01 and database-01: 1 failed, not alerting) and storage devices, and the list of active health issues](images/monitoring-fleet.png)
+![The Monitoring page: 7 of 7 hosts reporting (5 with a Shepherd, 2 over SSH), the alert counts and the host in maintenance; the common filters (All hosts, Needs attention, Unreachable / stale, CPU, Low disk space, Storage health, Service failures, Reduced fidelity, Missing helpers, each with its count) and More filters; a host search and sort; the host table with health, alerts, monitoring method, CPU, memory, disk, temperature, services and storage devices; and the active health issues](images/monitoring-fleet.png)
 
 From the top:
 
@@ -24,10 +24,12 @@ From the top:
   ([Monitoring Settings](Monitoring-Settings.md)).
 - **Alerts:** open alerts by severity, how many are acknowledged, and how many hosts are in
   maintenance. Click to open [Alerts](Understanding-Alerts.md).
-- **Filter buttons** with counts: **Needs attention**, **Unreachable / stale**, **CPU**, **Memory**,
-  **Low disk space**, **Storage health**, **Service failures** (of services you monitor), **Interfaces**, **Temperature**,
-  **Reduced fidelity**, **Missing helpers**, **No data yet**, **All hosts**. Click one to list just
-  those hosts.
+- **Filter buttons** with counts. **All hosts**, **Needs attention** and **Unreachable / stale** are
+  always there, and so is any other filter that has hosts right now. **More filters** lists all of
+  them: *Health problems* (**CPU**, **Memory**, **Low disk space**, **Storage health**, **Service
+  failures** (of services you monitor), **Interfaces**, **Temperature**) and *How hosts are monitored*
+  (**Reduced fidelity**, **Missing helpers**, **No data yet**). Click one to list just those hosts;
+  **Reset filters** shows every host again.
 - **The host table:** search by name (**Host**), choose **Sort by** (*Needs attention first*, *Name*,
   *CPU*, *Memory*, *Disk space used*, *Temperature*). Each row shows:
   - **Health** — *Healthy*, or the number of issues with the worst severity;
@@ -46,7 +48,8 @@ Click a host to open its monitoring page ([Host Monitoring](Host-Monitoring.md))
 
 ## Acting on several hosts
 
-Tick hosts in the table, then:
+Tick hosts in the table. The buttons appear next to the count (*2 selected*); **Clear** unticks them
+all.
 
 - **Install recommended helpers** — installs the optional tools that would give DROOL more detail on
   those hosts (`smartmontools`, `nvme-cli`, `lm-sensors`), after a preview with counts. It runs as an

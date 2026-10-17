@@ -30,8 +30,8 @@ the save is refused:
 version.*
 
 - **Reload (discard my changes)** loads the current version, so you can see the other change. It's
-  almost always the right choice; DROOL asks *Discard your changes and load the current version?*
-  first, so copy your edits somewhere if you'll want them.
+  almost always the right choice; DROOL asks *Discard your changes?* first (**Discard and reload**),
+  so copy your edits somewhere if you'll want them.
 - **Overwrite the newer version** saves your text anyway, replacing the other change. Use it only if
   you know what that change was.
 

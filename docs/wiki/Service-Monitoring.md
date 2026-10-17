@@ -9,14 +9,15 @@ monitors is listed with its state (failed included) and never raises a health is
 
 - **Monitoring** (fleet): the **Services** column (*50 listed*, or *✕ 1 monitored problem*; a
   failure nobody monitors shows as *1 failed, not alerting*) and the **Service failures** filter.
-- A host's **Services** tile on its monitoring Overview: *3/3 monitored as expected*, or *None
-  monitored*, with failed services nobody monitors as a note.
+- A host's **Services** tile, on its **Overview** and on its monitoring **Summary**: *3/3 monitored
+  as expected*, or *None monitored*, with failed services nobody monitors as a note.
 - A host's monitoring page, **Services** tab: the full list.
 
-![nas-01's Services tab: filters All, Running, Stopped, Failed, Enabled, Disabled and Monitored with counts, the "Show all units" switch, and the services with their state, boot setting, since, restarts, a Monitor box, and History, Customize… and Actions…: backup.service failed but not monitored, so it doesn't alert; jellyfin.service and smbd.service monitored; plex.service expected to be stopped](images/monitoring-services.png)
+![nas-01's Services tab: a find box, the filters All, Running, Stopped, Failed, Enabled, Disabled and Monitored with counts, Show all units (advanced), and the services with their state, boot setting, since, restarts, a Monitor box, Actions… and a ⋯ menu: backup.service failed but not monitored, so it doesn't alert; jellyfin.service and smbd.service monitored; plex.service expected to be stopped (⚙ Customized)](images/monitoring-services.png)
 
 ## The Services tab
 
+- **Find a service…** narrows the list by name or description.
 - **Filters** with counts: **Running**, **Stopped**, **Failed**, **Enabled**, **Disabled**, **Monitored**,
   **All**.
 - **Show all units (advanced, N hidden)** — by default DROOL hides the noise (one-shot units, units that
@@ -27,9 +28,11 @@ monitors is listed with its state (failed included) and never raises a health is
   own words such as `active/running`, and a line saying whether it's a problem and why),
   **Enabled** (the boot setting, e.g. `enabled` or `static`), **Since**, **Restarts** (automatic
   restarts since it was last started by hand), **Monitor**.
-- **On each row:** **History** (every recorded state change), **Customize…** (what DROOL expects of
-  the service, and how long a problem lasts before it alerts) and **Actions…**: start, stop, restart,
-  enable or disable it ([Managing Services](Managing-Services.md#from-a-hosts-services-tab)).
+- **On each row:** **Actions…**: start, stop, restart, enable or disable it
+  ([Managing Services](Managing-Services.md#from-a-hosts-services-tab)); and **⋯**, a menu with
+  **Customize monitoring…** (what DROOL expects of the service, and how long a problem lasts before
+  it alerts) and **State history** (every recorded state change). A service you customized shows
+  **⚙ Customized** under its **Monitor** box; click it to open the same settings.
 
 ## Monitor
 
@@ -56,10 +59,10 @@ A small line under the box says when it isn't that simple:
 - Stopping or starting a service never changes whether it's monitored
   ([Managing Services](Managing-Services.md#the-expected-state-stays-as-it-is)).
 
-## Customize… (the expected state)
+## Customize monitoring… (the expected state)
 
-Behind the box is the service's **expected state**. **Customize…** on its row sets the advanced ones,
-for this host:
+Behind the box is the service's **expected state**. **⋯ → Customize monitoring…** on its row sets the
+advanced ones, for this host:
 
 | Expected | Stopped | Running | Failed |
 |---|---|---|---|

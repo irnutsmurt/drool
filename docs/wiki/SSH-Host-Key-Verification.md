@@ -44,8 +44,8 @@ You only need to trust one key per host; DROOL uses that type from then on. If t
 nothing, DROOL couldn't reach the SSH port: check the address and port and click **Scan again**
 (see [Host Won't Connect](Host-Wont-Connect.md)).
 
-The same panel appears on the host's page while a host is waiting for its key, so you can come back
-to it later.
+The same panel appears on the host's **Overview** while a host is waiting for its key, so you can
+come back to it later.
 
 ## When a host's key changes
 
@@ -64,7 +64,7 @@ What to do:
 1. Find out why. Did you or a colleague reinstall the host or regenerate its keys? Was a machine
    replaced?
 2. If you know why, check the **new** fingerprint on the host itself (the command above) and compare
-   it with the new key DROOL shows on the host's page.
+   it with the new key DROOL shows on the host's **Overview**.
 3. If it matches, click **Trust this key** next to the new key. DROOL asks for your password again
    first (see [Re-authentication](Re-authentication.md)), because trusting a changed key is a
    security decision. The old key is kept as *retired*, and DROOL connects again.

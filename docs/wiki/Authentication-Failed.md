@@ -13,8 +13,8 @@ host and the host key was right, but the host didn't accept DROOL's login.
 
 ## Steps for a key credential
 
-1. Check the **SSH user** on the host's page (**Edit**). It's the Linux account DROOL logs in as, for
-   example `drooladmin`, not your DROOL username.
+1. Check the **SSH user** on the host's page (**Actions → Edit host details**). It's the Linux
+   account DROOL logs in as, for example `drooladmin`, not your DROOL username.
 2. Check that the credential's **public** key is in that user's `~/.ssh/authorized_keys` on the host.
    For DROOL's own key, **Credentials** shows a one-line command to install it ([SSH Credentials](SSH-Credentials.md)).
 3. Check the file permissions sshd insists on: the user's home directory and `~/.ssh` not writable by
@@ -32,7 +32,7 @@ Check the password (log in by hand with it), and that sshd allows password login
 
 ## Steps for certificate mode
 
-1. On the host's page, **Check CA trust again** in the **Management** card.
+1. In the host's **Management** section, click **Check CA trust again** on the **SSH access** card.
 2. If trust isn't set up (or the host trusts another CA file), see
    [Moving Hosts to SSH Certificates](Moving-Hosts-to-SSH-Certificates.md#1-set-up-trust).
 3. If the host maps certificates with `AuthorizedPrincipalsFile`, the **principal** must be listed

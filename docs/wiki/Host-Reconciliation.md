@@ -31,8 +31,9 @@ What each state means, and what to do: [What Happens After Restore](What-Happens
 
 1. Find the host under **Hosts not reconciled yet**, for example `web-01` (*Ahead of DROOL*).
 2. Read the details: *firewall: host has newer (revision 3, DROOL 2)*.
-3. Click **Accept host's state…** and confirm. *Nothing on the host changes; it is moved to this
-   controller's epoch with what it has, and DROOL's own configuration then shows where it differs.*
+3. Click **Accept host's state…**. DROOL asks *Accept web-01's state as it is?*: *Nothing on the
+   host changes: it is moved to this controller's epoch with what it has, and DROOL's own
+   configuration then shows where it differs.* Click **Accept host's state**.
 4. The host shows *Accepted by alex; comparing again*, then **Reconciled**.
 
 Accepting asks you to [confirm it's you](Re-authentication.md) and is recorded in the

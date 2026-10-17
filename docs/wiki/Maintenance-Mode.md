@@ -23,7 +23,8 @@ maintenance.
 ## Put one host in maintenance
 
 1. Open the host's page, for example `media-02`.
-2. In the **Alerts** card, click **Start maintenance**.
+2. Click **Actions → Start maintenance…** (or **Start maintenance** in the **Alerts** card of the
+   host's **Overview**).
 3. Under **How long**, choose **1 hour**, **2 hours**, **4 hours**, **24 hours**, **Until a time**
    (pick the **End**; at most 30 days ahead), or **Until I end it**.
 4. Enter a **Reason** (recommended), for example *Kernel upgrade*. It's shown on every alert the
@@ -32,8 +33,9 @@ maintenance.
 
 ![The Start maintenance dialog for media-02: notifications are paused while monitoring, health issues, alerts, firewall rollback, agent recovery and host-key checks keep working; How long: 2 hours; Reason: Kernel upgrade](images/maintenance-dialog.png)
 
-The host's page and its monitoring page now show a banner: *⏸ In maintenance until* (the end
-time) *— Kernel upgrade. Notifications are paused; monitoring and alerts continue.*
+The host's **Overview** and its **Monitoring** section now show a banner: *⏸ In maintenance until*
+(the end time) *— Kernel upgrade. Notifications are paused; monitoring and alerts continue.* The
+host's header says *In maintenance until* … in every section.
 
 ## Put several hosts or a Pack in maintenance
 

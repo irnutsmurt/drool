@@ -12,9 +12,9 @@ host.*
 
 ## Steps
 
-1. Open the host's **Desired State** page (host page → **Desired State** card → **View desired
-   state**), or click the host on **Desired State → Overview**.
-2. Click the resource that differs, for example `/etc/motd`.
+1. Open the host's **Desired State** section, or click the host on **Desired State → Overview**.
+2. Click the resource that differs, for example `/etc/motd` (each row opens; the arrow at its end
+   says so).
 3. Click **Review difference**. DROOL fetches the current state (*Comparing…*) and shows it.
 
 ![Review difference for /etc/motd on web-01: drift detected; desired is the managed content (sha256 f427ae57deec…), owner root:root, mode 0644, and on the host the file is missing; the SHA-256, size, owner and permissions table, and the diff adding the two lines "Managed by DROOL." and "Authorized use only."](images/review-difference.png)

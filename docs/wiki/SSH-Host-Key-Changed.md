@@ -18,7 +18,7 @@ impersonating your host. DROOL can't tell which, so it stops and asks.
    ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
    ```
 
-3. Compare that fingerprint with the new key DROOL shows on the host's page.
+3. Compare that fingerprint with the new key DROOL shows on the host's **Overview**.
 4. **If they match and you know why it changed**, click **Trust this key** next to the new key. DROOL
    asks you to [confirm it's you](Re-authentication.md). The old key is kept as *retired*.
 5. **If you can't explain it, don't trust the new key.** Look at the machine and the network first.

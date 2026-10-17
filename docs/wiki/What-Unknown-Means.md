@@ -13,7 +13,7 @@ couldn't check. An Unknown is a question, not an answer.
 | A storage device: *Limited — No failure indicators detected* | The device (SD card, USB stick) reports nothing about itself | Normal. DROOL watches kernel errors instead; consider the write/read probe |
 | A service state: *Unknown* | DROOL hasn't seen that unit's state | The host hasn't reported yet, or the data is too old |
 | A host's **Health**: *No data yet* | Monitoring hasn't received anything from the host | A host just added (wait one poll, up to 5 minutes), or one DROOL can't reach |
-| Desired State: **Unknown** | DROOL couldn't confirm the resource's state | The host is unreachable, the data is too old, or monitoring is off. See [Host Shows Unknown](Host-Shows-Unknown.md) |
+| Desired State: **Unknown** | DROOL couldn't confirm the resource's state. The resource says *Not verified*: it isn't counted as compliant until DROOL can check it | The host is unreachable, the data is too old, or monitoring is off. See [Host Shows Unknown](Host-Shows-Unknown.md) |
 | A run's host: **outcome unknown** / **interrupted** | DROOL lost contact mid-operation; it may or may not have happened | Check the host before repeating. See [Failed, Interrupted and Unknown Outcomes](Failed-Interrupted-and-Unknown-Outcomes.md) |
 | Network Activity: process **Unknown** | The connection was gone before DROOL could see which program owned it | Common for very short outbound connections |
 | Network Activity: country or network *unknown* | The GeoIP/ASN database has no answer for that address. Without a database (still being prepared, none, or lookups off), connections show **—** instead, and the page says why | See [GeoIP and ASN](GeoIP-and-ASN.md#what-network-activity-shows) |

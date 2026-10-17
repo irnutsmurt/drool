@@ -43,8 +43,8 @@ pages link to it.
 
 - **Desired State** in the menu: **Overview** (which hosts need attention), **Baselines** and
   **History**.
-- A host's page has a **Desired State** card; **View desired state** opens everything managed on that
-  host, where each desired value comes from, and its history.
+- A host's **Overview** has a **Desired State** tile, and its **Desired State** section shows
+  everything managed on that host, where each desired value comes from, and its history.
 - The **Overview** page lists hosts with drift among the things that need attention.
 
 ![Desired State → Overview: 2 hosts with drift (3 resources), 0 conflicts, 0 failed restores, 6 resources that can't be verified right now; the firewall policy link; and the hosts needing attention: media-02 and web-01 with drift, gpu-01 and nas-01 unknown because their host keys aren't approved](images/desired-overview.png)

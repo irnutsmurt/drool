@@ -27,17 +27,17 @@ When it comes back, it recovers by proving it still holds its key, within **180 
 
 ## Revoking a Shepherd
 
-If a host was compromised, sold, or re-imaged: open the host's page and click **Revoke Shepherd
-identity** in its **Management** card, give a **Reason (recorded in the audit log)**, and confirm. It
-takes effect immediately: the Shepherd can no longer connect. To manage the host with a Shepherd again,
-reinstall the host and enroll it again.
+If a host was compromised, sold, or re-imaged: open the host's **Management** section and click
+**Revoke Shepherd identity** on its **Shepherd (DROOL agent)** card, give a **Reason (recorded in
+the audit log)**, and click **Revoke**. It takes effect immediately: the Shepherd can no longer
+connect. To manage the host with a Shepherd again, reinstall the host and enroll it again.
 
 ## Cloned machines (identity conflict)
 
 If two machines connect with the **same** Shepherd identity at once (usually a cloned VM that copied
 the Shepherd's key), DROOL **quarantines** the identity: *Identity conflict… DROOL doesn't pick one:
-management is paused until you resolve it.* The host's Management card lists both connections
-(address, hostname, boot id, since when).
+management is paused until you resolve it.* The **Connection** card in the host's **Management**
+section lists both connections (address, hostname, boot id, since when).
 
 1. Shut down or re-image the clone. On the clone: stop `drool-agent` and remove `/var/lib/drool-agent`.
 2. Click **Release quarantine**.

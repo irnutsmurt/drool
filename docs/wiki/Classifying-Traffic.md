@@ -38,12 +38,15 @@ Anything else on those ports stays what it is: someone's laptop connecting to SS
 service*, not DROOL. When the evidence is missing (no SSH sign-in measured yet, for example), DROOL
 leaves it unknown rather than guess. DROOL's own traffic can't be classified as something else.
 
-The **DROOL's own traffic** quick filter, or **What it is → DROOL management**, shows exactly these.
+The **DROOL's own traffic** quick filter, or **What it is → DROOL management** (both under **More
+filters**), shows exactly these.
 
 ## Classify a connection
 
-1. On **Network Activity**, click a connection.
-2. In **What it is**, click **Classify…**.
+1. On **Network Activity**, click a connection. It opens in a panel beside the list.
+2. At the bottom of the panel, click **Classify…** (for one that's already classified: **Edit
+   “…”…**, or **Classify differently…**). The form opens in the same panel; **Back** returns to the
+   connection.
 3. The form starts as **exactly this connection**: this host, this direction, this protocol and port,
    and this remote address. Saved like that, it labels this connection only (*labeled from one
    connection*).
@@ -58,7 +61,7 @@ The **DROOL's own traffic** quick filter, or **What it is → DROOL management**
 5. **Label**: what it is, for example *NFS media storage*. Tick **This traffic is expected** if it is,
    add a note if you like, and click **Save classification**.
 
-   ![Classify traffic, opened from media-02's connection to 198.51.100.77: the label "Media sync (testing)", hosts media-02, outbound, TCP, service port 8443, remote side the address 198.51.100.77, "This traffic is expected" unticked, a note field, and the explanation that, as it stands, this labels this connection only](images/network-classify.png)
+   ![Classify traffic, a step in the connection's panel (Back to the connection), for media-02's connection to 198.51.100.77: the label "Media sync (testing)", hosts media-02, outbound, TCP, service port 8443, the remote side the address 198.51.100.77, "This traffic is expected" unticked, a note, the explanation that as it stands this labels this connection only, and Back and Save classification](images/network-classify.png)
 
 A classification applies at once to the traffic already observed and to everything observed later.
 When several match a connection, the most specific wins: a label for one connection first, then the

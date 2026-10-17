@@ -1,8 +1,9 @@
 # Batches and failure thresholds
 
 When a run reaches many hosts, three settings decide how fast it goes and when it stops to let you
-look. They're in the **Rollout** card of **Runs → New run**, under **Advanced** on a
-[schedule](Schedules.md#advanced-options), and in a [workflow's](Workflows.md) **Default rollout**.
+look. They're in the **Rollout** card of **Runs → New run** and in a [workflow's](Workflows.md)
+**Default rollout** (both behind **Change rollout…**), and under **Advanced** on a
+[schedule](Schedules.md#advanced-options).
 
 | Setting | What it does | Default |
 |---|---|---|
@@ -11,7 +12,10 @@ look. They're in the **Rollout** card of **Runs → New run**, under **Advanced*
 | **Pause after failures** | After this many hosts fail, DROOL starts no more hosts, lets the running ones finish, and **pauses** | Empty: never pause for failures |
 
 DROOL's **recommended rollout** for changes to two or more hosts is one canary, then batches of 5, 5
-at a time, pausing after 2 failures. **Use recommended rollout** sets it in one click.
+at a time, pausing after 2 failures. New runs, schedules and workflows that change hosts start with
+it instead of the defaults above (*Recommended for 13 hosts: 1 canary host first, then batches of 5,
+up to 5 at a time, pause after 2 failures*). If you choose a rollout without a canary, batches or a
+failure limit, DROOL keeps it and offers **Use recommended rollout** beside it.
 
 ## An example
 
@@ -33,7 +37,8 @@ Alex updates 13 hosts with: 1 canary, batch size 5, 5 at a time, pause after 2 f
 - **Resume** continues with the hosts that haven't started. **Hosts that failed stay failed**; a
   resume doesn't retry them.
 - **Cancel** stops the run: hosts that haven't started never do, and commands still running are
-  terminated (*Cancel this run? Running commands will be terminated.*).
+  terminated. DROOL asks first (*Cancel this run?*); **Cancel the run** stops it, **Keep it running**
+  doesn't.
 
 To try the failed hosts again later, open the run and click **Re-run unsuccessful hosts**.
 

@@ -22,23 +22,28 @@ free disk space on all media servers with `df -h /`.
    **Will run on 3 hosts** lists exactly which hosts that means, with a warning next to any host that
    will fail or be skipped.
 4. Optionally:
-   - **Only run on:** *Debian / Ubuntu* or *RHEL family / Fedora* — the command runs only on hosts of
-     that family; the others are skipped. Leave both unticked for all hosts.
    - **Run as root (sudo)** — run the command through the host's sudo setting. Without it, the
      command runs as the SSH user (`drooladmin`).
-   - **Read-only** — tell DROOL the command doesn't change anything. Read-only runs may run on a host
-     at the same time as other runs; other runs wait for each other.
    - **Name** — shown in the Runs list (for example *Check disk space*); otherwise the command is.
-   - **Timeout (seconds)** — default 300. A command still running after that is stopped and the host
-     reported as *timed out*.
-5. For more than a couple of hosts, consider the **Rollout** card ([Canary Hosts](Canary-Hosts.md),
-   [Batches and Failure Thresholds](Batches-and-Failure-Thresholds.md)). For changes, the
-   recommended rollout (*one host first, then five at a time, pause if two fail*) stops a bad
-   command early instead of on every host.
-6. Click **Run on 3 hosts** (the button counts the hosts). DROOL asks once more, for example
-   *Run "df -h /" on 3 hosts?*, then opens the run.
+   - Under **Advanced options** (closed, it still lists what's set there):
+     - **Timeout (seconds)** — default 300. A command still running after that is stopped and the
+       host reported as *timed out*.
+     - **Only run on:** *Debian / Ubuntu* or *RHEL family / Fedora* — the command runs only on hosts
+       of that family; the others are skipped. Leave both unticked for all hosts.
+     - **Read-only** — tell DROOL the command doesn't change anything. Read-only runs may run on a
+       host at the same time as other runs; other runs wait for each other.
+5. Check the **Rollout** card ([Canary Hosts](Canary-Hosts.md),
+   [Batches and Failure Thresholds](Batches-and-Failure-Thresholds.md)). For a change to two or more
+   hosts, DROOL starts with its recommended rollout (*Recommended for 3 hosts: 1 canary host first,
+   then batches of 5, up to 5 at a time, pause after 2 failures*): it stops a bad command early
+   instead of on every host. **Change rollout…** sets another; a **Read-only** command needs none.
+6. Click **Review: run on 3 hosts…** (the button counts the hosts). DROOL's review, *Start this run
+   on 3 hosts?*, shows **What** (the command, and whether it runs as root), **On** (the hosts by
+   name), the **Rollout**, and any warnings. Click **Start run on 3 hosts**: DROOL opens the run.
 
-![New run with the command df -h /, the name "Check disk space", the media-servers Pack ticked, and "Will run on 3 hosts" listing media-01, media-02 and nas-01 (which will fail: host key not approved yet)](images/new-run-command.png)
+![New run with the command df -h /, the name "Check disk space" and Advanced options folded; the media-servers Pack ticked; the Rollout card with the recommended rollout for 3 hosts (media-01 first as the canary, then media-02 and nas-01) and Change rollout…; "Will run on 3 hosts" with media-02 (last connection test could not reach the host) and nas-01 (host key not approved yet; this host will fail); and Review: run on 3 hosts…, Schedule this run and Save as workflow](images/new-run-command.png)
+
+![DROOL's review, Start this run on 3 hosts?: What, the command df -h /; On, media-01, media-02 and nas-01; Rollout, 1 canary host first, then batches of 5, up to 5 at a time, pause after 2 failures; that it runs as the SSH user; the warnings for media-02 and nas-01; Cancel and Start run on 3 hosts](images/new-run-review.png)
 
 Instead of running it now you can **Schedule this run** ([Schedules](Schedules.md)) or **Save as
 workflow** to reuse it ([Workflows](Workflows.md)).
@@ -47,8 +52,8 @@ workflow** to reuse it ([Workflows](Workflows.md)).
 
 - It connects to each host (over SSH, or through its Shepherd) and runs the command in a shell on
   the host, as the SSH user or, with **Run as root**, through sudo.
-- Up to 10 hosts run at the same time by default (**Hosts at a time**), 20 across all runs on the
-  controller.
+- Up to 10 hosts run at the same time by default (**Hosts at a time**; 5 with the recommended
+  rollout), 20 across all runs on the controller.
 - A host that's busy with another (non-read-only) run waits for it first (*waiting for host*).
 - It streams the output live and keeps it with the run (up to 10 MB per host and step).
 - If a sudo password is involved, it's sent on standard input and removed from the output.

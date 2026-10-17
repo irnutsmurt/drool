@@ -35,9 +35,10 @@ DROOL checks the host once more, then records the host's own value (shown as *Ho
 
 ## Undo it
 
-Open the resource and click **Reset to inherited**. The host then follows its baselines again, and may
-show drift right away (*Reset /etc/motd to its inherited desired state? The host may then show
-drift.*).
+Open the resource and click **Reset to inherited**. DROOL asks *Reset /etc/motd to its inherited
+desired state?*: *This host's own setting is removed; the value it inherits (from its Packs or every
+host) applies again. If the host differs from that value, it then shows drift.* Click **Reset to
+inherited** again. The host then follows its baselines again, and may show drift right away.
 
 ## Related
 

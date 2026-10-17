@@ -12,7 +12,7 @@ Shepherd's limits or a way to run something twice.
 
 ## The settings
 
-On the host's **Management** card:
+On the **Connection** card of the host's **Management** section:
 
 | Line | Meaning |
 |---|---|
@@ -48,10 +48,11 @@ A host installed from its page starts with **Shepherd first, SSH as fallback**.
 during a Shepherd update gone wrong.
 
 **Turn it off** if the Shepherd's ceiling must be the only limit. SSH is bounded only by what the
-SSH account may do: with passwordless sudo, everything. The Management card warns about this when the
-fallback logs in with root access: *SSH fallback logs in with root access, which this ceiling does
-not limit.* For the ceiling to be absolute, turn the fallback off, and also remove DROOL's key from
-the host (or restrict the account's sudo rights).
+SSH account may do: with passwordless sudo, everything. The host's **Shepherd (DROOL agent)** card
+warns about this, under **Shepherd details**, when the fallback logs in with root access: *SSH
+fallback logs in with root access, which this ceiling does not limit.* For the ceiling to be
+absolute, turn the fallback off, and also remove DROOL's key from the host (or restrict the
+account's sudo rights).
 
 ## Related
 

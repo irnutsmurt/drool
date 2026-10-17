@@ -14,14 +14,16 @@ itself: you review the rule, save the policy, and apply it.
 ## From one connection
 
 1. In **Network Activity**, click the connection, for example `media-02` → `198.51.100.77`, TCP 8443
-   (after Alex learned it's a new plugin that syncs watch history).
-2. Under **Firewall**, DROOL shows its suggestion, for example *Suggested: Allow media-02 →
+   (after Alex learned it's a new plugin that syncs watch history). It opens in a panel beside the
+   list.
+2. Under **Firewall**, DROOL shows its suggestion, for example *Suggested policy: Allow media-02 →
    198.51.100.77 tcp-8443*.
-3. Click **Create policy from observed connection…**. The firewall designer opens in the **Rules**
-   view, with the rule added to your draft: *Draft rule media-02-198-51-100-77-tcp-8443 was added from
-   an observed connection. It is only part of this draft: review it below, check the preview and
-   management paths, then save the policy and apply it — or discard it.* If the connection used a port
-   no service describes, DROOL adds a service for it too (here `tcp-8443`).
+3. Click **Create policy from observed connection…** at the bottom of the panel. The firewall
+   designer opens in the **Rules** view, with the rule added to your draft: *Draft rule
+   media-02-198-51-100-77-tcp-8443 was added from an observed connection. It is only part of this
+   draft: review it below, check the preview and management paths, then save the policy and apply it
+   — or discard it.* If the connection used a port no service describes, DROOL adds a service for it
+   too (here `tcp-8443`).
 4. Review the rule: click **Edit** to rename it (`media-02-watch-sync`), widen or narrow it (a Pack
    instead of one host, a network instead of one address), or turn the custom service into a named
    one.

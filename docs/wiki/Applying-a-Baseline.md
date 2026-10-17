@@ -43,13 +43,13 @@ one ([Conflicts](Conflicts.md)).
 
 ## See where a host's desired state comes from
 
-Open the host's **Desired State** page (from the host's page, **Desired State** card → **View desired
-state**). **Where this host's desired state comes from** lists the baselines that apply (*Server
-Defaults rev. 1, via everywhere*), the host's Packs with their priorities, and the inheritance order.
-Open any resource to see **Where the desired value comes from**, for example *Required by Global
-baseline Server Defaults* or *Inherited from pack: media-servers (baseline Media Server)*.
+Open the host's **Desired State** section. **Where this host's desired state comes from** lists the
+baselines that apply (*Server Defaults rev. 1, via everywhere*), the host's Packs with their
+priorities, and the inheritance order. Open any resource to see **Where the desired value comes
+from**, for example *Required by Global baseline Server Defaults* or *Inherited from pack:
+media-servers (baseline Media Server)*.
 
-![web-01's desired state: drift detected, 1 of 3 resources compliant; Server Defaults applies via everywhere; /etc/motd is missing (drift) with Review difference, Restore managed state, Accept current state and Change baseline; telnet is installed but should be absent; openssh-server is compliant](images/host-desired.png)
+![web-01's Desired State section: drift detected, 1 of 3 resources compliant; Server Defaults applies via everywhere, with the Packs' priorities and the inheritance chain; the managed resources, each opening for its details and actions: /etc/motd is missing and telnet is installed but should be absent (drift), openssh-server is compliant](images/host-desired.png)
 
 ## Next
 

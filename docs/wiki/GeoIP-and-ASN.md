@@ -55,6 +55,8 @@ It also shows the last successful check, the next one, and the last error. **Che
 newer release right away (it's recorded in the audit log). **Reload files** loads changed files from
 the directories right away (DROOL also notices them by itself).
 
+![Network Activity → Collection and enrichment: Country and network owner (GeoIP/ASN) Available, the country and the network owner (ASN) from DB-IP Lite, release 2026-10; Automatic downloads on (DB-IP Lite, CC BY 4.0, checked daily for a new monthly release) with the last successful check and the next, Only the database files are downloaded, IP Geolocation by DB-IP; Check now and Reload files; and the collection settings with Show country and network owner and Download and update the databases automatically ticked](images/network-settings.png)
+
 ## Turning it off
 
 - **Show country and network owner for public addresses**, on the same page, turns lookups off. DROOL
@@ -106,6 +108,8 @@ DROOL tells these cases apart, for the country and the network owner separately:
 **Unknown** therefore always means the database was asked and had no answer. The reason behind a
 **—** is on the connection's details and in its tooltip. Private, internal and special addresses are
 never looked up, whatever the setting: *internal*, or nothing.
+
+![web-01's connection to 1.1.1.1 on TCP 853 (DNS over TLS), external: country Australia (AU) and network AS13335 Cloudflare, Inc., with the note that country and network come from this controller's GeoIP/ASN databases and are context, not a verdict, and the attribution IP Geolocation by DB-IP](images/network-flow-geoip.png)
 
 ## Related
 

@@ -1,7 +1,7 @@
 # What Shepherd and SSH hosts can see
 
 How much of a host's network activity DROOL sees depends on how it reaches the host. Each host's
-Network Activity page says which applies, under **How this host is observed**.
+**Network** section says which applies, under **How this host is observed**.
 
 | | Shepherd hosts | SSH hosts |
 |---|---|---|
@@ -17,7 +17,7 @@ conntrack isn't used, the page says why, for example *connection tracking is not
 
 ## Take a snapshot of an SSH host
 
-1. Open the host's page → **View network activity**.
+1. Open the host's **Network** section.
 2. Click **Take snapshot**. DROOL logs in over SSH and lists the open connections:
    *Snapshot taken: 1 connection group(s) open right now.*
 

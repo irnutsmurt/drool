@@ -6,7 +6,8 @@ for another.
 
 ## Where to look
 
-- The **Temperature** tile on a host's monitoring **Overview** shows the hottest sensor.
+- The **Temperature** tile on a host's **Overview** and monitoring **Summary** shows the hottest
+  sensor.
 - The **Sensors & GPU** tab lists every sensor with its type, the temperature **Now**, the hardware's
   **High** and **Critical** limits, and a **State**.
 - On **Monitoring**, the **Temp.** column and the **Temperature** filter cover the whole fleet.

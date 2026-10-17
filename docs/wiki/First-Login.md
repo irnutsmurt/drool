@@ -97,14 +97,15 @@ If every administrator is locked out, a new one can be created on the controller
 - **The sidebar** lists every area under plain headings: **Overview**; *Fleet* — **Hosts**,
   **Packs** (groups of hosts), **Shepherds** (DROOL agents); *Observe* — **Monitoring**, **Alerts**,
   **Network Activity**; *Automate* — **Runs**, **Schedules**, **Workflows**, **Desired State**;
-  *Protect* — **Firewall**, **Credentials**, **Audit Log**; and **Settings**. Hover over Packs or
-  Shepherds to see what those names mean.
+  *Protect* — **Firewall**, **Credentials**, **Audit Log**; and, set apart at the bottom,
+  **Settings**. Hover over Packs or Shepherds to see what those names mean.
 - **The Overview** answers "does anything need me right now?": how many hosts are online, open
   alerts, runs in progress, desired-state drift, the firewall, and a **Security** card.
-- **Search:** press **Ctrl+K** (**⌘K** on a Mac) or **/**, or click *Search pages and settings…* at
-  the top, and type what you're after in your own words — "api token", "threshold", "can A reach
-  B", "who changed". Search finds pages and settings (not individual hosts or runs), and only those
-  your role may open.
+- **Search:** press **Ctrl+K** (**⌘K** on a Mac) or **/**, or click *Search hosts, services, pages…*
+  at the top, and type what you're after in your own words — "api token", "threshold", "can A reach
+  B", "who changed", or a host's name or address. Search finds pages and settings, and also hosts
+  (by name, address or tag), Packs, services (with their host), active alerts and recent runs,
+  grouped by kind. It shows only what your role may open.
 - **The security indicator** at the top (for example *2 security issues*) stays visible until the
   things it lists are handled. On a new installation it usually says that two-factor sign-in is off
   and that the *Agent Root CA private key is on this controller*. Neither is urgent; both are
@@ -112,8 +113,15 @@ If every administrator is locked out, a new one can be created on the controller
 - **Light, Dark, System** at the top switches the colour theme (saved in this browser).
 - **On a phone**, the sidebar is behind the **☰** button, tables show one card per row, and the
   firewall policy opens in its [Rules view](Rules-View.md) (the topology map is for larger screens).
+- **Settings** opens **All settings**: every setting in DROOL, grouped by topic (*Your account*,
+  *People and access*, *Alerts and notifications*, *Monitoring*, *Network and firewall*, *Shepherds
+  (DROOL agents)*, *This controller*), each linking to the page that changes it, also where that
+  page is elsewhere (health checks under **Monitoring**, for example). **Account**, **API tokens**,
+  **Users**, **Notifications** and **System** are tabs next to it.
 - **Your name** and **Sign out** are at the top right; your own settings are under
   **Settings → Account**.
+
+![Settings → All settings: every setting grouped by topic (Your account, People and access, Alerts and notifications, Monitoring, Network and firewall, Shepherds (DROOL agents), This controller), each linking to the page that changes it, with the Account, API tokens, Users, Notifications and System tabs next to it](images/settings-directory.png)
 
 ## Signing in later
 

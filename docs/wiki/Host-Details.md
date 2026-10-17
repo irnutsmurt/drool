@@ -1,63 +1,98 @@
 # Host details
 
-Click a host's name anywhere in DROOL to open its page. The page is a summary built to answer three
-questions in order: *is this host okay?*, *how does DROOL manage it?*, and *what needs attention?*.
-Every card links to the full page for that area.
+Click a host's name anywhere in DROOL to open it. Everything about one host is in one place: a
+header that stays at the top, and the host's sections below it, each at its own address. The first
+section, the **Overview**, is a summary built to answer three questions in order: *what needs
+attention?*, *is this host okay?*, and *what happened lately?*. Every summary links to the section
+with the details.
 
-![The page of web-01: Ready, the action buttons, the Health card with its tiles, and the Management card](images/host-page-web-01.png)
+![web-01's Overview: the header (Ready, Ubuntu 24.04.5 LTS, 10.10.40.21, managed via SSH, last check online, 1 open alert) with Run command, Install updates and Actions; the sections Overview, Monitoring, Files, Network, Firewall, Desired State, Management and Activity; Needs attention (/ 91% full, the open and acknowledged alert, 2 drifted resources); Health now with its tiles; the Alerts card; the Desired State, Firewall, Network and Files summaries; Recent runs, Recent events and the System card](images/host-page-web-01.png)
 
 ## The top of the page
 
-- **The name and a status badge**, for example **Ready** — *connection test passed*. Other statuses
-  are explained in [Status Meanings](Status-Meanings.md#host-statuses). When something is wrong, a
-  coloured note under the header says what it means and what to do.
-- **The address and operating system**, for example `10.10.20.15 · Debian GNU/Linux 12 (bookworm)`.
-- **Action buttons** (what you see depends on your role):
+The header is the same in every section of the host:
+
+- **The name and a status badge**, for example **Ready**. Other statuses are explained in
+  [Status Meanings](Status-Meanings.md#host-statuses). When something is wrong, a coloured note under
+  the header says what it means and what to do.
+- **One line of facts**: the operating system and address, for example
+  `Debian GNU/Linux 12 (bookworm)` and `10.10.20.15`; how DROOL manages the host (*Managed via*
+  **SSH** or **Shepherd**); whether the last check reached it (*Last check* **online**, **offline** or
+  **stale**); and, when there are any, its open alerts, maintenance, and a run working on it now.
+- **Buttons** (what you see depends on your role): **Run command**, **Install updates**, and
+  **Actions**, a menu with the rest:
 
   | Button | What it does |
   |---|---|
-  | **Run command** | Opens a new run with this host already selected ([Running a Command](Running-a-Command.md)) |
-  | **Test connection** | The step-by-step connection test ([Testing a Connection](Testing-a-Connection.md)) |
-  | **Install updates** | A new run for a system update of this host ([System Updates](System-Updates.md)) |
-  | **Reboot** | A new run that reboots this host and waits for it ([Rebooting Hosts](Rebooting-Hosts.md)) |
-  | **Files** | The file manager for this host ([Browsing Files](Browsing-Files.md)) |
-  | **Refresh** | Collects inventory and status now instead of at the next scheduled check |
-  | **Edit** | Change the connection settings, tags or description ([Adding a Host](Adding-a-Host.md#changing-a-host-later)) |
+  | **Run command** | Opens a new run with this host already selected ([Running a Command](Running-a-Command.md)). A host that doesn't work yet shows **Test connection** here instead |
+  | **Install updates** | A new run for a system update of this host ([System Updates](System-Updates.md)). On a phone it's under **Actions** |
+  | **Actions → Reboot…** | A new run that reboots this host and waits for it ([Rebooting Hosts](Rebooting-Hosts.md)) |
+  | **Actions → Refresh inventory** | Collects inventory and status now instead of at the next scheduled check |
+  | **Actions → Test connection** | The step-by-step connection test ([Testing a Connection](Testing-a-Connection.md)) |
+  | **Actions → Start maintenance…** | Pauses notifications for this host during planned work ([Maintenance Mode](Maintenance-Mode.md)) |
+  | **Actions → Edit host details** | Change the connection settings, tags or description ([Adding a Host](Adding-a-Host.md#changing-a-host-later)) |
+  | **Actions → Remove host…** | From DROOL only, or cleaning up what DROOL installed there first ([Removing a Host](Removing-a-Host.md)) |
 
   The buttons that open a new run don't do anything yet: you review the run first and start it there.
-- **Needs attention** lists everything about this host that wants a person, most serious first,
-  for example *Desired State: 2 drifted*, each with a link. When there's nothing, it says
-  *Nothing needs attention on this host right now.*
+- **The sections**, in a row under the header (on a phone, the **Section** list): **Overview**,
+  **Monitoring**, **Files**, **Network**, **Firewall**, **Desired State**, **Management** and
+  **Activity**. You see the ones your role may open. A jump host has no **Monitoring**, **Files**,
+  **Network** or **Desired State**: DROOL doesn't manage it.
 
-## The cards
+## The Overview
 
-| Card | What it shows | Full page |
+| Part | What it shows | Details |
 |---|---|---|
-| **Health** | Tiles for CPU, Memory, Storage, Temperature, Network, Services, Storage devices and Active health issues, how the host is monitored (*Polled over SSH every 5 min* or *Continuous: the Shepherd samples every 10 s*), uptime, whether a reboot is required, and pending updates | **View monitoring →** ([Host Monitoring](Host-Monitoring.md)) |
-| **Management** | SSH or Shepherd, the fallback, what DROOL would use right now, the SSH user, credential, sudo setting, jump host, trusted host key, last test, Packs (each links to its page; **Change…** adds the host to Packs or removes it), tags, description; buttons to install or manage a Shepherd | [SSH vs Shepherds](SSH-vs-Shepherds.md) |
+| **Needs attention** | Everything about this host that wants a person, most serious first, for example *Desired State: 2 drifted*, each with a link. When there's nothing, it says *Nothing needs attention on this host right now.* | — |
+| **Health now** | Tiles for CPU, Memory, Storage, Temperature, Network, Services, Storage devices and Active health issues, how the host is monitored (*Polled over SSH every 5 min* or *Continuous: the Shepherd samples every 10 s*), pending updates, whether a reboot is required, the last status check, and uptime | **Services →**, **Monitoring →** ([Host Monitoring](Host-Monitoring.md)) |
 | **Alerts** | Open alerts for this host; **History**; **Start maintenance** | [Understanding Alerts](Understanding-Alerts.md), [Maintenance Mode](Maintenance-Mode.md) |
-| **Desired State** | Whether the host matches its baselines, and what differs | **View desired state →** ([Drift](Drift.md)) |
-| **Firewall** | The firewall mode and whether DROOL filters this host | **View firewall →** ([Firewall Modes](Firewall-Modes.md)) |
-| **Network Activity** | How connections are observed, a count of observed connections and how the policy classifies them, what the host listens on | **View network activity →** ([What DROOL Can See](What-DROOL-Can-See.md)) |
-| **Recent runs** | The last runs that included this host | **View runs →** |
-| **Deployed files** | Files DROOL deployed here, with their state | **Open file manager →** ([Rolling Back a File](Rolling-Back-a-File.md)) |
+| **Desired State** | Whether the host matches its baselines, and what differs | **Open →** ([Drift](Drift.md)) |
+| **Firewall** | The firewall status and mode, and whether DROOL filters this host | **Open →** ([Firewall Modes](Firewall-Modes.md)) |
+| **Network** | How connections are observed, a count of observed connections, and how many aren't in the policy or are denied | **Open →** ([What DROOL Can See](What-DROOL-Can-See.md)) |
+| **Files** | How many files DROOL deployed here, and the first few, each linking to its deployment | **Open →** ([Browsing Files](Browsing-Files.md), [Rolling Back a File](Rolling-Back-a-File.md)) |
+| **Recent runs** | The last runs that included this host | **Activity →** |
+| **Recent events** | What happened lately: alerts opened, acknowledged or recovered, maintenance | **Alert history →** |
 | **System** | OS, kernel, hostname, CPU, memory, package manager, init system, virtualization, when it was discovered, and (expandable) filesystems, addresses and interfaces | — |
-| **Danger zone** | **Remove host…**: from DROOL only, or cleaning up what DROOL installed there first | [Removing a Host](Removing-a-Host.md) |
 
-A Shepherd host's **Management** card also has **Shepherd details**: the Shepherd's version and
-compatibility, its certificate, when it was last seen and from where, and **What DROOL may do on this
-host** (its capabilities, with **Narrow…** to restrict them further). See
+While a host waits for its SSH key to be approved, the Overview starts with **Approve the host key**
+([SSH Host-Key Verification](SSH-Host-Key-Verification.md)).
+
+## The other sections
+
+| Section | What it holds | Guide |
+|---|---|---|
+| **Monitoring** | Metrics, services, storage health, sensors, health settings and how the host is monitored | [Host Monitoring](Host-Monitoring.md) |
+| **Files** | The file manager for this host | [Browsing Files](Browsing-Files.md) |
+| **Network** | The connections this host makes and accepts, and what it listens on | [What DROOL Can See](What-DROOL-Can-See.md) |
+| **Firewall** | The policy in effect here, the mode, enforcement and history | [Firewall Modes](Firewall-Modes.md) |
+| **Desired State** | What should stay as defined here: drift, conflicts, restore | [Drift](Drift.md) |
+| **Management** | How DROOL reaches the host, and what it belongs to (the cards below) | [SSH vs Shepherds](SSH-vs-Shepherds.md) |
+| **Activity** | **Runs** that included this host, **Schedules** that may target it, and its **Audit log** | [Understanding Run Results](Understanding-Run-Results.md) |
+
+The **Management** section has **Edit host details** at the top, and these cards:
+
+| Card | What it shows |
+|---|---|
+| **Connection** | SSH or Shepherd, the fallback, what DROOL uses right now (*Operations now*); **Test connection**, and the buttons that switch between SSH and the Shepherd |
+| **SSH access** | The SSH user and address, credential, sudo setting (*Privilege*), jump host (*Connect through*), trusted host key, last test, and how DROOL signs in, with **Set up a dedicated DROOL SSH account…** and the SSH certificate buttons |
+| **Shepherd (DROOL agent)** | Whether the host has a Shepherd, its version, state and certificate; buttons to install, update, uninstall or revoke it |
+| **Membership** | Packs (each links to its page; **Change…** adds the host to Packs or removes it), tags, description |
+| **Danger zone** | **Remove host…** (also under **Actions**) ([Removing a Host](Removing-a-Host.md)) |
+
+A Shepherd host's **Shepherd (DROOL agent)** card also has **Shepherd details**: its protocol,
+identity, certificate, trust manifest, when it was last seen and from where, and **What DROOL may do
+on this host** (its capabilities, with **Narrow…** to restrict them further). See
 [Shepherd Capability Presets](Shepherd-Capability-Presets.md).
 
 ## How fresh is this information?
 
 - **Status** (online, uptime, load, disk, failed services, reboot required): checked every 5 minutes.
-- **Monitoring**: every 5 minutes over SSH, or every 10 seconds through a Shepherd. Each card says
+- **Monitoring**: every 5 minutes over SSH, or every 10 seconds through a Shepherd. Each summary says
   when it was last updated (*updated 2 min ago*).
 - **Updates**: checked every 6 hours (*checked 12 min ago*).
-- **Inventory** (the System card): when the host was added, and again with **Refresh**.
+- **Inventory** (the System card): when the host was added, and again with **Refresh inventory**.
 
-**Refresh** fetches status and inventory right away.
+**Actions → Refresh inventory** fetches status and inventory right away.
 
 ## Related
 

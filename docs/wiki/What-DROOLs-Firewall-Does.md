@@ -56,7 +56,7 @@ Only its own things: its nftables table `inet drool`, its files in `/var/lib/dro
 
 - **Firewall** in the menu: **Hosts** (every host's mode and status), **Policy** (the rules, as a
   drawing, a table or text), **Can A reach B?**, **Transactions** (every apply) and **Settings**.
-- A host's page → **View firewall**: that host's mode, environment, effective policy, observed
+- A host's **Firewall** section: that host's mode, environment, effective policy, observed
   connections, transactions and generated nftables rules.
 
 ![Firewall → Hosts: database-01 in Monitor mode and media-01 and media-02 refused because nftables isn't installed; gpu-01 and nas-01 not checked; web-01 in Enforce mode, supported, in sync at revision 1](images/firewall-hosts.png)

@@ -38,8 +38,8 @@ For a generated or imported key, use **Copy public key** in the list and add tha
 `~/.ssh/authorized_keys` of the SSH user on each host that should accept it, the same way as for
 DROOL's own key.
 
-Then open each host that should use it, click **Edit**, choose it under **Credential** (or **Sudo
-password**), and **Save**. Run **Test connection** to check.
+Then open each host that should use it, choose **Actions → Edit host details**, choose it under
+**Credential** (or **Sudo password**), and **Save**. Run **Test connection** to check.
 
 ## What DROOL does with secrets
 
@@ -62,10 +62,11 @@ A setup credential that another host uses by then (a jump host included) is kept
 setup's result says which hosts still use it. Stored credentials you chose for the setup are never
 deleted by it. Details: [DROOL's Own SSH Account](Dedicated-SSH-Account.md#what-happens-to-the-setup-credentials).
 
-If you don't finish the setup, the host keeps signing in with them, and its page says so. Finish it
-there with **Set up a dedicated DROOL SSH account** whenever you come back to it: DROOL never deletes
-them because time passed. Or give the host other credentials with **Edit**, or remove the host: DROOL
-then deletes the setup credentials nothing uses any more ([details](Dedicated-SSH-Account.md#if-the-setup-is-never-finished)).
+If you don't finish the setup, the host keeps signing in with them, and its page says so (the **SSH
+access** card in its **Management** section). Finish it there with **Set up a dedicated DROOL SSH
+account…** whenever you come back to it: DROOL never deletes them because time passed. Or give the
+host other credentials with **Edit host details**, or remove the host: DROOL then deletes the setup
+credentials nothing uses any more ([details](Dedicated-SSH-Account.md#if-the-setup-is-never-finished)).
 
 ## Using an account you set up yourself
 
@@ -111,7 +112,8 @@ There's no "edit" for a credential's secret in the interface. To change a passwo
 the safe way, one host at a time:
 
 1. Add the new value as a **new** credential.
-2. On one host, **Edit** → choose the new credential → **Save** → **Test connection**.
+2. On one host, **Actions → Edit host details** → choose the new credential → **Save** → **Test
+   connection**.
 3. When it works, switch the remaining hosts.
 4. When **Used by** is empty, **Delete** the old credential.
 

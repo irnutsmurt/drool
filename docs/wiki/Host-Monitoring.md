@@ -1,8 +1,9 @@
 # Host monitoring
 
-Every host has its own monitoring page with its current health, history charts, services, disks,
-sensors, its health settings and how it's monitored. Open it from **View monitoring →** on the host's
-page, by clicking a host on **Monitoring**, or by clicking any tile of the host's **Health** card.
+Every host has its own monitoring page, the **Monitoring** section of the host: its current health,
+history charts, services, disks, sensors, its health settings and how it's monitored. Open it with
+**Monitoring** on the host's page (or **Monitoring →** on its **Overview**), by clicking a host on
+**Monitoring** in the menu, or by clicking any tile of the host's **Health now** card.
 
 ## Before you start
 
@@ -10,22 +11,23 @@ Everyone can view it (**monitoring.read**). Buttons that change something say wh
 
 ## The page
 
-![nas-01's monitoring page, Overview tab: continuous Shepherd monitoring, open alerts, tiles for CPU, memory, storage (96% /srv/media), temperature, network, services (3/3 monitored as expected; 1 failed, not monitored) and storage devices, and the active health issues](images/monitoring-host-overview.png)
+![nas-01's Monitoring section, Summary tab, under the host's header and its notices: continuous Shepherd monitoring every 10 s, tiles for CPU, memory, storage (96% /srv/media), temperature, network, services (3/3 monitored as expected; 1 failed, not monitored), storage devices and active health issues, the active health issues, the range buttons and the CPU and memory charts](images/monitoring-host-overview.png)
 
 - **The title line** says how the host is monitored and how fresh the data is: *Continuous: the
   Shepherd samples every 10 s · updated just now*, or *Polled over SSH every 5 min (not continuous)*.
 - **Collect now** fetches fresh data right away instead of waiting for the next sample or poll
   (**monitoring.manage**: administrators and operators).
-- **Open alerts** for this host, if any. A host in maintenance shows a banner with its reason and
-  **End maintenance** ([Maintenance Mode](Maintenance-Mode.md)).
+- **Open alerts** for this host, if any, are in the host's header, in every section. A host in
+  maintenance shows a banner with its reason and **End maintenance**
+  ([Maintenance Mode](Maintenance-Mode.md)).
 
 ## The tabs
 
 | Tab | What's there | More |
 |---|---|---|
-| **Overview** | Tiles for CPU, Memory, Storage, Temperature, Network, Services and Storage devices, and the host's **Active health issues** | — |
+| **Summary** | Tiles for CPU, Memory, Storage, Temperature, Network, Services and Storage devices, and the host's **Active health issues** | — |
 | **Metrics** | Charts for the last hour, 6 hours, 24 hours, 7 days or 30 days | [CPU, Memory and Load](CPU-Memory-and-Load.md), [Filesystems and Disk Space](Filesystems-and-Disk-Space.md) |
-| **Services** | Every systemd service, its state and history; **Monitor** (DROOL alerts only on the services you monitor) and **Customize…** (expected running, stopped or ignored); **Actions…** to start, stop, enable or disable it | [Service Monitoring](Service-Monitoring.md) |
+| **Services** | Every systemd service, its state and history; **Monitor** (DROOL alerts only on the services you monitor); **Actions…** to start, stop, enable or disable it; and **⋯** with **Customize monitoring…** (expected running, stopped or ignored) and **State history** | [Service Monitoring](Service-Monitoring.md) |
 | **Storage health** | Each disk's own health report, its partitions, and kernel storage errors | [Storage Health](Storage-Health.md) |
 | **Sensors & GPU** | Temperatures with the hardware's own limits; GPU use, memory, temperature, power | [Temperatures](Temperatures.md), [GPUs](GPUs.md) |
 | **Health settings** | Which checks run on this host, their thresholds, and where each setting comes from; **Customize** | [Health Overrides](Health-Overrides.md) |

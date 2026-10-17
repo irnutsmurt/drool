@@ -16,8 +16,8 @@ network connection to the host's SSH port. Nothing about keys or passwords has b
 ## Steps
 
 1. **Is the host on?** Look at its console, or its power and network lights.
-2. **Is the address right?** Open the host's page → **Edit**, and compare the address and SSH port with
-   the machine's real ones (`ip -brief address` on the host).
+2. **Is the address right?** Open the host's page → **Actions → Edit host details**, and compare the
+   address and SSH port with the machine's real ones (`ip -brief address` on the host).
 3. **Can the controller reach it?** From the machine DROOL runs on:
 
    ```sh

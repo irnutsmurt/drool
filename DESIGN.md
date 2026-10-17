@@ -1,7 +1,7 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.14**
-Status: Draft · 2026-10-10 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
+**Design Document v0.3.15**
+Status: Draft · 2026-10-16 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
 > DROOL is a web-first platform for managing, automating, monitoring, and eventually segmenting Linux systems through SSH or an agent.
@@ -13,6 +13,21 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.14 → v0.3.15 (1.0 UI/UX correction, before the release candidate)
+
+A usability correction of the frozen 1.0 build, from an external review of its screens: the same product, routes, APIs and safety rules, made easier to find and to act on — no new engine, no second firewall path, no new execution capability. As built (`ARCHITECTURE-ALPHA.md` §41):
+
+| # | As built | Section |
+|---|---|---|
+| 1 | **A host is a workspace:** a compact header (identity, address, how DROOL manages it, last check, open alerts, maintenance, a run in progress; Run command, Install updates, Actions; security problems such as an unapproved host key or a pending restore reconciliation as notices under it) over eight sections — Overview, Monitoring, Files, Network, Firewall, Desired State, Management, Activity — at stable addresses; Hosts stays marked in the sidebar | §2.7 |
+| 2 | **Search finds records too:** Ctrl+K searches hosts (name, display name, address, tags), Packs, services with their host, active alerts and recent runs on the server (bounded, permission-filtered), grouped beside pages and settings | §2.7 |
+| 3 | **Three interaction patterns:** an inspector beside the list for looking and quick actions (one at a time, steps inside it, never a dialog on a dialog); a focused confirmation for consequential actions (target and consequences stated, actions always in sight; the browser's `confirm()`/`prompt()` are gone); a page or wizard for multi-step work | §2.7 |
+| 4 | **Runs are reviewed before they start:** operation, hosts, rollout, problem hosts and preview results in one dialog; a change to several hosts gets the recommended canary rollout by default, and a rollout the user chose is never replaced. The server still checks everything | §12, §2.7 |
+| 5 | **Dense views made workable:** Network Activity's common filters first and the rest on demand, a table that fits, 25 compact entries a page on a phone; the firewall topology keeps the policy legible next to observed traffic; charts that size to their space | §19.4, §2.7 |
+| 6 | **Settings directory:** every setting grouped and linked to the page that owns it (no second editor) | §2.7 |
+| 7 | **Country and network owner without setup:** DROOL downloads DB-IP Lite (CC BY 4.0) itself and keeps it current; lookups stay local; the operator's own databases win; an explicit off switch | §19.4 |
+| 8 | **A busy host says why** (what holds it, when to retry); advisory — the locks taken when work starts are unchanged | §2.7 |
 
 ### v0.3.13 → v0.3.14 (M17: supported platforms, packaging and 1.0 release engineering)
 
@@ -141,7 +156,7 @@ The firewall (§15–19), its compiler, transactions, Designer and management-pa
 | 1 | One observation model for the firewall and the network views: a flow is host + direction + protocol + local address + service port + remote address, with last ports, process, first/last seen and a count — never one row per connection | §19.1 |
 | 2 | Agents collect from **conntrack** events when connection tracking is active, otherwise by **socket sampling**, and say which (and why). SSH hosts stay **snapshot only**. Process names come from socket ownership or are "Unknown" | §19.1 |
 | 3 | The **firewall compiler** classifies every flow: covered, DROOL management, unclassified, denied / would be denied, and "not applied yet" when the host enforces an older policy. The browser never decides | §19.4 |
-| 4 | **Internal** means the firewall's `internal_ranges`; nothing else. Public addresses are enriched with **country and network owner (ASN)** from **local** databases the operator installs; never online, never for private or special addresses; context, not a verdict | §19.4 |
+| 4 | **Internal** means the firewall's `internal_ranges`; nothing else. Public addresses are enriched with **country and network owner (ASN)** from **local** databases the operator installs (since v0.3.15 also downloaded by DROOL itself); never looked up online, never for private or special addresses; context, not a verdict | §19.4 |
 | 5 | Host **Network connections**, fleet **Network activity** (server-side filters, paging, new destinations), and the Designer's **Configured / Observed / Configured + Observed** topology with external addresses grouped by network owner | §19.4 |
 | 6 | "Create policy from observed connection" opens a **draft** in the Designer; it goes through validation, management checks, preview, save and the safe apply like any edit | §19.4 |
 | 7 | Retention (30 days) and a per-host cap bound the data; monitoring settings and enrichment changes are audited, observed connections are not | §19.4 |
@@ -298,6 +313,10 @@ The test for the UI is *"I haven't used DROOL in six months, but I can still fin
 DROOL may give things its own names — a **Pack** (host group), a **Shepherd** (the DROOL agent) — but never requires knowing the joke: the conventional term is shown next to the themed one, in page text and as a search alias, and technical surfaces (API, CLI, files, protocol) keep the conventional names. A **navigation search** finds pages and settings by any of those words, and by the questions people ask ("can A reach B?").
 
 States are honest: loading is not empty, stale is not healthy, unknown is not compliant. What a role can't view is absent from navigation and search; what it can view but not change is shown read-only and says so. Phone-sized screens get a real layout, not a shrunken desktop.
+
+A **host is a workspace**: one header that always says what the host is, how DROOL reaches it and how it is, over sections for everything about it (Overview, Monitoring, Files, Network, Firewall, Desired State, Management, Activity) — two levels at most, each at its own address. Search finds **records as well as pages** (hosts, Packs, services, active alerts, recent runs), within what the role may see.
+
+Interaction follows **three patterns**, chosen by the task. *Look and act in context:* an **inspector** beside the list (a connection, an alert), one at a time; a follow-up step happens inside it with Back, never as a dialog on a dialog. *Do something consequential:* a **focused confirmation** that names the action and its target, says plainly what follows, and keeps its buttons in sight; DROOL asks in its own dialogs, never the browser's. A confirmation is never the only safety check — the server enforces permissions, re-authentication, locks and every operation's own rules. *Multi-step work* (adding a host, editors, the firewall designer) gets its own page or wizard. Starting a run is reviewed: what, where, how it rolls out, and what is in the way; several hosts get the recommended canary rollout unless the user chose otherwise — a choice DROOL never overrides.
 
 ---
 
@@ -1315,6 +1334,7 @@ Observed flows answer "what is this host talking to, over what port, using what 
 
 - **Policy relationship** comes from the firewall compiler (the same evaluation as Explain Host and simulation): covered by a policy, a protected DROOL management path, unclassified, denied or would be denied; on hosts enforcing an older policy, what the host does now.
 - **Internal or external** comes from `internal_ranges`. Internal addresses show DROOL identity (host, groups, named network) next to the raw address; public ones show country and network owner (ASN) from local MaxMind-format databases. Private, loopback, link-local, multicast and documentation addresses are never looked up. GeoIP/ASN is context: nothing is labelled suspicious, scored or blocked because of a country or network.
+- **Enrichment works without setup:** the controller downloads the free DB-IP Lite country and ASN databases (CC BY 4.0, attributed wherever their data is shown) in the background and keeps them current, validating every download and keeping the last working copy. Only the database files are downloaded; addresses are still looked up locally. The operator's own databases are never changed and win for the kinds they provide; downloads can be turned off in the settings or, so that no request is ever made, in the configuration.
 - **New destinations** (first seen by a host, or by the fleet, in a period) are situational awareness, not alarms.
 - **Privacy:** no packet contents, no DNS payloads, no online lookups, no observation records in application logs; reading needs `network.read` (not viewers); settings changes are audited.
 - **Topology:** the Designer overlays observed traffic on the configured policy; external addresses are grouped by network owner and expand to addresses; a list gives the same information without the canvas.

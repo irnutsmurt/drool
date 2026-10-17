@@ -92,7 +92,7 @@ the host keeps working exactly as before.
 
 The run appears under **Runs** like any other (*Set up DROOL's own SSH account on web-01
 (drooladmin)*), with what happened at each step. It can't be scheduled, put in a workflow or
-re-run from there: to run it again, use the host's page.
+re-run from there: to run it again, use the host's **Management** section.
 
 ## What happens to the setup credentials
 
@@ -113,7 +113,8 @@ You added a host with **Create a dedicated DROOL SSH account**, and then left it
 setup failed and you haven't fixed it yet, or you changed your mind.
 
 - **The setup credentials stay** while the host signs in with them, marked **for setup only**, so the
-  setup can be finished later from the host's page. DROOL never deletes them because time passed.
+  setup can be finished later from the host's **Management** section. DROOL never deletes them
+  because time passed.
 - **Removing the host** (a half-added host you gave up on) deletes them with it.
 - **Editing the host** to sign in another way (another credential, another account, a jump host's
   credential) deletes the setup credentials it no longer uses.
@@ -165,14 +166,14 @@ A warning that doesn't stop the setup: *visudo -c reports problems that are alre
 and doesn't count those problems against its rule: it checks that its own file is valid, that it
 adds no new problem, and that sudo grants it.
 
-To run the setup again: **Try again** where it stopped, or **Set up a dedicated DROOL SSH account**
-on the host's page.
+To run the setup again: **Try again** where it stopped, or **Set up a dedicated DROOL SSH account…**
+in the host's **Management** section.
 
 ## Hosts you already added
 
-On the host's page, the **Management** card offers **Set up a dedicated DROOL SSH account…** to
-administrators, for hosts that sign in with a credential and don't use DROOL's own account yet. It
-opens the same plan as step 4 of Add host, and runs the same setup.
+In the host's **Management** section, the **SSH access** card offers **Set up a dedicated DROOL SSH
+account…** to administrators, for hosts that sign in with a credential and don't use DROOL's own
+account yet. It opens the same plan as step 4 of Add host, and runs the same setup.
 
 It isn't offered for hosts that only serve as a jump host (DROOL doesn't manage them, so it doesn't
 need an account with sudo there), nor for hosts that sign in with SSH certificates

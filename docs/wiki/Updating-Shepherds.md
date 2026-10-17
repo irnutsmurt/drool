@@ -66,8 +66,8 @@ the arm64 twin). For each architecture your hosts use:
    prints it.
 3. **Upload it:** **Shepherds → Updates → Releases** — choose the **Agent binary** and the **Signed
    manifest (.release.json)**, click **Upload release**.
-4. **Roll it out:** click **Roll out** next to the release and confirm. Or set the **Update policy** to
-   automatic (below).
+4. **Roll it out:** click **Roll out** next to the release. DROOL asks *Roll out Shepherd 1.0.1 to
+   every host?*; click **Roll out 1.0.1**. Or set the **Update policy** to automatic (below).
 
 ## What a rollout does
 
@@ -82,8 +82,8 @@ the arm64 twin). For each architecture your hosts use:
   either the old or the new version complete.
 - **No downgrades**, except that automatic rollback.
 
-For a single host, the **Management** card shows **Update Shepherd to …** when a newer release is
-available.
+For a single host, the **Shepherd (DROOL agent)** card in its **Management** section shows **Update
+Shepherd to …** when a newer release is available.
 
 ## The update policy
 

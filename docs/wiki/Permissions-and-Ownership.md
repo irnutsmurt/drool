@@ -25,17 +25,17 @@ change, enter*.
 
 ## Change permissions
 
-1. In the host's **Files**, click **Permissions** next to the file or folder.
+1. In the host's **Files**, open the **⋯** menu next to the file or folder and choose **Permissions…**.
 2. Tick or untick read, write and execute for owner, group and everyone else, or type a **Numeric
    mode** in octal, such as `644` or `0755`. The description below updates as you go.
 3. Save.
 
-Symlinks have no **Permissions** action: their own permissions don't matter, and DROOL never changes
+Symlinks have no **Permissions…** action: their own permissions don't matter, and DROOL never changes
 a file *through* a link.
 
 ## Change the owner
 
-1. Click **Owner**.
+1. In the entry's **⋯** menu, choose **Owner…**.
 2. Type **Owner (user)** and **Group**, for example `jellyfin` and `jellyfin`.
 3. Save. (*Changing the owner usually needs administrator privileges.*)
 

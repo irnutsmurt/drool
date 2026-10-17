@@ -3426,3 +3426,208 @@ then disabled).
 Nothing of 1.1 was started: no dashboards, Docker/Podman, Synology or Proxmox work, no systemd logs,
 no scheduled-service rules, no provisioning, no M18 DRIPS, DROPS or SPLASH, no Windows. 1.0
 functionality is frozen again, pending the next RC's qualification.
+
+## 41. UI/UX correction (before the release candidate)
+
+An external review of the 1.0 build's screens (`ui-review-1.0`, 111 screens) produced the *DROOL 1.0
+UI/UX Redesign and Usability Correction Specification*. This batch implements it in six phases, as
+separate commits, on the existing components, routes, APIs and tokens — not a rewrite. Behaviour,
+safety semantics and the object model are unchanged except where listed. Not done (out of bounds): a
+new monitoring or alerting engine, a second firewall policy path, new execution capabilities or
+workflow semantics, Shepherd trust or update-signing changes, DRIPS/plugins, M18.
+
+### 41.1 Release qualification defects (separate commits)
+
+- **Shepherd session data race** (`TestAgentCertificateLifecycle` under `-race`): `agent/session.go`
+  passed the `grpc.Peer(&pr)` call option, which gRPC writes from its stream-finishing goroutine when
+  the context is cancelled — concurrently with the session reading it. A real race, rare in tests
+  (8 plain runs didn't show it; a deterministic reproduction with an unsynchronized canceller did).
+  The peer now comes only from `peer.FromContext(stream.Context())`, read once (69d6cec).
+- **`TestInspectRealAgentBuild` at a tag:** it assumed a build is never exactly at a tag. It has two
+  subtests: without VCS information (always no version) and from the checkout (the release tag at
+  `HEAD` when clean; v2+ tags ignored because Go ignores them for module `drool`) (c1051c0).
+- **`TestAlertDestinationTestResults`'s hanging receiver** answered 204 when the client gave up, and
+  Go's transport can use a response racing the cancelled connection's close, so "delivered" at exactly
+  the timeout. The receiver now records the payload and never answers (`http.ErrAbortHandler`). Not a
+  product defect: a real 2xx at the deadline is honestly "delivered" (d8e15d4).
+
+### 41.2 Navigation and search
+
+The destinations are unchanged; spacing, the active state and icons were refined and the duplicate
+Settings heading removed. `/hosts/{id}/…` keeps **Hosts** marked. Ctrl+K searches records as well as
+pages: `GET /search?q=&limit=` (authenticated; at most 100 characters and 5 words, every word must
+match; `limit` 1–10, 5 by default, one more fetched to say "more") returns groups — hosts (name,
+display name, address and interface addresses, tags; `hosts.read`), Packs (`hosts.read`), services
+with their host (`monitoring.read`; each word must match the unit or the host, at least one the
+unit), active alerts (`alerts.read`) and recent runs (`jobs.read`) — each only if the principal holds
+its permission. `LIKE` arguments are escaped (`%`, `_`, `\`). The palette debounces, cancels stale
+requests, keeps focus and Escape, shows grouped options, and offers destinations for an empty query.
+Order: pages first when the words name one (score ≥ 90) or nothing is typed; otherwise hosts, then
+pages whose title or alias has a word starting with the query (≥ 70), then alerts, Packs, services
+and runs, and pages that matched only a description last.
+
+### 41.3 The host workspace
+
+`/hosts/{id}` is a nested route: a header (breadcrumbs, name, OS, address, how DROOL manages it and
+its fallback, the last check, open alerts, maintenance, a run in progress; Run command, Install
+updates — in the menu on a phone — and an Actions menu: Reboot…, Refresh inventory, Test connection,
+Start maintenance…, Edit host details, Remove host…; security problems — an unapproved or changed host
+key, a pending restore reconciliation — as one-line notices under it on every section) over eight
+sections at their own addresses: Overview (index), `monitoring` (its tabs keep
+`?tab=`), `files` (+ `files/edit`), `network`, `firewall`, `desired`, `management`, `activity`.
+Sections a role can't open are absent; on a phone they are a compact selector. Earlier links keep
+working (`#management` → `management`). The Overview is ordered: identity and notices, health now and
+the things to act on, then summaries linking to each section and recent events. Management holds
+Connection, SSH access, Shepherd, Membership and the Danger zone. Activity lists the host's runs, the
+schedules that target it — saying whether directly or through a Pack or tag, and never claiming what
+future runs will target — and its audit records (`GET /audit?target=`).
+
+### 41.4 Interaction patterns
+
+- **Inspector** (`ui/Inspector.tsx`, Pattern A): a modal layer from the right (the whole screen on a
+  phone) for one record — network connections, alerts. Steps (classify, acknowledge, snooze, ignore)
+  replace its content with Back; Escape goes back, then closes; focus is trapped and restored; the
+  re-authentication prompt can still come on top. No dialog on a dialog.
+- **Focused confirmation** (`ui/ConfirmDialog.tsx`, Pattern B): title = action + target, body =
+  consequences, Cancel (or a named alternative such as *Keep it running*) and the action always in a
+  visible footer, errors shown where asked. `confirmAction()` replaced all 25 `confirm()` calls and the
+  firewall's `prompt()`; the e2e session fails a test on any native alert, confirm or prompt (leaving a
+  page with unsaved changes is the exception). It is never the only check: the server enforces
+  permissions, re-authentication, locks, capabilities and each operation's rules.
+- **Pages and wizards** (Pattern C) for multi-step work, unchanged: Add host, editors, the designer.
+- Dialogs got a `footer` (Install/Uninstall Shepherd, Remove host): actions stay in sight while the
+  body scrolls.
+- Menus (`ui/Menu.tsx`: the host's Actions, a service or file row's ⋯) draw their open list above
+  the page (a portal, fixed position): under the button, above it when there's no room below, kept on
+  screen; a table's scroll box can't cut it off. Scrolling moves it with its button (also a scroll
+  still settling as it opens); it closes on a click outside or once the button is off the screen.
+- No hidden rightmost column at 1440 px: the file manager keeps Download in sight and puts Rename,
+  Permissions, Owner and Delete in each row's ⋯ menu; the audit table wraps targets and shortens the
+  details (the full JSON on hover); the host's System card lists addresses and interfaces as lines.
+  A browser test checks the widest pages for sideways scrolling.
+
+### 41.5 Monitoring, services, alerts
+
+Charts measure their container (ResizeObserver) and draw at pixel width, two per row on wide screens,
+instead of a fixed viewBox scaled into a quarter-width grid cell. The fleet filters show the common
+ones with the rest under an advanced area, the active ones visible, and a reset. Services: a find box
+(`?unit=` from search), Actions… plus a ⋯ menu per row, bounded lists on a phone; semantics unchanged
+(§40.1). Alerts open in the inspector with their actions; `/alerts/{id}` stays the linkable page. A
+service alert's page and inspector lead to the unit among the host's services
+(`?tab=services&unit=`, found and highlighted as from the search); storage and hardware alerts to
+those tabs.
+
+### 41.6 Network Activity and the firewall topology
+
+A summary, one search, the common filters (host, direction, external, unknown, policy status) with
+the number applied, the rest under More filters; the table fits 1440 px; a phone shows 25 compact
+entries a page (server cursors unchanged). A connection opens in the inspector; classifying is a step
+in it. Fix: classification rules read "()" in the classifier's own view because it loaded rules
+without `describe()` — the descriptions now name hosts and packs. The topology fits the configured
+graph (configured keys from `toGraph(... "configured")`), groups observed nodes, offers Fit, zoom,
+reset and Focus on the selection, tells configured from observed, and moves display options and the
+legend over the canvas. While nothing is selected and nothing is unsaved, the Details/Preview side
+panel gives way to the canvas, so the map gets the full width (about 1.5× larger at 1440 px);
+selecting something or changing the draft brings it back, and a toggle opens or hides it by hand.
+The policy model and compiler are untouched.
+
+### 41.7 Runs, schedules, workflows, desired state
+
+New run puts the essentials first and the timeout, OS conditions and read-only under Advanced options
+(their values listed in its header when closed). **Rollout default:** for a step that changes hosts
+and two or more targets, the effective rollout is the recommended one (1 canary, batches of 5, 5 at a
+time, pause after 2 failures) *until the user changes it*; from then on theirs is used as targets
+change, with the recommendation offered beside it — never applied for them. A schedule or workflow
+made from the run starts with the chosen or recommended rollout; a new workflow that changes hosts
+starts with the recommendation. Starting a run is reviewed in `RunConfirmDialog` (operation and
+parameters, host count and names folded past 8, rollout and what all-at-once risks, skipped and flagged
+hosts, preview and desired-state warnings, a package dry run's or a deployment preview's findings, or
+"not previewed"); the review uses the preview of exactly the current targets (never placeholder data).
+A workflow's Run now reviews in the same dialog. A Pack's page has Run on this pack and Install updates
+in its header, like a host's (New run with the Pack, the second with the System update preset).
+Schedules say whether they run their own steps or a pinned workflow revision. Desired State: Unknown is explained as *not verified* and never counted
+compliant; host rows link their baselines; a host's resource rows show that they open (a chevron
+and a one-line hint) for what differs, the value's source, history and the actions; the four
+automation pages say how they relate. A Pack's name on the Packs page opens its page.
+
+### 41.8 Settings directory, host busy
+
+`/settings` (index) is a directory of every setting, grouped, each linking to the page that owns it
+(`SettingsDirectoryPage.tsx`; permission-filtered; no forms). `GET /hosts/{id}/busy`
+(`hosts.read`) lists who holds the host's locks in words — a run (by name, linked), an inventory
+refresh, a status check, a preview or dry run, file operations, a Shepherd install or uninstall, host
+removal — for the header and the dialogs that need the host (first in the dialog, above its options:
+*available again when it finishes*, re-checked). Advisory: the locks taken when work starts are
+unchanged.
+
+### 41.9 GeoIP/ASN databases without setup
+
+`netmon/geoip.Updater` keeps DB-IP Lite Country and ASN (CC BY 4.0;
+`https://download.db-ip.com/free/dbip-{country,asn}-lite-YYYY-MM.mmdb.gz`, published on the first of
+each month, no account) in `<data_dir>/geoip/downloaded` with `state.json` (release, build epoch,
+SHA-256, ETag, Last-Modified, last check/success/error).
+
+- **When:** a background loop; the first check 5 s after start only if a needed database is missing
+  or the last success is a day old; then every 24 h (1 h while nothing could be downloaded yet); Check
+  now (`POST /network/enrichment/check`, `network.settings`, audited `network.enrichment.check`); a
+  settings change that allows downloads with a database missing.
+- **What:** per kind not provided by the operator's files: this month's release, conditional on the
+  stored ETag/Last-Modified (304: nothing), else on 404 last month's (kept while it's the newest).
+- **Safety:** HTTPS (redirects may not leave the scheme), dial/TLS/header timeouts and 5 min overall,
+  64 MB compressed and 256 MB unpacked limits (`Content-Length` and streamed), 3 attempts for
+  transient errors, gzip CRC, `Open` + a probe that the database answers well-known addresses with the
+  expected kind, no older build than the one in use, a temporary file `fsync`ed and renamed in the
+  same directory, the directory synced, then `Enricher.Reload`. Failures keep the databases in use;
+  one check at a time (`TryLock`; `ErrChecking`); a crash's temporary files are removed at start.
+  Logs name the kind, release and provider — never addresses.
+- **Enricher:** scans the operator's directory and the download directory; for each kind the
+  operator's files win (whatever their build date), then the newest. `OperatorKinds`, `DownloadedInUse`.
+- **Switches:** `netmon.Settings.GeoIPDownloads` (`geoip_downloads`, default true; optional on save),
+  lookups off (`enrichment: false`), and `network.geoip_download: false` (no updater requests at all).
+  `DROOL_TEST_GEOIP_URL` (TEST MODE, logged) points at a stand-in; every test controller runs with
+  downloads off unless a test turns them on.
+- **States** (`EnrichmentStatus.state`): off, available, updating, update_failed, preparing,
+  unavailable, not_configured; per kind `enrichment_state` adds `preparing`, plus `downloads`,
+  `download_error`, and the `attribution`/`attribution_url` the licence asks for, shown with the data
+  (tables, inspector, host network card, topology). Network Activity shows a quiet note while
+  preparing, never a configuration warning.
+
+### 41.10 Routes and APIs
+
+New: `GET /search`, `GET /hosts/{id}/busy`, `POST /network/enrichment/check`; web routes
+`/hosts/{id}/{monitoring,files,files/edit,network,firewall,desired,management,activity}` and
+`/settings` (directory). Changed (additive): `NetSettings.geoip_downloads`; `NetEnrichment.state`,
+`download_directory`, `files[].downloaded`, `downloads`; `NetEnrichState` `preparing`, `downloads`,
+`download_error`, `attribution`, `attribution_url`; `NetTopology.attribution`, `attribution_url`.
+Configuration: `network.geoip_download`. Removed: nothing; old host-page links redirect.
+
+### 41.11 Tests
+
+Go: `internal/api` TestSearch (permissions, escaping, limits), TestHostBusy, TestNetworkClassification
+(described rules), TestGeoIPDownloads, TestGeoIPWithoutDownloads; `internal/netmon/geoip` updater tests
+(offline, retries, corrupt, wrong data, oversized with and without a length, custom files kept and
+preferred, failures keep the database in use, restart without a new download, month fallback, no
+downgrade, one check at a time, turned off, a damaged file replaced, stale temporary files). Web unit:
+filters, navsearch, the search's group order. Browser (TestBrowser, about 18 min, 83 tests): the
+workspace, sidebar state and deep links, search, read-only roles, the settings directory, the run review
+and rollout default, every former `confirm()` path through DROOL's dialogs, inspectors from the
+keyboard, network paging and filters, topology, a busy host's explanation (Install comes back by
+itself), a Pack's Install updates, a service alert's link to the service, desired-state rows that open,
+a file row's menu, and no hidden column at 1440 px on the widest pages; TestRestoreReconciliation
+(restore e2e); integration TestGeoIPDownloads with a stand-in server (preparing without a warning,
+available with the attribution, Check now, a restart without a new download, a broken update keeping
+the databases, the operator's files untouched).
+
+Qualification (final tree `a1c8145`): `gofmt` and `go vet` (also with the integration tag) clean,
+generated code current, `go test ./...` and `make test-race` (CI's checks job) pass
+(51 packages, no data race); the container integration suite
+passes (36 tests, 365 with their subtests, none fail; 15 skip without their flags: the release-artifact
+tests, the VM suites and the soak), TestBrowser 83 of 83 in 17 min 39 s. In the docs lab
+(`ui-review-1.0-after`): every screen of the first review captured again in both themes and compared; the specification's acceptance scenarios A–H walked through by hand; the first
+review's six task paths performed again and counted (restarting a service 8 → 7 interactions, the
+others equal, adding a host with a Shepherd 19 → 20); every captured page checked for content behind a
+sideways scroll at 1440 and 1280 px. The review found eleven problems in the UI, fixed in five commits
+(`0e5eba9`, `9844286`, `751a332`, `85e108a`, `a1c8145`), and two test assumptions: a capture or test
+waiting for a loading text to disappear before the loading began, and the search test assuming the
+fixture's services were already reported when it runs first.
+

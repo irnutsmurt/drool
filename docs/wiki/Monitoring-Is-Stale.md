@@ -17,7 +17,7 @@ data** for the host, which becomes an [alert](Understanding-Alerts.md) like any 
 |---|---|
 | **The host is down or unreachable** | Its status on the host page; [Host Won't Connect](Host-Wont-Connect.md) |
 | **Its Shepherd is offline** | [Shepherd Offline](Shepherd-Offline.md) |
-| **SSH polling fails** (a host-key change, a credential problem) | **Test connection** on the host's page |
+| **SSH polling fails** (a host-key change, a credential problem) | **Actions → Test connection** on the host's page |
 | **Monitoring is off**, for the whole fleet | **Monitoring → Health checks and settings → Monitor hosts** |
 | **The controller was down** | Data from that time is missing; Shepherds deliver what they kept in memory (about a day for a typical host) when it's back |
 

@@ -14,8 +14,9 @@ DROOL doesn't hold the file in memory, so large files work.
 
 1. Open the folder on the host, for example **Hosts → media-02 → Files**, then `/etc/jellyfin`.
 2. Click **Upload…** and choose one or more files on your computer.
-3. If a file with that name already exists, DROOL asks: *network.xml already exists in /etc/jellyfin.
-   Replace it?*
+3. If a file with that name already exists, DROOL asks *Replace network.xml?*: *network.xml already
+   exists in /etc/jellyfin. Uploading replaces it on the host.* Click **Replace**, or **Cancel** to
+   skip that file.
 
 **What DROOL does:** it writes the upload to a temporary file **next to** the destination, checks its
 checksum when the whole file has arrived, and only then puts it in place, in one step. If you cancel
@@ -23,7 +24,7 @@ checksum when the whole file has arrived, and only then puts it in place, in one
 it was: you never end up with half a file.
 
 A new file belongs to whoever wrote it: the login user, or `root` with administrator privileges.
-Change it afterwards with **Owner** and **Permissions** if needed
+Change it afterwards with **Owner…** and **Permissions…** (in the file's **⋯** menu) if needed
 ([Permissions and Ownership](Permissions-and-Ownership.md)).
 
 To put the same file on many hosts, don't upload it host by host: use a

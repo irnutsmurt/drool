@@ -49,7 +49,8 @@ unreadable.
 3. **Credentials**: create the credentials again. For an SSH key, DROOL creates a new one: put its public
    key on the hosts ([SSH Credentials](SSH-Credentials.md)), for example with your own SSH access or the
    host's console.
-4. Assign the credentials to the hosts (each host's **Management** card), and **Test connection**.
+4. Assign the credentials to the hosts (on each host's page, **Actions → Edit host details**), and
+   **Test connection**.
 5. **Shepherds**: the intermediate CA is gone too. With the **offline root key**, issue a new
    intermediate (**Shepherds → Trust (PKI) → Replace the intermediate CA**, or
    `drool agent-ca rotate --root-key drool-agent-root.key`); Shepherds move to it by themselves. Without

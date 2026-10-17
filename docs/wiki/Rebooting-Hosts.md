@@ -15,15 +15,16 @@ id**. That last part matters: it proves the machine really restarted, and that i
 
 ## Steps
 
-1. **Runs → New run → Reboot**, or **Reboot** on a host's page.
+1. **Runs → New run → Reboot**, or **Actions → Reboot…** on a host's page.
 2. **Wait for each host to come back** is ticked by default: the run succeeds only when the host
    answers with its trusted key and a new boot id. Within a run, the next batch of hosts starts only
    after this. Untick it only if you don't care whether the hosts come back.
 3. Choose the **Targets**. For several hosts that serve the same purpose (`media-01` and `media-02`),
-   use a rollout with a batch size of 1, so they never reboot at the same time
+   make sure they never reboot at the same time: **Change rollout…** and set the **Batch size** to 1
    ([Batches and Failure Thresholds](Batches-and-Failure-Thresholds.md)).
-4. Click **Reboot 2 hosts** and confirm *Reboot 2 hosts? Everything running on them stops until they
-   come back.*
+4. Click **Review: reboot 2 hosts…**. DROOL's review, *Reboot 2 hosts?*, lists the hosts and how the
+   reboots roll out, and says *Everything running on them stops until they come back.* Click
+   **Reboot 2 hosts**.
 
 ## What DROOL does on each host
 

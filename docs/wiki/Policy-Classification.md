@@ -28,8 +28,8 @@ would do:
 - **Not in policy** on an **outbound** connection is allowed by default (outbound traffic is allowed
   unless the host's outbound mode is *restrict*), but DROOL still tells you no rule mentions it.
 
-Filter **Policy status** on the Network Activity page, or use the **Not in policy** and **Denied or
-would be denied** quick filters.
+Filter **Policy status** on the Network Activity page (under **More filters**), or use the quick
+filters **Not in policy** and, under **More filters**, **Denied or would be denied**.
 
 ## Turning connections into rules
 

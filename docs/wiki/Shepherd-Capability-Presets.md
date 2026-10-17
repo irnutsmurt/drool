@@ -46,12 +46,12 @@ if SSH is configured: a refusal is final. Change the ceiling (below) if the host
 
 ## Narrowing from DROOL
 
-An administrator can restrict a Shepherd further without touching the host: on the host's
-**Management** card, open **Shepherd details**, then **Narrow…** next to *What DROOL may do on this
-host*. In the **Narrow what DROOL may do** dialog you can switch off capabilities, limit services to
-a list (**Only these services**, for example `nginx jellyfin`) and files to paths (**Only these
-paths**). Only capabilities the ceiling allows can be ticked. Click **Apply**; **Remove narrowing**
-returns to the ceiling.
+An administrator can restrict a Shepherd further without touching the host: in the host's
+**Management** section, on the **Shepherd (DROOL agent)** card, open **Shepherd details**, then
+**Narrow…** next to *What DROOL may do on this host*. In the **Narrow what DROOL may do** dialog you
+can switch off capabilities, limit services to a list (**Only these services**, for example
+`nginx jellyfin`) and files to paths (**Only these paths**). Only capabilities the ceiling allows can
+be ticked. Click **Apply**; **Remove narrowing** returns to the ceiling.
 
 ## Changing the ceiling on the host
 
