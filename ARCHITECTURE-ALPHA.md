@@ -3954,6 +3954,7 @@ and the tests):
   updates** count each rollout and list its hosts. **Advanced settings** (`?advanced=1`): the rollout numbers and an
   exact version, custom releases with their keys and upload (manifest-only accepted), and the official release source
   with the built-in key ids. Saving a setting asks for no confirmation; starting, cancelling and retrying an update do.
+  A setting keeps the keyboard focus while it saves: it stays enabled and shows the choice being saved.
   A viewer gets the same page read-only. Bulk installs moved to **Shepherds → Installing Shepherds**; the conversion
   dialog's stale "Agents → Rollouts" link went with them.
 
@@ -3988,6 +3989,7 @@ unknowns honest, are settings where people look for them.
 | Runs, files, schedules | The run review summarises the rollout; its numbers are under Advanced options; a choice is kept (§41) | — |
 | Desired State | The restore plan reviews before anything changes; automatic restore is under Advanced (§41) | — |
 | Shepherds list | Shows the protocol number and certificate dates beside each version: detail most people don't need | After 1.0 |
+| Keyboard focus, every page | About 80 buttons and fields are disabled while their own request runs (`disabled={….isPending}`). Chromium then moves the focus to the top of the document when the request takes longer than a frame. The browser test found it on the new Updates page | Fixed there: the two settings and **Check now** stay enabled and show the choice being saved (DESIGN-STANDARD §6). The other places after 1.0, for example with `watchFocusLoss` also returning the focus from a control disabled under it |
 
 ### 42.9 Tests
 
@@ -4015,9 +4017,30 @@ unknowns honest, are settings where people look for them.
 - **Release:** `TestReleaseSigning` (the Shepherd key refused when it isn't built into a release, the descriptions
   verified against it and naming the release's channel), `TestReleaseArtifacts` (the same built-in keys in the
   controller, the Shepherds and `release.json`), `TestContainerImage` (the license label).
-- **Browser:** `shepherd-updates` in TestBrowser; the contrast test covers the page with Advanced open; `monitoring`
-  follows the conversion dialog. The screenshot lab (not committed) walked a fleet through every state at 1440, 1280,
-  1024 and 390 px in both themes with no sideways scroll and no page errors.
+- **Browser:** `shepherd-updates` in TestBrowser covers:
+  - the first screen, without the expert words;
+  - honesty without a key;
+  - the two settings saved without a confirmation;
+  - with the save held back, the checkbox keeping the focus and showing the choice;
+  - Advanced settings from the keyboard;
+  - a viewer's read-only page;
+  - the install dialog without a key field.
+
+  The contrast test covers the page with Advanced open, and `monitoring` follows the conversion dialog. The screenshot
+  lab (not committed) walked a fleet through every state at 1440, 1280, 1024 and 390 px in both themes, with no
+  sideways scroll and no page errors.
+- **Results** (2026-10-17):
+  - `go test ./...`: 51 packages pass.
+  - `make test-race` on a quiet machine: 51 packages pass. An earlier run beside the screenshot lab timed out once in
+    `agentmon` (`TestEngineProducesPointsStateAndServiceEvents`, unchanged since M14; it passes alone).
+  - Web: typecheck, 131 unit tests.
+  - The release built from `9e6cd55` (a development build: it warns about the placeholder maintainer and the missing
+    Shepherd key). Against it, all pass (441 s): `TestReleaseArtifacts`, `TestReleaseSigning`, `TestContainerImage`,
+    `TestReleasePackages` (10 distributions), `TestReleaseUpgrade` (alpha, M16), `TestMixedVersionShepherds`,
+    `TestAgentUpdates` and `TestOfficialShepherdUpdates`.
+  - TestBrowser: 94 of 94, plus both enrichment phases, in 19.6 min. The first full run failed two `shepherd-updates`
+    checks: a real focus loss (fixed in `d7ee57a`, §42.8) and a visibility check in the test.
+  - CI's release job now also runs `TestOfficialShepherdUpdates`.
 
 ### 42.10 What the owner still decides
 

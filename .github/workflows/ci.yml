@@ -45,7 +45,8 @@ jobs:
   # Every release artifact from this commit, and the release tests that need
   # only Docker: what the artifacts contain, the container image with its
   # compose.yaml, the packages on every supported distribution, upgrades
-  # from older versions and back, older Shepherds.
+  # from older versions and back, older Shepherds, and official Shepherd
+  # updates end to end (test builds that trust a key made for the run).
   release:
     needs: checks
     runs-on: ubuntu-24.04
@@ -65,7 +66,7 @@ jobs:
       - name: Qualify the release artifacts
         run: >-
           go test -tags integration -count=1 -timeout 90m ./test/integration/ -release dist/release -v
-          -run 'TestReleaseArtifacts|TestReleaseSigning|TestContainerImage|TestReleasePackages|TestReleaseUpgrade|TestMixedVersionShepherds'
+          -run 'TestReleaseArtifacts|TestReleaseSigning|TestContainerImage|TestReleasePackages|TestReleaseUpgrade|TestMixedVersionShepherds|TestOfficialShepherdUpdates'
       - uses: actions/upload-artifact@v4
         with:
           name: drool-${{ github.sha }}

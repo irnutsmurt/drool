@@ -112,6 +112,7 @@ hands out are the release's, and the release tests run.
 | Packages on every supported distribution (install, upgrade path, remove, purge) | `-run TestReleasePackages` | 5 min |
 | Upgrades from v0.1.0-alpha and M16, and going back | `-run TestReleaseUpgrade` | 3 min |
 | Older Shepherds (M15, M16) with this controller, through a restore and an update | `-run TestMixedVersionShepherds` | 3 min |
+| Official Shepherd updates end to end: DROOL updated, its Shepherds following by themselves, verified with a built-in key (test builds that trust a key made for the run) | `-run TestOfficialShepherdUpdates` | 1 min |
 | Integration: every supported distribution in containers, jump hosts, faults, files, Shepherds, firewall detection, Desired State, scheduling, restore, SSH certificates, alerts | `make test-integration` with `-release` | 40 min |
 | Browser tests (Chromium) | `-run TestBrowser` | 15 min |
 | Real systemd, reboots, sshd and nftables on every supported distribution and arm64 | `-run TestVMPlatform -vm <all>` | ~9 h, two VMs at a time (40 min to 2 h per distribution; the RHEL family's system updates are the slow part under emulation) |
