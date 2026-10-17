@@ -23,6 +23,7 @@ func TestVMAgent(t *testing.T) {
 	}
 	key := newReleaseKey(t)
 	ctl.must(t, "POST", "/api/v1/agents/release-keys", map[string]any{"public_key": key.line}, nil)
+	manualShepherdUpdates(t)
 	for _, v := range []string{agentV2, agentBroken} {
 		if st, body := uploadRelease(t, key, releaseDir+"/drool-agent-"+v, v); st != 201 && st != 409 {
 			t.Fatalf("upload %s: %d %s", v, st, body)

@@ -2140,6 +2140,23 @@ paths:
       responses:
         '204': { description: Released. }
         '409': { $ref: '#/components/responses/Problem' }
+  /agents/updates/status:
+    get:
+      operationId: getAgentUpdateStatus
+      tags: [agents]
+      description: >-
+        The Shepherd update overview: the policy, the version automatic updates keep Shepherds on, whether official releases
+        can be verified here, the latest release check, how many Shepherds are up to date, which can't be updated and why,
+        what needs a person, and recent rollouts.
+      responses:
+        '200': { description: Status., content: { application/json: { schema: { $ref: '#/components/schemas/AgentUpdateStatus' } } } }
+  /agents/updates/check:
+    post:
+      operationId: checkAgentUpdates
+      tags: [agents]
+      description: Check the release source for this DROOL's official Shepherd release and a newer DROOL now. Returns at once; `check.checking` says when it is done.
+      responses:
+        '202': { description: Checking., content: { application/json: { schema: { $ref: '#/components/schemas/AgentUpdateStatus' } } } }
   /agents/updates/policy:
     get:
       operationId: getAgentUpdatePolicy
@@ -2189,10 +2206,14 @@ paths:
     post:
       operationId: uploadAgentRelease
       tags: [agents]
-      description: Body is the agent binary; the signed manifest (`.release.json` from `drool release sign`) goes base64-encoded in `X-DROOL-Release`. Verified here for early feedback and again by every agent.
+      description: >-
+        Body is the agent binary; the signed manifest (`.release.json` from `drool release sign`) goes base64-encoded in
+        `X-DROOL-Release`. Signed with a registered key or the DROOL project's. An empty body stores the manifest of a Shepherd
+        binary this controller ships (an official release's description, uploaded by hand). Verified here for early feedback and
+        again by every agent.
       parameters: [{ name: X-DROOL-Release, in: header, required: true, schema: { type: string } }]
       requestBody:
-        required: true
+        required: false
         content: { application/octet-stream: { schema: { type: string, format: binary } } }
       responses:
         '201': { description: Stored., content: { application/json: { schema: { $ref: '#/components/schemas/AgentRelease' } } } }
@@ -2214,12 +2235,16 @@ paths:
     post:
       operationId: startAgentRollout
       tags: [agents]
-      description: Update agents to an uploaded release with a canary, then bounded batches, pausing on failures (policy settings). Empty `host_ids` = every agent.
+      description: >-
+        Update the Shepherds that run an older version than a stored release, with a canary, then bounded batches, pausing on
+        failures (policy settings). Empty `host_ids` = every Shepherd. Shepherds that can't take it are listed as skipped, with the
+        reason. `retry` tries the version again on hosts where it failed before.
       requestBody:
         required: true
-        content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: string }, host_ids: { type: array, items: { type: string } } } } } }
+        content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: string }, host_ids: { type: array, items: { type: string } }, retry: { type: boolean } } } } }
       responses:
         '201': { description: Started., content: { application/json: { schema: { $ref: '#/components/schemas/AgentRollout' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
         '422': { $ref: '#/components/responses/Problem' }
   /agents/rollouts/{id}:
     get:
@@ -3998,7 +4023,8 @@ components:
       type: object
       required: [id, host_id, status, key_fingerprint, enrolled_at, cert_not_after, cert_renew_after, recovered_at, revoked_at, agent_version,
                  protocol, protocol_min, protocol_max, compatible, hostname, os, arch, ceiling, effective, root_equivalent, manifest_version,
-                 epoch_reported, epoch_matches, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at, compatibility]
+                 epoch_reported, epoch_matches, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at, compatibility,
+                 release_trust]
       properties:
         id: { type: string }
         host_id: { type: string }
@@ -4044,6 +4070,17 @@ components:
         update_detail: { type: string }
         update_at: { type: [string, 'null'], format: date-time }
         compatibility: { $ref: '#/components/schemas/AgentCompatibility' }
+        release_trust:
+          description: Which signatures the Shepherd accepts for its updates, as it last said; null for Shepherds built before 1.0, which don't say.
+          oneOf: [{ $ref: '#/components/schemas/ReleaseTrust' }, { type: 'null' }]
+    ReleaseTrust:
+      type: object
+      required: [key_ids, official, official_denied, updates_denied]
+      properties:
+        key_ids: { type: array, items: { type: string }, description: Every release key the Shepherd trusts. }
+        official: { type: boolean, description: It trusts the DROOL project's release keys built into it. }
+        official_denied: { type: boolean, description: 'Its host says updates.official: deny.' }
+        updates_denied: { type: boolean, description: 'Its host says updates.policy: deny.' }
     AgentSession:
       type: object
       required: [address, connected_at, last_seen, protocol, agent_version, quarantined]
@@ -4096,7 +4133,7 @@ components:
         added_at: { type: string, format: date-time }
     AgentRelease:
       type: object
-      required: [id, version, channel, os, arch, protocol_min, protocol_max, sha256, size, key_id, created_at]
+      required: [id, version, channel, os, arch, protocol_min, protocol_max, sha256, size, key_id, official, created_at]
       properties:
         id: { type: string }
         version: { type: string }
@@ -4108,10 +4145,12 @@ components:
         sha256: { type: string }
         size: { type: integer }
         key_id: { type: string }
+        official: { type: boolean, description: Signed with the DROOL project's release key; otherwise a custom release, signed with an operator's own. }
+        shepherds_behind: { type: integer, description: Active Shepherds on this platform that run an older version (in lists). }
         created_at: { type: string, format: date-time }
     AgentRollout:
       type: object
-      required: [id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, kind, preset, created_at, updated_at]
+      required: [id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, retry, kind, preset, created_at, updated_at]
       properties:
         id: { type: string }
         version: { type: string }
@@ -4125,6 +4164,7 @@ components:
         failures: { type: integer }
         paused_reason: { type: string }
         automatic: { type: boolean }
+        retry: { type: boolean, description: Tries the version again on hosts where it failed before. }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         hosts:
@@ -4141,6 +4181,107 @@ components:
               detail: { type: string }
               offline: { type: boolean }
               updated_at: { type: string, format: date-time }
+    AgentUpdateStatus:
+      type: object
+      required: [policy, policy_saved, channels, state, summary, target, target_official, controller, official, check, counts, blocked, problems, active, history]
+      properties:
+        policy: { $ref: '#/components/schemas/AgentUpdatePolicy' }
+        policy_saved: { type: boolean, description: Someone saved the policy; otherwise it is the default. }
+        channels: { type: array, items: { type: string }, description: The channels the policy can choose. }
+        state: { type: string, enum: [none, current, available, updating, attention, blocked] }
+        summary: { type: string }
+        target: { type: string, description: The version automatic updates keep Shepherds on; empty when none is available. }
+        target_official: { type: boolean }
+        controller:
+          type: object
+          required: [version, channel, official]
+          properties:
+            version: { type: string }
+            channel: { type: string }
+            official: { type: boolean, description: A stable or prerelease build, which has official Shepherd releases. }
+        official:
+          type: object
+          required: [state, detail, keys]
+          properties:
+            state: { type: string, enum: [pending, verified, not_published, rejected, unreachable, development, no_key, off, no_binaries] }
+            detail: { type: string }
+            keys: { type: array, items: { type: string }, description: The DROOL project's release key ids built into this DROOL. }
+        check:
+          type: object
+          required: [enabled, source, checking, last_success, last_attempt, last_error_at, next_check]
+          properties:
+            enabled: { type: boolean }
+            source: { type: string }
+            checking: { type: boolean }
+            last_success: { type: [string, 'null'], format: date-time }
+            last_attempt: { type: [string, 'null'], format: date-time }
+            last_error: { type: string }
+            last_error_at: { type: [string, 'null'], format: date-time }
+            next_check: { type: [string, 'null'], format: date-time }
+        latest:
+          type: object
+          description: A newer DROOL than this controller, verified.
+          required: [version, issued_at, url]
+          properties:
+            version: { type: string }
+            issued_at: { type: string, format: date-time }
+            url: { type: string }
+        counts:
+          type: object
+          required: [total, current, behind, updating, waiting, blocked, offline]
+          properties:
+            total: { type: integer }
+            current: { type: integer }
+            behind: { type: integer, description: Behind and can be updated. }
+            updating: { type: integer }
+            waiting: { type: integer, description: In a running update but offline; they update when they reconnect. }
+            blocked: { type: integer, description: Behind and can't be updated now. }
+            offline: { type: integer }
+        blocked:
+          type: array
+          items:
+            type: object
+            required: [host_id, host_name, version, reason]
+            properties:
+              host_id: { type: string }
+              host_name: { type: string }
+              version: { type: string }
+              reason: { type: string }
+              retry_version: { type: string, description: The update failed here; it can be tried again. }
+        problems:
+          type: array
+          items:
+            type: object
+            required: [kind, title, detail, at]
+            properties:
+              kind: { type: string, enum: [paused, failed, rolled_back, verification] }
+              title: { type: string }
+              detail: { type: string }
+              rollout_id: { type: string }
+              host_id: { type: string }
+              host_name: { type: string }
+              version: { type: string }
+              at: { type: string }
+        active: { type: array, items: { $ref: '#/components/schemas/AgentRolloutSummary' } }
+        history: { type: array, items: { $ref: '#/components/schemas/AgentRolloutSummary' } }
+    AgentRolloutSummary:
+      type: object
+      required: [id, version, status, reason, automatic, retry, hosts, healthy, failed, skipped, waiting, in_flight, created_at, updated_at]
+      properties:
+        id: { type: string }
+        version: { type: string }
+        status: { type: string, enum: [running, paused, completed, cancelled] }
+        reason: { type: string }
+        automatic: { type: boolean }
+        retry: { type: boolean }
+        hosts: { type: integer }
+        healthy: { type: integer }
+        failed: { type: integer }
+        skipped: { type: integer }
+        waiting: { type: integer }
+        in_flight: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
     EndpointMigration:
       type: object
       required: [id, endpoint, status, created_at, committed_at, confirmed, failed, committed, agents]

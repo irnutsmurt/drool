@@ -432,13 +432,16 @@ type identityJSON struct {
 	UpdateAt        *string         `json:"update_at"`
 	// Compatibility with this controller (M16).
 	Compatibility agentsvc.Compatibility `json:"compatibility"`
+	// ReleaseTrust: which signatures the Shepherd accepts for its updates,
+	// as it last said (null: built before 1.0, it doesn't say).
+	ReleaseTrust *agentsvc.ReleaseTrust `json:"release_trust"`
 }
 
 // newestRelease is the newest stored agent release for an identity's
 // platform that is newer than what it runs ("" when none). A version that
 // already failed or rolled back there isn't offered again.
 func newestRelease(rels []db.AgentRelease, id db.AgentIdentity) string {
-	failed := id.UpdateState == "rolled_back" || id.UpdateState == "failed"
+	failed := id.UpdateState == "rolled_back" || id.UpdateState == "failed" || id.UpdateState == "refused"
 	best := ""
 	for _, rel := range rels {
 		if failed && rel.Version == id.UpdateVersion {
@@ -475,7 +478,7 @@ func (s *Server) toIdentityJSON(id db.AgentIdentity) identityJSON {
 		Arch: id.Arch, Ceiling: json.RawMessage(nonEmptyJSON(id.CeilingJson)), Effective: json.RawMessage(nonEmptyJSON(id.EffectiveJson)),
 		ManifestVersion: id.ManifestVersion, EpochReported: id.EpochReported, LastSeenAt: nullMsTime(id.LastSeenAt),
 		LastAddress: id.LastAddress, Connected: id.Connected != 0, UpdateState: id.UpdateState, UpdateVersion: id.UpdateVersion,
-		UpdateDetail: id.UpdateDetail, UpdateAt: nullMsTime(id.UpdateAt), RootEquivalent: []string{}}
+		UpdateDetail: id.UpdateDetail, UpdateAt: nullMsTime(id.UpdateAt), RootEquivalent: []string{}, ReleaseTrust: agentsvc.IdentityTrust(id)}
 	if id.CertIssuedAt > 0 {
 		out.CertRenewAfter = msTime(id.CertIssuedAt + (id.CertNotAfter-id.CertIssuedAt)*2/3)
 	}
@@ -887,6 +890,34 @@ func (s *Server) handleSetUpdatePolicy(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.d.Agents.GetUpdatePolicy(ctx))
 }
 
+// handleUpdateStatus is the Shepherd update overview (agents.read).
+func (s *Server) handleUpdateStatus(w http.ResponseWriter, r *http.Request) {
+	if !s.agentsEnabled(w, r) {
+		return
+	}
+	st, err := s.d.Agents.UpdateStatus(r.Context())
+	if err != nil {
+		writeProblem(w, r, errInternal)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+// handleCheckUpdates starts a check for official releases now; the status
+// says when it is done.
+func (s *Server) handleCheckUpdates(w http.ResponseWriter, r *http.Request) {
+	if !s.agentsEnabled(w, r) {
+		return
+	}
+	s.d.Agents.TriggerReleaseCheck()
+	st, err := s.d.Agents.UpdateStatus(r.Context())
+	if err != nil {
+		writeProblem(w, r, errInternal)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, st)
+}
+
 type releaseKeyJSON struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -968,12 +999,19 @@ type releaseJSON struct {
 	SHA256      string `json:"sha256"`
 	Size        int64  `json:"size"`
 	KeyID       string `json:"key_id"`
-	CreatedAt   string `json:"created_at"`
+	// Official: signed with the DROOL project's release key (a custom
+	// release is signed with an operator's own).
+	Official bool `json:"official"`
+	// ShepherdsBehind: active Shepherds on this release's platform that run
+	// an older version, i.e. what updating to it would update.
+	ShepherdsBehind int    `json:"shepherds_behind"`
+	CreatedAt       string `json:"created_at"`
 }
 
 func toReleaseJSON(r db.AgentRelease) releaseJSON {
 	return releaseJSON{ID: r.ID, Version: r.Version, Channel: r.Channel, OS: r.Os, Arch: r.Arch, ProtocolMin: r.ProtocolMin,
-		ProtocolMax: r.ProtocolMax, SHA256: r.Sha256, Size: r.Size, KeyID: r.KeyID, CreatedAt: msTime(r.CreatedAt)}
+		ProtocolMax: r.ProtocolMax, SHA256: r.Sha256, Size: r.Size, KeyID: r.KeyID, Official: release.IsOfficialKey(r.KeyID),
+		CreatedAt: msTime(r.CreatedAt)}
 }
 
 func (s *Server) handleListReleases(w http.ResponseWriter, r *http.Request) {
@@ -982,9 +1020,16 @@ func (s *Server) handleListReleases(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, errInternal)
 		return
 	}
+	idents, _ := s.d.Store.R.ListLiveIdentities(r.Context())
 	out := make([]releaseJSON, 0, len(rows))
 	for _, rel := range rows {
-		out = append(out, toReleaseJSON(rel))
+		j := toReleaseJSON(rel)
+		for _, id := range idents {
+			if id.Status == "active" && id.Os == rel.Os && id.Arch == rel.Arch && release.CompareVersions(id.AgentVersion, rel.Version) < 0 {
+				j.ShepherdsBehind++
+			}
+		}
+		out = append(out, j)
 	}
 	writeJSON(w, http.StatusOK, listResponse[releaseJSON]{Items: out})
 }
@@ -1006,7 +1051,13 @@ func (s *Server) handleUploadRelease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.NewResponseController(w).SetReadDeadline(time.Time{})
-	rel, err := s.d.Agents.AddRelease(r.Context(), signed, http.MaxBytesReader(w, r.Body, 256<<20), principalFrom(r.Context()).UserID)
+	// No body: the manifest describes a Shepherd binary this controller
+	// ships (an official release's description, uploaded by hand).
+	var bin io.Reader
+	if r.ContentLength != 0 {
+		bin = http.MaxBytesReader(w, r.Body, 256<<20)
+	}
+	rel, err := s.d.Agents.AddRelease(r.Context(), signed, bin, principalFrom(r.Context()).UserID)
 	if err != nil {
 		var ue *agentsvc.ReleaseUploadError
 		if errors.As(err, &ue) {
@@ -1017,7 +1068,8 @@ func (s *Server) handleUploadRelease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.d.Audit.Record(r.Context(), audit.Event{Action: "agent.release.add", TargetType: "agent_release", TargetID: rel.ID,
-		Details: map[string]any{"version": rel.Version, "os": rel.Os, "arch": rel.Arch, "sha256": rel.Sha256, "key_id": rel.KeyID}})
+		Details: map[string]any{"version": rel.Version, "os": rel.Os, "arch": rel.Arch, "sha256": rel.Sha256, "key_id": rel.KeyID,
+			"official": release.IsOfficialKey(rel.KeyID), "binary_uploaded": bin != nil}})
 	writeJSON(w, http.StatusCreated, toReleaseJSON(*rel))
 }
 
@@ -1043,6 +1095,7 @@ type rolloutJSON struct {
 	Failures      int64             `json:"failures"`
 	PausedReason  string            `json:"paused_reason"`
 	Automatic     bool              `json:"automatic"`
+	Retry         bool              `json:"retry"`  // tries a version again where it failed
 	Kind          string            `json:"kind"`   // update | install (SSH → agent conversion)
 	Preset        string            `json:"preset"` // install: the capability preset
 	CreatedAt     string            `json:"created_at"`
@@ -1063,7 +1116,7 @@ type rolloutHostJSON struct {
 
 func toRolloutJSON(r db.AgentRollout) rolloutJSON {
 	return rolloutJSON{ID: r.ID, Version: r.Version, Status: r.Status, Canary: r.Canary, BatchSize: r.BatchSize, MaxFailures: r.MaxFailures,
-		HealthWindowS: r.HealthWindowS, Failures: r.Failures, PausedReason: r.PausedReason, Automatic: r.Automatic != 0,
+		HealthWindowS: r.HealthWindowS, Failures: r.Failures, PausedReason: r.PausedReason, Automatic: r.Automatic != 0, Retry: r.Retry != 0,
 		Kind: r.Kind, Preset: r.Preset, CreatedAt: msTime(r.CreatedAt), UpdatedAt: msTime(r.UpdatedAt)}
 }
 
@@ -1104,6 +1157,9 @@ func (s *Server) handleGetRollout(w http.ResponseWriter, r *http.Request) {
 type startRolloutRequest struct {
 	Version string   `json:"version"`
 	HostIDs []string `json:"host_ids"` // empty: every agent
+	// Retry tries the version again on hosts where it failed before (a
+	// person's Try again); a Shepherd never retries one by itself.
+	Retry bool `json:"retry"`
 }
 
 func (s *Server) handleStartRollout(w http.ResponseWriter, r *http.Request) {
@@ -1124,7 +1180,12 @@ func (s *Server) handleStartRollout(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, errValidation("no uploaded release has version "+req.Version))
 		return
 	}
-	id, err := s.d.Agents.StartRollout(r.Context(), req.Version, req.HostIDs, s.d.Agents.GetUpdatePolicy(r.Context()), false, principalFrom(r.Context()).UserID)
+	id, err := s.d.Agents.StartRollout(r.Context(), req.Version, agentsvc.RolloutOptions{HostIDs: req.HostIDs, Policy: s.d.Agents.GetUpdatePolicy(r.Context()),
+		Retry: req.Retry, UserID: principalFrom(r.Context()).UserID})
+	if errors.Is(err, agentsvc.ErrNothingToUpdate) {
+		writeProblem(w, r, errConflict("up_to_date", err.Error()))
+		return
+	}
 	if err != nil {
 		writeProblem(w, r, errValidation(err.Error()))
 		return
@@ -1150,8 +1211,11 @@ func (s *Server) handleRolloutAction(action string) http.HandlerFunc {
 			return
 		}
 		reason := ""
-		if action == "pause" {
+		switch action {
+		case "pause":
 			reason = "paused by " + principalFrom(r.Context()).Username
+		case "cancel":
+			reason = "cancelled by " + principalFrom(r.Context()).Username
 		}
 		if action == "resume" {
 			// Resuming accepts the failures so far: count from zero again.

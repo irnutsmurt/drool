@@ -66,6 +66,11 @@ type Service struct {
 	grpc       *grpc.Server
 	listener   net.Listener
 
+	// Shepherd updates (updates.go, official.go): the official release
+	// check, and one planner or wave advance at a time.
+	rc     *releaseChecker
+	rollMu sync.Mutex
+
 	// How long a self-removal waits for the Shepherd's answer, for it to
 	// disconnect, and for SSH to confirm that nothing is left (tests make
 	// them short).

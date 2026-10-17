@@ -1226,7 +1226,11 @@ type Hello struct {
 	// agent keeps saying so until a controller moves it to a new epoch: a
 	// controller restored from a backup older than the revocation doesn't
 	// know about it otherwise.
-	Revocation    *Revocation `protobuf:"bytes,13,opt,name=revocation,proto3" json:"revocation,omitempty"`
+	Revocation *Revocation `protobuf:"bytes,13,opt,name=revocation,proto3" json:"revocation,omitempty"`
+	// Which signatures this agent accepts for its own updates (1.0): the
+	// controller offers only what the host would install, and says why a host
+	// can't take an update. Agents before 1.0 send none.
+	ReleaseTrust  *ReleaseTrust `protobuf:"bytes,14,opt,name=release_trust,json=releaseTrust,proto3" json:"release_trust,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1352,6 +1356,81 @@ func (x *Hello) GetRevocation() *Revocation {
 	return nil
 }
 
+func (x *Hello) GetReleaseTrust() *ReleaseTrust {
+	if x != nil {
+		return x.ReleaseTrust
+	}
+	return nil
+}
+
+type ReleaseTrust struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	KeyIds         []string               `protobuf:"bytes,1,rep,name=key_ids,json=keyIds,proto3" json:"key_ids,omitempty"`                          // every release key this agent trusts
+	Official       bool                   `protobuf:"varint,2,opt,name=official,proto3" json:"official,omitempty"`                                   // includes the DROOL project's keys built into it
+	UpdatesDenied  bool                   `protobuf:"varint,3,opt,name=updates_denied,json=updatesDenied,proto3" json:"updates_denied,omitempty"`    // agent.yaml updates.policy: deny
+	OfficialDenied bool                   `protobuf:"varint,4,opt,name=official_denied,json=officialDenied,proto3" json:"official_denied,omitempty"` // agent.yaml updates.official: deny
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ReleaseTrust) Reset() {
+	*x = ReleaseTrust{}
+	mi := &file_agent_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseTrust) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseTrust) ProtoMessage() {}
+
+func (x *ReleaseTrust) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseTrust.ProtoReflect.Descriptor instead.
+func (*ReleaseTrust) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ReleaseTrust) GetKeyIds() []string {
+	if x != nil {
+		return x.KeyIds
+	}
+	return nil
+}
+
+func (x *ReleaseTrust) GetOfficial() bool {
+	if x != nil {
+		return x.Official
+	}
+	return false
+}
+
+func (x *ReleaseTrust) GetUpdatesDenied() bool {
+	if x != nil {
+		return x.UpdatesDenied
+	}
+	return false
+}
+
+func (x *ReleaseTrust) GetOfficialDenied() bool {
+	if x != nil {
+		return x.OfficialDenied
+	}
+	return false
+}
+
 type Revocation struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Reason          string                 `protobuf:"bytes,1,opt,name=reason,proto3" json:"reason,omitempty"`
@@ -1363,7 +1442,7 @@ type Revocation struct {
 
 func (x *Revocation) Reset() {
 	*x = Revocation{}
-	mi := &file_agent_proto_msgTypes[13]
+	mi := &file_agent_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1375,7 +1454,7 @@ func (x *Revocation) String() string {
 func (*Revocation) ProtoMessage() {}
 
 func (x *Revocation) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[13]
+	mi := &file_agent_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1388,7 +1467,7 @@ func (x *Revocation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Revocation.ProtoReflect.Descriptor instead.
 func (*Revocation) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{13}
+	return file_agent_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Revocation) GetReason() string {
@@ -1421,7 +1500,7 @@ type StateReport struct {
 
 func (x *StateReport) Reset() {
 	*x = StateReport{}
-	mi := &file_agent_proto_msgTypes[14]
+	mi := &file_agent_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1433,7 +1512,7 @@ func (x *StateReport) String() string {
 func (*StateReport) ProtoMessage() {}
 
 func (x *StateReport) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[14]
+	mi := &file_agent_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1446,7 +1525,7 @@ func (x *StateReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StateReport.ProtoReflect.Descriptor instead.
 func (*StateReport) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{14}
+	return file_agent_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *StateReport) GetDomains() []*DomainState {
@@ -1468,7 +1547,7 @@ type DomainState struct {
 
 func (x *DomainState) Reset() {
 	*x = DomainState{}
-	mi := &file_agent_proto_msgTypes[15]
+	mi := &file_agent_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1480,7 +1559,7 @@ func (x *DomainState) String() string {
 func (*DomainState) ProtoMessage() {}
 
 func (x *DomainState) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[15]
+	mi := &file_agent_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1493,7 +1572,7 @@ func (x *DomainState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DomainState.ProtoReflect.Descriptor instead.
 func (*DomainState) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{15}
+	return file_agent_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *DomainState) GetDomain() string {
@@ -1541,7 +1620,7 @@ type HelloAck struct {
 
 func (x *HelloAck) Reset() {
 	*x = HelloAck{}
-	mi := &file_agent_proto_msgTypes[16]
+	mi := &file_agent_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1553,7 +1632,7 @@ func (x *HelloAck) String() string {
 func (*HelloAck) ProtoMessage() {}
 
 func (x *HelloAck) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[16]
+	mi := &file_agent_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1566,7 +1645,7 @@ func (x *HelloAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HelloAck.ProtoReflect.Descriptor instead.
 func (*HelloAck) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{16}
+	return file_agent_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *HelloAck) GetProtocol() uint32 {
@@ -1642,7 +1721,7 @@ type Heartbeat struct {
 
 func (x *Heartbeat) Reset() {
 	*x = Heartbeat{}
-	mi := &file_agent_proto_msgTypes[17]
+	mi := &file_agent_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1654,7 +1733,7 @@ func (x *Heartbeat) String() string {
 func (*Heartbeat) ProtoMessage() {}
 
 func (x *Heartbeat) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[17]
+	mi := &file_agent_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1667,7 +1746,7 @@ func (x *Heartbeat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Heartbeat.ProtoReflect.Descriptor instead.
 func (*Heartbeat) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{17}
+	return file_agent_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Heartbeat) GetTimeUnix() int64 {
@@ -1693,7 +1772,7 @@ type Ping struct {
 
 func (x *Ping) Reset() {
 	*x = Ping{}
-	mi := &file_agent_proto_msgTypes[18]
+	mi := &file_agent_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1705,7 +1784,7 @@ func (x *Ping) String() string {
 func (*Ping) ProtoMessage() {}
 
 func (x *Ping) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[18]
+	mi := &file_agent_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1718,7 +1797,7 @@ func (x *Ping) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ping.ProtoReflect.Descriptor instead.
 func (*Ping) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{18}
+	return file_agent_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *Ping) GetNonce() string {
@@ -1744,7 +1823,7 @@ type Telemetry struct {
 
 func (x *Telemetry) Reset() {
 	*x = Telemetry{}
-	mi := &file_agent_proto_msgTypes[19]
+	mi := &file_agent_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1756,7 +1835,7 @@ func (x *Telemetry) String() string {
 func (*Telemetry) ProtoMessage() {}
 
 func (x *Telemetry) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[19]
+	mi := &file_agent_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1769,7 +1848,7 @@ func (x *Telemetry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Telemetry.ProtoReflect.Descriptor instead.
 func (*Telemetry) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{19}
+	return file_agent_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Telemetry) GetKind() string {
@@ -1808,7 +1887,7 @@ type RenewRequest struct {
 
 func (x *RenewRequest) Reset() {
 	*x = RenewRequest{}
-	mi := &file_agent_proto_msgTypes[20]
+	mi := &file_agent_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1820,7 +1899,7 @@ func (x *RenewRequest) String() string {
 func (*RenewRequest) ProtoMessage() {}
 
 func (x *RenewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[20]
+	mi := &file_agent_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1833,7 +1912,7 @@ func (x *RenewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewRequest.ProtoReflect.Descriptor instead.
 func (*RenewRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{20}
+	return file_agent_proto_rawDescGZIP(), []int{21}
 }
 
 type RenewResponse struct {
@@ -1846,7 +1925,7 @@ type RenewResponse struct {
 
 func (x *RenewResponse) Reset() {
 	*x = RenewResponse{}
-	mi := &file_agent_proto_msgTypes[21]
+	mi := &file_agent_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1858,7 +1937,7 @@ func (x *RenewResponse) String() string {
 func (*RenewResponse) ProtoMessage() {}
 
 func (x *RenewResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[21]
+	mi := &file_agent_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1871,7 +1950,7 @@ func (x *RenewResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewResponse.ProtoReflect.Descriptor instead.
 func (*RenewResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{21}
+	return file_agent_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *RenewResponse) GetCertChain() [][]byte {
@@ -1898,7 +1977,7 @@ type OpenChannel struct {
 
 func (x *OpenChannel) Reset() {
 	*x = OpenChannel{}
-	mi := &file_agent_proto_msgTypes[22]
+	mi := &file_agent_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1910,7 +1989,7 @@ func (x *OpenChannel) String() string {
 func (*OpenChannel) ProtoMessage() {}
 
 func (x *OpenChannel) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[22]
+	mi := &file_agent_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1923,7 +2002,7 @@ func (x *OpenChannel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenChannel.ProtoReflect.Descriptor instead.
 func (*OpenChannel) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{22}
+	return file_agent_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *OpenChannel) GetChannelId() string {
@@ -1950,7 +2029,7 @@ type ChannelFailed struct {
 
 func (x *ChannelFailed) Reset() {
 	*x = ChannelFailed{}
-	mi := &file_agent_proto_msgTypes[23]
+	mi := &file_agent_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1962,7 +2041,7 @@ func (x *ChannelFailed) String() string {
 func (*ChannelFailed) ProtoMessage() {}
 
 func (x *ChannelFailed) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[23]
+	mi := &file_agent_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1975,7 +2054,7 @@ func (x *ChannelFailed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChannelFailed.ProtoReflect.Descriptor instead.
 func (*ChannelFailed) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{23}
+	return file_agent_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ChannelFailed) GetChannelId() string {
@@ -2006,7 +2085,7 @@ type QueryOp struct {
 
 func (x *QueryOp) Reset() {
 	*x = QueryOp{}
-	mi := &file_agent_proto_msgTypes[24]
+	mi := &file_agent_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2018,7 +2097,7 @@ func (x *QueryOp) String() string {
 func (*QueryOp) ProtoMessage() {}
 
 func (x *QueryOp) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[24]
+	mi := &file_agent_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2031,7 +2110,7 @@ func (x *QueryOp) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryOp.ProtoReflect.Descriptor instead.
 func (*QueryOp) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{24}
+	return file_agent_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *QueryOp) GetOpId() string {
@@ -2066,7 +2145,7 @@ type OpStatus struct {
 
 func (x *OpStatus) Reset() {
 	*x = OpStatus{}
-	mi := &file_agent_proto_msgTypes[25]
+	mi := &file_agent_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2078,7 +2157,7 @@ func (x *OpStatus) String() string {
 func (*OpStatus) ProtoMessage() {}
 
 func (x *OpStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[25]
+	mi := &file_agent_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2091,7 +2170,7 @@ func (x *OpStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpStatus.ProtoReflect.Descriptor instead.
 func (*OpStatus) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{25}
+	return file_agent_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *OpStatus) GetOpId() string {
@@ -2124,7 +2203,7 @@ type CancelOp struct {
 
 func (x *CancelOp) Reset() {
 	*x = CancelOp{}
-	mi := &file_agent_proto_msgTypes[26]
+	mi := &file_agent_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2136,7 +2215,7 @@ func (x *CancelOp) String() string {
 func (*CancelOp) ProtoMessage() {}
 
 func (x *CancelOp) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[26]
+	mi := &file_agent_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2149,7 +2228,7 @@ func (x *CancelOp) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelOp.ProtoReflect.Descriptor instead.
 func (*CancelOp) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{26}
+	return file_agent_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *CancelOp) GetOpId() string {
@@ -2169,7 +2248,7 @@ type EndpointCandidate struct {
 
 func (x *EndpointCandidate) Reset() {
 	*x = EndpointCandidate{}
-	mi := &file_agent_proto_msgTypes[27]
+	mi := &file_agent_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2181,7 +2260,7 @@ func (x *EndpointCandidate) String() string {
 func (*EndpointCandidate) ProtoMessage() {}
 
 func (x *EndpointCandidate) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[27]
+	mi := &file_agent_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2194,7 +2273,7 @@ func (x *EndpointCandidate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndpointCandidate.ProtoReflect.Descriptor instead.
 func (*EndpointCandidate) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{27}
+	return file_agent_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *EndpointCandidate) GetId() string {
@@ -2223,7 +2302,7 @@ type EndpointTestResult struct {
 
 func (x *EndpointTestResult) Reset() {
 	*x = EndpointTestResult{}
-	mi := &file_agent_proto_msgTypes[28]
+	mi := &file_agent_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2235,7 +2314,7 @@ func (x *EndpointTestResult) String() string {
 func (*EndpointTestResult) ProtoMessage() {}
 
 func (x *EndpointTestResult) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[28]
+	mi := &file_agent_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2248,7 +2327,7 @@ func (x *EndpointTestResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndpointTestResult.ProtoReflect.Descriptor instead.
 func (*EndpointTestResult) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{28}
+	return file_agent_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *EndpointTestResult) GetId() string {
@@ -2289,7 +2368,7 @@ type EndpointCommit struct {
 
 func (x *EndpointCommit) Reset() {
 	*x = EndpointCommit{}
-	mi := &file_agent_proto_msgTypes[29]
+	mi := &file_agent_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2301,7 +2380,7 @@ func (x *EndpointCommit) String() string {
 func (*EndpointCommit) ProtoMessage() {}
 
 func (x *EndpointCommit) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[29]
+	mi := &file_agent_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2314,7 +2393,7 @@ func (x *EndpointCommit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndpointCommit.ProtoReflect.Descriptor instead.
 func (*EndpointCommit) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{29}
+	return file_agent_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *EndpointCommit) GetId() string {
@@ -2338,13 +2417,16 @@ type UpdateOffer struct {
 	KeyId               string                 `protobuf:"bytes,3,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
 	Signature           []byte                 `protobuf:"bytes,4,opt,name=signature,proto3" json:"signature,omitempty"`
 	HealthWindowSeconds uint32                 `protobuf:"varint,5,opt,name=health_window_seconds,json=healthWindowSeconds,proto3" json:"health_window_seconds,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// A person asked to try a version again that already failed its health
+	// check on this host (1.0). Without it the agent never retries one.
+	Retry         bool `protobuf:"varint,6,opt,name=retry,proto3" json:"retry,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateOffer) Reset() {
 	*x = UpdateOffer{}
-	mi := &file_agent_proto_msgTypes[30]
+	mi := &file_agent_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2356,7 +2438,7 @@ func (x *UpdateOffer) String() string {
 func (*UpdateOffer) ProtoMessage() {}
 
 func (x *UpdateOffer) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[30]
+	mi := &file_agent_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2369,7 +2451,7 @@ func (x *UpdateOffer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateOffer.ProtoReflect.Descriptor instead.
 func (*UpdateOffer) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{30}
+	return file_agent_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *UpdateOffer) GetReleaseId() string {
@@ -2407,20 +2489,31 @@ func (x *UpdateOffer) GetHealthWindowSeconds() uint32 {
 	return 0
 }
 
+func (x *UpdateOffer) GetRetry() bool {
+	if x != nil {
+		return x.Retry
+	}
+	return false
+}
+
 type UpdateReport struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ReleaseId     string                 `protobuf:"bytes,1,opt,name=release_id,json=releaseId,proto3" json:"release_id,omitempty"`
-	Version       string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
-	State         string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"` // staged | updating | healthy | rolled_back | failed
-	Detail        string                 `protobuf:"bytes,4,opt,name=detail,proto3" json:"detail,omitempty"`
-	FromVersion   string                 `protobuf:"bytes,5,opt,name=from_version,json=fromVersion,proto3" json:"from_version,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	ReleaseId   string                 `protobuf:"bytes,1,opt,name=release_id,json=releaseId,proto3" json:"release_id,omitempty"`
+	Version     string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
+	State       string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"` // staged | updating | healthy | rolled_back | failed
+	Detail      string                 `protobuf:"bytes,4,opt,name=detail,proto3" json:"detail,omitempty"`
+	FromVersion string                 `protobuf:"bytes,5,opt,name=from_version,json=fromVersion,proto3" json:"from_version,omitempty"`
+	// Set when the agent refused the offer before changing anything (1.0):
+	// untrusted_key, updates_denied, failed_before, downgrade, upgrade_path,
+	// protocol, platform, busy. Such a host is skipped, not a failed update.
+	Refusal       string `protobuf:"bytes,6,opt,name=refusal,proto3" json:"refusal,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateReport) Reset() {
 	*x = UpdateReport{}
-	mi := &file_agent_proto_msgTypes[31]
+	mi := &file_agent_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2432,7 +2525,7 @@ func (x *UpdateReport) String() string {
 func (*UpdateReport) ProtoMessage() {}
 
 func (x *UpdateReport) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[31]
+	mi := &file_agent_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2445,7 +2538,7 @@ func (x *UpdateReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateReport.ProtoReflect.Descriptor instead.
 func (*UpdateReport) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{31}
+	return file_agent_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *UpdateReport) GetReleaseId() string {
@@ -2483,6 +2576,13 @@ func (x *UpdateReport) GetFromVersion() string {
 	return ""
 }
 
+func (x *UpdateReport) GetRefusal() string {
+	if x != nil {
+		return x.Refusal
+	}
+	return ""
+}
+
 type ManifestAck struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Version       uint64                 `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
@@ -2493,7 +2593,7 @@ type ManifestAck struct {
 
 func (x *ManifestAck) Reset() {
 	*x = ManifestAck{}
-	mi := &file_agent_proto_msgTypes[32]
+	mi := &file_agent_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2505,7 +2605,7 @@ func (x *ManifestAck) String() string {
 func (*ManifestAck) ProtoMessage() {}
 
 func (x *ManifestAck) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[32]
+	mi := &file_agent_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2518,7 +2618,7 @@ func (x *ManifestAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ManifestAck.ProtoReflect.Descriptor instead.
 func (*ManifestAck) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{32}
+	return file_agent_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ManifestAck) GetVersion() uint64 {
@@ -2545,7 +2645,7 @@ type ConfigPush struct {
 
 func (x *ConfigPush) Reset() {
 	*x = ConfigPush{}
-	mi := &file_agent_proto_msgTypes[33]
+	mi := &file_agent_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2557,7 +2657,7 @@ func (x *ConfigPush) String() string {
 func (*ConfigPush) ProtoMessage() {}
 
 func (x *ConfigPush) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[33]
+	mi := &file_agent_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2570,7 +2670,7 @@ func (x *ConfigPush) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigPush.ProtoReflect.Descriptor instead.
 func (*ConfigPush) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{33}
+	return file_agent_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ConfigPush) GetRequestedCapsJson() []byte {
@@ -2599,7 +2699,7 @@ type FirewallConfig struct {
 
 func (x *FirewallConfig) Reset() {
 	*x = FirewallConfig{}
-	mi := &file_agent_proto_msgTypes[34]
+	mi := &file_agent_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2611,7 +2711,7 @@ func (x *FirewallConfig) String() string {
 func (*FirewallConfig) ProtoMessage() {}
 
 func (x *FirewallConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[34]
+	mi := &file_agent_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2624,7 +2724,7 @@ func (x *FirewallConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FirewallConfig.ProtoReflect.Descriptor instead.
 func (*FirewallConfig) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{34}
+	return file_agent_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *FirewallConfig) GetLearning() bool {
@@ -2655,7 +2755,7 @@ type MonitorConfig struct {
 
 func (x *MonitorConfig) Reset() {
 	*x = MonitorConfig{}
-	mi := &file_agent_proto_msgTypes[35]
+	mi := &file_agent_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2667,7 +2767,7 @@ func (x *MonitorConfig) String() string {
 func (*MonitorConfig) ProtoMessage() {}
 
 func (x *MonitorConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[35]
+	mi := &file_agent_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2680,7 +2780,7 @@ func (x *MonitorConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MonitorConfig.ProtoReflect.Descriptor instead.
 func (*MonitorConfig) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{35}
+	return file_agent_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *MonitorConfig) GetConfigJson() []byte {
@@ -2702,7 +2802,7 @@ type ConfigAck struct {
 
 func (x *ConfigAck) Reset() {
 	*x = ConfigAck{}
-	mi := &file_agent_proto_msgTypes[36]
+	mi := &file_agent_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2714,7 +2814,7 @@ func (x *ConfigAck) String() string {
 func (*ConfigAck) ProtoMessage() {}
 
 func (x *ConfigAck) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[36]
+	mi := &file_agent_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2727,7 +2827,7 @@ func (x *ConfigAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigAck.ProtoReflect.Descriptor instead.
 func (*ConfigAck) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{36}
+	return file_agent_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ConfigAck) GetVersion() *DomainState {
@@ -2777,7 +2877,7 @@ type EpochTransition struct {
 
 func (x *EpochTransition) Reset() {
 	*x = EpochTransition{}
-	mi := &file_agent_proto_msgTypes[37]
+	mi := &file_agent_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2789,7 +2889,7 @@ func (x *EpochTransition) String() string {
 func (*EpochTransition) ProtoMessage() {}
 
 func (x *EpochTransition) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[37]
+	mi := &file_agent_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2802,7 +2902,7 @@ func (x *EpochTransition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EpochTransition.ProtoReflect.Descriptor instead.
 func (*EpochTransition) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{37}
+	return file_agent_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *EpochTransition) GetTransitionId() string {
@@ -2847,7 +2947,7 @@ type EpochDomain struct {
 
 func (x *EpochDomain) Reset() {
 	*x = EpochDomain{}
-	mi := &file_agent_proto_msgTypes[38]
+	mi := &file_agent_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2859,7 +2959,7 @@ func (x *EpochDomain) String() string {
 func (*EpochDomain) ProtoMessage() {}
 
 func (x *EpochDomain) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[38]
+	mi := &file_agent_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2872,7 +2972,7 @@ func (x *EpochDomain) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EpochDomain.ProtoReflect.Descriptor instead.
 func (*EpochDomain) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{38}
+	return file_agent_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *EpochDomain) GetDomain() string {
@@ -2917,7 +3017,7 @@ type EpochTransitionResult struct {
 
 func (x *EpochTransitionResult) Reset() {
 	*x = EpochTransitionResult{}
-	mi := &file_agent_proto_msgTypes[39]
+	mi := &file_agent_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2929,7 +3029,7 @@ func (x *EpochTransitionResult) String() string {
 func (*EpochTransitionResult) ProtoMessage() {}
 
 func (x *EpochTransitionResult) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[39]
+	mi := &file_agent_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2942,7 +3042,7 @@ func (x *EpochTransitionResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EpochTransitionResult.ProtoReflect.Descriptor instead.
 func (*EpochTransitionResult) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{39}
+	return file_agent_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *EpochTransitionResult) GetTransitionId() string {
@@ -3016,7 +3116,7 @@ type SelfUninstall struct {
 
 func (x *SelfUninstall) Reset() {
 	*x = SelfUninstall{}
-	mi := &file_agent_proto_msgTypes[40]
+	mi := &file_agent_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3028,7 +3128,7 @@ func (x *SelfUninstall) String() string {
 func (*SelfUninstall) ProtoMessage() {}
 
 func (x *SelfUninstall) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[40]
+	mi := &file_agent_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3041,7 +3141,7 @@ func (x *SelfUninstall) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SelfUninstall.ProtoReflect.Descriptor instead.
 func (*SelfUninstall) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{40}
+	return file_agent_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *SelfUninstall) GetRequestId() string {
@@ -3108,7 +3208,7 @@ type SelfUninstallResult struct {
 
 func (x *SelfUninstallResult) Reset() {
 	*x = SelfUninstallResult{}
-	mi := &file_agent_proto_msgTypes[41]
+	mi := &file_agent_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3120,7 +3220,7 @@ func (x *SelfUninstallResult) String() string {
 func (*SelfUninstallResult) ProtoMessage() {}
 
 func (x *SelfUninstallResult) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[41]
+	mi := &file_agent_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3133,7 +3233,7 @@ func (x *SelfUninstallResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SelfUninstallResult.ProtoReflect.Descriptor instead.
 func (*SelfUninstallResult) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{41}
+	return file_agent_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *SelfUninstallResult) GetRequestId() string {
@@ -3195,7 +3295,7 @@ type Disconnect struct {
 
 func (x *Disconnect) Reset() {
 	*x = Disconnect{}
-	mi := &file_agent_proto_msgTypes[42]
+	mi := &file_agent_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3207,7 +3307,7 @@ func (x *Disconnect) String() string {
 func (*Disconnect) ProtoMessage() {}
 
 func (x *Disconnect) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[42]
+	mi := &file_agent_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3220,7 +3320,7 @@ func (x *Disconnect) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Disconnect.ProtoReflect.Descriptor instead.
 func (*Disconnect) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{42}
+	return file_agent_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *Disconnect) GetReason() string {
@@ -3246,7 +3346,7 @@ type RequestTelemetry struct {
 
 func (x *RequestTelemetry) Reset() {
 	*x = RequestTelemetry{}
-	mi := &file_agent_proto_msgTypes[43]
+	mi := &file_agent_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3258,7 +3358,7 @@ func (x *RequestTelemetry) String() string {
 func (*RequestTelemetry) ProtoMessage() {}
 
 func (x *RequestTelemetry) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[43]
+	mi := &file_agent_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3271,7 +3371,7 @@ func (x *RequestTelemetry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestTelemetry.ProtoReflect.Descriptor instead.
 func (*RequestTelemetry) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{43}
+	return file_agent_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *RequestTelemetry) GetKind() string {
@@ -3293,7 +3393,7 @@ type Frame struct {
 
 func (x *Frame) Reset() {
 	*x = Frame{}
-	mi := &file_agent_proto_msgTypes[44]
+	mi := &file_agent_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3305,7 +3405,7 @@ func (x *Frame) String() string {
 func (*Frame) ProtoMessage() {}
 
 func (x *Frame) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[44]
+	mi := &file_agent_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3318,7 +3418,7 @@ func (x *Frame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Frame.ProtoReflect.Descriptor instead.
 func (*Frame) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{44}
+	return file_agent_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *Frame) GetChannelId() string {
@@ -3359,7 +3459,7 @@ type FetchReleaseRequest struct {
 
 func (x *FetchReleaseRequest) Reset() {
 	*x = FetchReleaseRequest{}
-	mi := &file_agent_proto_msgTypes[45]
+	mi := &file_agent_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3371,7 +3471,7 @@ func (x *FetchReleaseRequest) String() string {
 func (*FetchReleaseRequest) ProtoMessage() {}
 
 func (x *FetchReleaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[45]
+	mi := &file_agent_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3384,7 +3484,7 @@ func (x *FetchReleaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchReleaseRequest.ProtoReflect.Descriptor instead.
 func (*FetchReleaseRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{45}
+	return file_agent_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *FetchReleaseRequest) GetReleaseId() string {
@@ -3410,7 +3510,7 @@ type Chunk struct {
 
 func (x *Chunk) Reset() {
 	*x = Chunk{}
-	mi := &file_agent_proto_msgTypes[46]
+	mi := &file_agent_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3422,7 +3522,7 @@ func (x *Chunk) String() string {
 func (*Chunk) ProtoMessage() {}
 
 func (x *Chunk) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[46]
+	mi := &file_agent_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3435,7 +3535,7 @@ func (x *Chunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Chunk.ProtoReflect.Descriptor instead.
 func (*Chunk) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{46}
+	return file_agent_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *Chunk) GetData() []byte {
@@ -3535,7 +3635,7 @@ const file_agent_proto_rawDesc = "" +
 	"\x0emonitor_config\x18\x0f \x01(\v2\x1d.drool.agent.v1.MonitorConfigH\x00R\rmonitorConfig\x12L\n" +
 	"\x10epoch_transition\x18\x10 \x01(\v2\x1f.drool.agent.v1.EpochTransitionH\x00R\x0fepochTransition\x12F\n" +
 	"\x0eself_uninstall\x18\x11 \x01(\v2\x1d.drool.agent.v1.SelfUninstallH\x00R\rselfUninstallB\x05\n" +
-	"\x03msg\"\xae\x04\n" +
+	"\x03msg\"\xf1\x04\n" +
 	"\x05Hello\x12-\n" +
 	"\x04info\x18\x01 \x01(\v2\x19.drool.agent.v1.AgentInfoR\x04info\x12#\n" +
 	"\rsession_nonce\x18\x02 \x01(\tR\fsessionNonce\x12!\n" +
@@ -3552,7 +3652,13 @@ const file_agent_proto_rawDesc = "" +
 	"\bfeatures\x18\f \x03(\tR\bfeatures\x12:\n" +
 	"\n" +
 	"revocation\x18\r \x01(\v2\x1a.drool.agent.v1.RevocationR\n" +
-	"revocation\"h\n" +
+	"revocation\x12A\n" +
+	"\rrelease_trust\x18\x0e \x01(\v2\x1c.drool.agent.v1.ReleaseTrustR\freleaseTrust\"\x93\x01\n" +
+	"\fReleaseTrust\x12\x17\n" +
+	"\akey_ids\x18\x01 \x03(\tR\x06keyIds\x12\x1a\n" +
+	"\bofficial\x18\x02 \x01(\bR\bofficial\x12%\n" +
+	"\x0eupdates_denied\x18\x03 \x01(\bR\rupdatesDenied\x12'\n" +
+	"\x0fofficial_denied\x18\x04 \x01(\bR\x0eofficialDenied\"h\n" +
 	"\n" +
 	"Revocation\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\x12\x17\n" +
@@ -3621,21 +3727,23 @@ const file_agent_proto_rawDesc = "" +
 	"\x05error\x18\x04 \x01(\tR\x05error\"<\n" +
 	"\x0eEndpointCommit\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
-	"\bendpoint\x18\x02 \x01(\tR\bendpoint\"\xc0\x01\n" +
+	"\bendpoint\x18\x02 \x01(\tR\bendpoint\"\xd6\x01\n" +
 	"\vUpdateOffer\x12\x1d\n" +
 	"\n" +
 	"release_id\x18\x01 \x01(\tR\treleaseId\x12)\n" +
 	"\x10manifest_payload\x18\x02 \x01(\fR\x0fmanifestPayload\x12\x15\n" +
 	"\x06key_id\x18\x03 \x01(\tR\x05keyId\x12\x1c\n" +
 	"\tsignature\x18\x04 \x01(\fR\tsignature\x122\n" +
-	"\x15health_window_seconds\x18\x05 \x01(\rR\x13healthWindowSeconds\"\x98\x01\n" +
+	"\x15health_window_seconds\x18\x05 \x01(\rR\x13healthWindowSeconds\x12\x14\n" +
+	"\x05retry\x18\x06 \x01(\bR\x05retry\"\xb2\x01\n" +
 	"\fUpdateReport\x12\x1d\n" +
 	"\n" +
 	"release_id\x18\x01 \x01(\tR\treleaseId\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\x14\n" +
 	"\x05state\x18\x03 \x01(\tR\x05state\x12\x16\n" +
 	"\x06detail\x18\x04 \x01(\tR\x06detail\x12!\n" +
-	"\ffrom_version\x18\x05 \x01(\tR\vfromVersion\"=\n" +
+	"\ffrom_version\x18\x05 \x01(\tR\vfromVersion\x12\x18\n" +
+	"\arefusal\x18\x06 \x01(\tR\arefusal\"=\n" +
 	"\vManifestAck\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\x04R\aversion\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\"s\n" +
@@ -3731,7 +3839,7 @@ func file_agent_proto_rawDescGZIP() []byte {
 	return file_agent_proto_rawDescData
 }
 
-var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 47)
+var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 48)
 var file_agent_proto_goTypes = []any{
 	(*GetTrustRequest)(nil),           // 0: drool.agent.v1.GetTrustRequest
 	(*TrustBundle)(nil),               // 1: drool.agent.v1.TrustBundle
@@ -3746,102 +3854,104 @@ var file_agent_proto_goTypes = []any{
 	(*AgentMessage)(nil),              // 10: drool.agent.v1.AgentMessage
 	(*ControllerMessage)(nil),         // 11: drool.agent.v1.ControllerMessage
 	(*Hello)(nil),                     // 12: drool.agent.v1.Hello
-	(*Revocation)(nil),                // 13: drool.agent.v1.Revocation
-	(*StateReport)(nil),               // 14: drool.agent.v1.StateReport
-	(*DomainState)(nil),               // 15: drool.agent.v1.DomainState
-	(*HelloAck)(nil),                  // 16: drool.agent.v1.HelloAck
-	(*Heartbeat)(nil),                 // 17: drool.agent.v1.Heartbeat
-	(*Ping)(nil),                      // 18: drool.agent.v1.Ping
-	(*Telemetry)(nil),                 // 19: drool.agent.v1.Telemetry
-	(*RenewRequest)(nil),              // 20: drool.agent.v1.RenewRequest
-	(*RenewResponse)(nil),             // 21: drool.agent.v1.RenewResponse
-	(*OpenChannel)(nil),               // 22: drool.agent.v1.OpenChannel
-	(*ChannelFailed)(nil),             // 23: drool.agent.v1.ChannelFailed
-	(*QueryOp)(nil),                   // 24: drool.agent.v1.QueryOp
-	(*OpStatus)(nil),                  // 25: drool.agent.v1.OpStatus
-	(*CancelOp)(nil),                  // 26: drool.agent.v1.CancelOp
-	(*EndpointCandidate)(nil),         // 27: drool.agent.v1.EndpointCandidate
-	(*EndpointTestResult)(nil),        // 28: drool.agent.v1.EndpointTestResult
-	(*EndpointCommit)(nil),            // 29: drool.agent.v1.EndpointCommit
-	(*UpdateOffer)(nil),               // 30: drool.agent.v1.UpdateOffer
-	(*UpdateReport)(nil),              // 31: drool.agent.v1.UpdateReport
-	(*ManifestAck)(nil),               // 32: drool.agent.v1.ManifestAck
-	(*ConfigPush)(nil),                // 33: drool.agent.v1.ConfigPush
-	(*FirewallConfig)(nil),            // 34: drool.agent.v1.FirewallConfig
-	(*MonitorConfig)(nil),             // 35: drool.agent.v1.MonitorConfig
-	(*ConfigAck)(nil),                 // 36: drool.agent.v1.ConfigAck
-	(*EpochTransition)(nil),           // 37: drool.agent.v1.EpochTransition
-	(*EpochDomain)(nil),               // 38: drool.agent.v1.EpochDomain
-	(*EpochTransitionResult)(nil),     // 39: drool.agent.v1.EpochTransitionResult
-	(*SelfUninstall)(nil),             // 40: drool.agent.v1.SelfUninstall
-	(*SelfUninstallResult)(nil),       // 41: drool.agent.v1.SelfUninstallResult
-	(*Disconnect)(nil),                // 42: drool.agent.v1.Disconnect
-	(*RequestTelemetry)(nil),          // 43: drool.agent.v1.RequestTelemetry
-	(*Frame)(nil),                     // 44: drool.agent.v1.Frame
-	(*FetchReleaseRequest)(nil),       // 45: drool.agent.v1.FetchReleaseRequest
-	(*Chunk)(nil),                     // 46: drool.agent.v1.Chunk
+	(*ReleaseTrust)(nil),              // 13: drool.agent.v1.ReleaseTrust
+	(*Revocation)(nil),                // 14: drool.agent.v1.Revocation
+	(*StateReport)(nil),               // 15: drool.agent.v1.StateReport
+	(*DomainState)(nil),               // 16: drool.agent.v1.DomainState
+	(*HelloAck)(nil),                  // 17: drool.agent.v1.HelloAck
+	(*Heartbeat)(nil),                 // 18: drool.agent.v1.Heartbeat
+	(*Ping)(nil),                      // 19: drool.agent.v1.Ping
+	(*Telemetry)(nil),                 // 20: drool.agent.v1.Telemetry
+	(*RenewRequest)(nil),              // 21: drool.agent.v1.RenewRequest
+	(*RenewResponse)(nil),             // 22: drool.agent.v1.RenewResponse
+	(*OpenChannel)(nil),               // 23: drool.agent.v1.OpenChannel
+	(*ChannelFailed)(nil),             // 24: drool.agent.v1.ChannelFailed
+	(*QueryOp)(nil),                   // 25: drool.agent.v1.QueryOp
+	(*OpStatus)(nil),                  // 26: drool.agent.v1.OpStatus
+	(*CancelOp)(nil),                  // 27: drool.agent.v1.CancelOp
+	(*EndpointCandidate)(nil),         // 28: drool.agent.v1.EndpointCandidate
+	(*EndpointTestResult)(nil),        // 29: drool.agent.v1.EndpointTestResult
+	(*EndpointCommit)(nil),            // 30: drool.agent.v1.EndpointCommit
+	(*UpdateOffer)(nil),               // 31: drool.agent.v1.UpdateOffer
+	(*UpdateReport)(nil),              // 32: drool.agent.v1.UpdateReport
+	(*ManifestAck)(nil),               // 33: drool.agent.v1.ManifestAck
+	(*ConfigPush)(nil),                // 34: drool.agent.v1.ConfigPush
+	(*FirewallConfig)(nil),            // 35: drool.agent.v1.FirewallConfig
+	(*MonitorConfig)(nil),             // 36: drool.agent.v1.MonitorConfig
+	(*ConfigAck)(nil),                 // 37: drool.agent.v1.ConfigAck
+	(*EpochTransition)(nil),           // 38: drool.agent.v1.EpochTransition
+	(*EpochDomain)(nil),               // 39: drool.agent.v1.EpochDomain
+	(*EpochTransitionResult)(nil),     // 40: drool.agent.v1.EpochTransitionResult
+	(*SelfUninstall)(nil),             // 41: drool.agent.v1.SelfUninstall
+	(*SelfUninstallResult)(nil),       // 42: drool.agent.v1.SelfUninstallResult
+	(*Disconnect)(nil),                // 43: drool.agent.v1.Disconnect
+	(*RequestTelemetry)(nil),          // 44: drool.agent.v1.RequestTelemetry
+	(*Frame)(nil),                     // 45: drool.agent.v1.Frame
+	(*FetchReleaseRequest)(nil),       // 46: drool.agent.v1.FetchReleaseRequest
+	(*Chunk)(nil),                     // 47: drool.agent.v1.Chunk
 }
 var file_agent_proto_depIdxs = []int32{
 	2,  // 0: drool.agent.v1.TrustBundle.manifest:type_name -> drool.agent.v1.SignedManifest
 	3,  // 1: drool.agent.v1.EnrollRequest.info:type_name -> drool.agent.v1.AgentInfo
 	2,  // 2: drool.agent.v1.EnrollResponse.manifest:type_name -> drool.agent.v1.SignedManifest
 	12, // 3: drool.agent.v1.AgentMessage.hello:type_name -> drool.agent.v1.Hello
-	17, // 4: drool.agent.v1.AgentMessage.heartbeat:type_name -> drool.agent.v1.Heartbeat
-	19, // 5: drool.agent.v1.AgentMessage.telemetry:type_name -> drool.agent.v1.Telemetry
-	20, // 6: drool.agent.v1.AgentMessage.renew:type_name -> drool.agent.v1.RenewRequest
-	25, // 7: drool.agent.v1.AgentMessage.op_status:type_name -> drool.agent.v1.OpStatus
-	28, // 8: drool.agent.v1.AgentMessage.endpoint_test:type_name -> drool.agent.v1.EndpointTestResult
-	31, // 9: drool.agent.v1.AgentMessage.update:type_name -> drool.agent.v1.UpdateReport
-	32, // 10: drool.agent.v1.AgentMessage.manifest_ack:type_name -> drool.agent.v1.ManifestAck
-	23, // 11: drool.agent.v1.AgentMessage.channel_failed:type_name -> drool.agent.v1.ChannelFailed
-	36, // 12: drool.agent.v1.AgentMessage.config_ack:type_name -> drool.agent.v1.ConfigAck
-	39, // 13: drool.agent.v1.AgentMessage.epoch_transition:type_name -> drool.agent.v1.EpochTransitionResult
-	41, // 14: drool.agent.v1.AgentMessage.self_uninstall:type_name -> drool.agent.v1.SelfUninstallResult
-	16, // 15: drool.agent.v1.ControllerMessage.hello_ack:type_name -> drool.agent.v1.HelloAck
-	18, // 16: drool.agent.v1.ControllerMessage.ping:type_name -> drool.agent.v1.Ping
-	22, // 17: drool.agent.v1.ControllerMessage.open_channel:type_name -> drool.agent.v1.OpenChannel
-	21, // 18: drool.agent.v1.ControllerMessage.renew:type_name -> drool.agent.v1.RenewResponse
-	24, // 19: drool.agent.v1.ControllerMessage.query_op:type_name -> drool.agent.v1.QueryOp
-	26, // 20: drool.agent.v1.ControllerMessage.cancel_op:type_name -> drool.agent.v1.CancelOp
-	27, // 21: drool.agent.v1.ControllerMessage.endpoint_candidate:type_name -> drool.agent.v1.EndpointCandidate
-	29, // 22: drool.agent.v1.ControllerMessage.endpoint_commit:type_name -> drool.agent.v1.EndpointCommit
-	30, // 23: drool.agent.v1.ControllerMessage.update_offer:type_name -> drool.agent.v1.UpdateOffer
+	18, // 4: drool.agent.v1.AgentMessage.heartbeat:type_name -> drool.agent.v1.Heartbeat
+	20, // 5: drool.agent.v1.AgentMessage.telemetry:type_name -> drool.agent.v1.Telemetry
+	21, // 6: drool.agent.v1.AgentMessage.renew:type_name -> drool.agent.v1.RenewRequest
+	26, // 7: drool.agent.v1.AgentMessage.op_status:type_name -> drool.agent.v1.OpStatus
+	29, // 8: drool.agent.v1.AgentMessage.endpoint_test:type_name -> drool.agent.v1.EndpointTestResult
+	32, // 9: drool.agent.v1.AgentMessage.update:type_name -> drool.agent.v1.UpdateReport
+	33, // 10: drool.agent.v1.AgentMessage.manifest_ack:type_name -> drool.agent.v1.ManifestAck
+	24, // 11: drool.agent.v1.AgentMessage.channel_failed:type_name -> drool.agent.v1.ChannelFailed
+	37, // 12: drool.agent.v1.AgentMessage.config_ack:type_name -> drool.agent.v1.ConfigAck
+	40, // 13: drool.agent.v1.AgentMessage.epoch_transition:type_name -> drool.agent.v1.EpochTransitionResult
+	42, // 14: drool.agent.v1.AgentMessage.self_uninstall:type_name -> drool.agent.v1.SelfUninstallResult
+	17, // 15: drool.agent.v1.ControllerMessage.hello_ack:type_name -> drool.agent.v1.HelloAck
+	19, // 16: drool.agent.v1.ControllerMessage.ping:type_name -> drool.agent.v1.Ping
+	23, // 17: drool.agent.v1.ControllerMessage.open_channel:type_name -> drool.agent.v1.OpenChannel
+	22, // 18: drool.agent.v1.ControllerMessage.renew:type_name -> drool.agent.v1.RenewResponse
+	25, // 19: drool.agent.v1.ControllerMessage.query_op:type_name -> drool.agent.v1.QueryOp
+	27, // 20: drool.agent.v1.ControllerMessage.cancel_op:type_name -> drool.agent.v1.CancelOp
+	28, // 21: drool.agent.v1.ControllerMessage.endpoint_candidate:type_name -> drool.agent.v1.EndpointCandidate
+	30, // 22: drool.agent.v1.ControllerMessage.endpoint_commit:type_name -> drool.agent.v1.EndpointCommit
+	31, // 23: drool.agent.v1.ControllerMessage.update_offer:type_name -> drool.agent.v1.UpdateOffer
 	2,  // 24: drool.agent.v1.ControllerMessage.manifest:type_name -> drool.agent.v1.SignedManifest
-	42, // 25: drool.agent.v1.ControllerMessage.disconnect:type_name -> drool.agent.v1.Disconnect
-	43, // 26: drool.agent.v1.ControllerMessage.request_telemetry:type_name -> drool.agent.v1.RequestTelemetry
-	33, // 27: drool.agent.v1.ControllerMessage.config:type_name -> drool.agent.v1.ConfigPush
-	34, // 28: drool.agent.v1.ControllerMessage.firewall_config:type_name -> drool.agent.v1.FirewallConfig
-	35, // 29: drool.agent.v1.ControllerMessage.monitor_config:type_name -> drool.agent.v1.MonitorConfig
-	37, // 30: drool.agent.v1.ControllerMessage.epoch_transition:type_name -> drool.agent.v1.EpochTransition
-	40, // 31: drool.agent.v1.ControllerMessage.self_uninstall:type_name -> drool.agent.v1.SelfUninstall
+	43, // 25: drool.agent.v1.ControllerMessage.disconnect:type_name -> drool.agent.v1.Disconnect
+	44, // 26: drool.agent.v1.ControllerMessage.request_telemetry:type_name -> drool.agent.v1.RequestTelemetry
+	34, // 27: drool.agent.v1.ControllerMessage.config:type_name -> drool.agent.v1.ConfigPush
+	35, // 28: drool.agent.v1.ControllerMessage.firewall_config:type_name -> drool.agent.v1.FirewallConfig
+	36, // 29: drool.agent.v1.ControllerMessage.monitor_config:type_name -> drool.agent.v1.MonitorConfig
+	38, // 30: drool.agent.v1.ControllerMessage.epoch_transition:type_name -> drool.agent.v1.EpochTransition
+	41, // 31: drool.agent.v1.ControllerMessage.self_uninstall:type_name -> drool.agent.v1.SelfUninstall
 	3,  // 32: drool.agent.v1.Hello.info:type_name -> drool.agent.v1.AgentInfo
-	14, // 33: drool.agent.v1.Hello.state:type_name -> drool.agent.v1.StateReport
-	31, // 34: drool.agent.v1.Hello.update:type_name -> drool.agent.v1.UpdateReport
-	13, // 35: drool.agent.v1.Hello.revocation:type_name -> drool.agent.v1.Revocation
-	15, // 36: drool.agent.v1.StateReport.domains:type_name -> drool.agent.v1.DomainState
-	15, // 37: drool.agent.v1.ConfigPush.version:type_name -> drool.agent.v1.DomainState
-	15, // 38: drool.agent.v1.ConfigAck.version:type_name -> drool.agent.v1.DomainState
-	38, // 39: drool.agent.v1.EpochTransition.domains:type_name -> drool.agent.v1.EpochDomain
-	14, // 40: drool.agent.v1.EpochTransitionResult.state:type_name -> drool.agent.v1.StateReport
-	0,  // 41: drool.agent.v1.Agent.GetTrust:input_type -> drool.agent.v1.GetTrustRequest
-	4,  // 42: drool.agent.v1.Agent.Enroll:input_type -> drool.agent.v1.EnrollRequest
-	6,  // 43: drool.agent.v1.Agent.RecoveryChallenge:input_type -> drool.agent.v1.RecoveryChallengeRequest
-	8,  // 44: drool.agent.v1.Agent.Recover:input_type -> drool.agent.v1.RecoverRequest
-	10, // 45: drool.agent.v1.Agent.Session:input_type -> drool.agent.v1.AgentMessage
-	44, // 46: drool.agent.v1.Agent.Channel:input_type -> drool.agent.v1.Frame
-	45, // 47: drool.agent.v1.Agent.FetchRelease:input_type -> drool.agent.v1.FetchReleaseRequest
-	1,  // 48: drool.agent.v1.Agent.GetTrust:output_type -> drool.agent.v1.TrustBundle
-	5,  // 49: drool.agent.v1.Agent.Enroll:output_type -> drool.agent.v1.EnrollResponse
-	7,  // 50: drool.agent.v1.Agent.RecoveryChallenge:output_type -> drool.agent.v1.RecoveryChallengeResponse
-	9,  // 51: drool.agent.v1.Agent.Recover:output_type -> drool.agent.v1.RecoverResponse
-	11, // 52: drool.agent.v1.Agent.Session:output_type -> drool.agent.v1.ControllerMessage
-	44, // 53: drool.agent.v1.Agent.Channel:output_type -> drool.agent.v1.Frame
-	46, // 54: drool.agent.v1.Agent.FetchRelease:output_type -> drool.agent.v1.Chunk
-	48, // [48:55] is the sub-list for method output_type
-	41, // [41:48] is the sub-list for method input_type
-	41, // [41:41] is the sub-list for extension type_name
-	41, // [41:41] is the sub-list for extension extendee
-	0,  // [0:41] is the sub-list for field type_name
+	15, // 33: drool.agent.v1.Hello.state:type_name -> drool.agent.v1.StateReport
+	32, // 34: drool.agent.v1.Hello.update:type_name -> drool.agent.v1.UpdateReport
+	14, // 35: drool.agent.v1.Hello.revocation:type_name -> drool.agent.v1.Revocation
+	13, // 36: drool.agent.v1.Hello.release_trust:type_name -> drool.agent.v1.ReleaseTrust
+	16, // 37: drool.agent.v1.StateReport.domains:type_name -> drool.agent.v1.DomainState
+	16, // 38: drool.agent.v1.ConfigPush.version:type_name -> drool.agent.v1.DomainState
+	16, // 39: drool.agent.v1.ConfigAck.version:type_name -> drool.agent.v1.DomainState
+	39, // 40: drool.agent.v1.EpochTransition.domains:type_name -> drool.agent.v1.EpochDomain
+	15, // 41: drool.agent.v1.EpochTransitionResult.state:type_name -> drool.agent.v1.StateReport
+	0,  // 42: drool.agent.v1.Agent.GetTrust:input_type -> drool.agent.v1.GetTrustRequest
+	4,  // 43: drool.agent.v1.Agent.Enroll:input_type -> drool.agent.v1.EnrollRequest
+	6,  // 44: drool.agent.v1.Agent.RecoveryChallenge:input_type -> drool.agent.v1.RecoveryChallengeRequest
+	8,  // 45: drool.agent.v1.Agent.Recover:input_type -> drool.agent.v1.RecoverRequest
+	10, // 46: drool.agent.v1.Agent.Session:input_type -> drool.agent.v1.AgentMessage
+	45, // 47: drool.agent.v1.Agent.Channel:input_type -> drool.agent.v1.Frame
+	46, // 48: drool.agent.v1.Agent.FetchRelease:input_type -> drool.agent.v1.FetchReleaseRequest
+	1,  // 49: drool.agent.v1.Agent.GetTrust:output_type -> drool.agent.v1.TrustBundle
+	5,  // 50: drool.agent.v1.Agent.Enroll:output_type -> drool.agent.v1.EnrollResponse
+	7,  // 51: drool.agent.v1.Agent.RecoveryChallenge:output_type -> drool.agent.v1.RecoveryChallengeResponse
+	9,  // 52: drool.agent.v1.Agent.Recover:output_type -> drool.agent.v1.RecoverResponse
+	11, // 53: drool.agent.v1.Agent.Session:output_type -> drool.agent.v1.ControllerMessage
+	45, // 54: drool.agent.v1.Agent.Channel:output_type -> drool.agent.v1.Frame
+	47, // 55: drool.agent.v1.Agent.FetchRelease:output_type -> drool.agent.v1.Chunk
+	49, // [49:56] is the sub-list for method output_type
+	42, // [42:49] is the sub-list for method input_type
+	42, // [42:42] is the sub-list for extension type_name
+	42, // [42:42] is the sub-list for extension extendee
+	0,  // [0:42] is the sub-list for field type_name
 }
 
 func init() { file_agent_proto_init() }
@@ -3888,7 +3998,7 @@ func file_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   47,
+			NumMessages:   48,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

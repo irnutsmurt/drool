@@ -50,6 +50,20 @@ capabilities:
 	}
 }
 
+// Official DROOL releases are trusted unless the host says no; anything but
+// allow or deny is an error, never a silent choice.
+func TestOfficialReleasesSetting(t *testing.T) {
+	for in, want := range map[string]bool{"": true, "updates:\n  official: allow\n": true, "updates:\n  official: deny\n": false} {
+		f, err := ParseFile([]byte(in))
+		if err != nil || f.OfficialReleases() != want {
+			t.Errorf("%q: official %v, %v", in, f.OfficialReleases(), err)
+		}
+	}
+	if _, err := ParseFile([]byte("updates:\n  official: no\n")); err == nil {
+		t.Error("updates.official: no accepted")
+	}
+}
+
 func TestPresets(t *testing.T) {
 	mon, _ := Preset(PresetMonitor)
 	man, _ := Preset(PresetManaged)

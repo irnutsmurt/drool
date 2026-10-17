@@ -331,7 +331,7 @@ func (s *Service) InstallBinary(ctx context.Context, arch string) (*InstallImage
 	if arch == "" {
 		return nil, errors.New("unsupported architecture (amd64 and arm64 are supported)")
 	}
-	keys, _ := s.KnownKeys(ctx)
+	keys, _ := s.uploadKeys(ctx)
 	var best *db.AgentRelease
 	if r, err := s.st.R.GetReleaseFor(ctx, db.GetReleaseForParams{Version: version.Version, Os: "linux", Arch: arch}); err == nil &&
 		agentrpc.Negotiate(s.ControllerRange, agentrpc.Range{Min: uint32(r.ProtocolMin), Max: uint32(r.ProtocolMax)}) != 0 {
@@ -354,8 +354,11 @@ func (s *Service) InstallBinary(ctx context.Context, arch string) (*InstallImage
 		if err := release.CheckBinary(m, bytes.NewReader(data)); err != nil {
 			return nil, fmt.Errorf("signed release %s: %w", best.Version, err)
 		}
-		return &InstallImage{Version: m.Version, Arch: arch, SHA256: m.SHA256, Size: m.Size, Data: data,
-			Source: "signed release " + m.Version + " (key " + best.KeyID + ")"}, nil
+		src := "signed release " + m.Version + " (key " + best.KeyID + ")"
+		if release.IsOfficialKey(best.KeyID) {
+			src = "official release " + m.Version + " (signed by the DROOL project, key " + best.KeyID + ")"
+		}
+		return &InstallImage{Version: m.Version, Arch: arch, SHA256: m.SHA256, Size: m.Size, Data: data, Source: src}, nil
 	}
 	b, err := s.AgentBinary(arch)
 	if err != nil {

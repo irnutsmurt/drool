@@ -2005,6 +2005,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agents/updates/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The Shepherd update overview: the policy, the version automatic updates keep Shepherds on, whether official releases can be verified here, the latest release check, how many Shepherds are up to date, which can't be updated and why, what needs a person, and recent rollouts. */
+        get: operations["getAgentUpdateStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/updates/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Check the release source for this DROOL's official Shepherd release and a newer DROOL now. Returns at once; `check.checking` says when it is done. */
+        post: operations["checkAgentUpdates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agents/updates/policy": {
         parameters: {
             query?: never;
@@ -2063,7 +2097,7 @@ export interface paths {
         };
         get: operations["listAgentReleases"];
         put?: never;
-        /** @description Body is the agent binary; the signed manifest (`.release.json` from `drool release sign`) goes base64-encoded in `X-DROOL-Release`. Verified here for early feedback and again by every agent. */
+        /** @description Body is the agent binary; the signed manifest (`.release.json` from `drool release sign`) goes base64-encoded in `X-DROOL-Release`. Signed with a registered key or the DROOL project's. An empty body stores the manifest of a Shepherd binary this controller ships (an official release's description, uploaded by hand). Verified here for early feedback and again by every agent. */
         post: operations["uploadAgentRelease"];
         delete?: never;
         options?: never;
@@ -2096,7 +2130,7 @@ export interface paths {
         };
         get: operations["listAgentRollouts"];
         put?: never;
-        /** @description Update agents to an uploaded release with a canary, then bounded batches, pausing on failures (policy settings). Empty `host_ids` = every agent. */
+        /** @description Update the Shepherds that run an older version than a stored release, with a canary, then bounded batches, pausing on failures (policy settings). Empty `host_ids` = every Shepherd. Shepherds that can't take it are listed as skipped, with the reason. `retry` tries the version again on hosts where it failed before. */
         post: operations["startAgentRollout"];
         delete?: never;
         options?: never;
@@ -4388,6 +4422,18 @@ export interface components {
             /** Format: date-time */
             update_at: string | null;
             compatibility: components["schemas"]["AgentCompatibility"];
+            /** @description Which signatures the Shepherd accepts for its updates, as it last said; null for Shepherds built before 1.0, which don't say. */
+            release_trust: components["schemas"]["ReleaseTrust"] | null;
+        };
+        ReleaseTrust: {
+            /** @description Every release key the Shepherd trusts. */
+            key_ids: string[];
+            /** @description It trusts the DROOL project's release keys built into it. */
+            official: boolean;
+            /** @description Its host says updates.official: deny. */
+            official_denied: boolean;
+            /** @description Its host says updates.policy: deny. */
+            updates_denied: boolean;
         };
         AgentSession: {
             address: string;
@@ -4446,6 +4492,10 @@ export interface components {
             sha256: string;
             size: number;
             key_id: string;
+            /** @description Signed with the DROOL project's release key; otherwise a custom release */
+            official: boolean;
+            /** @description Active Shepherds on this platform that run an older version (in lists). */
+            shepherds_behind?: number;
             /** Format: date-time */
             created_at: string;
         };
@@ -4467,6 +4517,8 @@ export interface components {
             failures: number;
             paused_reason: string;
             automatic: boolean;
+            /** @description Tries the version again on hosts where it failed before. */
+            retry: boolean;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -4483,6 +4535,105 @@ export interface components {
                 /** Format: date-time */
                 updated_at: string;
             }[];
+        };
+        AgentUpdateStatus: {
+            policy: components["schemas"]["AgentUpdatePolicy"];
+            /** @description Someone saved the policy; otherwise it is the default. */
+            policy_saved: boolean;
+            /** @description The channels the policy can choose. */
+            channels: string[];
+            /** @enum {string} */
+            state: "none" | "current" | "available" | "updating" | "attention" | "blocked";
+            summary: string;
+            /** @description The version automatic updates keep Shepherds on; empty when none is available. */
+            target: string;
+            target_official: boolean;
+            controller: {
+                version: string;
+                channel: string;
+                /** @description A stable or prerelease build */
+                official: boolean;
+            };
+            official: {
+                /** @enum {string} */
+                state: "pending" | "verified" | "not_published" | "rejected" | "unreachable" | "development" | "no_key" | "off" | "no_binaries";
+                detail: string;
+                /** @description The DROOL project's release key ids built into this DROOL. */
+                keys: string[];
+            };
+            check: {
+                enabled: boolean;
+                source: string;
+                checking: boolean;
+                /** Format: date-time */
+                last_success: string | null;
+                /** Format: date-time */
+                last_attempt: string | null;
+                last_error?: string;
+                /** Format: date-time */
+                last_error_at: string | null;
+                /** Format: date-time */
+                next_check: string | null;
+            };
+            /** @description A newer DROOL than this controller, verified. */
+            latest?: {
+                version: string;
+                /** Format: date-time */
+                issued_at: string;
+                url: string;
+            };
+            counts: {
+                total: number;
+                current: number;
+                /** @description Behind and can be updated. */
+                behind: number;
+                updating: number;
+                /** @description In a running update but offline; they update when they reconnect. */
+                waiting: number;
+                /** @description Behind and can't be updated now. */
+                blocked: number;
+                offline: number;
+            };
+            blocked: {
+                host_id: string;
+                host_name: string;
+                version: string;
+                reason: string;
+                /** @description The update failed here; it can be tried again. */
+                retry_version?: string;
+            }[];
+            problems: {
+                /** @enum {string} */
+                kind: "paused" | "failed" | "rolled_back" | "verification";
+                title: string;
+                detail: string;
+                rollout_id?: string;
+                host_id?: string;
+                host_name?: string;
+                version?: string;
+                at: string;
+            }[];
+            active: components["schemas"]["AgentRolloutSummary"][];
+            history: components["schemas"]["AgentRolloutSummary"][];
+        };
+        AgentRolloutSummary: {
+            id: string;
+            version: string;
+            /** @enum {string} */
+            status: "running" | "paused" | "completed" | "cancelled";
+            reason: string;
+            automatic: boolean;
+            retry: boolean;
+            hosts: number;
+            healthy: number;
+            failed: number;
+            skipped: number;
+            waiting: number;
+            in_flight: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
         };
         EndpointMigration: {
             id: string;
@@ -12156,6 +12307,46 @@ export interface operations {
             409: components["responses"]["Problem"];
         };
     };
+    getAgentUpdateStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentUpdateStatus"];
+                };
+            };
+        };
+    };
+    checkAgentUpdates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Checking. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentUpdateStatus"];
+                };
+            };
+        };
+    };
     getAgentUpdatePolicy: {
         parameters: {
             query?: never;
@@ -12303,7 +12494,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "application/octet-stream": string;
             };
@@ -12376,6 +12567,7 @@ export interface operations {
                 "application/json": {
                     version: string;
                     host_ids?: string[];
+                    retry?: boolean;
                 };
             };
         };
@@ -12389,6 +12581,7 @@ export interface operations {
                     "application/json": components["schemas"]["AgentRollout"];
                 };
             };
+            409: components["responses"]["Problem"];
             422: components["responses"]["Problem"];
         };
     };

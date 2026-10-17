@@ -92,6 +92,12 @@ func TestUpgradeFromEverySchema(t *testing.T) {
 				}
 				want[f.table]++
 			}
+			// The fixture's update rollout (schema 7 on) is an installation
+			// that updated its Shepherds by hand: 0026 writes its policy
+			// down as manual.
+			if from >= 7 && from < 26 {
+				want["settings"]++
+			}
 			applied, err := st.Migrate(ctx)
 			if err != nil {
 				t.Fatalf("upgrade from %d: %v", from, err)
@@ -276,4 +282,59 @@ CREATE TABLE slow AS WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FRO
 		t.Fatal(err)
 	}
 	t.Fatal("the slow migration finished before it was killed")
+}
+
+// Automatic Shepherd updates became the default in 1.0 (0026): a saved
+// policy stays as it is, an installation that rolled out releases of its
+// own without saving one keeps updating by hand, and one that never did
+// gets the new default (no row).
+func TestShepherdUpdatePolicyMigration(t *testing.T) {
+	ctx := context.Background()
+	policy := func(st *Store) string {
+		var v string
+		if err := st.Reader.QueryRow(`SELECT value_json FROM settings WHERE key = 'agent_updates'`).Scan(&v); err != nil {
+			return ""
+		}
+		return v
+	}
+	for _, c := range []struct {
+		name  string
+		setup []string
+		want  string // "" no row
+	}{
+		{"never used updates", nil, ""},
+		{"rolled out its own releases", []string{
+			`INSERT INTO agent_rollouts (id, version, status, canary, batch_size, max_failures, health_window_s, created_at, updated_at) VALUES ('arol_1','v1.1.0','completed',1,5,1,60,1,1)`},
+			`"policy":"manual"`},
+		{"uploaded a release", []string{
+			`INSERT INTO artifacts (sha256, size, created_at, last_used_at) VALUES ('` + strings.Repeat("cd", 32) + `',3,1,1)`,
+			`INSERT INTO agent_releases (id, version, channel, os, arch, protocol_min, protocol_max, sha256, size, key_id, manifest_payload, signature, created_at) VALUES ('arel_1','v1.1.0','stable','linux','amd64',1,1,'` + strings.Repeat("cd", 32) + `',3,'k',x'00',x'00',1)`},
+			`"policy":"manual"`},
+		{"saved automatic", []string{
+			`INSERT INTO agent_rollouts (id, version, status, canary, batch_size, max_failures, health_window_s, created_at, updated_at) VALUES ('arol_1','v1.1.0','completed',1,5,1,60,1,1)`,
+			`INSERT INTO settings (key, value_json, updated_at) VALUES ('agent_updates', '{"policy":"automatic","channel":"beta"}', 1)`},
+			`"channel":"beta"`},
+		{"install rollouts only", []string{
+			`INSERT INTO agent_rollouts (id, version, status, canary, batch_size, max_failures, health_window_s, kind, created_at, updated_at) VALUES ('arol_1','v1.0.0','completed',1,5,1,60,'install',1,1)`},
+			""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			st := openTemp(t)
+			if _, err := st.MigrateTo(ctx, 25); err != nil {
+				t.Fatal(err)
+			}
+			for _, q := range c.setup {
+				if _, err := st.Writer.Exec(q); err != nil {
+					t.Fatalf("%s: %v", q, err)
+				}
+			}
+			if _, err := st.Migrate(ctx); err != nil {
+				t.Fatal(err)
+			}
+			got := policy(st)
+			if c.want == "" && got != "" || c.want != "" && !strings.Contains(got, c.want) {
+				t.Errorf("policy after 0026: %q, want %q", got, c.want)
+			}
+		})
+	}
 }

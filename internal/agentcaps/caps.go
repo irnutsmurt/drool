@@ -299,6 +299,10 @@ type File struct {
 		Policy string `yaml:"policy"`
 		// Allow installing an older release than the running one.
 		AllowDowngrade bool `yaml:"allow_downgrade"`
+		// Official DROOL releases, signed with the project's key built
+		// into the agent: "allow" (default) or "deny". Deny trusts only the
+		// keys in /etc/drool/release-keys.d (an operator's own builds).
+		Official string `yaml:"official"`
 	} `yaml:"updates"`
 	Identity struct {
 		// What to do when the controller detects this identity twice:
@@ -306,6 +310,10 @@ type File struct {
 		OnConflict string `yaml:"on_conflict"`
 	} `yaml:"identity"`
 }
+
+// OfficialReleases reports whether this host trusts the DROOL project's
+// official release keys for the agent's updates (updates.official).
+func (f *File) OfficialReleases() bool { return f.Updates.Official != "deny" }
 
 // ParseFile parses agent.yaml strictly (unknown keys are errors, so a typo
 // can't silently grant or deny something).
@@ -323,6 +331,11 @@ func ParseFile(data []byte) (*File, error) {
 	case "", "allow", "deny":
 	default:
 		return nil, fmt.Errorf("agent.yaml: updates.policy must be allow or deny")
+	}
+	switch f.Updates.Official {
+	case "", "allow", "deny":
+	default:
+		return nil, fmt.Errorf("agent.yaml: updates.official must be allow or deny")
 	}
 	return &f, nil
 }

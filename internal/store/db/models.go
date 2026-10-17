@@ -56,46 +56,47 @@ type AgentEnrollmentToken struct {
 }
 
 type AgentIdentity struct {
-	ID              string
-	HostID          string
-	PublicKey       []byte
-	Fingerprint     string
-	Status          string
-	EnrolledAt      int64
-	TokenID         sql.NullString
-	CertSerial      string
-	CertNotAfter    int64
-	CertIssuedAt    int64
-	RecoveredAt     sql.NullInt64
-	RevokedAt       sql.NullInt64
-	RevokedBy       sql.NullString
-	RevokeReason    string
-	QuarantinedAt   sql.NullInt64
-	ConflictJson    string
-	AgentVersion    string
-	Protocol        int64
-	ProtocolMin     int64
-	ProtocolMax     int64
-	Compatible      int64
-	CompatReason    string
-	Hostname        string
-	MachineID       string
-	Os              string
-	Arch            string
-	CeilingJson     string
-	EffectiveJson   string
-	ManifestVersion int64
-	EpochReported   string
-	EndpointsJson   string
-	BootID          string
-	LastSeenAt      sql.NullInt64
-	LastAddress     string
-	Connected       int64
-	UpdateState     string
-	UpdateVersion   string
-	UpdateDetail    string
-	UpdateAt        sql.NullInt64
-	FeaturesJson    string
+	ID               string
+	HostID           string
+	PublicKey        []byte
+	Fingerprint      string
+	Status           string
+	EnrolledAt       int64
+	TokenID          sql.NullString
+	CertSerial       string
+	CertNotAfter     int64
+	CertIssuedAt     int64
+	RecoveredAt      sql.NullInt64
+	RevokedAt        sql.NullInt64
+	RevokedBy        sql.NullString
+	RevokeReason     string
+	QuarantinedAt    sql.NullInt64
+	ConflictJson     string
+	AgentVersion     string
+	Protocol         int64
+	ProtocolMin      int64
+	ProtocolMax      int64
+	Compatible       int64
+	CompatReason     string
+	Hostname         string
+	MachineID        string
+	Os               string
+	Arch             string
+	CeilingJson      string
+	EffectiveJson    string
+	ManifestVersion  int64
+	EpochReported    string
+	EndpointsJson    string
+	BootID           string
+	LastSeenAt       sql.NullInt64
+	LastAddress      string
+	Connected        int64
+	UpdateState      string
+	UpdateVersion    string
+	UpdateDetail     string
+	UpdateAt         sql.NullInt64
+	FeaturesJson     string
+	ReleaseTrustJson string
 }
 
 type AgentRelease struct {
@@ -140,6 +141,7 @@ type AgentRollout struct {
 	Kind          string
 	Preset        string
 	WebHost       string
+	Retry         int64
 }
 
 type AgentRolloutHost struct {

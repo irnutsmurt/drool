@@ -230,6 +230,12 @@ func (s *Service) Session(stream pb.Agent_SessionServer) error {
 	}
 	features, _ := json.Marshal(nonNil(hello.Features))
 	s.st.W.SetIdentityFeatures(ctx, db.SetIdentityFeaturesParams{FeaturesJson: string(features), ID: ident.ID})
+	trust := ""
+	if t := trustFromHello(hello.ReleaseTrust); t != nil {
+		b, _ := json.Marshal(t)
+		trust = string(b)
+	}
+	s.st.W.SetIdentityReleaseTrust(ctx, db.SetIdentityReleaseTrustParams{ReleaseTrustJson: trust, ID: ident.ID})
 	if !compatible {
 		s.log.Warn("agent protocol incompatible", "identity", ident.ID, "agent_range", agentRange, "reason", reason)
 		stream.Send(&pb.ControllerMessage{Msg: &pb.ControllerMessage_HelloAck{HelloAck: &pb.HelloAck{Compatible: false, Reason: reason,

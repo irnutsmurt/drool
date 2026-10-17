@@ -350,6 +350,30 @@ func dockerStdin(container, stdin string, args ...string) (string, error) {
 	return out.String(), err
 }
 
+// manualShepherdUpdates turns automatic Shepherd updates off on the
+// controller under test. A test that uploads releases of its own (newer
+// test builds, a deliberately broken one) starts every rollout itself:
+// with automatic updates, the default since 1.0, the newest of them would
+// go to every Shepherd by itself.
+func manualShepherdUpdates(t *testing.T) {
+	t.Helper()
+	ctl.must(t, "PUT", "/api/v1/agents/updates/policy", map[string]any{"policy": "manual", "channel": "stable", "version": "",
+		"canary": 1, "batch_size": 5, "max_failures": 1, "health_window_s": 120}, nil)
+}
+
+// requireManualUpdates fails a test that uploads a release while automatic
+// Shepherd updates are on (it forgot manualShepherdUpdates).
+func requireManualUpdates(t *testing.T) {
+	t.Helper()
+	var p struct {
+		Policy string `json:"policy"`
+	}
+	ctl.must(t, "GET", "/api/v1/agents/updates/policy", nil, &p)
+	if p.Policy != "manual" {
+		t.Fatal("this test uploads its own Shepherd releases: call manualShepherdUpdates first, or automatic updates roll them out")
+	}
+}
+
 // uploadRelease signs and uploads an agent build.
 func uploadRelease(t *testing.T, key releaseKey, binFile, version string) (int, string) {
 	t.Helper()
@@ -358,6 +382,7 @@ func uploadRelease(t *testing.T, key releaseKey, binFile, version string) (int, 
 
 func uploadReleaseFor(t *testing.T, key releaseKey, binFile, version, arch string) (int, string) {
 	t.Helper()
+	requireManualUpdates(t)
 	priv, _ := release.ParsePrivateKey(key.priv)
 	b, err := os.ReadFile(binFile)
 	if err != nil {
@@ -497,22 +522,19 @@ func TestAgentUpdates(t *testing.T) {
 		ctl.must(t, "POST", "/api/v1/agents/rollouts/"+ro.ID+"/cancel", nil, nil)
 	})
 
-	t.Run("a release signed by a key the hosts don't trust is refused by the agent", func(t *testing.T) {
+	// A Shepherd says which signatures it accepts (1.0): DROOL doesn't offer
+	// it a release it would refuse, and says why instead of counting a
+	// failed update. The Shepherd's own check stays (internal/agent tests).
+	t.Run("a release signed by a key the hosts don't trust isn't offered", func(t *testing.T) {
 		other := newReleaseKey(t)
 		ctl.must(t, "POST", "/api/v1/agents/release-keys", map[string]any{"public_key": other.line}, nil)
 		bin := filepath.Join(releaseDir, "drool-agent-"+agentV2)
 		if st, body := uploadRelease(t, other, bin, "v1.3.0"); st != 201 {
 			t.Fatalf("upload: %d %s", st, body)
 		}
-		var ro rolloutT
-		ctl.must(t, "POST", "/api/v1/agents/rollouts", map[string]any{"version": "v1.3.0", "host_ids": []string{a.ID}}, &ro)
-		waitFor(t, 2*time.Minute, "refusal", func() bool {
-			r := getRollout(t, ro.ID)
-			return len(r.Hosts) == 1 && r.Hosts[0].State == "failed"
-		})
-		if r := getRollout(t, ro.ID); !strings.Contains(r.Hosts[0].Detail, "does not trust") {
-			t.Errorf("refusal detail: %+v", r.Hosts[0])
-		}
+		var raw json.RawMessage
+		st, err := ctl.do("POST", "/api/v1/agents/rollouts", map[string]any{"version": "v1.3.0", "host_ids": []string{a.ID}}, &raw)
+		expect(t, err == nil && st == 422 && strings.Contains(string(raw), "doesn't trust the key that signed v1.3.0"), "rollout of an untrusted release: %d %s", st, raw)
 		if got := getHostAgent(t, a.ID).Identity.AgentVersion; got != agentV2 {
 			t.Errorf("version changed to %s", got)
 		}
@@ -524,17 +546,12 @@ func TestAgentUpdates(t *testing.T) {
 		startSupervisor(t, cb)
 		waitAgent(t, b.ID, 2*time.Minute, "b back with updates denied", func(x hostAgent) bool { return x.Identity != nil && x.Identity.Connected })
 		before := getHostAgent(t, b.ID).Identity.AgentVersion
-		var ro rolloutT
-		ctl.must(t, "POST", "/api/v1/agents/rollouts", map[string]any{"version": agentBroken, "host_ids": []string{b.ID}}, &ro)
-		waitFor(t, 2*time.Minute, "the host's refusal", func() bool {
-			r := getRollout(t, ro.ID)
-			return len(r.Hosts) == 1 && r.Hosts[0].State == "failed"
-		})
-		r := getRollout(t, ro.ID)
-		expect(t, strings.Contains(r.Hosts[0].Detail, "updates.policy: deny"), "refusal detail: %+v", r.Hosts[0])
+		var raw json.RawMessage
+		st, err := ctl.do("POST", "/api/v1/agents/rollouts", map[string]any{"version": agentBroken, "host_ids": []string{b.ID}}, &raw)
+		expect(t, err == nil && st == 422 && strings.Contains(string(raw), "updates are turned off on this host (updates.policy: deny"),
+			"rollout to a host that denies updates: %d %s", st, raw)
 		expect(t, getHostAgent(t, b.ID).Identity.AgentVersion == before, "the version changed")
 		expect(t, cb.exec(t, "readlink /usr/libexec/drool-agent/current") == "versions/"+before, "the installed version changed")
-		ctl.must(t, "POST", "/api/v1/agents/rollouts/"+ro.ID+"/cancel", nil, nil)
 	})
 }
 

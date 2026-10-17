@@ -17,6 +17,7 @@ import (
 
 	"drool/internal/agentrpc"
 	"drool/internal/agentsvc"
+	"drool/internal/release"
 	"drool/internal/store"
 )
 
@@ -209,10 +210,14 @@ type manifest struct {
 	SchemaVersion int               `json:"schema_version"`
 	AgentProtocol map[string]uint32 `json:"agent_protocol"`
 	AgentFeatures []string          `json:"agent_features"`
-	Platforms     []string          `json:"platforms"`
-	Toolchain     map[string]string `json:"toolchain"`
-	Image         *imageInfo        `json:"image,omitempty"`
-	Files         []releaseFile     `json:"files"`
+	// OfficialReleaseKeys: the DROOL project's Shepherd release keys built
+	// into this release (internal/release/official_keys.txt). Its Shepherds
+	// take official updates signed with them; none means they can't.
+	OfficialReleaseKeys []string          `json:"official_release_keys"`
+	Platforms           []string          `json:"platforms"`
+	Toolchain           map[string]string `json:"toolchain"`
+	Image               *imageInfo        `json:"image,omitempty"`
+	Files               []releaseFile     `json:"files"`
 }
 
 func cmdManifest(args []string) error {
@@ -242,6 +247,10 @@ func cmdManifest(args []string) error {
 	for _, f := range agentsvc.KnownFeatures {
 		m.AgentFeatures = append(m.AgentFeatures, f.Name)
 	}
+	if err := release.OfficialKeysError(); err != nil {
+		return fmt.Errorf("internal/release/official_keys.txt: %w", err)
+	}
+	m.OfficialReleaseKeys = release.OfficialKeyIDs()
 	m.Platforms = strings.Split(*platforms, ",")
 	for _, kv := range strings.Split(*tools, ",") {
 		if k, v, ok := strings.Cut(kv, "="); ok {

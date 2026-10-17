@@ -722,6 +722,15 @@ func cmdServe(path string, explicit bool) error {
 		}
 		defer agents.Stop()
 		go agents.RunRollouts(ctx)
+		// Official Shepherd releases: the signed descriptions of the Shepherd
+		// binaries this DROOL ships, from its release source (§42).
+		rco := agentsvc.ReleaseCheckOptions{Source: cfg.Agent.UpdateSource}
+		if os.Getenv("DROOL_TEST_UPDATE_TIMING") == "fast" {
+			log.Warn("TEST MODE: official release checks start after 1 s and retry every 5 s; never use this in production")
+			rco.StartDelay, rco.Retry = time.Second, 5*time.Second
+		}
+		agents.ConfigureReleaseCheck(rco)
+		go agents.RunReleaseChecks(ctx)
 		// Where Shepherds are told to connect: not the listener's port when
 		// a container publishes it under another one (agent.public_port).
 		connect := fmt.Sprintf("<the host name the web UI is opened with>:%d", agents.AdvertisedPort())

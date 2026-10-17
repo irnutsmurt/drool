@@ -51,6 +51,9 @@ type Options struct {
 	// real helper removes this machine's Shepherd.
 	StartRemoval func(path string) (how string, err error)
 	RemovalDir   string
+	// StartUpdate replaces starting the update helper (tests): the real one
+	// switches this machine's Shepherd to the new version.
+	StartUpdate func(releaseID, from, to string, window time.Duration) error
 }
 
 // Agent is one running agent.

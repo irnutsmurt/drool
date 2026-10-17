@@ -88,6 +88,9 @@ WHERE id = ?;
 -- name: SetIdentityFeatures :exec
 UPDATE agent_identities SET features_json = ? WHERE id = ?;
 
+-- name: SetIdentityReleaseTrust :exec
+UPDATE agent_identities SET release_trust_json = ? WHERE id = ?;
+
 -- name: TouchIdentity :exec
 UPDATE agent_identities SET last_seen_at = ?, boot_id = ? WHERE id = ?;
 
@@ -217,6 +220,15 @@ UPDATE agent_rollouts SET failures = ?, updated_at = ? WHERE id = ?;
 
 -- name: InsertRolloutHost :exec
 INSERT INTO agent_rollout_hosts (rollout_id, host_id, wave, state, from_version, updated_at) VALUES (?, ?, ?, 'pending', ?, ?);
+
+-- name: InsertSkippedRolloutHost :exec
+INSERT INTO agent_rollout_hosts (rollout_id, host_id, wave, state, from_version, detail, updated_at) VALUES (?, ?, ?, 'skipped', ?, ?, ?);
+
+-- name: SetRolloutHostWave :exec
+UPDATE agent_rollout_hosts SET wave = ?, updated_at = ? WHERE rollout_id = ? AND host_id = ?;
+
+-- name: SetRolloutRetry :exec
+UPDATE agent_rollouts SET retry = ? WHERE id = ?;
 
 -- name: ListRolloutHosts :many
 SELECT rh.*, h.name AS host_name FROM agent_rollout_hosts rh JOIN hosts h ON h.id = rh.host_id

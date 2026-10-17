@@ -129,6 +129,7 @@ func testFirewallUpgrade(t *testing.T, def vmDef, shepherd bool) {
 		commit("the M15 Shepherd, for the upgraded controller", "imap")
 		expect(t, tool() == "1", "the M15 Shepherd's host tool is version %q", tool())
 		// A signed rollout of this version's Shepherd; then the new tool.
+		manualShepherdUpdates(t)
 		if st, body := uploadReleaseFor(t, key, filepath.Join(agentDir, "drool-agent-linux-amd64"), agentV1, "amd64"); st != 201 && st != 409 {
 			t.Fatalf("upload %s: %d %s", agentV1, st, body)
 		}

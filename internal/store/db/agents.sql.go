@@ -11,7 +11,7 @@ import (
 )
 
 const activeRollouts = `-- name: ActiveRollouts :many
-SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset, web_host FROM agent_rollouts WHERE status = 'running' ORDER BY created_at
+SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset, web_host, retry FROM agent_rollouts WHERE status = 'running' ORDER BY created_at
 `
 
 func (q *Queries) ActiveRollouts(ctx context.Context) ([]AgentRollout, error) {
@@ -40,6 +40,7 @@ func (q *Queries) ActiveRollouts(ctx context.Context) ([]AgentRollout, error) {
 			&i.Kind,
 			&i.Preset,
 			&i.WebHost,
+			&i.Retry,
 		); err != nil {
 			return nil, err
 		}
@@ -116,7 +117,7 @@ func (q *Queries) GetActiveIntermediate(ctx context.Context) (AgentCa, error) {
 }
 
 const getAgentIdentity = `-- name: GetAgentIdentity :one
-SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at, features_json FROM agent_identities WHERE id = ?
+SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at, features_json, release_trust_json FROM agent_identities WHERE id = ?
 `
 
 func (q *Queries) GetAgentIdentity(ctx context.Context, id string) (AgentIdentity, error) {
@@ -163,6 +164,7 @@ func (q *Queries) GetAgentIdentity(ctx context.Context, id string) (AgentIdentit
 		&i.UpdateDetail,
 		&i.UpdateAt,
 		&i.FeaturesJson,
+		&i.ReleaseTrustJson,
 	)
 	return i, err
 }
@@ -292,7 +294,7 @@ func (q *Queries) GetHostByName(ctx context.Context, name string) (Host, error) 
 }
 
 const getLiveIdentityForHost = `-- name: GetLiveIdentityForHost :one
-SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at, features_json FROM agent_identities WHERE host_id = ? AND status != 'revoked'
+SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at, features_json, release_trust_json FROM agent_identities WHERE host_id = ? AND status != 'revoked'
 `
 
 func (q *Queries) GetLiveIdentityForHost(ctx context.Context, hostID string) (AgentIdentity, error) {
@@ -339,6 +341,7 @@ func (q *Queries) GetLiveIdentityForHost(ctx context.Context, hostID string) (Ag
 		&i.UpdateDetail,
 		&i.UpdateAt,
 		&i.FeaturesJson,
+		&i.ReleaseTrustJson,
 	)
 	return i, err
 }
@@ -402,7 +405,7 @@ func (q *Queries) GetReleaseFor(ctx context.Context, arg GetReleaseForParams) (A
 }
 
 const getRollout = `-- name: GetRollout :one
-SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset, web_host FROM agent_rollouts WHERE id = ?
+SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset, web_host, retry FROM agent_rollouts WHERE id = ?
 `
 
 func (q *Queries) GetRollout(ctx context.Context, id string) (AgentRollout, error) {
@@ -425,6 +428,7 @@ func (q *Queries) GetRollout(ctx context.Context, id string) (AgentRollout, erro
 		&i.Kind,
 		&i.Preset,
 		&i.WebHost,
+		&i.Retry,
 	)
 	return i, err
 }
@@ -779,6 +783,31 @@ func (q *Queries) InsertRolloutHost(ctx context.Context, arg InsertRolloutHostPa
 	return err
 }
 
+const insertSkippedRolloutHost = `-- name: InsertSkippedRolloutHost :exec
+INSERT INTO agent_rollout_hosts (rollout_id, host_id, wave, state, from_version, detail, updated_at) VALUES (?, ?, ?, 'skipped', ?, ?, ?)
+`
+
+type InsertSkippedRolloutHostParams struct {
+	RolloutID   string
+	HostID      string
+	Wave        int64
+	FromVersion string
+	Detail      string
+	UpdatedAt   int64
+}
+
+func (q *Queries) InsertSkippedRolloutHost(ctx context.Context, arg InsertSkippedRolloutHostParams) error {
+	_, err := q.db.ExecContext(ctx, insertSkippedRolloutHost,
+		arg.RolloutID,
+		arg.HostID,
+		arg.Wave,
+		arg.FromVersion,
+		arg.Detail,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const insertTrustManifest = `-- name: InsertTrustManifest :exec
 INSERT INTO agent_trust_manifests (version, payload, signature, created_at) VALUES (?, ?, ?, ?)
 `
@@ -987,7 +1016,7 @@ func (q *Queries) ListEnrollmentTokens(ctx context.Context) ([]ListEnrollmentTok
 }
 
 const listIdentitiesForHost = `-- name: ListIdentitiesForHost :many
-SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at, features_json FROM agent_identities WHERE host_id = ? ORDER BY enrolled_at DESC
+SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at, features_json, release_trust_json FROM agent_identities WHERE host_id = ? ORDER BY enrolled_at DESC
 `
 
 func (q *Queries) ListIdentitiesForHost(ctx context.Context, hostID string) ([]AgentIdentity, error) {
@@ -1040,6 +1069,7 @@ func (q *Queries) ListIdentitiesForHost(ctx context.Context, hostID string) ([]A
 			&i.UpdateDetail,
 			&i.UpdateAt,
 			&i.FeaturesJson,
+			&i.ReleaseTrustJson,
 		); err != nil {
 			return nil, err
 		}
@@ -1055,7 +1085,7 @@ func (q *Queries) ListIdentitiesForHost(ctx context.Context, hostID string) ([]A
 }
 
 const listLiveIdentities = `-- name: ListLiveIdentities :many
-SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at, features_json FROM agent_identities WHERE status != 'revoked' ORDER BY host_id
+SELECT id, host_id, public_key, fingerprint, status, enrolled_at, token_id, cert_serial, cert_not_after, cert_issued_at, recovered_at, revoked_at, revoked_by, revoke_reason, quarantined_at, conflict_json, agent_version, protocol, protocol_min, protocol_max, compatible, compat_reason, hostname, machine_id, os, arch, ceiling_json, effective_json, manifest_version, epoch_reported, endpoints_json, boot_id, last_seen_at, last_address, connected, update_state, update_version, update_detail, update_at, features_json, release_trust_json FROM agent_identities WHERE status != 'revoked' ORDER BY host_id
 `
 
 func (q *Queries) ListLiveIdentities(ctx context.Context) ([]AgentIdentity, error) {
@@ -1108,6 +1138,7 @@ func (q *Queries) ListLiveIdentities(ctx context.Context) ([]AgentIdentity, erro
 			&i.UpdateDetail,
 			&i.UpdateAt,
 			&i.FeaturesJson,
+			&i.ReleaseTrustJson,
 		); err != nil {
 			return nil, err
 		}
@@ -1273,7 +1304,7 @@ func (q *Queries) ListRolloutHosts(ctx context.Context, rolloutID string) ([]Lis
 }
 
 const listRollouts = `-- name: ListRollouts :many
-SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset, web_host FROM agent_rollouts ORDER BY created_at DESC LIMIT 50
+SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset, web_host, retry FROM agent_rollouts ORDER BY created_at DESC LIMIT 50
 `
 
 func (q *Queries) ListRollouts(ctx context.Context) ([]AgentRollout, error) {
@@ -1302,6 +1333,7 @@ func (q *Queries) ListRollouts(ctx context.Context) ([]AgentRollout, error) {
 			&i.Kind,
 			&i.Preset,
 			&i.WebHost,
+			&i.Retry,
 		); err != nil {
 			return nil, err
 		}
@@ -1713,6 +1745,20 @@ func (q *Queries) SetIdentityManifestVersion(ctx context.Context, arg SetIdentit
 	return err
 }
 
+const setIdentityReleaseTrust = `-- name: SetIdentityReleaseTrust :exec
+UPDATE agent_identities SET release_trust_json = ? WHERE id = ?
+`
+
+type SetIdentityReleaseTrustParams struct {
+	ReleaseTrustJson string
+	ID               string
+}
+
+func (q *Queries) SetIdentityReleaseTrust(ctx context.Context, arg SetIdentityReleaseTrustParams) error {
+	_, err := q.db.ExecContext(ctx, setIdentityReleaseTrust, arg.ReleaseTrustJson, arg.ID)
+	return err
+}
+
 const setIdentityUpdate = `-- name: SetIdentityUpdate :exec
 UPDATE agent_identities SET update_state = ?, update_version = ?, update_detail = ?, update_at = ? WHERE id = ?
 `
@@ -1795,6 +1841,27 @@ func (q *Queries) SetRolloutHostState(ctx context.Context, arg SetRolloutHostSta
 	return err
 }
 
+const setRolloutHostWave = `-- name: SetRolloutHostWave :exec
+UPDATE agent_rollout_hosts SET wave = ?, updated_at = ? WHERE rollout_id = ? AND host_id = ?
+`
+
+type SetRolloutHostWaveParams struct {
+	Wave      int64
+	UpdatedAt int64
+	RolloutID string
+	HostID    string
+}
+
+func (q *Queries) SetRolloutHostWave(ctx context.Context, arg SetRolloutHostWaveParams) error {
+	_, err := q.db.ExecContext(ctx, setRolloutHostWave,
+		arg.Wave,
+		arg.UpdatedAt,
+		arg.RolloutID,
+		arg.HostID,
+	)
+	return err
+}
+
 const setRolloutKind = `-- name: SetRolloutKind :exec
 UPDATE agent_rollouts SET kind = ?, preset = ? WHERE id = ?
 `
@@ -1807,6 +1874,20 @@ type SetRolloutKindParams struct {
 
 func (q *Queries) SetRolloutKind(ctx context.Context, arg SetRolloutKindParams) error {
 	_, err := q.db.ExecContext(ctx, setRolloutKind, arg.Kind, arg.Preset, arg.ID)
+	return err
+}
+
+const setRolloutRetry = `-- name: SetRolloutRetry :exec
+UPDATE agent_rollouts SET retry = ? WHERE id = ?
+`
+
+type SetRolloutRetryParams struct {
+	Retry int64
+	ID    string
+}
+
+func (q *Queries) SetRolloutRetry(ctx context.Context, arg SetRolloutRetryParams) error {
+	_, err := q.db.ExecContext(ctx, setRolloutRetry, arg.Retry, arg.ID)
 	return err
 }
 

@@ -308,6 +308,8 @@ func (s *Server) routes() []route {
 		{method: "POST", path: APIPrefix + "/agents/tokens/{id}/revoke", auth: authed, perm: auth.PermAgentsEnroll, h: s.handleRevokeAgentToken},
 		{method: "POST", path: APIPrefix + "/agents/{id}/revoke", auth: authed, perm: auth.PermAgentsManage, reauth: reauthShepherd, h: s.handleRevokeAgent},
 		{method: "POST", path: APIPrefix + "/agents/{id}/resolve-conflict", auth: authed, perm: auth.PermAgentsManage, reauth: reauthShepherd, h: s.handleResolveConflict},
+		{method: "GET", path: APIPrefix + "/agents/updates/status", auth: authed, perm: auth.PermAgentsRead, h: s.handleUpdateStatus},
+		{method: "POST", path: APIPrefix + "/agents/updates/check", auth: authed, perm: auth.PermAgentsManage, h: s.handleCheckUpdates},
 		{method: "GET", path: APIPrefix + "/agents/updates/policy", auth: authed, perm: auth.PermAgentsRead, h: s.handleGetUpdatePolicy},
 		{method: "PUT", path: APIPrefix + "/agents/updates/policy", auth: authed, perm: auth.PermAgentsManage, h: s.handleSetUpdatePolicy},
 		{method: "GET", path: APIPrefix + "/agents/release-keys", auth: authed, perm: auth.PermAgentsRead, h: s.handleListReleaseKeys},

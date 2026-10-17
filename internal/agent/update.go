@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,15 +38,18 @@ import (
 // and rolls back a new binary that keeps crashing. Rollback therefore
 // never depends on code in the new binary.
 
-//go:embed release_keys.txt
-var builtinReleaseKeys []byte
-
-// TrustedReleaseKeys returns the built-in release keys plus those an
+// TrustedReleaseKeys returns the release keys this host trusts for its
+// Shepherd's updates: the DROOL project's official keys, built in (unless
+// official is false: agent.yaml updates.official: deny), plus those an
 // administrator added locally in Paths.ReleaseKeys (root-owned files).
-func (p Paths) TrustedReleaseKeys() ([]release.PublicKey, error) {
-	keys, err := release.ParsePublicKeys(builtinReleaseKeys)
-	if err != nil {
+// Nothing the controller sends can change either.
+func (p Paths) TrustedReleaseKeys(official bool) ([]release.PublicKey, error) {
+	if err := release.OfficialKeysError(); err != nil {
 		return nil, fmt.Errorf("built-in release keys: %w", err)
+	}
+	var keys []release.PublicKey
+	if official {
+		keys = release.OfficialKeys()
 	}
 	ents, err := os.ReadDir(p.ReleaseKeys)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -227,25 +229,54 @@ func (a *Agent) reportUpdate(s *session, st, releaseID, version, detail string) 
 		State: st, Detail: detail, FromVersion: a.opt.Version}}})
 }
 
+// Refusal codes (pb.UpdateReport.refusal): the agent turned an offer down
+// before changing anything, for a reason that is this host's, not the
+// release's. The controller skips such a host instead of counting a failed
+// update, so one host's local decision never pauses a fleet's rollout.
+const (
+	RefuseUntrusted    = "untrusted_key"  // signed by a key this host doesn't trust
+	RefuseDenied       = "updates_denied" // agent.yaml updates.policy: deny
+	RefuseFailedBefore = "failed_before"  // failed its health check here before
+	RefuseDowngrade    = "downgrade"      // older than the running version
+	RefuseUpgradePath  = "upgrade_path"   // needs a newer version to upgrade from
+	RefuseProtocol     = "protocol"       // doesn't speak this session's protocol
+	RefusePlatform     = "platform"       // for another OS or architecture
+	RefuseBusy         = "busy"           // another update is in progress
+)
+
+// refusal is an offer refused before anything changed.
+type refusal struct{ code, msg string }
+
+func (r *refusal) Error() string { return r.msg }
+
+func refuse(code, format string, args ...any) error {
+	return &refusal{code: code, msg: fmt.Sprintf(format, args...)}
+}
+
 // handleUpdateOffer verifies, downloads, stages and applies an update.
 func (a *Agent) handleUpdateOffer(ctx context.Context, s *session, o *pb.UpdateOffer) {
-	fail := func(format string, args ...any) {
-		msg := fmt.Sprintf(format, args...)
+	fail := func(err error) {
+		msg := err.Error()
 		a.log.Warn("agent update refused", "release", o.ReleaseId, "reason", msg)
 		a.oplog.Write(OpEvent{Event: "update", Controller: s.controller, Summary: "refused: " + msg, Outcome: "rejected"})
-		a.reportUpdate(s, UpdFailed, o.ReleaseId, "", msg)
+		r := &pb.UpdateReport{ReleaseId: o.ReleaseId, State: UpdFailed, Detail: msg, FromVersion: a.opt.Version}
+		var rf *refusal
+		if errors.As(err, &rf) {
+			r.Refusal = rf.code
+		}
+		s.send(&pb.AgentMessage{Msg: &pb.AgentMessage_Update{Update: r}})
 	}
 	if a.file.Updates.Policy == "deny" {
-		fail("updates are disabled on this host (updates.policy: deny in agent.yaml)")
+		fail(refuse(RefuseDenied, "updates are disabled on this host (updates.policy: deny in agent.yaml)"))
 		return
 	}
 	if _, err := a.paths.loadPending(); err == nil {
-		fail("another update is still in progress")
+		fail(refuse(RefuseBusy, "another update is still in progress"))
 		return
 	}
 	m, already, err := a.verifyOffer(o)
 	if err != nil {
-		fail("%v", err)
+		fail(err)
 		return
 	}
 	if already {
@@ -254,7 +285,7 @@ func (a *Agent) handleUpdateOffer(ctx context.Context, s *session, o *pb.UpdateO
 	}
 	a.oplog.Write(OpEvent{Event: "update", Controller: s.controller, Summary: fmt.Sprintf("verified release %s (%s, key %s)", m.Version, m.SHA256[:16], o.KeyId)})
 	if err := a.stage(ctx, s, o.ReleaseId, m); err != nil {
-		fail("%v", err)
+		fail(err)
 		return
 	}
 	a.reportUpdate(s, UpdStaged, o.ReleaseId, m.Version, "")
@@ -262,8 +293,12 @@ func (a *Agent) handleUpdateOffer(ctx context.Context, s *session, o *pb.UpdateO
 	if window <= 0 {
 		window = 2 * time.Minute
 	}
-	if err := a.startHelper(o.ReleaseId, m.Version, window); err != nil {
-		fail("could not start the update helper: %v", err)
+	start := a.startHelper
+	if a.opt.StartUpdate != nil {
+		start = func(id, to string, w time.Duration) error { return a.opt.StartUpdate(id, a.opt.Version, to, w) }
+	}
+	if err := start(o.ReleaseId, m.Version, window); err != nil {
+		fail(fmt.Errorf("could not start the update helper: %v", err))
 		return
 	}
 	a.reportUpdate(s, UpdUpdating, o.ReleaseId, m.Version, "")
@@ -272,34 +307,57 @@ func (a *Agent) handleUpdateOffer(ctx context.Context, s *session, o *pb.UpdateO
 // verifyOffer is the agent's own verification of an update offer: the
 // signature against its trusted release keys, platform, protocol,
 // downgrade and upgrade-path rules. already reports the running version.
+// A *refusal error is this host's reason not to take it; any other error
+// is something wrong with the offer itself (an invalid signature, a
+// malformed manifest).
 func (a *Agent) verifyOffer(o *pb.UpdateOffer) (*release.Manifest, bool, error) {
-	keys, err := a.paths.TrustedReleaseKeys()
+	keys, err := a.paths.TrustedReleaseKeys(a.file.OfficialReleases())
 	if err != nil {
 		return nil, false, err
 	}
 	m, err := release.Verify(&release.Signed{Payload: o.ManifestPayload, KeyID: o.KeyId, Signature: o.Signature}, keys)
+	if errors.Is(err, release.ErrUntrustedKey) {
+		return nil, false, refuse(RefuseUntrusted, "release verification failed: %v", err)
+	}
 	if err != nil {
 		return nil, false, fmt.Errorf("release verification failed: %w", err)
 	}
 	if m.OS != runtime.GOOS || m.Arch != runtime.GOARCH {
-		return nil, false, fmt.Errorf("release is for %s/%s, this host is %s/%s", m.OS, m.Arch, runtime.GOOS, runtime.GOARCH)
+		return nil, false, refuse(RefusePlatform, "release is for %s/%s, this host is %s/%s", m.OS, m.Arch, runtime.GOOS, runtime.GOARCH)
 	}
 	if p := a.negotiated(); p != 0 && (p < m.ProtocolMin || p > m.ProtocolMax) {
-		return nil, false, fmt.Errorf("release speaks protocol %d–%d, but the controller uses %d with this agent", m.ProtocolMin, m.ProtocolMax, p)
+		return nil, false, refuse(RefuseProtocol, "release speaks protocol %d–%d, but the controller uses %d with this agent", m.ProtocolMin, m.ProtocolMax, p)
 	}
 	switch c := release.CompareVersions(m.Version, a.opt.Version); {
 	case c == 0:
 		return m, true, nil
 	case c < 0 && !a.file.Updates.AllowDowngrade:
-		return nil, false, fmt.Errorf("release %s is older than the running %s; downgrades are refused (updates.allow_downgrade in agent.yaml)", m.Version, a.opt.Version)
+		return nil, false, refuse(RefuseDowngrade, "release %s is older than the running %s; downgrades are refused (updates.allow_downgrade in agent.yaml)", m.Version, a.opt.Version)
 	}
 	if m.MinFrom != "" && release.CompareVersions(a.opt.Version, m.MinFrom) < 0 {
-		return nil, false, fmt.Errorf("release %s needs at least version %s to upgrade from (running %s)", m.Version, m.MinFrom, a.opt.Version)
+		return nil, false, refuse(RefuseUpgradePath, "release %s needs at least version %s to upgrade from (running %s)", m.Version, m.MinFrom, a.opt.Version)
 	}
-	if a.paths.failedBefore(m.Version) {
-		return nil, false, fmt.Errorf("version %s already failed its health check on this host; not trying it again automatically", m.Version)
+	// A version that failed here before is tried again only when a person
+	// asked for it (the controller's Try again); never by itself.
+	if a.paths.failedBefore(m.Version) && !o.Retry {
+		return nil, false, refuse(RefuseFailedBefore, "version %s already failed its health check on this host; not trying it again automatically", m.Version)
 	}
 	return m, false, nil
+}
+
+// releaseTrust is what the hello says about this host's update trust: the
+// controller offers only what the host would install, and can say why a
+// host can't take an update before trying.
+func (a *Agent) releaseTrust() *pb.ReleaseTrust {
+	official := a.file.OfficialReleases()
+	rt := &pb.ReleaseTrust{Official: official && len(release.OfficialKeys()) > 0, OfficialDenied: !official,
+		UpdatesDenied: a.file.Updates.Policy == "deny", KeyIds: []string{}}
+	if keys, err := a.paths.TrustedReleaseKeys(official); err == nil {
+		for _, k := range keys {
+			rt.KeyIds = append(rt.KeyIds, k.ID())
+		}
+	}
+	return rt
 }
 
 func (a *Agent) negotiated() uint32 {
@@ -418,6 +476,11 @@ func (a *Agent) startHelper(releaseID, to string, window time.Duration) error {
 	self, err := selfBinary()
 	if err != nil {
 		return err
+	}
+	// A Go test binary running an agent in-process would start itself
+	// again (all its tests) instead of a helper: tests use StartUpdate.
+	if strings.HasSuffix(self, ".test") {
+		return errors.New("refusing to start the update helper from a test binary")
 	}
 	args := []string{"update-apply", "--release", releaseID, "--from", a.opt.Version, "--to", to,
 		"--window", window.String(), "--paths", a.paths.encode(), "--supervisor", a.supervisor()}

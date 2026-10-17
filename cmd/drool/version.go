@@ -9,6 +9,7 @@ import (
 
 	"drool/internal/agentrpc"
 	"drool/internal/agentsvc"
+	"drool/internal/release"
 	"drool/internal/store"
 	"drool/internal/version"
 )
@@ -27,6 +28,10 @@ type buildInfo struct {
 	} `json:"agent_protocol"`
 	// AgentFeatures are the optional Shepherd capabilities this controller uses.
 	AgentFeatures []string `json:"agent_features"`
+	// OfficialReleaseKeys are the ids of the DROOL project's Shepherd release
+	// keys built into this binary: official Shepherd releases verify against
+	// them (none until the project has a key).
+	OfficialReleaseKeys []string `json:"official_release_keys"`
 }
 
 func currentBuild() buildInfo {
@@ -36,6 +41,7 @@ func currentBuild() buildInfo {
 	for _, f := range agentsvc.KnownFeatures {
 		b.AgentFeatures = append(b.AgentFeatures, f.Name)
 	}
+	b.OfficialReleaseKeys = release.OfficialKeyIDs()
 	return b
 }
 
@@ -57,6 +63,11 @@ func cmdVersion(args []string) error {
 	fmt.Printf("  commit            %s\n", b.Commit)
 	fmt.Printf("  database schema   %d\n", b.SchemaVersion)
 	fmt.Printf("  Shepherd protocol %d–%d (features: %s)\n", b.AgentProtocol.Min, b.AgentProtocol.Max, strings.Join(b.AgentFeatures, ", "))
+	keys := strings.Join(b.OfficialReleaseKeys, ", ")
+	if keys == "" {
+		keys = "none in this build"
+	}
+	fmt.Printf("  official Shepherd release keys %s\n", keys)
 	fmt.Printf("  go                %s %s\n", b.GoVersion, b.Platform)
 	return nil
 }

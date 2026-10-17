@@ -8,7 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
+	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -19,7 +22,17 @@ import (
 	"drool/internal/ids"
 	"drool/internal/release"
 	"drool/internal/store/db"
+	"drool/internal/version"
 )
+
+// Shepherd updates (DESIGN §28, ARCHITECTURE-ALPHA §23.7 and §42). A
+// rollout offers one version to Shepherds wave by wave: a canary first,
+// then batches, pausing at the failure limit. Each Shepherd verifies the
+// signed release itself before installing it, and rolls back by itself if
+// the new version doesn't become healthy. The automatic policy keeps every
+// Shepherd on the newest release available to this controller in its
+// channel: the official release of DROOL's own version (official.go), or a
+// custom release an operator signed and uploaded.
 
 // UpdatePolicy is the agent update setting (settings key agent_updates).
 type UpdatePolicy struct {
@@ -32,11 +45,18 @@ type UpdatePolicy struct {
 	HealthWindowS int    `json:"health_window_s"`
 }
 
-// DefaultUpdatePolicy: manual, canary of one, batches of five, pause at
-// the first failure, two minutes to become healthy.
+// DefaultUpdatePolicy: automatic, stable releases, a canary of one,
+// batches of five, pause at the first failure, two minutes to become
+// healthy. A policy someone saved is kept as it is.
 func DefaultUpdatePolicy() UpdatePolicy {
-	return UpdatePolicy{Policy: "manual", Channel: "stable", Canary: 1, BatchSize: 5, MaxFailures: 1, HealthWindowS: 120}
+	return UpdatePolicy{Policy: "automatic", Channel: version.Stable, Canary: 1, BatchSize: 5, MaxFailures: 1, HealthWindowS: 120}
 }
+
+// Channels the update policy offers (an operator's own releases may name
+// others; the API takes those too).
+var Channels = []string{version.Stable, version.Prerelease}
+
+var channelRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 
 func (p *UpdatePolicy) normalize() error {
 	switch p.Policy {
@@ -45,12 +65,26 @@ func (p *UpdatePolicy) normalize() error {
 		return fmt.Errorf("policy must be manual or automatic")
 	}
 	if p.Channel == "" {
-		p.Channel = "stable"
+		p.Channel = version.Stable
+	}
+	if !channelRE.MatchString(p.Channel) {
+		return fmt.Errorf("the channel must be stable, prerelease or another lower-case name")
+	}
+	p.Version = strings.TrimSpace(p.Version)
+	if p.Version != "" && !release.ValidVersion(p.Version) {
+		return fmt.Errorf("%q isn't a version (like v1.2.3)", p.Version)
 	}
 	if p.Canary < 1 || p.BatchSize < 1 || p.MaxFailures < 1 || p.HealthWindowS < 30 || p.HealthWindowS > 3600 {
 		return fmt.Errorf("canary, batch size and max failures must be at least 1; the health window 30–3600 s")
 	}
 	return nil
+}
+
+// ChannelIncludes reports whether a policy channel takes a release of
+// channel rel: its own, and prerelease takes stable releases too (a release
+// candidate's successor is the release).
+func ChannelIncludes(policy, rel string) bool {
+	return rel == policy || policy == version.Prerelease && rel == version.Stable
 }
 
 // GetUpdatePolicy reads the update setting.
@@ -88,42 +122,52 @@ func (s *Service) KnownKeys(ctx context.Context) ([]release.PublicKey, error) {
 	return out, nil
 }
 
+// uploadKeys are the keys an uploaded release may be signed with: the
+// registered ones and the project's official keys.
+func (s *Service) uploadKeys(ctx context.Context) ([]release.PublicKey, error) {
+	keys, err := s.KnownKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return append(keys, release.OfficialKeys()...), nil
+}
+
 // ReleaseUploadError is a rejected release upload.
 type ReleaseUploadError struct{ Msg string }
 
 func (e *ReleaseUploadError) Error() string { return e.Msg }
 
 // AddRelease stores a signed release: the signature must verify against a
-// registered release key and the binary must match the manifest. The
-// controller checks this for early feedback; every agent checks it again.
+// registered release key or the project's official keys, and the binary
+// must match the manifest. bin may be nil for a release of a Shepherd
+// binary this controller ships (an official release's description
+// uploaded by hand, without internet access). The controller checks this
+// for early feedback; every agent checks it again.
 func (s *Service) AddRelease(ctx context.Context, signed *release.Signed, bin io.Reader, userID string) (*db.AgentRelease, error) {
-	keys, err := s.KnownKeys(ctx)
+	keys, err := s.uploadKeys(ctx)
 	if err != nil {
 		return nil, err
 	}
 	m, err := release.Verify(signed, keys)
 	if err != nil {
-		return nil, &ReleaseUploadError{Msg: "release rejected: " + err.Error() + " (register the release public key under Shepherds → Updates first)"}
+		return nil, &ReleaseUploadError{Msg: "release rejected: " + err.Error() + " (register your release-signing key under Shepherds → Updates → Advanced settings first)"}
 	}
 	if _, err := s.st.R.GetReleaseFor(ctx, db.GetReleaseForParams{Version: m.Version, Os: m.OS, Arch: m.Arch}); err == nil {
 		return nil, &ReleaseUploadError{Msg: fmt.Sprintf("release %s for %s/%s already exists", m.Version, m.OS, m.Arch)}
 	}
-	a, err := s.arts.Put(ctx, bin, fmt.Sprintf("drool-agent-%s-%s-%s", m.Version, m.OS, m.Arch), userID)
-	if err != nil {
-		return nil, err
+	if bin == nil {
+		b := s.bundledBinaryFor(m.SHA256)
+		if b == nil {
+			return nil, &ReleaseUploadError{Msg: fmt.Sprintf("this manifest describes a binary DROOL doesn't have (sha256 %.16s): upload the Shepherd program with it", m.SHA256)}
+		}
+		f, err := openBinary(b)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		bin = f
 	}
-	if a.SHA256 != m.SHA256 || a.Size != m.Size {
-		return nil, &ReleaseUploadError{Msg: fmt.Sprintf("the uploaded binary (sha256 %.16s, %d bytes) is not the one the manifest signs (%.16s, %d bytes)", a.SHA256, a.Size, m.SHA256, m.Size)}
-	}
-	r := db.InsertReleaseParams{ID: ids.New(ids.AgentRelease), Version: m.Version, Channel: m.Channel, Os: m.OS, Arch: m.Arch,
-		ProtocolMin: int64(m.ProtocolMin), ProtocolMax: int64(m.ProtocolMax), Sha256: m.SHA256, Size: m.Size, KeyID: signed.KeyID,
-		ManifestPayload: signed.Payload, Signature: signed.Signature, UploadedBy: sql.NullString{String: userID, Valid: userID != ""},
-		CreatedAt: s.now().UnixMilli()}
-	if err := s.st.W.InsertRelease(ctx, r); err != nil {
-		return nil, err
-	}
-	rel, err := s.st.R.GetRelease(ctx, r.ID)
-	return &rel, err
+	return s.storeRelease(ctx, signed, m, bin, userID)
 }
 
 // FetchRelease implements pb.AgentServer: stream a release binary to an
@@ -163,11 +207,114 @@ func (s *Service) FetchRelease(req *pb.FetchReleaseRequest, stream pb.Agent_Fetc
 	}
 }
 
+// --- who can take which release ---
+
+// ReleaseTrust is what a Shepherd's hello says about its update trust
+// (agent_identities.release_trust_json). Shepherds before 1.0 say nothing.
+type ReleaseTrust struct {
+	KeyIDs         []string `json:"key_ids"`
+	Official       bool     `json:"official"`        // trusts the project's keys, and has them
+	OfficialDenied bool     `json:"official_denied"` // agent.yaml updates.official: deny
+	UpdatesDenied  bool     `json:"updates_denied"`  // agent.yaml updates.policy: deny
+}
+
+func trustFromHello(rt *pb.ReleaseTrust) *ReleaseTrust {
+	if rt == nil {
+		return nil
+	}
+	return &ReleaseTrust{KeyIDs: nonNil(rt.KeyIds), Official: rt.Official, OfficialDenied: rt.OfficialDenied, UpdatesDenied: rt.UpdatesDenied}
+}
+
+// IdentityTrust is the release trust a Shepherd last reported (nil: it
+// doesn't say).
+func IdentityTrust(id db.AgentIdentity) *ReleaseTrust {
+	if id.ReleaseTrustJson == "" {
+		return nil
+	}
+	var t ReleaseTrust
+	if json.Unmarshal([]byte(id.ReleaseTrustJson), &t) != nil {
+		return nil
+	}
+	return &t
+}
+
+// failedHere: version failed its health check or was rolled back on this
+// Shepherd, as it last reported.
+func failedHere(id db.AgentIdentity, v string) bool {
+	return (id.UpdateState == "rolled_back" || id.UpdateState == "failed") && id.UpdateVersion == v
+}
+
+// Blocker says why a Shepherd can't take a release ("" when it can). rel
+// is the release for its platform (nil: none). trust nil means the
+// Shepherd doesn't say what it trusts (built before 1.0): it may refuse,
+// which only skips it.
+func Blocker(id db.AgentIdentity, trust *ReleaseTrust, v string, rel *db.AgentRelease, retry bool) string {
+	if rel == nil {
+		return fmt.Sprintf("there is no %s release for %s/%s", v, id.Os, id.Arch)
+	}
+	if t := trust; t != nil {
+		if t.UpdatesDenied {
+			return "updates are turned off on this host (updates.policy: deny in /etc/drool/agent.yaml)"
+		}
+		if !slices.Contains(t.KeyIDs, rel.KeyID) {
+			switch {
+			case release.IsOfficialKey(rel.KeyID) && t.OfficialDenied:
+				return "this host trusts only its own release keys (updates.official: deny in /etc/drool/agent.yaml)"
+			case release.IsOfficialKey(rel.KeyID):
+				return "this Shepherd doesn't have the DROOL release key: update it once with a custom release, or reinstall it"
+			}
+			return fmt.Sprintf("this host doesn't trust the key that signed %s (%s)", v, rel.KeyID)
+		}
+	}
+	if m, err := manifestOf(*rel); err == nil {
+		if m.MinFrom != "" && release.CompareVersions(id.AgentVersion, m.MinFrom) < 0 {
+			return fmt.Sprintf("%s updates only from %s or newer; this Shepherd runs %s", v, m.MinFrom, id.AgentVersion)
+		}
+		if p := uint32(id.Protocol); p != 0 && (p < m.ProtocolMin || p > m.ProtocolMax) {
+			return fmt.Sprintf("%s speaks protocol %d–%d, this Shepherd's connection uses %d", v, m.ProtocolMin, m.ProtocolMax, p)
+		}
+	}
+	if !retry && failedHere(id, v) {
+		return fmt.Sprintf("%s failed on this host before (%s); try again once the cause is fixed", v, id.UpdateDetail)
+	}
+	return ""
+}
+
+// platformReleases maps "os/arch" to a version's release.
+func (s *Service) platformReleases(ctx context.Context, v string) map[string]*db.AgentRelease {
+	rels, _ := s.st.R.ListReleases(ctx)
+	out := map[string]*db.AgentRelease{}
+	for i := range rels {
+		if rels[i].Version == v {
+			out[rels[i].Os+"/"+rels[i].Arch] = &rels[i]
+		}
+	}
+	return out
+}
+
 // --- rollouts ---
 
-// StartRollout creates a rollout to version over hosts (all agent hosts
-// when nil): a canary wave, then batches.
-func (s *Service) StartRollout(ctx context.Context, version string, hostIDs []string, p UpdatePolicy, automatic bool, userID string) (string, error) {
+// RolloutOptions say how a rollout runs, besides its version.
+type RolloutOptions struct {
+	HostIDs   []string // nil: every Shepherd
+	Policy    UpdatePolicy
+	Automatic bool
+	// Retry: a person asked to try the version again where it failed.
+	Retry  bool
+	UserID string
+}
+
+// ErrNothingToUpdate: every chosen Shepherd already runs the version.
+var ErrNothingToUpdate = errors.New("every chosen Shepherd already runs this version or a newer one")
+
+// StartRollout creates a rollout of version to the Shepherds behind it
+// (all of them when o.HostIDs is nil). The canary wave comes first, then
+// batches; connected Shepherds whose trust is known lead, so the canary is
+// a host that can take the release. Shepherds that can't take it are
+// listed as skipped with the reason (a person's rollout) or left out (an
+// automatic one, which the status page explains).
+func (s *Service) StartRollout(ctx context.Context, v string, o RolloutOptions) (string, error) {
+	p := o.Policy
 	if err := p.normalize(); err != nil {
 		return "", err
 	}
@@ -175,41 +322,101 @@ func (s *Service) StartRollout(ctx context.Context, version string, hostIDs []st
 	if err != nil {
 		return "", err
 	}
+	busy := s.hostsInActiveRollouts(ctx, "")
+	names := s.hostNames(ctx)
+	rels := s.platformReleases(ctx, v)
 	want := map[string]bool{}
-	for _, h := range hostIDs {
+	for _, h := range o.HostIDs {
 		want[h] = true
 	}
-	var targets []db.AgentIdentity
+	type target struct {
+		id     db.AgentIdentity
+		rank   int // 0 connected, trust known; 1 connected; 2 offline
+		reason string
+	}
+	var targets, skipped []target
+	var conflicts []string
 	for _, id := range idents {
-		if id.Status == "active" && (len(hostIDs) == 0 || want[id.HostID]) {
-			targets = append(targets, id)
+		if id.Status != "active" || (len(o.HostIDs) > 0 && !want[id.HostID]) {
+			continue
 		}
+		if release.CompareVersions(id.AgentVersion, v) >= 0 {
+			continue
+		}
+		if r, ok := busy[id.HostID]; ok {
+			if o.Automatic {
+				continue
+			}
+			conflicts = append(conflicts, fmt.Sprintf("%s is in the update to %s (%s)", names[id.HostID], r.Version, r.Status))
+			continue
+		}
+		trust := IdentityTrust(id)
+		if why := Blocker(id, trust, v, rels[id.Os+"/"+id.Arch], o.Retry); why != "" {
+			if !o.Automatic {
+				skipped = append(skipped, target{id: id, reason: why})
+			}
+			continue
+		}
+		t := target{id: id, rank: 2}
+		if _, live := s.SessionFor(id.HostID); live {
+			t.rank = 1
+			if trust != nil {
+				t.rank = 0
+			}
+		}
+		targets = append(targets, t)
+	}
+	if len(conflicts) > 0 {
+		return "", fmt.Errorf("%s: resume or cancel that update first", strings.Join(conflicts, "; "))
 	}
 	if len(targets) == 0 {
-		return "", errors.New("no enrolled agents to update")
+		if len(skipped) > 0 {
+			reasons := []string{}
+			for _, t := range skipped {
+				reasons = append(reasons, names[t.id.HostID]+": "+t.reason)
+			}
+			return "", fmt.Errorf("no Shepherd can take %s: %s", v, strings.Join(reasons, "; "))
+		}
+		return "", ErrNothingToUpdate
 	}
-	sort.Slice(targets, func(i, j int) bool { return targets[i].HostID < targets[j].HostID })
+	sort.SliceStable(targets, func(i, j int) bool {
+		if targets[i].rank != targets[j].rank {
+			return targets[i].rank < targets[j].rank
+		}
+		return names[targets[i].id.HostID] < names[targets[j].id.HostID]
+	})
 	id := ids.New(ids.AgentRollout)
 	now := s.now().UnixMilli()
 	err = s.st.InTx(ctx, func(q *db.Queries) error {
-		if err := q.InsertRollout(ctx, db.InsertRolloutParams{ID: id, Version: version, Canary: int64(p.Canary), BatchSize: int64(p.BatchSize),
-			MaxFailures: int64(p.MaxFailures), HealthWindowS: int64(p.HealthWindowS), Automatic: boolInt(automatic),
-			CreatedBy: sql.NullString{String: userID, Valid: userID != ""}, CreatedAt: now, UpdatedAt: now}); err != nil {
+		if err := q.InsertRollout(ctx, db.InsertRolloutParams{ID: id, Version: v, Canary: int64(p.Canary), BatchSize: int64(p.BatchSize),
+			MaxFailures: int64(p.MaxFailures), HealthWindowS: int64(p.HealthWindowS), Automatic: boolInt(o.Automatic),
+			CreatedBy: sql.NullString{String: o.UserID, Valid: o.UserID != ""}, CreatedAt: now, UpdatedAt: now}); err != nil {
 			return err
+		}
+		if o.Retry {
+			if err := q.SetRolloutRetry(ctx, db.SetRolloutRetryParams{Retry: 1, ID: id}); err != nil {
+				return err
+			}
 		}
 		for i, t := range targets {
 			wave := 0
 			if i >= p.Canary {
 				wave = 1 + (i-p.Canary)/p.BatchSize
 			}
-			if err := q.InsertRolloutHost(ctx, db.InsertRolloutHostParams{RolloutID: id, HostID: t.HostID, Wave: int64(wave),
-				FromVersion: t.AgentVersion, UpdatedAt: now}); err != nil {
+			if err := q.InsertRolloutHost(ctx, db.InsertRolloutHostParams{RolloutID: id, HostID: t.id.HostID, Wave: int64(wave),
+				FromVersion: t.id.AgentVersion, UpdatedAt: now}); err != nil {
+				return err
+			}
+		}
+		for _, t := range skipped {
+			if err := q.InsertSkippedRolloutHost(ctx, db.InsertSkippedRolloutHostParams{RolloutID: id, HostID: t.id.HostID, Wave: 0,
+				FromVersion: t.id.AgentVersion, Detail: t.reason, UpdatedAt: now}); err != nil {
 				return err
 			}
 		}
 		_, err := s.audit.RecordTx(ctx, q, audit.Event{Action: "agent.rollout.start", TargetType: "agent_rollout", TargetID: id,
-			Details: map[string]any{"version": version, "hosts": len(targets), "canary": p.Canary, "batch_size": p.BatchSize,
-				"max_failures": p.MaxFailures, "automatic": automatic}})
+			Details: map[string]any{"version": v, "hosts": len(targets), "skipped": len(skipped), "canary": p.Canary, "batch_size": p.BatchSize,
+				"max_failures": p.MaxFailures, "automatic": o.Automatic, "retry": o.Retry}})
 		return err
 	})
 	if err != nil {
@@ -219,6 +426,34 @@ func (s *Service) StartRollout(ctx context.Context, version string, hostIDs []st
 	return id, nil
 }
 
+// hostsInActiveRollouts maps each host in a running or paused update
+// rollout (other than except) to that rollout.
+func (s *Service) hostsInActiveRollouts(ctx context.Context, except string) map[string]db.AgentRollout {
+	out := map[string]db.AgentRollout{}
+	rolls, _ := s.st.R.ListRollouts(ctx)
+	for _, r := range rolls {
+		if r.Kind != "update" || r.ID == except || (r.Status != "running" && r.Status != "paused") {
+			continue
+		}
+		hosts, _ := s.st.R.ListRolloutHosts(ctx, r.ID)
+		for _, h := range hosts {
+			if !terminal[h.State] {
+				out[h.HostID] = r
+			}
+		}
+	}
+	return out
+}
+
+func (s *Service) hostNames(ctx context.Context) map[string]string {
+	out := map[string]string{}
+	hs, _ := s.st.R.ListHosts(ctx)
+	for _, h := range hs {
+		out[h.ID] = h.Name
+	}
+	return out
+}
+
 // SetRolloutStatus pauses, resumes or cancels a rollout.
 func (s *Service) SetRolloutStatus(ctx context.Context, id, st, reason string) error {
 	return s.st.W.SetRolloutStatus(ctx, db.SetRolloutStatusParams{Status: st, PausedReason: reason, UpdatedAt: s.now().UnixMilli(), ID: id})
@@ -226,13 +461,16 @@ func (s *Service) SetRolloutStatus(ctx context.Context, id, st, reason string) e
 
 var terminal = map[string]bool{"healthy": true, "rolled_back": true, "failed": true, "skipped": true}
 
+// supersededPrefix starts the reason of an automatic rollout that a newer
+// automatic one replaced (a person's cancel says who).
+const supersededPrefix = "superseded by the update to "
+
 // RunRollouts advances rollouts and the automatic policy until ctx ends.
 func (s *Service) RunRollouts(ctx context.Context) {
 	t := time.NewTicker(10 * time.Second)
 	defer t.Stop()
 	for {
-		s.autoPolicy(ctx)
-		s.advanceRollouts(ctx)
+		s.RunUpdatePass(ctx)
 		select {
 		case <-ctx.Done():
 			return
@@ -241,58 +479,133 @@ func (s *Service) RunRollouts(ctx context.Context) {
 	}
 }
 
-// autoPolicy starts a rollout when the automatic policy names a release
-// newer than some agents run and no rollout to it exists yet.
-func (s *Service) autoPolicy(ctx context.Context) {
-	p := s.GetUpdatePolicy(ctx)
-	if p.Policy != "automatic" {
-		return
-	}
+// RunUpdatePass is one round of RunRollouts: the automatic policy, then
+// the rollouts' waves.
+func (s *Service) RunUpdatePass(ctx context.Context) {
+	s.autoPolicy(ctx)
+	s.advanceRollouts(ctx)
+}
+
+// AutoTarget is the version the automatic policy keeps Shepherds on: the
+// exact version it names, or the newest release in its channel that this
+// controller can speak to ("" when there is none).
+func (s *Service) AutoTarget(ctx context.Context, p UpdatePolicy) string {
 	rels, err := s.st.R.ListReleases(ctx)
-	if err != nil || len(rels) == 0 {
-		return
+	if err != nil {
+		return ""
 	}
 	target := ""
 	for _, r := range rels {
+		if !s.speaks(r) {
+			continue
+		}
 		if p.Version != "" {
 			if r.Version == p.Version {
 				target = r.Version
 			}
 			continue
 		}
-		if r.Channel == p.Channel && (target == "" || release.CompareVersions(r.Version, target) > 0) {
+		if ChannelIncludes(p.Channel, r.Channel) && (target == "" || release.CompareVersions(r.Version, target) > 0) {
 			target = r.Version
 		}
 	}
+	return target
+}
+
+// speaks reports whether this controller and the release share a protocol.
+func (s *Service) speaks(r db.AgentRelease) bool {
+	lo, hi := max(uint32(r.ProtocolMin), s.ControllerRange.Min), min(uint32(r.ProtocolMax), s.ControllerRange.Max)
+	return lo <= hi
+}
+
+// autoPolicy keeps Shepherds on the automatic target. It never fights a
+// person: a rollout to the target that someone paused or cancelled stops
+// it for that version, and Shepherds in someone's running rollout are left
+// to it. Shepherds that join later, or come back after a newer target
+// appeared, get a rollout of their own; an older automatic rollout still
+// running is superseded by the newer one.
+func (s *Service) autoPolicy(ctx context.Context) {
+	s.rollMu.Lock()
+	defer s.rollMu.Unlock()
+	p := s.GetUpdatePolicy(ctx)
+	if p.Policy != "automatic" {
+		return
+	}
+	target := s.AutoTarget(ctx, p)
 	if target == "" {
 		return
 	}
 	rolls, _ := s.st.R.ListRollouts(ctx)
 	for _, r := range rolls {
-		if r.Kind == "update" && r.Version == target && (r.Status == "running" || r.Status == "paused" || r.Automatic != 0) {
-			return // already rolling out (or paused/finished: a person decides what next)
+		if r.Kind != "update" || r.Version != target {
+			continue
+		}
+		if r.Status == "paused" || r.Status == "cancelled" && !strings.HasPrefix(r.PausedReason, supersededPrefix) {
+			return // a person decides what happens to this version next
 		}
 	}
+	for _, r := range rolls {
+		if r.Kind == "update" && r.Automatic != 0 && (r.Status == "running" || r.Status == "paused") &&
+			release.CompareVersions(r.Version, target) < 0 {
+			s.SetRolloutStatus(ctx, r.ID, "cancelled", supersededPrefix+target)
+			s.audit.Record(ctx, audit.Event{Action: "agent.rollout.supersede", TargetType: "agent_rollout", TargetID: r.ID, Actor: &audit.System,
+				Details: map[string]any{"version": r.Version, "by": target}})
+		}
+	}
+	busy := s.hostsInActiveRollouts(ctx, "")
 	idents, _ := s.st.R.ListLiveIdentities(ctx)
-	behind := false
+	rels := s.platformReleases(ctx, target)
+	var hosts []string
 	for _, id := range idents {
-		if id.Status == "active" && release.CompareVersions(id.AgentVersion, target) < 0 {
-			behind = true
+		if id.Status != "active" || release.CompareVersions(id.AgentVersion, target) >= 0 {
+			continue
 		}
+		if _, ok := busy[id.HostID]; ok {
+			continue
+		}
+		if Blocker(id, IdentityTrust(id), target, rels[id.Os+"/"+id.Arch], false) != "" {
+			continue // the status page says why
+		}
+		if s.triedAutomatically(rolls, id.HostID, target) {
+			continue
+		}
+		hosts = append(hosts, id.HostID)
 	}
-	if !behind {
+	if len(hosts) == 0 {
 		return
 	}
-	if _, err := s.StartRollout(ctx, target, nil, p, true, ""); err != nil {
-		s.log.Warn("automatic agent update rollout", "version", target, "err", err)
+	if _, err := s.StartRollout(ctx, target, RolloutOptions{HostIDs: hosts, Policy: p, Automatic: true}); err != nil && !errors.Is(err, ErrNothingToUpdate) {
+		s.log.Warn("automatic Shepherd update rollout", "version", target, "err", err)
 	}
+}
+
+// triedAutomatically: an automatic rollout to v already finished with this
+// host (skipped, refused or failed): it isn't offered again by itself.
+func (s *Service) triedAutomatically(rolls []db.AgentRollout, hostID, v string) bool {
+	for _, r := range rolls {
+		if r.Kind != "update" || r.Version != v || r.Automatic == 0 {
+			continue
+		}
+		hosts, _ := s.st.R.ListRolloutHosts(context.Background(), r.ID)
+		for _, h := range hosts {
+			if h.HostID == hostID && terminal[h.State] && h.State != "healthy" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // advanceRollouts offers updates wave by wave. A wave starts when every
 // earlier wave is finished or waiting for offline hosts, which catch up
-// when they reconnect. Failures beyond the limit pause the rollout, so a
-// bad release stops at the canary instead of reaching the fleet.
+// when they reconnect. The canary wave needs a host that actually takes
+// the update: when its hosts are offline or skipped, the next connected
+// host of a later wave becomes the canary. Failures beyond the limit pause
+// the rollout, so a bad release stops at the canary instead of reaching
+// the fleet.
 func (s *Service) advanceRollouts(ctx context.Context) {
+	s.rollMu.Lock()
+	defer s.rollMu.Unlock()
 	rolls, err := s.st.R.ActiveRollouts(ctx)
 	if err != nil {
 		return
@@ -304,6 +617,7 @@ func (s *Service) advanceRollouts(ctx context.Context) {
 		}
 		failures, open := 0, 0
 		now := s.now()
+		connected := func(hostID string) bool { _, ok := s.SessionFor(hostID); return ok }
 		for _, h := range hosts {
 			if h.State == "rolled_back" || h.State == "failed" {
 				failures++
@@ -325,6 +639,9 @@ func (s *Service) advanceRollouts(ctx context.Context) {
 				Details: map[string]any{"failures": failures}})
 			continue
 		}
+		if r.Kind == "update" {
+			hosts = s.promoteCanary(ctx, r, hosts, connected)
+		}
 		// Current wave: the lowest wave with hosts that are not finished
 		// and not merely waiting for an offline agent.
 		wave := int64(-1)
@@ -333,10 +650,8 @@ func (s *Service) advanceRollouts(ctx context.Context) {
 				continue
 			}
 			open++
-			if h.State == "pending" && r.Kind == "update" {
-				if _, ok := s.SessionFor(h.HostID); !ok {
-					continue // offline: catches up later, doesn't block the wave
-				}
+			if h.State == "pending" && r.Kind == "update" && !connected(h.HostID) {
+				continue // offline: catches up later, doesn't block the wave
 			}
 			if wave < 0 || h.Wave < wave {
 				wave = h.Wave
@@ -359,13 +674,44 @@ func (s *Service) advanceRollouts(ctx context.Context) {
 	}
 }
 
+// promoteCanary makes sure the canary wave has hosts that can take the
+// update: healthy ones, or ones it is in progress on or can be offered to
+// now. Short of r.Canary such hosts, the next connected pending hosts of
+// later waves join the canary wave. It returns the hosts as they now are.
+func (s *Service) promoteCanary(ctx context.Context, r db.AgentRollout, hosts []db.ListRolloutHostsRow, connected func(string) bool) []db.ListRolloutHostsRow {
+	have := 0
+	for _, h := range hosts {
+		if h.Wave != 0 {
+			continue
+		}
+		if h.State == "healthy" || !terminal[h.State] && (h.State != "pending" || connected(h.HostID)) {
+			have++
+		}
+	}
+	for i := range hosts {
+		if int64(have) >= r.Canary {
+			break
+		}
+		h := &hosts[i]
+		if h.Wave > 0 && h.State == "pending" && connected(h.HostID) {
+			if err := s.st.W.SetRolloutHostWave(ctx, db.SetRolloutHostWaveParams{Wave: 0, UpdatedAt: s.now().UnixMilli(), RolloutID: r.ID, HostID: h.HostID}); err == nil {
+				s.log.Info("a new canary for the Shepherd rollout", "rollout", r.ID, "host", h.HostID, "was_wave", h.Wave)
+				h.Wave = 0
+				have++
+			}
+		}
+	}
+	return hosts
+}
+
 func (s *Service) setHostState(ctx context.Context, rolloutID, hostID, st, detail string) {
 	s.st.W.SetRolloutHostState(ctx, db.SetRolloutHostStateParams{State: st, Detail: detail, UpdatedAt: s.now().UnixMilli(),
 		RolloutID: rolloutID, HostID: hostID})
 	s.hostChanged(hostID)
 }
 
-// offer sends the release for the host's platform to its agent.
+// offer sends the release for the host's platform to its agent, unless the
+// host can't take it, which skips it with the reason.
 func (s *Service) offer(ctx context.Context, r db.AgentRollout, hostID string) {
 	se, ok := s.SessionFor(hostID)
 	if !ok {
@@ -375,20 +721,30 @@ func (s *Service) offer(ctx context.Context, r db.AgentRollout, hostID string) {
 		return // a firewall transaction is pending: the update waits (DESIGN §17.3)
 	}
 	info := se.info()
-	if release.CompareVersions(info.AgentVersion, r.Version) == 0 {
-		s.setHostState(ctx, r.ID, hostID, "healthy", "already running "+r.Version)
+	if release.CompareVersions(info.AgentVersion, r.Version) >= 0 {
+		s.setHostState(ctx, r.ID, hostID, "healthy", "already running "+info.AgentVersion)
 		return
 	}
-	rel, err := s.st.R.GetReleaseFor(ctx, db.GetReleaseForParams{Version: r.Version, Os: se.hello.Info.Os, Arch: se.hello.Info.Arch})
-	if err != nil {
-		s.setHostState(ctx, r.ID, hostID, "skipped", fmt.Sprintf("no %s release for %s/%s", r.Version, se.hello.Info.Os, se.hello.Info.Arch))
+	var relp *db.AgentRelease
+	if rel, err := s.st.R.GetReleaseFor(ctx, db.GetReleaseForParams{Version: r.Version, Os: se.hello.Info.Os, Arch: se.hello.Info.Arch}); err == nil {
+		relp = &rel
+	}
+	id := se.ident
+	id.AgentVersion, id.Protocol = info.AgentVersion, int64(info.Protocol)
+	if fresh, err := s.st.R.GetAgentIdentity(ctx, se.ident.ID); err == nil {
+		id.UpdateState, id.UpdateVersion, id.UpdateDetail = fresh.UpdateState, fresh.UpdateVersion, fresh.UpdateDetail
+	}
+	if why := Blocker(id, trustFromHello(se.hello.ReleaseTrust), r.Version, relp, r.Retry != 0); why != "" {
+		s.setHostState(ctx, r.ID, hostID, "skipped", why)
 		return
 	}
+	rel := *relp
 	s.setHostState(ctx, r.ID, hostID, "offered", "")
 	s.st.W.SetIdentityUpdate(ctx, db.SetIdentityUpdateParams{UpdateState: "offered", UpdateVersion: r.Version, UpdateDetail: "",
 		UpdateAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}, ID: se.ident.ID})
 	se.send(&pb.ControllerMessage{Msg: &pb.ControllerMessage_UpdateOffer{UpdateOffer: &pb.UpdateOffer{ReleaseId: rel.ID,
-		ManifestPayload: rel.ManifestPayload, KeyId: rel.KeyID, Signature: rel.Signature, HealthWindowSeconds: uint32(r.HealthWindowS)}}})
+		ManifestPayload: rel.ManifestPayload, KeyId: rel.KeyID, Signature: rel.Signature, HealthWindowSeconds: uint32(r.HealthWindowS),
+		Retry: r.Retry != 0}}})
 }
 
 // offerPendingUpdate: an agent that reconnects catches up with any running
@@ -410,11 +766,32 @@ func (s *Service) offerPendingUpdate(ctx context.Context, se *Session) {
 	}
 }
 
+// refusalOf is why an agent refused an offer before changing anything
+// ("" when it didn't refuse). 1.0 agents say so; older ones are known by
+// the words they have always used.
+func refusalOf(u *pb.UpdateReport) string {
+	if u.Refusal != "" {
+		return u.Refusal
+	}
+	if u.State != "failed" || u.Version != "" {
+		return "" // older agents refuse before they know the version
+	}
+	for code, words := range map[string]string{"untrusted_key": "does not trust", "updates_denied": "updates.policy: deny",
+		"failed_before": "already failed its health check", "downgrade": "downgrades are refused",
+		"upgrade_path": "needs at least version", "busy": "another update is still in progress"} {
+		if strings.Contains(u.Detail, words) {
+			return code
+		}
+	}
+	return ""
+}
+
 // onUpdateReport records an agent's update progress.
 func (s *Service) onUpdateReport(ctx context.Context, ident db.AgentIdentity, u *pb.UpdateReport) {
 	if u.State == "" {
 		return
 	}
+	refused := refusalOf(u)
 	if u.Version == "" && u.ReleaseId != "" {
 		// Refused before the agent trusted the manifest: the controller
 		// knows which version it offered.
@@ -422,7 +799,11 @@ func (s *Service) onUpdateReport(ctx context.Context, ident db.AgentIdentity, u 
 			u.Version = rel.Version
 		}
 	}
-	s.st.W.SetIdentityUpdate(ctx, db.SetIdentityUpdateParams{UpdateState: u.State, UpdateVersion: u.Version, UpdateDetail: u.Detail,
+	idState := u.State
+	if refused != "" {
+		idState = "refused" // not a failed update: nothing changed on the host
+	}
+	s.st.W.SetIdentityUpdate(ctx, db.SetIdentityUpdateParams{UpdateState: idState, UpdateVersion: u.Version, UpdateDetail: u.Detail,
 		UpdateAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}, ID: ident.ID})
 	rolls, _ := s.st.R.ListRollouts(ctx)
 	for _, r := range rolls {
@@ -441,83 +822,21 @@ func (s *Service) onUpdateReport(ctx context.Context, ident db.AgentIdentity, u 
 			if st == "healthy" && u.Version != r.Version {
 				continue
 			}
+			if refused != "" {
+				st = "skipped"
+			}
 			s.setHostState(ctx, r.ID, h.HostID, st, u.Detail)
-			if st == "healthy" || st == "rolled_back" || st == "failed" {
+			if st == "healthy" || st == "rolled_back" || st == "failed" || st == "skipped" {
 				res := audit.Success
 				if st != "healthy" {
 					res = audit.Failure
 				}
 				s.audit.Record(ctx, audit.Event{Action: "agent.update", TargetType: "host", TargetID: h.HostID, Result: res, Actor: agentActor(ident),
-					Details: map[string]any{"rollout_id": r.ID, "from": h.FromVersion, "to": r.Version, "state": st, "detail": u.Detail}})
+					Details: map[string]any{"rollout_id": r.ID, "from": h.FromVersion, "to": r.Version, "state": st, "refusal": refused, "detail": u.Detail}})
 				go s.advanceRollouts(context.WithoutCancel(ctx))
 			}
 		}
 	}
-}
-
-// --- endpoint migration (DESIGN §6.5) ---
-
-// ProposeEndpoint starts a migration: every connected agent stores and
-// tests the candidate; nothing changes on an agent until it confirmed it.
-func (s *Service) ProposeEndpoint(ctx context.Context, endpoint, userID string) (string, error) {
-	id := ids.New(ids.AgentEndpoint)
-	if err := s.st.W.InsertEndpointMigration(ctx, db.InsertEndpointMigrationParams{ID: id, Endpoint: endpoint,
-		CreatedBy: sql.NullString{String: userID, Valid: userID != ""}, CreatedAt: s.now().UnixMilli()}); err != nil {
-		return "", err
-	}
-	s.mu.Lock()
-	sessions := make([]*Session, 0, len(s.sessions))
-	for _, se := range s.sessions {
-		sessions = append(sessions, se)
-	}
-	s.mu.Unlock()
-	for _, se := range sessions {
-		se.send(&pb.ControllerMessage{Msg: &pb.ControllerMessage_EndpointCandidate{EndpointCandidate: &pb.EndpointCandidate{Id: id, Endpoint: endpoint}}})
-	}
-	return id, nil
-}
-
-func (s *Service) onEndpointTest(ctx context.Context, se *Session, r *pb.EndpointTestResult) {
-	s.st.W.UpsertEndpointTest(ctx, db.UpsertEndpointTestParams{MigrationID: r.Id, IdentityID: se.ident.ID, Ok: boolInt(r.Ok), Error: r.Error, TestedAt: s.now().UnixMilli()})
-	m, err := s.st.R.GetEndpointMigration(ctx, r.Id)
-	if err == nil && m.Status == "committed" && r.Ok {
-		s.commitFor(ctx, se, m)
-	}
-}
-
-func (s *Service) commitFor(ctx context.Context, se *Session, m db.AgentEndpointMigration) {
-	se.send(&pb.ControllerMessage{Msg: &pb.ControllerMessage_EndpointCommit{EndpointCommit: &pb.EndpointCommit{Id: m.ID, Endpoint: m.Endpoint}}})
-	s.st.W.MarkEndpointTestCommitted(ctx, db.MarkEndpointTestCommittedParams{MigrationID: m.ID, IdentityID: se.ident.ID})
-}
-
-// CommitEndpoint makes the candidate primary on every agent that confirmed
-// it (now, or when it confirms later). Agents that couldn't reach it keep
-// their current endpoint: the change can't strand them.
-func (s *Service) CommitEndpoint(ctx context.Context, id string) (int, error) {
-	m, err := s.st.R.GetEndpointMigration(ctx, id)
-	if err != nil {
-		return 0, err
-	}
-	if m.Status == "cancelled" {
-		return 0, errors.New("this migration was cancelled")
-	}
-	if err := s.st.W.SetEndpointMigrationStatus(ctx, db.SetEndpointMigrationStatusParams{Status: "committed",
-		CommittedAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}, ID: id}); err != nil {
-		return 0, err
-	}
-	m.Status = "committed"
-	tests, _ := s.st.R.ListEndpointTests(ctx, id)
-	n := 0
-	for _, t := range tests {
-		if t.Ok == 0 {
-			continue
-		}
-		for _, se := range s.liveSessions(t.IdentityID) {
-			s.commitFor(ctx, se, m)
-			n++
-		}
-	}
-	return n, nil
 }
 
 // --- helpers for the API ---

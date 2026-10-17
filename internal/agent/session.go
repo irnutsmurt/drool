@@ -385,7 +385,7 @@ func (a *Agent) hello(leaf *x509.Certificate) *pb.Hello {
 			MachineId: machineID(), Os: runtime.GOOS, Arch: runtime.GOARCH, BootId: bootID()},
 		SessionNonce: a.nonce, CeilingJson: caps2json(a.ceiling), EffectiveJson: caps2json(a.Effective()),
 		CertNotAfterUnix: leaf.NotAfter.Unix(), Endpoints: ep.All(), State: &pb.StateReport{},
-		Update: a.updateReport(), Features: Features,
+		Update: a.updateReport(), Features: Features, ReleaseTrust: a.releaseTrust(),
 	}
 	if id != nil {
 		h.ControllerEpoch = id.ControllerEpoch

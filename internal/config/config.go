@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -140,6 +141,14 @@ type Agent struct {
 	// hosts. Empty: next to the drool binary, or ../lib/drool from it
 	// (the native packages install them in /usr/lib/drool).
 	BinariesDir string `yaml:"binaries_dir"`
+	// UpdateSource is where DROOL looks for official releases: the signed
+	// descriptions of the Shepherd binaries it ships with, and whether a
+	// newer DROOL is out (ARCHITECTURE-ALPHA §42). Empty: DROOL's releases
+	// on GitHub; "off": never look. A mirror serves the same paths. What is
+	// found there counts only if it verifies against the DROOL release key
+	// built into DROOL and its Shepherds: the source decides availability,
+	// never trust.
+	UpdateSource string `yaml:"update_source"`
 }
 
 type Server struct {
@@ -539,6 +548,11 @@ func (c Config) Validate() error {
 	}
 	if c.Agent.PublicPort < 0 || c.Agent.PublicPort > 65535 {
 		errs = append(errs, fmt.Errorf("agent.public_port must be 1-65535, or 0 for agent.port: %d", c.Agent.PublicPort))
+	}
+	if src := c.Agent.UpdateSource; src != "" && src != "off" {
+		if u, err := url.Parse(src); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+			errs = append(errs, fmt.Errorf("agent.update_source must be an http(s) URL, or off (got %q)", src))
+		}
 	}
 	if c.Agent.CertLifetime < time.Hour || c.Agent.RecoveryGrace < 0 || c.Agent.TokenTTL < time.Minute {
 		errs = append(errs, fmt.Errorf("agent.cert_lifetime must be at least 1h, agent.recovery_grace not negative, agent.token_ttl at least 1m"))

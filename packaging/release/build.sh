@@ -115,6 +115,14 @@ if [[ $MAINTAINER == *@drool.invalid* ]]; then
   note "warning: the packages' maintainer is the placeholder \"$MAINTAINER\" (DROOL_MAINTAINER)"
 fi
 
+# The DROOL project's Shepherd release key, built into every binary
+# (internal/release/official_keys.txt): Shepherds built without it can
+# never take an official update, so a stable release needs it.
+if ! grep -qE '^drool-release-ed25519 ' "$src/internal/release/official_keys.txt"; then
+  [[ $channel != stable ]] || die "internal/release/official_keys.txt lists no Shepherd release key: this release's Shepherds could never take an official update (RELEASING.md, \"The Shepherd release key\")"
+  note "warning: no Shepherd release key in internal/release/official_keys.txt: this build's Shepherds can't take official updates"
+fi
+
 arg() { sed -n "s/^ARG $1=//p" "$src/Dockerfile" | head -n1; }
 go_image=$(arg GO_IMAGE) node_image=$(arg NODE_IMAGE) base_image=$(arg BASE_IMAGE)
 [[ -n $go_image && -n $node_image && -n $base_image ]] || die "Dockerfile lacks pinned GO_IMAGE/NODE_IMAGE/BASE_IMAGE"

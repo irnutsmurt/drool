@@ -563,7 +563,10 @@ func cmdVersion(args []string) error {
 			Max uint32 `json:"max"`
 		} `json:"protocol"`
 		Features []string `json:"features"`
-	}{Build: version.Get(), Features: agent.Features}
+		// The DROOL project's Shepherd release keys this binary trusts for
+		// its updates (unless its host's agent.yaml denies them).
+		OfficialReleaseKeys []string `json:"official_release_keys"`
+	}{Build: version.Get(), Features: agent.Features, OfficialReleaseKeys: release.OfficialKeyIDs()}
 	out.Protocol.Min, out.Protocol.Max = r.Min, r.Max
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
@@ -601,7 +604,14 @@ func cmdStatus(args []string) error {
 		return err
 	}
 	fmt.Printf("Capability ceiling (%s):\n%s", p.Config, describe(f.Capabilities))
-	if keys, err := p.TrustedReleaseKeys(); err == nil {
+	if keys, err := p.TrustedReleaseKeys(f.OfficialReleases()); err == nil {
+		official := "trusted"
+		if !f.OfficialReleases() {
+			official = "not trusted (updates.official: deny)"
+		} else if len(release.OfficialKeys()) == 0 {
+			official = "none built into this build"
+		}
+		fmt.Printf("Official DROOL releases: %s\n", official)
 		fmt.Printf("Trusted release keys: %d\n", len(keys))
 		for _, k := range keys {
 			fmt.Printf("  %s %s\n", k.ID(), k.Name)

@@ -169,6 +169,9 @@ func Sign(key ed25519.PrivateKey, m Manifest, r io.Reader) (*Signed, error) {
 
 var versionRE = regexp.MustCompile(`^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.+-]+)?$`)
 
+// ValidVersion reports whether v is a version a release manifest may name.
+func ValidVersion(v string) bool { return versionRE.MatchString(v) }
+
 func (m *Manifest) check() error {
 	switch {
 	case m.Format != 1:

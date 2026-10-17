@@ -290,6 +290,7 @@ func testUpgradeFromM16(t *testing.T) {
 		t.Fatalf("release sign: %v\n%s", err, out)
 	}
 	manifest, _ := os.ReadFile(bin + ".release.json")
+	manualShepherdUpdates(t) // the test rolls it out itself
 	req, _ := newRawRequest("POST", "/api/v1/agents/releases", bytes.NewReader(b))
 	req.Header.Set("X-DROOL-Release", base64.StdEncoding.EncodeToString(manifest))
 	r, err := ctl.client.Do(req)

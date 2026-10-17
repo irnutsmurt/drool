@@ -88,6 +88,7 @@ func TestVMMonitoring(t *testing.T) {
 	}
 	key := newReleaseKey(t)
 	ctl.must(t, "POST", "/api/v1/agents/release-keys", map[string]any{"public_key": key.line}, nil)
+	manualShepherdUpdates(t)
 	if st, body := uploadRelease(t, key, releaseDir+"/drool-agent-"+agentRunaway, agentRunaway); st != 201 && st != 409 && !strings.Contains(body, "already exists") {
 		t.Fatalf("upload runaway build: %d %s", st, body)
 	}

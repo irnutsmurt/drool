@@ -166,6 +166,17 @@ message Hello {
   // controller restored from a backup older than the revocation doesn't
   // know about it otherwise.
   Revocation revocation = 13;
+  // Which signatures this agent accepts for its own updates (1.0): the
+  // controller offers only what the host would install, and says why a host
+  // can't take an update. Agents before 1.0 send none.
+  ReleaseTrust release_trust = 14;
+}
+
+message ReleaseTrust {
+  repeated string key_ids = 1;    // every release key this agent trusts
+  bool official = 2;              // includes the DROOL project's keys built into it
+  bool updates_denied = 3;        // agent.yaml updates.policy: deny
+  bool official_denied = 4;       // agent.yaml updates.official: deny
 }
 
 message Revocation {
@@ -279,6 +290,9 @@ message UpdateOffer {
   string key_id = 3;
   bytes signature = 4;
   uint32 health_window_seconds = 5;
+  // A person asked to try a version again that already failed its health
+  // check on this host (1.0). Without it the agent never retries one.
+  bool retry = 6;
 }
 
 message UpdateReport {
@@ -287,6 +301,10 @@ message UpdateReport {
   string state = 3;               // staged | updating | healthy | rolled_back | failed
   string detail = 4;
   string from_version = 5;
+  // Set when the agent refused the offer before changing anything (1.0):
+  // untrusted_key, updates_denied, failed_before, downgrade, upgrade_path,
+  // protocol, platform, busy. Such a host is skipped, not a failed update.
+  string refusal = 6;
 }
 
 message ManifestAck {

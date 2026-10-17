@@ -35,6 +35,7 @@ func TestVMPlatform(t *testing.T) {
 	freshController(t)
 	key := newReleaseKey(t)
 	ctl.must(t, "POST", "/api/v1/agents/release-keys", map[string]any{"public_key": key.line}, nil)
+	manualShepherdUpdates(t)
 	for _, v := range []string{agentV2, agentBroken} {
 		for arch, sfx := range map[string]string{"amd64": "", "arm64": "-arm64"} {
 			if st, body := uploadReleaseFor(t, key, releaseDir+"/drool-agent-"+v+sfx, v, arch); st != 201 && st != 409 {

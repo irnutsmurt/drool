@@ -19,6 +19,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"drool/internal/release"
 )
 
 // releaseUnderTest is a release directory made by packaging/release/build.sh
@@ -30,7 +32,9 @@ type releaseUnderTest struct {
 	Commit  string `json:"commit"`
 	License string `json:"license"`
 	Schema  int    `json:"schema_version"`
-	Image   struct {
+	// The DROOL project's Shepherd release keys built into the release.
+	OfficialKeys []string `json:"official_release_keys"`
+	Image        struct {
 		IndexDigest string `json:"index_digest"`
 		Name        string `json:"name"`
 		Platforms   []struct {
@@ -244,13 +248,28 @@ func TestReleaseArtifacts(t *testing.T) {
 	var v struct {
 		Version, Channel, Commit string
 		Modified                 bool
-		Schema                   int `json:"schema_version"`
+		Schema                   int      `json:"schema_version"`
+		OfficialKeys             []string `json:"official_release_keys"`
 	}
 	json.Unmarshal(out, &v)
 	expect(t, v.Version == r.Version && v.Channel == r.Channel && v.Commit == r.Commit && !v.Modified && v.Schema == r.Schema,
 		"drool version --json %+v; release.json says %s %s %s schema %d", v, r.Version, r.Channel, r.Commit, r.Schema)
 	agentOut, err := exec.Command(filepath.Join(r.binDir, "drool-agent-linux-"+runtime.GOARCH), "version").Output()
 	expect(t, err == nil && strings.TrimSpace(string(agentOut)) == r.Version, "drool-agent version: %q %v", agentOut, err)
+	// The Shepherd release keys built in: what release.json says, in the
+	// controller and in the Shepherds; a release has at least one (build.sh
+	// refuses a stable build without), or its Shepherds could never take an
+	// official update.
+	agentJSON, _ := exec.Command(filepath.Join(r.binDir, "drool-agent-linux-"+runtime.GOARCH), "version", "--json").Output()
+	var av struct {
+		OfficialKeys []string `json:"official_release_keys"`
+	}
+	json.Unmarshal(agentJSON, &av)
+	expect(t, strings.Join(v.OfficialKeys, ",") == strings.Join(r.OfficialKeys, ",") && strings.Join(av.OfficialKeys, ",") == strings.Join(r.OfficialKeys, ","),
+		"official Shepherd release keys: drool %v, drool-agent %v, release.json %v", v.OfficialKeys, av.OfficialKeys, r.OfficialKeys)
+	if r.Channel == "stable" {
+		expect(t, len(r.OfficialKeys) > 0, "a stable release without a Shepherd release key")
+	}
 
 	for _, arch := range []string{"amd64", "arm64"} {
 		name := fmt.Sprintf("drool_%s_linux_%s/", r.pkgver, arch)
@@ -412,11 +431,36 @@ func TestReleaseSigning(t *testing.T) {
 	keygen("other")
 	allowed := filepath.Join(keys, "allowed_signers")
 	os.WriteFile(allowed, []byte(`release@drool namespaces="drool-release" `+pub+"\n"), 0o644)
-	sign := func(allowedFile, key string) (string, error) {
-		cmd := exec.Command(filepath.Join(root, "packaging", "release", "sign.sh"), dir, filepath.Join(keys, key))
-		cmd.Env = append(os.Environ(), "ALLOWED_SIGNERS="+allowedFile)
+	// The Shepherd release key, made the documented way. This release's
+	// binaries don't have it built in (only the project's), so signing is
+	// told to accept it (OFFICIAL_RELEASE_KEYS) except where the refusal is
+	// what's tested.
+	shepherdKey := filepath.Join(keys, "shepherd")
+	if out, err := exec.Command(r.drool, "release", "keygen", "-o", shepherdKey).CombinedOutput(); err != nil {
+		t.Fatalf("drool release keygen: %v\n%s", err, out)
+	}
+	shepherdPub, _ := release.ParsePublicKeys([]byte(mustRead(t, shepherdKey+".pub")))
+	signWith := func(allowedFile, key string, env ...string) (string, error) {
+		cmd := exec.Command(filepath.Join(root, "packaging", "release", "sign.sh"), dir, filepath.Join(keys, key), shepherdKey+".key")
+		cmd.Env = append(append(os.Environ(), "ALLOWED_SIGNERS="+allowedFile), env...)
 		out, err := cmd.CombinedOutput()
 		return string(out), err
+	}
+	sign := func(allowedFile, key string) (string, error) {
+		return signWith(allowedFile, key, "OFFICIAL_RELEASE_KEYS="+shepherdPub[0].ID())
+	}
+	// A Shepherd key this release doesn't have built in: refused for a
+	// release (no Shepherd would accept it), a warning for a development build.
+	out, err := signWith(allowed, "release")
+	if r.Channel == "development" {
+		expect(t, err == nil && strings.Contains(out, "isn't built into this development build"), "a development build, another Shepherd key: %v\n%s", err, out)
+		for _, f := range []string{"SHA256SUMS.sig", "drool-agent_" + r.pkgver + "_linux_amd64.release.json", "drool-agent_" + r.pkgver + "_linux_arm64.release.json"} {
+			os.Remove(filepath.Join(dir, f))
+		}
+	} else {
+		expect(t, err != nil && strings.Contains(out, "isn't built into this release"), "a release, a Shepherd key it doesn't have: %v\n%s", err, out)
+		_, statErr := os.Stat(filepath.Join(dir, "SHA256SUMS.sig"))
+		expect(t, os.IsNotExist(statErr), "SHA256SUMS signed although the Shepherds' signatures were refused")
 	}
 	verify := func() (string, error) {
 		cmd := exec.Command("sh", "-c", "sha256sum --check --ignore-missing --quiet SHA256SUMS && "+
@@ -426,7 +470,7 @@ func TestReleaseSigning(t *testing.T) {
 		return string(out), err
 	}
 
-	out, err := sign(filepath.Join(root, "packaging", "keys", "allowed_signers"), "release")
+	out, err = sign(filepath.Join(root, "packaging", "keys", "allowed_signers"), "release")
 	if strings.Contains(mustRead(t, filepath.Join(root, "packaging", "keys", "allowed_signers")), "ssh-ed25519") {
 		expect(t, err != nil, "signed with a key that isn't the listed release key:\n%s", out)
 	} else {
@@ -447,6 +491,21 @@ func TestReleaseSigning(t *testing.T) {
 	}
 	if out, err := verify(); err != nil || !strings.Contains(out, `Good "drool-release" signature for release@drool`) {
 		t.Fatalf("the documented verification: %v\n%s", err, out)
+	}
+	// Each Shepherd's signed description, for this release's version and
+	// channel, verifies against the Shepherd key and its binary.
+	for _, arch := range []string{"amd64", "arm64"} {
+		name := "drool-agent_" + r.pkgver + "_linux_" + arch
+		x := t.TempDir()
+		untar(filepath.Join(dir, name+".tar.gz"), x)
+		vout, err := exec.Command(r.drool, "release", "verify", "--key", shepherdKey+".pub", filepath.Join(dir, name+".release.json"),
+			filepath.Join(x, name, "drool-agent")).CombinedOutput()
+		expect(t, err == nil && strings.Contains(string(vout), "OK: drool-agent "+r.Version+" (linux/"+arch), "%s: %v\n%s", name, err, vout)
+		var signed release.Signed
+		json.Unmarshal([]byte(mustRead(t, filepath.Join(dir, name+".release.json"))), &signed)
+		var m release.Manifest
+		json.Unmarshal(signed.Payload, &m)
+		expect(t, m.Channel == r.Channel && m.ProtocolMin == 1, "%s describes channel %q, protocol %d–%d", name, m.Channel, m.ProtocolMin, m.ProtocolMax)
 	}
 	// The signature covers SHA256SUMS: change one hash in it (as someone
 	// replacing a file would) and the signature no longer verifies.

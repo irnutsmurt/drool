@@ -94,6 +94,99 @@ func TestVerifyOffer(t *testing.T) {
 	}
 }
 
+// Refusals carry a code: the controller skips a host that refused for its
+// own reasons instead of counting a failed update.
+func TestVerifyOfferRefusals(t *testing.T) {
+	full, _ := agentcaps.Preset(agentcaps.PresetFull)
+	a := testAgent(t, full)
+	bin := []byte("new agent binary")
+	code := func(err error) string {
+		var r *refusal
+		if errors.As(err, &r) {
+			return r.code
+		}
+		return ""
+	}
+	o := releaseFixture(t, a, release.Manifest{Version: "v1.2.0"}, bin, false)
+	if _, _, err := a.verifyOffer(o); code(err) != RefuseUntrusted {
+		t.Errorf("untrusted: %v (%q)", err, code(err))
+	}
+	o = releaseFixture(t, a, release.Manifest{Version: "v0.9.0"}, bin, true)
+	if _, _, err := a.verifyOffer(o); code(err) != RefuseDowngrade {
+		t.Errorf("downgrade: %v", err)
+	}
+	o = releaseFixture(t, a, release.Manifest{Version: "v1.2.0", MinFrom: "v1.1.0"}, bin, true)
+	if _, _, err := a.verifyOffer(o); code(err) != RefuseUpgradePath {
+		t.Errorf("upgrade path: %v", err)
+	}
+	o = releaseFixture(t, a, release.Manifest{Version: "v1.2.0", OS: "linux", Arch: "riscv64"}, bin, true)
+	if _, _, err := a.verifyOffer(o); code(err) != RefusePlatform {
+		t.Errorf("platform: %v", err)
+	}
+	// A tampered manifest is no refusal: it is wrong, and counts.
+	o = releaseFixture(t, a, release.Manifest{Version: "v1.2.0"}, bin, true)
+	o.Signature[0] ^= 1
+	if _, _, err := a.verifyOffer(o); err == nil || code(err) != "" {
+		t.Errorf("bad signature: %v (%q)", err, code(err))
+	}
+	// A version that failed here: refused, unless a person asked to retry.
+	a.paths.markFailed("v1.4.0")
+	o = releaseFixture(t, a, release.Manifest{Version: "v1.4.0"}, bin, true)
+	if _, _, err := a.verifyOffer(o); code(err) != RefuseFailedBefore {
+		t.Errorf("failed before: %v", err)
+	}
+	o.Retry = true
+	if m, _, err := a.verifyOffer(o); err != nil || m.Version != "v1.4.0" {
+		t.Errorf("retry: %v", err)
+	}
+}
+
+// The DROOL project's keys are trusted for updates, unless the host says
+// updates.official: deny; the hello says which keys the host trusts.
+func TestOfficialReleaseTrust(t *testing.T) {
+	pub, privPEM, _ := release.GenerateKey()
+	priv, _ := release.ParsePrivateKey(privPEM)
+	defer release.SetOfficialKeysForTest([]release.PublicKey{{Key: pub, Name: "DROOL test"}})()
+	official := release.KeyID(pub)
+	full, _ := agentcaps.Preset(agentcaps.PresetFull)
+	a := testAgent(t, full)
+	sign := func(v string) *pb.UpdateOffer {
+		s, err := release.Sign(priv, release.Manifest{Version: v, OS: runtime.GOOS, Arch: runtime.GOARCH, ProtocolMin: 1, ProtocolMax: 1}, bytes.NewReader([]byte("x")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &pb.UpdateOffer{ReleaseId: "arel_o", ManifestPayload: s.Payload, KeyId: s.KeyID, Signature: s.Signature}
+	}
+	if m, _, err := a.verifyOffer(sign("v1.1.0")); err != nil || m.Version != "v1.1.0" {
+		t.Fatalf("an official release on a default host: %v", err)
+	}
+	rt := a.releaseTrust()
+	if !rt.Official || rt.UpdatesDenied || len(rt.KeyIds) != 1 || rt.KeyIds[0] != official {
+		t.Errorf("trust report: %+v", rt)
+	}
+	// The host's own decision: only its local keys.
+	os.WriteFile(a.paths.Config, append(agentcaps.Render(full, ""), []byte("updates:\n  official: deny\n  policy: deny\n")...), 0o600)
+	f, err := LoadCeiling(a.paths.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.file = f
+	if _, _, err := a.verifyOffer(sign("v1.1.0")); err == nil || !strings.Contains(err.Error(), "does not trust") {
+		t.Errorf("official release with updates.official: deny: %v", err)
+	}
+	rt = a.releaseTrust()
+	if rt.Official || !rt.OfficialDenied || !rt.UpdatesDenied || len(rt.KeyIds) != 0 {
+		t.Errorf("trust report with official: deny: %+v", rt)
+	}
+	// No project key in this build: nothing official is trusted, and the
+	// report says so rather than claiming trust.
+	release.SetOfficialKeysForTest(nil)
+	a.file.Updates.Official = ""
+	if rt := a.releaseTrust(); rt.Official || len(rt.KeyIds) != 0 {
+		t.Errorf("trust report without a built-in key: %+v", rt)
+	}
+}
+
 // updateFixture lays out versions/v1 (current) and versions/v2 (staged),
 // and a fake running agent whose pid the helper signals.
 func updateFixture(t *testing.T) (Paths, *exec.Cmd) {

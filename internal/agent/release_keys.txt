@@ -1,8 +1,0 @@
-# Built-in trusted DROOL agent release-signing keys, one per line:
-#   drool-release-ed25519 <base64 public key> <name>
-#
-# Agents verify every update against these keys plus the keys an
-# administrator adds locally in /etc/drool/release-keys.d/*.pub (root-owned).
-# The DROOL project has no published release key yet, so this list is empty:
-# builds you sign yourself (drool release keygen / sign) need your public key
-# installed on each host (drool-agent install --trust-release-key FILE).

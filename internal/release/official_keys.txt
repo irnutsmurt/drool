@@ -1,0 +1,17 @@
+# The DROOL project's Shepherd release keys: official Shepherd releases are
+# signed with one of them (ARCHITECTURE-ALPHA §42). Every DROOL binary has
+# this list built in: Shepherds trust these keys for their own updates
+# (unless their agent.yaml says updates: {official: deny}), and the
+# controller checks official releases against them. One key per line:
+#
+#   drool-release-ed25519 <base64 public key> <name>
+#
+# The private half is created and kept offline by the release manager
+# (drool release keygen; RELEASING.md "The Shepherd release key"). It is
+# never in this repository, in CI or on a controller.
+#
+# None yet: no release is official until the project's key is listed here.
+# Shepherds built without it can't take official updates, so it has to be
+# here before the first release candidate (build.sh refuses a stable build
+# without it). Operators' own keys go on each host
+# (/etc/drool/release-keys.d/*.pub, drool-agent trust-release-key).
