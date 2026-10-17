@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -24,19 +24,26 @@ export function RestoreDialog({ selection, title, onClose }: {
   const navigate = useNavigate();
   const invalidate = useInvalidateDesired();
   const [rollout, setRollout] = useState<RolloutState | null>(null);
+  // The rollout goes into the request once someone changes it: until then
+  // the server's own choice (the recommended rollout for several hosts,
+  // the same as the fields show) plans it, in one round trip, not two.
+  const [rolloutChanged, setRolloutChanged] = useState(false);
   const [allowRemovals, setAllowRemovals] = useState(false);
   const [showRollout, setShowRollout] = useState(false);
   const req: DesiredRestoreRequest = useMemo(() => ({
     ...selection,
     allow_removals: allowRemovals || undefined,
-    strategy: rollout ? strategyFrom(rollout) : undefined,
-  }), [selection, allowRemovals, rollout]);
+    strategy: rollout && rolloutChanged ? strategyFrom(rollout) : undefined,
+  }), [selection, allowRemovals, rollout, rolloutChanged]);
   const debounced = useDebounced(req, 400);
+  // A new preview (another rollout, removals allowed) keeps the plan in
+  // sight while it is worked out; Restore waits for it.
   const preview = useQuery({
     queryKey: ["desired", "restore-preview", debounced],
     queryFn: () => unwrap(api.POST("/desired/restore/preview", { body: debounced })),
     staleTime: Infinity,
     retry: false,
+    placeholderData: keepPreviousData,
   });
   const plan = preview.data?.plan;
   const job = plan?.jobs[0];
@@ -59,7 +66,7 @@ export function RestoreDialog({ selection, title, onClose }: {
   const n = plan?.items.length ?? 0;
   return (
     <Dialog title={title} onClose={onClose} wide>
-      {preview.isPending && <p className="text-sm text-muted" role="status">Checking the hosts and planning the correction…</p>}
+      {preview.isPending && <p className="text-sm text-muted" role="status">Checking the hosts and planning the correction (nothing changes yet)…</p>}
       {preview.error && <Alert>{errorMessage(preview.error)}</Alert>}
       {plan && (
         <div className="space-y-4">
@@ -68,7 +75,7 @@ export function RestoreDialog({ selection, title, onClose }: {
           ) : (
             <p className="text-sm">
               <strong>{n} correction{n === 1 ? "" : "s"} on {plan.hosts} host{plan.hosts === 1 ? "" : "s"}</strong>, as {plan.jobs.length === 1 ? "one ordinary job" : `${plan.jobs.length} ordinary jobs`}.
-              {" "}Each host runs only its own corrections; DROOL checks every host again afterwards and only then calls it restored.
+              {" "}This is the plan: nothing changes until you choose Restore. Each host runs only its own corrections; DROOL checks every host again afterwards and only then calls it restored.
             </p>
           )}
           {n > 0 && (
@@ -114,7 +121,7 @@ export function RestoreDialog({ selection, title, onClose }: {
                   {showRollout ? "Hide rollout settings" : "Change rollout"}
                 </Button>
               </div>
-              {showRollout && rollout && <div className="mt-3"><RolloutFields v={rollout} set={setRollout} hosts={[]} noExplicit /></div>}
+              {showRollout && rollout && <div className="mt-3"><RolloutFields v={rollout} set={(v) => { setRollout(v); setRolloutChanged(true); }} hosts={[]} noExplicit /></div>}
               <div className="mt-3"><WavesList waves={job.waves} /></div>
               {job.wave_note && <p className="mt-1 text-xs text-muted">{job.wave_note}</p>}
             </div>
