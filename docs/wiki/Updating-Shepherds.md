@@ -59,8 +59,9 @@ Everyone who can see Shepherds can see this page; changing it takes the **agents
   run is downloaded. Each Shepherd then checks the signature again with *its* built-in key before it
   installs anything. Someone who took over DROOL's release page couldn't make your hosts run their
   code: DROOL takes only signed descriptions from it, of the program it already has. Someone who took
-  over your DROOL couldn't either, without the DROOL project's private key, which never leaves the
-  release manager's offline machine.
+  over your DROOL couldn't replace your Shepherds with a program of their own either, without the
+  DROOL project's private key, which never leaves the release manager's offline machine. (What DROOL
+  may do through a Shepherd is limited by the host's capability ceiling, as always.)
 - **Carefully:** one Shepherd first. Only when it's healthy do the others follow, five at a time. If
   one fails, the update **pauses** and waits for you.
 - **On each host** the Shepherd downloads the new program from DROOL (resuming if interrupted),
