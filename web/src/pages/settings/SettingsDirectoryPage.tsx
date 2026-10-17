@@ -60,7 +60,7 @@ const groups: Group[] = [
   {
     title: "Shepherds (DROOL agents)",
     entries: [
-      { title: "Updates and releases", to: "/agents?tab=updates", where: "Shepherds", description: "The update policy, release-signing keys, releases and rollouts.", permissions: ["agents.read"] },
+      { title: "Shepherd updates", to: "/agents?tab=updates", where: "Shepherds", description: "Automatic updates and the update channel; rollout settings and custom releases under Advanced settings.", permissions: ["agents.read"] },
       { title: "Controller address", to: "/agents?tab=endpoints", where: "Shepherds", description: "The address Shepherds use to reach this controller.", permissions: ["agents.read"] },
     ],
   },

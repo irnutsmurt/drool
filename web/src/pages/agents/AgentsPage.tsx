@@ -6,17 +6,17 @@ import { useHosts } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { CompatibilityBadge, ManualInstallDialog } from "@/components/agents/ManagementCard";
 import { capsReported, isRootEquivalent } from "@/components/agents/CapsList";
-import { ak, useAgents, useEndpointMigrations, useEnrollmentTokens, usePKI, useReleaseKeys, useReleases, useRollout, useRollouts, useUpdatePolicy } from "@/components/agents/queries";
+import { ak, useAgents, useEndpointMigrations, useEnrollmentTokens, usePKI, useRollouts } from "@/components/agents/queries";
+import { RolloutHosts, UpdatesTab } from "@/components/agents/Updates";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CodeBlock } from "@/components/ui/CodeBlock";
-import { Field, Input, Select } from "@/components/ui/Field";
+import { Field, Input } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Table } from "@/components/ui/Table";
-import { errorMessage, formatAgo, formatBytes, formatDateTime } from "@/lib/format";
-import { upload } from "@/lib/upload";
+import { errorMessage, formatAgo, formatDateTime } from "@/lib/format";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { TabPanel, Tabs } from "@/components/ui/Tabs";
 
@@ -79,8 +79,51 @@ function AgentsTab() {
       />
       {adding && <ManualInstallDialog onClose={() => setAdding(false)} />}
     </Card>
+    <Installs />
     <UnknownAgents />
     </>
+  );
+}
+
+/** Shepherds being installed over SSH in bulk (Monitoring → Convert to
+ * Shepherd): a rollout of kind install, canary first. Shown while one
+ * runs or is paused, and the last finished one. */
+function Installs() {
+  const rollouts = useRollouts();
+  const qc = useQueryClient();
+  const { can } = useAuth();
+  const [open, setOpen] = useState<string>();
+  const act = useMutation({
+    mutationFn: ({ id, a }: { id: string; a: "resume" | "cancel" }) => unwrap(api.POST(`/agents/rollouts/{id}/${a}`, { params: { path: { id } } })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ak.rollouts }),
+  });
+  const installs = (rollouts.data?.items ?? []).filter((r) => r.kind === "install");
+  const shown = installs.filter((r, i) => r.status === "running" || r.status === "paused" || i === 0);
+  if (shown.length === 0) return null;
+  return (
+    <Card title="Installing Shepherds">
+      <ul className="space-y-3" data-testid="shepherd-installs">
+        {shown.map((r) => (
+          <li key={r.id} className="rounded-ui border border-line p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="font-medium">Install Shepherd {r.version} over SSH ({r.preset})</p>
+                <p className="text-sm text-muted">{r.status === "paused" ? r.paused_reason : r.status} · started {formatAgo(r.created_at)}</p>
+              </div>
+              <span className="flex flex-wrap gap-2">
+                <Button size="sm" variant="ghost" aria-expanded={open === r.id} onClick={() => setOpen(open === r.id ? undefined : r.id)}>
+                  {open === r.id ? "Hide hosts" : "Show hosts"}</Button>
+                {can("agents.manage") && r.status === "paused" && <Button size="sm" onClick={() => act.mutate({ id: r.id, a: "resume" })}>Resume</Button>}
+                {can("agents.manage") && (r.status === "running" || r.status === "paused") &&
+                  <Button size="sm" variant="danger" onClick={() => act.mutate({ id: r.id, a: "cancel" })}>Cancel</Button>}
+              </span>
+            </div>
+            {open === r.id && <RolloutHosts id={r.id} />}
+          </li>
+        ))}
+      </ul>
+      {act.error && <div className="mt-3"><Alert>{errorMessage(act.error)}</Alert></div>}
+    </Card>
   );
 }
 
@@ -147,196 +190,6 @@ function EnrollTab() {
       />
       {adding && <ManualInstallDialog onClose={() => { setAdding(false); void qc.invalidateQueries({ queryKey: ak.tokens }); }} />}
     </Card>
-  );
-}
-
-function UpdatesTab() {
-  const { can } = useAuth();
-  const qc = useQueryClient();
-  const policy = useUpdatePolicy();
-  const releases = useReleases();
-  const keys = useReleaseKeys();
-  const rollouts = useRollouts();
-  const [openRollout, setOpenRollout] = useState<string>();
-  const [keyLine, setKeyLine] = useState("");
-  const [bin, setBin] = useState<File>();
-  const [manifest, setManifest] = useState<File>();
-  const [progress, setProgress] = useState<number>();
-  const inv = () => {
-    for (const k of [ak.policy, ak.releases, ak.releaseKeys, ak.rollouts]) void qc.invalidateQueries({ queryKey: k });
-  };
-  const savePolicy = useMutation({
-    mutationFn: (p: NonNullable<typeof policy.data>) => unwrap(api.PUT("/agents/updates/policy", { body: p })),
-    onSuccess: inv,
-  });
-  const addKey = useMutation({
-    mutationFn: () => unwrap(api.POST("/agents/release-keys", { body: { public_key: keyLine.trim() } })),
-    onSuccess: () => { setKeyLine(""); inv(); },
-  });
-  const delKey = useMutation({ mutationFn: (id: string) => unwrap(api.DELETE("/agents/release-keys/{id}", { params: { path: { id } } })), onSuccess: inv });
-  const uploadRelease = useMutation({
-    mutationFn: async () => {
-      const m = await manifest!.text();
-      return upload("POST", "/agents/releases", bin!, setProgress, undefined, { "X-DROOL-Release": btoa(m) });
-    },
-    onSuccess: () => { setBin(undefined); setManifest(undefined); setProgress(undefined); inv(); },
-    onError: () => setProgress(undefined),
-  });
-  const start = useMutation({
-    mutationFn: (version: string) => unwrap(api.POST("/agents/rollouts", { body: { version } })),
-    onSuccess: (r) => { setOpenRollout(r.id); inv(); },
-  });
-  const p = policy.data;
-  const versions = [...new Set((releases.data?.items ?? []).map((r) => r.version))];
-  return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card title="Update policy">
-        {p && <PolicyForm key={JSON.stringify(p)} policy={p} disabled={!can("agents.manage")} onSave={(np) => savePolicy.mutate(np)} busy={savePolicy.isPending} />}
-        {savePolicy.error && <div className="mt-3"><Alert>{errorMessage(savePolicy.error)}</Alert></div>}
-      </Card>
-
-      <Card title="Release-signing keys">
-        <p className="mb-3 text-sm text-muted">Agents install only releases signed by a key they trust themselves (built in, or added on the host with
-          <span className="font-mono"> drool-agent trust-release-key</span>). Keys listed here only let the controller check uploads early; adding one here
-          does not make any agent trust it.</p>
-        <ul className="mb-3 space-y-1 text-xs">
-          {(keys.data?.items ?? []).map((k) => (
-            <li key={k.id} className="flex items-center gap-2"><span className="font-mono">{k.id}</span> {k.name}
-              {can("agents.manage") && <Button size="sm" variant="ghost" onClick={() => delKey.mutate(k.id)}>Remove</Button>}</li>
-          ))}
-          {(keys.data?.items ?? []).length === 0 && <li className="text-muted">None yet. Create one offline with <span className="font-mono">drool release keygen</span>.</li>}
-        </ul>
-        {can("agents.manage") && (
-          <div className="flex gap-2">
-            <Input className="font-mono text-xs" placeholder="drool-release-ed25519 AAAA… my builds" value={keyLine} onChange={(e) => setKeyLine(e.target.value)} />
-            <Button disabled={!keyLine.trim() || addKey.isPending} onClick={() => addKey.mutate()}>Add</Button>
-          </div>
-        )}
-        {addKey.error && <div className="mt-2"><Alert>{errorMessage(addKey.error)}</Alert></div>}
-      </Card>
-
-      <Card title="Releases" className="lg:col-span-2">
-        {can("agents.manage") && (
-          <div className="mb-4 grid gap-3 rounded-ui border border-line p-3 md:grid-cols-[1fr_1fr_auto]">
-            <Field label="Agent binary"><input type="file" className="text-sm" onChange={(e) => setBin(e.target.files?.[0])} /></Field>
-            <Field label="Signed manifest (.release.json)" hint="From drool release sign; the private key never comes near the controller.">
-              <input type="file" accept=".json" className="text-sm" onChange={(e) => setManifest(e.target.files?.[0])} />
-            </Field>
-            <div className="self-end">
-              <Button variant="primary" disabled={!bin || !manifest || uploadRelease.isPending} onClick={() => uploadRelease.mutate()}>
-                {progress != null ? `Uploading ${Math.round(progress * 100)}%` : "Upload release"}</Button>
-            </div>
-          </div>
-        )}
-        {uploadRelease.error && <div className="mb-3"><Alert>{errorMessage(uploadRelease.error)}</Alert></div>}
-        {start.error && <div className="mb-3"><Alert>{errorMessage(start.error)}</Alert></div>}
-        <Table
-          rows={releases.data?.items ?? []}
-          rowKey={(r) => r.id}
-          empty="No releases uploaded."
-          columns={[
-            { header: "Version", cell: (r) => <span className="font-medium">{r.version}</span> },
-            { header: "Platform", cell: (r) => `${r.os}/${r.arch}` },
-            { header: "Channel", cell: (r) => r.channel },
-            { header: "Protocol", cell: (r) => `${r.protocol_min}–${r.protocol_max}` },
-            { header: "Binary", cell: (r) => <span className="text-xs text-muted">{formatBytes(r.size)} · {r.sha256.slice(0, 12)} · key {r.key_id}</span> },
-            { header: "", cell: (r) => can("agents.manage") && versions.includes(r.version) && (
-              <Button size="sm" onClick={() => void confirmAction({ title: `Roll out Shepherd ${r.version} to every host?`, confirmLabel: `Roll out ${r.version}`,
-                body: <p>A canary host updates first; the rollout pauses on failures, as the update policy says. A Shepherd that isn&apos;t healthy after its update rolls back by itself.</p> })
-                .then((ok) => ok && start.mutate(r.version))}>Roll out</Button>) },
-          ]}
-        />
-      </Card>
-
-      <Card title="Rollouts" className="lg:col-span-2">
-        <Table
-          rows={rollouts.data?.items ?? []}
-          rowKey={(r) => r.id}
-          empty="No rollouts yet."
-          columns={[
-            { header: "Rollout", cell: (r) => <button className="font-medium text-accent" onClick={() => setOpenRollout(r.id)}>{r.kind === "install" ? `Install agent ${r.version} over SSH (${r.preset})` : `Update to ${r.version}`}</button> },
-            { header: "Status", cell: (r) => <Badge tone={r.status === "completed" ? "ok" : r.status === "paused" ? "danger" : r.status === "running" ? "accent" : "neutral"}>{r.status}</Badge> },
-            { header: "Plan", cell: (r) => <span className="text-xs text-muted">canary {r.canary}, batches of {r.batch_size}, pause after {r.max_failures} failure(s){r.automatic ? " · automatic" : ""}</span> },
-            { header: "Failures", cell: (r) => r.failures },
-            { header: "", cell: (r) => <span className="text-xs text-muted">{r.paused_reason || formatDateTime(r.created_at)}</span> },
-          ]}
-        />
-        {openRollout && <RolloutDetail id={openRollout} />}
-      </Card>
-    </div>
-  );
-}
-
-function PolicyForm({ policy, disabled, onSave, busy }: {
-  policy: NonNullable<ReturnType<typeof useUpdatePolicy>["data"]>;
-  disabled: boolean;
-  onSave: (p: typeof policy) => void;
-  busy: boolean;
-}) {
-  const [p, setP] = useState(policy);
-  const num = (k: "canary" | "batch_size" | "max_failures" | "health_window_s") => (e: React.ChangeEvent<HTMLInputElement>) => setP({ ...p, [k]: Number(e.target.value) });
-  return (
-    <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); onSave(p); }}>
-      <Field label="Policy" hint={p.policy === "automatic" ? "New releases are rolled out by themselves: canary first, then batches." : "Releases are rolled out only when someone starts a rollout."}>
-        <Select value={p.policy} disabled={disabled} onChange={(e) => setP({ ...p, policy: e.target.value as "manual" | "automatic" })}>
-          <option value="manual">Manual</option>
-          <option value="automatic">Automatic</option>
-        </Select>
-      </Field>
-      {p.policy === "automatic" && (
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Channel"><Input value={p.channel} disabled={disabled} onChange={(e) => setP({ ...p, channel: e.target.value })} /></Field>
-          <Field label="Or exactly this version" hint="Empty: newest in the channel."><Input value={p.version} disabled={disabled} onChange={(e) => setP({ ...p, version: e.target.value })} /></Field>
-        </div>
-      )}
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Canary hosts"><Input type="number" min={1} value={p.canary} disabled={disabled} onChange={num("canary")} /></Field>
-        <Field label="Then batches of"><Input type="number" min={1} value={p.batch_size} disabled={disabled} onChange={num("batch_size")} /></Field>
-        <Field label="Pause after failures"><Input type="number" min={1} value={p.max_failures} disabled={disabled} onChange={num("max_failures")} /></Field>
-        <Field label="Health window (s)" hint="A new version must connect within this time, or it is rolled back."><Input type="number" min={30} value={p.health_window_s} disabled={disabled} onChange={num("health_window_s")} /></Field>
-      </div>
-      {!disabled && <Button type="submit" variant="primary" disabled={busy}>Save policy</Button>}
-    </form>
-  );
-}
-
-const hostStateTone = (s: string) => (s === "healthy" ? "ok" : s === "rolled_back" || s === "failed" ? "danger" : s === "skipped" || s === "pending" ? "neutral" : "warn");
-
-function RolloutDetail({ id }: { id: string }) {
-  const r = useRollout(id);
-  const qc = useQueryClient();
-  const { can } = useAuth();
-  const act = useMutation({
-    mutationFn: (a: "pause" | "resume" | "cancel") => unwrap(api.POST(`/agents/rollouts/{id}/${a}`, { params: { path: { id } } })),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ak.rollout(id) }); void qc.invalidateQueries({ queryKey: ak.rollouts }); },
-  });
-  const ro = r.data;
-  if (!ro) return null;
-  return (
-    <div className="mt-4 rounded-ui border border-line p-3">
-      <div className="mb-2 flex items-center gap-2">
-        <span className="font-medium">Rollout of {ro.version}</span>
-        <Badge tone={ro.status === "paused" ? "danger" : ro.status === "completed" ? "ok" : "accent"}>{ro.status}</Badge>
-        {ro.paused_reason && <span className="text-sm text-danger">{ro.paused_reason}</span>}
-        <span className="ml-auto flex gap-2">
-          {can("agents.manage") && ro.status === "running" && <Button size="sm" onClick={() => act.mutate("pause")}>Pause</Button>}
-          {can("agents.manage") && ro.status === "paused" && <Button size="sm" onClick={() => act.mutate("resume")}>Resume</Button>}
-          {can("agents.manage") && (ro.status === "running" || ro.status === "paused") && <Button size="sm" variant="danger" onClick={() => act.mutate("cancel")}>Cancel</Button>}
-        </span>
-      </div>
-      {act.error && <Alert>{errorMessage(act.error)}</Alert>}
-      <Table
-        rows={ro.hosts ?? []}
-        rowKey={(h) => h.host_id}
-        columns={[
-          { header: "Host", cell: (h) => <Link className="text-accent" to={`/hosts/${h.host_id}`}>{h.host_name}</Link> },
-          { header: "Wave", cell: (h) => (h.wave === 0 ? "canary" : `batch ${h.wave}`) },
-          { header: "State", cell: (h) => <><Badge tone={hostStateTone(h.state)}>{h.state.replace("_", " ")}</Badge>{h.offline && h.state === "pending" && <span className="ml-1 text-xs text-muted">offline: catches up when it reconnects</span>}</> },
-          { header: "From", cell: (h) => h.from_version },
-          { header: "Detail", cell: (h) => <span className="text-xs text-muted">{h.detail}</span> },
-        ]}
-      />
-    </div>
   );
 }
 

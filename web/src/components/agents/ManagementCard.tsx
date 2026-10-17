@@ -22,7 +22,7 @@ import { ak, useHostAgent, usePKI, type AgentCaps } from "./queries";
 
 const updateLabels: Record<string, string> = {
   offered: "update offered", staged: "update staged", updating: "updating", healthy: "updated (healthy)",
-  rolled_back: "rolled back", failed: "update failed",
+  rolled_back: "rolled back", failed: "update failed", refused: "update refused by the host",
 };
 
 /** The host's management state and the changes to it, shared by its
@@ -147,7 +147,7 @@ export function ShepherdCard({ host }: { host: Host }) {
   const err = adopt.error;
 
   return (
-    <Card title="Shepherd (DROOL agent)" actions={<Link className="text-sm text-accent" to="/agents?tab=updates">Releases and rollouts <span aria-hidden="true">→</span></Link>}>
+    <Card title="Shepherd (DROOL agent)" actions={<Link className="text-sm text-accent" to="/agents?tab=updates">Shepherd updates <span aria-hidden="true">→</span></Link>}>
       <div data-testid="host-shepherd" className="space-y-3">
         {err && <Alert>{errorMessage(err)}</Alert>}
         {!live ? (
@@ -162,13 +162,13 @@ export function ShepherdCard({ host }: { host: Host }) {
               <dt className="text-muted">Version</dt>
               <dd>{id.agent_version || "—"} <span title={id.compatibility.summary}><CompatibilityBadge c={id.compatibility} /></span>
                 {a?.update_available && <span className="ml-2"><Badge tone="accent">update available: {a.update_available}</Badge></span>}
-                {id.update_state && <span className="ml-2"><Badge tone={id.update_state === "healthy" ? "ok" : id.update_state === "rolled_back" || id.update_state === "failed" ? "danger" : "warn"}>{updateLabels[id.update_state] ?? id.update_state}</Badge></span>}
+                {id.update_state && <span className="ml-2"><Badge tone={id.update_state === "healthy" ? "ok" : id.update_state === "rolled_back" || id.update_state === "failed" ? "danger" : id.update_state === "refused" ? "neutral" : "warn"}>{updateLabels[id.update_state] ?? id.update_state}</Badge></span>}
               </dd>
               <dt className="text-muted">State</dt><dd>{stateLabels[m.agent_state] ?? m.agent_state}{id.connected ? "" : <span className="text-muted"> · last seen {formatAgo(id.last_seen_at)}</span>}</dd>
               <dt className="text-muted">Certificate</dt><dd>valid until {formatDateTime(id.cert_not_after)}</dd>
             </dl>
             {(!id.compatible || !id.epoch_matches || (a?.sessions ?? []).length > 1 || (a?.state_versions ?? []).some((sv) => sv.status !== "ok")
-              || id.update_state === "failed" || id.update_state === "rolled_back" || id.compatibility.status === "update_required" || id.compatibility.status === "reduced") && (
+              || id.update_state === "failed" || id.update_state === "rolled_back" || id.update_state === "refused" || id.compatibility.status === "update_required" || id.compatibility.status === "reduced") && (
               <div className="space-y-2">
                 {!id.compatible && <Alert>Shepherd version {id.agent_version} isn&apos;t compatible with this controller{id.compat_reason ? `: ${id.compat_reason}` : ""}.</Alert>}
                 {id.compatible && id.compatibility.status === "update_required" && <Alert>Update this Shepherd: {id.compatibility.summary}. DROOL doesn&apos;t send it operations it can&apos;t do.</Alert>}
@@ -177,6 +177,7 @@ export function ShepherdCard({ host }: { host: Host }) {
                 {(a?.sessions ?? []).length > 1 && <Alert>{a!.sessions.length} sessions are connected with this identity.</Alert>}
                 {(a?.state_versions ?? []).some((sv) => sv.status !== "ok") && <Alert tone="warn">Managed state on the host is ahead of, or foreign to, this controller: reconcile it under Shepherd details.</Alert>}
                 {(id.update_state === "failed" || id.update_state === "rolled_back") && <Alert tone="warn">The last Shepherd update {id.update_state === "failed" ? "failed" : "was rolled back"}{id.update_detail ? `: ${id.update_detail}` : ""}.</Alert>}
+                {id.update_state === "refused" && <Alert tone="warn">The host refused the update to {id.update_version}, and nothing changed{id.update_detail ? `: ${id.update_detail}` : ""}.</Alert>}
               </div>
             )}
             <details className="border-t border-line pt-3">
@@ -328,9 +329,17 @@ function InstallDialog({ host, onClose }: { host: Host; onClose: () => void }) {
           <div className="mb-2 text-sm font-medium">What may DROOL do through the agent? <span className="font-normal text-muted">(an existing agent.yaml on the host is kept)</span></div>
           <PresetPicker value={preset} onChange={(p) => setPreset(p as Preset)} />
         </div>
-        <Field label="Also trust a release-signing key (optional)" hint="Only for agent builds you sign yourself (drool release keygen). Anyone with that key's private half can install code that runs as root on this host.">
-          <Input className="font-mono text-xs" value={key} onChange={(e) => setKey(e.target.value)} placeholder="drool-release-ed25519 AAAA… my builds" />
-        </Field>
+        <p className="text-sm text-muted">The Shepherd takes official DROOL updates by itself: nothing else is needed to keep it up to date.</p>
+        {/* Only for Shepherd builds signed with your own key (custom
+            releases): not part of an ordinary installation. */}
+        <details className="text-sm" open={key !== ""}>
+          <summary className="cursor-pointer text-muted">Advanced: also trust your own release-signing key</summary>
+          <div className="mt-2">
+            <Field label="Your release-signing public key" hint="Only for Shepherd builds you sign yourself (drool release keygen). Anyone with that key's private half can install code that runs as root on this host.">
+              <Input className="font-mono text-xs" value={key} onChange={(e) => setKey(e.target.value)} placeholder="drool-release-ed25519 AAAA… my builds" />
+            </Field>
+          </div>
+        </details>
         {install.error && !(refused && blocked) && <Alert>{errorMessage(install.error)}{refused && " It is free again now: try again."}</Alert>}
         {install.data && (
           <>

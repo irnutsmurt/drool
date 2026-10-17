@@ -94,7 +94,7 @@ const pages = async () => {
   const hosts = (await api(page, "GET", "/hosts")).body.items;
   const host = hosts.find((h) => h.name === "web-1") ?? hosts[0];
   return [
-    "/", "/hosts", `/hosts/${host.id}`, "/hosts/new", "/groups", "/jobs", "/jobs/new", "/agents", "/credentials", "/audit",
+    "/", "/hosts", `/hosts/${host.id}`, "/hosts/new", "/groups", "/jobs", "/jobs/new", "/agents", "/agents?tab=updates&advanced=1", "/credentials", "/audit",
     // M15: a host's firewall and network pages, runs for one host.
     `/hosts/${host.id}/firewall`, `/hosts/${host.id}/network`, `/jobs?host=${host.id}`,
     "/settings/account", "/settings/system", "/settings/users", "/settings/tokens",

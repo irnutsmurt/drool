@@ -17,6 +17,7 @@ export const ak = {
   rollouts: ["agents", "rollouts"] as const,
   rollout: (id: string) => ["agents", "rollouts", id] as const,
   policy: ["agents", "policy"] as const,
+  updateStatus: ["agents", "update-status"] as const,
   endpoints: ["agents", "endpoints"] as const,
 };
 
@@ -44,5 +45,12 @@ export const useRollout = (id: string) =>
     refetchInterval: 3000,
   });
 export const useUpdatePolicy = () => useQuery({ queryKey: ak.policy, queryFn: () => unwrap(api.GET("/agents/updates/policy")) });
+/** The Shepherd update overview; every 2 s while a check runs. */
+export const useUpdateStatus = () =>
+  useQuery({
+    queryKey: ak.updateStatus,
+    queryFn: () => unwrap(api.GET("/agents/updates/status")),
+    refetchInterval: (q) => (q.state.data?.check.checking ? 2000 : 5000),
+  });
 export const useEndpointMigrations = () =>
   useQuery({ queryKey: ak.endpoints, queryFn: () => unwrap(api.GET("/agents/endpoints")), refetchInterval: 5000 });
