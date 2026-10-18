@@ -208,6 +208,43 @@ No release is published automatically (only `main`'s development image, above). 
    — and add the registry name to the README and the release notes.
 3. Publish the release notes ([`packaging/release/RELEASE_NOTES.template.md`](packaging/release/RELEASE_NOTES.template.md)).
 
+## Before the first release candidate (once, the maintainer)
+
+Four things only the project's maintainer can do; a candidate or stable build refuses until they're in its commit.
+Nothing here generates or stores a key anywhere but the maintainer's offline machine.
+
+1. **Create both release keys, offline** — on a machine that isn't the controller, isn't CI and holds no checkout you
+   push from, with a `drool` binary built from this repository (`make go`, or `go build ./cmd/drool`):
+
+   ```sh
+   ssh-keygen -t ed25519 -C release@drool -f drool-release-key       # the DROOL release key: give it a passphrase
+   drool release keygen -o shepherd-release -name "DROOL project"     # the DROOL Shepherd release key
+   ```
+
+   Keep `drool-release-key` and `shepherd-release.key` offline, encrypted, with a backup in a second place. Losing the
+   Shepherd key means Shepherds need a reinstall to trust a new one; leaking it means rotating it (see *Replacing a
+   key* above).
+2. **Commit the public halves**, in the repository:
+
+   ```sh
+   printf 'release@drool namespaces="drool-release" %s\n' "$(cut -d' ' -f1,2 drool-release-key.pub)" >> packaging/keys/allowed_signers
+   cat shepherd-release.pub >> internal/release/official_keys.txt
+   go test ./internal/release/ && go build -o /tmp/drool ./cmd/drool && /tmp/drool version --json | grep -A2 official_release_keys
+   ```
+
+   The last line must show the new key's id (the release's `release.json` will list it too).
+3. **Name the packages' maintainer**: replace `DROOL maintainers <maintainers@drool.invalid>` in
+   `packaging/release/build.sh` (`MAINTAINER=`) with the real contact. The release workflow doesn't set
+   `DROOL_MAINTAINER`, so the default is what CI builds with.
+4. **Confirm the license id**: `packaging/release/license` says `GPL-3.0-only` (version 3 only). For "version 3 or any
+   later version", change it to `GPL-3.0-or-later`; `LICENSE` itself stays the GPLv3 text.
+
+Then commit ("Release: the project's keys and maintainer"), push, wait for CI to pass, and tag the candidate
+(`git tag -a v1.0.0-rc.N -m …`, `git push origin v1.0.0-rc.N`). The release workflow builds and qualifies the
+artifacts; run the VM layers on them, sign with `sign.sh` and both keys, publish the candidate as a prerelease with
+every file (the two `.release.json` included), and check that a controller of the candidate finds and verifies its
+official Shepherd release (*Shepherds → Updates* says *signed by the DROOL project and verified*).
+
 ## Checklist
 
 - [ ] `LICENSE` present and `packaging/release/license` holds its SPDX id (a candidate or stable build refuses otherwise).

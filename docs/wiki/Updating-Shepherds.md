@@ -25,7 +25,7 @@ At the top is how updates stand, in a word and a sentence:
 |---|---|
 | **Up to date** | Every Shepherd runs DROOL's version (or the newest one in your channel) |
 | **Updating** | An update is running; the card **Updating now** shows how far. Offline Shepherds update when they connect again |
-| **Update available** | Shepherds can be updated, and automatic updates are off: **Update N Shepherds to …** starts it |
+| **Update available** | Shepherds can be updated, and automatic updates are off (or someone cancelled the update to that version): **Update N Shepherds to …** starts it |
 | **Needs attention** | An update was paused, failed or rolled back, or a release failed its check. See [below](#when-something-needs-attention) |
 | **Can't update** | Some Shepherds run an older version, and nothing can update them now; the reason is next to each one |
 | **No Shepherds yet** | None installed. Shepherds you install get DROOL's own version |
@@ -40,7 +40,8 @@ Below it:
   checks shortly after it starts and then every six hours (hourly while its own update isn't published
   yet).
 - **Shepherds**: how many are up to date, updating, waiting or can't update.
-- **DROOL x.y.z is available**, when a newer DROOL is out: update DROOL, and its Shepherds follow.
+- **DROOL x.y.z is available**, when a newer stable DROOL is out: update DROOL, and its Shepherds
+  follow (with automatic updates on; otherwise update them here afterwards).
 - **Recent updates**: each update, how many Shepherds it updated, and whether DROOL started it
   automatically or a person did. **Show hosts** lists each host: first (the canary), batch, updated,
   skipped and why.
@@ -70,7 +71,9 @@ Everyone who can see Shepherds can see this page; changing it takes the **agents
   switches back by itself, without relying on the new version. A power cut leaves either version
   complete.
 - **Offline hosts update when they come back.** A host that's off during an update is updated the
-  next time its Shepherd connects.
+  next time its Shepherd connects. An update cut off by a lost connection (a restart of DROOL, a
+  network hiccup) before the host switched versions changed nothing there: it's offered again when the
+  Shepherd reconnects, and doesn't count as a failure.
 - **Hosts that can't take it are skipped, not failed**: one that refuses updates or doesn't trust the
   key, one that needs another version first. That never pauses the update for the others, and the
   page says why for each.
@@ -80,7 +83,7 @@ Everyone who can see Shepherds can see this page; changing it takes the **agents
 
 | You see | What happened | What to do |
 |---|---|---|
-| **The update to x.y.z is paused** | A Shepherd failed or rolled back, so the others weren't updated | Look at the failure below it. When it's fixed, **Resume**. **Cancel…** stops the update: Shepherds that already updated keep it, the others stay on their version, and DROOL won't start that version again by itself |
+| **The update to x.y.z is paused** | A Shepherd failed or rolled back, so the others weren't updated | Look at the failure below it. When it's fixed, **Resume**: the update continues with the hosts not updated yet, one first again (the host that failed isn't offered it again; **Try again…** does that). **Cancel…** stops the update: Shepherds that already updated keep it, the others stay on their version, and DROOL won't start that version again by itself — the page then says so, and **Update N Shepherds to …** starts it again by hand |
 | **The update of host to x.y.z was rolled back** | The new version didn't come back healthy, so the Shepherd went back to its previous version | Check the host (disk full? the network?) and the detail shown. **Try again…** when the cause is fixed. A Shepherd never tries a version that failed on it again unless you ask |
 | **…'s Shepherd release failed verification** | DROOL found a description of its Shepherd that isn't signed correctly, or doesn't match the program it shipped with | Nothing was installed. Make sure you installed DROOL from its official release. If it persists, report it |
 | **this host trusts only its own release keys** | The host's `/etc/drool/agent.yaml` says `updates: {official: deny}` | Its administrator wants their own builds only: use a [custom release](#custom-releases), or remove that line |

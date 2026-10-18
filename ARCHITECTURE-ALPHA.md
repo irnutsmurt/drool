@@ -4029,7 +4029,7 @@ unknowns honest, are settings where people look for them.
 | Runs, files, schedules | The run review summarises the rollout; its numbers are under Advanced options; a choice is kept (§41) | — |
 | Desired State | The restore plan reviews before anything changes; automatic restore is under Advanced (§41) | — |
 | Shepherds list | Shows the protocol number and certificate dates beside each version: detail most people don't need | After 1.0 |
-| Keyboard focus, every page | About 80 buttons and fields are disabled while their own request runs (`disabled={….isPending}`). Chromium then moves the focus to the top of the document when the request takes longer than a frame. The browser test found it on the new Updates page | Fixed there: the two settings and **Check now** stay enabled and show the choice being saved (DESIGN-STANDARD §6). The other places after 1.0, for example with `watchFocusLoss` also returning the focus from a control disabled under it |
+| Keyboard focus, every page | Buttons and fields disabled while their own request runs lose the focus to the document (151 sites; measured and fixed in the readiness pass, §43.4: the focus ring and a screen reader's place are lost; the next Tab still continues from the control) | Fixed there first (the two settings and **Check now** stay enabled), then everywhere by the focus guard (§43.4) |
 
 ### 42.9 Tests
 
@@ -4094,3 +4094,114 @@ unknowns honest, are settings where people look for them.
 - **GPL-3.0-only or -or-later**: `LICENSE` is the FSF's GPLv3 text; "only" was taken as the literal reading.
 - Pre-1.0 Shepherds (development builds, the dogfooding fleet) can't take official updates: one custom release or a
   reinstall each, once.
+
+---
+
+## 43. 1.0 readiness pass (before v1.0.0-rc.3)
+
+A feature freeze: finish validating what exists, fix genuine blockers, and set out the path to 1.0. No new
+capabilities. Four read-only investigations ran in parallel against the code and tests (Shepherd updates; every
+control disabled while its request runs; observed traffic vs. enforced vs. simulated firewall policy; UI text,
+terminology and honest states), each finding was checked in the code before anything changed, and the UI was walked
+and audited in the docs lab (`scratchpad/docs-lab`, data without VMs).
+
+### 43.1 Shepherd updates, verified
+
+The independent review confirmed defaults, preserved preferences, channels, official discovery and verification, the
+Shepherd-side checks and the build guards (requirements 1–5, 7), and found the recovery paths broken (requirement 6)
+and two false claims on the page (8). Each defect was reproduced, fixed and given a test that fails without the fix
+(`48f989c`):
+
+| Defect | Fix |
+|---|---|
+| Resume couldn't resume a rollout the failure limit paused (every pass recounted the failed hosts) | Resuming accepts the failures so far: `agent_rollouts.resumed_at` (migration 0027), failures counted after it; a new canary when the canary failed |
+| An attempt cut off with the Shepherd's session before its helper started was never offered again, and failed as "no report" after the health window | A hello that says nothing about that version puts it back to pending (offered again); an offline host's cut-off attempt waits instead of failing; a result for that version is still taken, so a rolled-back canary always pauses |
+| An earlier result answered for a Try again of the same version | The Shepherd sets its last result aside when it accepts a Try again |
+| A busy refusal (a host finishing another update, as when a newer target supersedes) counted as tried: never offered again | Busy refusals don't count; the automatic policy waits for a host with an update under way |
+| After a person cancelled the target's update, the status said Shepherds "will update automatically" | `stopped` in the status: "Automatic updates won't start it again (cancelled by …)", and **Update N Shepherds to …** to start it by hand |
+| The newer-DROOL banner promised automatic Shepherd updates under a manual policy or without working official releases | Only when they will happen |
+| An official release newer than DROOL, uploaded by hand, became the automatic target | Capped at DROOL's own version (custom releases are the operator's to roll out) |
+| The newer-release notice could announce a candidate a mirror answered for "latest" | Stable releases only |
+| A person's start, pause, resume and cancel didn't take the rollout lock; correctness read the newest 50 rollouts only | Under `rollMu`; decisions about a version read all its rollouts |
+| "text file busy" when a staged binary's preflight ran while the Shepherd forked another process (the flaky automatic test) | Retried; the test passes 10/10 |
+
+Also on the page: why official releases can't be used is said once, in its note (it was repeated per host and under
+Last checked). Rollout tests: Resume, Interrupted (cut off on reconnect, a Try again with the earlier result set aside,
+an offline host past the window), Stopped (a person's cancel, a busy refusal), the target cap; the update tests pass
+3× under `-race`.
+
+Not changed (design notes): supersede still cancels an older automatic rollout that a person paused (the pause holds
+that version, not automatic updates); a hello result for the offered version is taken as the attempt's own (the safe
+direction: a failure is never dropped), so a Try again whose offer never reached the Shepherd can still be answered by
+the earlier failure, after which **Try again** works.
+
+### 43.2 Firewall: observed, enforced, simulated
+
+An observed connection's policy status is the saved policy's verdict on connections like it; nothing on the page said
+whether that policy was in force on the host. On a host DROOL doesn't filter, observed traffic read as permitted
+("✓ Covered by policy", "Allowed by policy …") or blocked ("✕ Denied") by DROOL, and enforcement was taken from the mode
+— wrong both ways: a host taken out of Enforce keeps its last committed revision (still filtering), and a host whose
+rules were removed outside DROOL (drift *missing*) filters nothing. Fixed (`9922f0b`):
+
+- `fwsvc` `enforcement()`: the committed state decides (enforced unless rules are missing), then the mode; used by the
+  classification and by *Can A reach B?* (a host out of Enforce with a committed revision is answered with that
+  revision, and says so).
+- Rows: *Denied* only where the policy is in force, otherwise *Would be denied*; a neutral *◌ not enforced* badge where
+  it isn't; help texts say "connections like this one", and that an observed denied connection got through when seen.
+  The inspector says *Would be allowed/denied by policy …* and the host firewall's state in words.
+- A host's Network page starts its connections with one line: whether DROOL's policy is in force there. The host
+  overview's Network tile says *would be denied* on such hosts; its Firewall tile says when rules are missing.
+- The host firewall's Effective policy is worded from what the host runs (a saved policy not applied yet names the
+  revision still running). The designer's observed lines say they are measured against the saved policy.
+- A host's listening sockets said *Reachable from: all addresses* for a bind address: *Accepts on* (`173fb00`).
+
+No rule is generated automatically. The proposed M19 baseline from observed traffic is §39.1.
+
+### 43.3 Existing-UI audit
+
+The text and state audit found 18 defects and 22 minor issues; the defects were verified and fixed (`173fb00`):
+honest states (DESIGN-STANDARD §8, a release blocker by the standard: "Nothing needs attention" ✓ after failed checks,
+lists saying "none" after a load error or while loading, "every managed host is compliant", green "No drift" with
+hosts not checked, "In sync" with changes not applied, "0 hosts" while working out targets), the Enrollment tab shown
+to roles that can't enroll, a success shown as an error (Files), Re-run without a review, a multi-host firewall apply
+without a per-host review, wrong page references and links, deletions and cancels without confirmation, raw
+connection errors, disabled buttons without a reason. The accessibility and layout audit (69 pages × 1440, 1280, 1024
+and 390 px × both themes, axe-core WCAG 2.2 A/AA, own contrast check, touch targets, focus visibility, keyboard paths)
+found two more: the Shepherd install dialog opened with the focus on the document (its first field moved into a
+closed `<details>` in §42.8) and an in-text link without an underline; both fixed (`173fb00`, `90cc7f1`).
+
+### 43.4 Keyboard focus
+
+Measured (Chromium 154, Firefox 157): a control that becomes disabled while it has the focus loses it to the document,
+and doesn't get it back when enabled again; the next Tab continues from the control, but the focus ring and a screen
+reader's place are lost. 151 sites disable a control while its own request runs: 55 left the focus stranded after
+success, 93 after a failure, 3 couldn't hold the focus. Fixed in one place (`watchFocusLoss`, `ui/modal.ts`, installed
+in `main.tsx`): a control disabled under the focus is parked and gets it back when enabled again, unless the focus moved
+on (a click, a Tab); after a dialog closes the focus waits on the main content; a dialog opened by a request's success
+returns the focus to the control. Controls cleared by their own success (adding a key, a service, an address, a
+manifest) focus their field. A browser test holds a request back and checks the focus returns.
+
+Left for after 1.0 (the focus still continues from there with Tab): four Saves that stay disabled when nothing is left
+to save (Designer, Updates rollout settings, notification settings, file editor), the end-of-list paging buttons,
+Undo and step reordering at the ends, the rotation path with an offline root key, the Monitor box for an operator
+whose Pack monitors the unit.
+
+### 43.5 Release prerequisites
+
+| Requirement | State |
+|---|---|
+| License | `LICENSE` (FSF GPLv3 text, sha256 `3972dc97…`) and `GPL-3.0-only` in the packages (RPM License header), the image's label and index annotation, DROOL's own SBOM packages and `release.json`, checked on the `9e6cd55` build |
+| Shepherd release key | None yet (maintainer, RELEASING "Before the first release candidate"); every build says official releases can't be verified |
+| OpenSSH release key | None yet (maintainer, same) |
+| Maintainer contact | Placeholder (maintainer, same) |
+| Builds without them | A candidate now refuses like a stable build (`34f2b15`): the stable tag goes on the final candidate's commit; shown on tags `v1.0.0-rc.3` and `v1.0.0` in a throwaway clone. `sign.sh` refuses a Shepherd key the release doesn't have built in |
+| CI | `origin/main` (`dec927a`) fails its release job (LICENSE without the SPDX id) until these commits are pushed; the runners are pinned to `ubuntu-24.04` |
+
+### 43.6 After 1.0
+
+Recorded, not started: the terminology sweep (UI text still says *agent* where the term is Shepherd in about 25 places,
+*job* where it is Run in about 30, lowercase *pack*); button labels without an object; navigation search entries for a
+few settings (firewall settings, the SSH CA, audit integrity); expert tuning on the monitoring settings page under an
+Advanced disclosure; the designer's Pack editing (a second editor of Packs); headers with more than two actions;
+hand-rolled tab rows; the add-host and Shepherds-list items of §42.8; the focus residuals of §43.4; M19 (§39.1).
+

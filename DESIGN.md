@@ -1,6 +1,6 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.17**
+**Design Document v0.3.18**
 Status: Draft · 2026-10-17 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
@@ -13,6 +13,19 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.17 → v0.3.18 (1.0 readiness pass, before the release candidate)
+
+Validation of what exists, under a feature freeze: no new capability. As built (`ARCHITECTURE-ALPHA.md` §43):
+
+| # | As built | Section |
+|---|---|---|
+| 1 | **Shepherd update recovery works:** Resume continues a paused update (the failures so far are accepted, a new canary goes first); an update cut off by a lost connection is offered again when the Shepherd reconnects instead of failing; a busy host is offered again; a person's cancel stops automatic updates for that version, and the page says so | §28 |
+| 2 | **Observed is not allowed:** an observed connection's policy status says *would* and *not enforced* where DROOL's policy isn't in force on the host; whether it is comes from what the host runs, not its mode | §19.4 |
+| 3 | **Honest states everywhere:** no "nothing needs attention", "none", "in sync" or "compliant" after a failed load or for what wasn't checked | §2.7 |
+| 4 | **Focus comes back** to a control disabled while its request runs | §2.7 |
+| 5 | **A release candidate needs what a stable release needs** (the project's keys, a real maintainer, the license) | §33 |
+| 6 | **Proposed after 1.0 (M19):** a firewall baseline built from observed traffic, reviewed and approved in the existing Designer; nothing generated automatically in 1.0 | §19.4 |
 
 ### v0.3.16 → v0.3.17 (Shepherd updates that work by default, before the release candidate)
 
@@ -1371,6 +1384,10 @@ Observed flows answer "what is this host talking to, over what port, using what 
 - **Privacy:** no packet contents, no DNS payloads, no online lookups, no observation records in application logs; reading needs `network.read` (not viewers); settings changes are audited.
 - **Topology:** the Designer overlays observed traffic on the configured policy; external addresses are grouped by network owner and expand to addresses; a list gives the same information without the canvas.
 - **Drafts, not rules:** an observed connection can start a draft rule in the Designer; it is never applied by itself.
+- **Observed is not allowed:** the policy relationship of an observed connection is the policy's verdict; where DROOL's
+  policy isn't in force on the host (Off, Monitor, Guided, not applied yet, rules missing) it is shown as what the
+  policy *would* do, never as having allowed or blocked the connection. A baseline built from observed traffic, for a
+  person to review and approve, is proposed for after 1.0 (`ARCHITECTURE-ALPHA.md` §39.1, M19).
 
 ---
 
