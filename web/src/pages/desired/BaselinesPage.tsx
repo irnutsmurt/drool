@@ -13,6 +13,7 @@ import { plainLink } from "@/components/ui/links";
 import { useBaselines, type Baseline } from "@/components/desired/queries";
 import { errorMessage } from "@/lib/format";
 import { DesiredTabs } from "./DesiredTabs";
+import { emptyText } from "@/components/ui/States";
 
 export function appliesText(b: Pick<Baseline, "assignments">): string {
   if (b.assignments.length === 0) return "Not assigned";
@@ -49,7 +50,7 @@ export function BaselinesPage() {
           <Table<Baseline>
             rows={items}
             rowKey={(b) => b.id}
-            empty={list.isPending ? "Loading…" : "No baselines."}
+            empty={emptyText("baselines", list, "No baselines.", true)}
             columns={[
               {
                 header: "Baseline",

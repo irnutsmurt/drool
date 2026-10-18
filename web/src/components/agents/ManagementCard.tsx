@@ -529,7 +529,7 @@ function RevokeDialog({ identityId, hostName, onClose }: { identityId: string; h
       <div className="space-y-3 text-sm">
         <p>The agent is disconnected now and can never connect with this identity again; its certificates stop working. DROOL won't manage
           the host until the agent is re-enrolled or you choose SSH management. Use this for a lost, stolen or compromised host.</p>
-        <Field label="Reason (recorded in the audit log)"><Input value={reason} onChange={(e) => setReason(e.target.value)} autoFocus /></Field>
+        <Field label="Reason (recorded in the audit log)" hint="Required."><Input value={reason} onChange={(e) => setReason(e.target.value)} autoFocus /></Field>
         {lastPath ? (
           <Alert tone="warn">
             <p className="mb-2">{errorMessage(revoke.error)}</p>
@@ -538,7 +538,8 @@ function RevokeDialog({ identityId, hostName, onClose }: { identityId: string; h
         ) : revoke.error && <Alert>{errorMessage(revoke.error)}</Alert>}
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="danger" disabled={!reason.trim() || revoke.isPending || (lastPath && !understood)} onClick={() => revoke.mutate()}>Revoke</Button>
+          <Button variant="danger" disabled={!reason.trim() || revoke.isPending || (lastPath && !understood)} onClick={() => revoke.mutate()}
+            title={!reason.trim() ? "Give a reason first" : lastPath && !understood ? "Confirm above that you understand" : undefined}>Revoke identity</Button>
         </div>
       </div>
     </Dialog>

@@ -11,6 +11,7 @@ import { useDesiredHistory, type DesiredHistoryEntry } from "@/components/desire
 import { errorMessage } from "@/lib/format";
 import { DesiredTabs } from "./DesiredTabs";
 import { historyTitle } from "./HostDesiredPage";
+import { emptyText } from "@/components/ui/States";
 
 const kinds = [
   ["", "Everything"],
@@ -52,7 +53,7 @@ export function DesiredHistoryPage() {
         <Table<DesiredHistoryEntry>
           rows={hist.data?.items ?? []}
           rowKey={(e) => String(e.id)}
-          empty={hist.isPending ? "Loading…" : "Nothing recorded yet."}
+          empty={emptyText("the history", hist, "Nothing recorded yet.", true)}
           columns={[
             { header: "When", cell: (e) => <span className="whitespace-nowrap text-muted">{fmtTime(e.ts)}</span> },
             { header: "Host", cell: (e) => <Link className={plainLink} to={`/hosts/${e.host_id}/desired`}>{e.host_name}</Link> },

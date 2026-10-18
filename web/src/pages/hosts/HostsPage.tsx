@@ -16,6 +16,7 @@ import { ManagementBadge } from "@/components/agents/ManagementBadge";
 import { useFleet } from "@/components/monitoring/queries";
 import { HealthBadge } from "@/components/monitoring/Status";
 import { errorMessage } from "@/lib/format";
+import { emptyText } from "@/components/ui/States";
 
 export function HostsPage() {
   const { can } = useAuth();
@@ -101,7 +102,7 @@ export function HostsPage() {
         <Table<Host>
           rows={rows}
           rowKey={(h) => h.id}
-          empty={hosts.isPending ? "Loading…" : "No hosts match."}
+          empty={emptyText("hosts", hosts, "No hosts match.", true)}
           columns={[
             ...(can("jobs.execute") ? [{
               header: "",

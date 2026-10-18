@@ -92,7 +92,7 @@ export function useSecurityItems(): SecurityItem[] {
       id: "plaintext",
       tone: "danger",
       title: "Plaintext HTTP on a network address",
-      body: "This controller serves plaintext HTTP on a network address. Credentials and sessions are exposed to anyone on the path.",
+      body: "This controller serves plaintext HTTP on a network address. Credentials and sessions are exposed to anyone on the path. Use the built-in TLS (the default) or put HTTPS in front of DROOL.",
     });
   }
   if (pki.data?.root_key_online) {

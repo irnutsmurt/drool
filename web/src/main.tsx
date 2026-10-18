@@ -5,8 +5,13 @@ import { RouterProvider } from "react-router";
 import { AuthProvider } from "@/auth/AuthContext";
 import { ReauthPrompt } from "@/auth/ReauthPrompt";
 import { ApiError } from "@/api/client";
+import { watchFocusLoss } from "@/components/ui/modal";
 import { router } from "@/router";
 import "@/styles/index.css";
+
+// Focus never falls back to the document when what had it disappears or is
+// disabled under it — on every page, sign-in and setup included.
+watchFocusLoss();
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -14,6 +14,7 @@ import { fmtTime } from "@/components/monitoring/format";
 import { fidelityText } from "@/components/monitoring/HostMonitoringSummary";
 import { InstallHelperButton } from "@/components/monitoring/HelperInstall";
 import { useDiagnostics, useSaveHostSettings, type MonHostOverview, type MonLimits } from "@/components/monitoring/queries";
+import { hostPath } from "@/components/hosts/workspace/sections";
 
 
 function Budget({ id, o }: { id: string; o: MonHostOverview }) {
@@ -105,7 +106,7 @@ export function AgentTab({ id, o }: { id: string; o: MonHostOverview }) {
         )}
         {o.source === "ssh" && can("agents.enroll") && (
           <p className="mt-2 text-sm text-muted">
-            Install the DROOL agent for continuous monitoring, kernel storage evidence and the flash probe: <Link className="text-accent" to={`/hosts/${id}`}>Host page → Management</Link>.
+            Install a Shepherd (DROOL agent) for continuous monitoring, kernel storage evidence and the flash probe: <Link className="text-accent underline" to={hostPath(id, "management")}>this host&apos;s Management page</Link>.
           </p>
         )}
         {(st?.collectors ?? []).length > 0 && (

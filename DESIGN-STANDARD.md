@@ -2,7 +2,7 @@
 
 The conventions of DROOL's web UI as built and verified for 1.0. They are rules for every change under `web/`. The
 reasons behind them are in [DESIGN.md](DESIGN.md) §2.5 and §2.7, and the as-built record is in
-[ARCHITECTURE-ALPHA.md](ARCHITECTURE-ALPHA.md) §41 and §42.
+[ARCHITECTURE-ALPHA.md](ARCHITECTURE-ALPHA.md) §41, §42 and §43.
 
 This standard describes what has been validated; it doesn't freeze every layout. When a convention has to change,
 change it here in the same change as the code, and say why. Don't let the code drift away from it quietly.
@@ -105,7 +105,7 @@ another path is shown.
 | Less frequent actions | `MenuButton` (Actions ▾, the ⋯ row menu) | Danger items go last, separated from the rest. |
 | A list of records | `Table` (cards on a phone and wherever it doesn't fit) | A page's own table uses `class="rtable"` with `data-label`, `data-primary` and an empty `data-label` for actions (`lib/tableFit.ts` decides when it becomes cards). Dense data can show a compact list instead (`hooks/useTableFits.ts`). |
 | A state | `StatusBadge` or `StatusIcon` (`components/monitoring/Status.tsx`) | An icon and a word, never colour alone. See the table below. |
-| Nothing, loading, failed | `EmptyState`, `Loading`, `LoadError` (`States.tsx`) | Never show "none" or "0" while loading or after an error. |
+| Nothing, loading, failed | `EmptyState`, `Loading`, `LoadError`, and `emptyText()` for a list's empty row (`States.tsx`) | Never show "none" or "0" while loading or after an error. |
 | A message | `Alert` (`danger`, `warn`, `ok`) | Say what happened and what to do next. |
 | A look at one record | `Inspector` | See §5. |
 | A consequential action | `ConfirmDialog` or `confirmAction()` | See §5. |
@@ -215,10 +215,15 @@ These are requirements, not aims. Check them at **1440, 1280, 1024 and 390 px**,
 - **Popovers** (the security status, the account menu): Escape closes them and returns focus to their button.
 - **When the focused element disappears** (the row a confirmed removal took away), focus goes to the dialog on top or to
   the main content, never back to the top of the document (`watchFocusLoss` in `ui/modal.ts`). Don't work around it.
-- **A setting keeps the focus while it saves.** A checkbox, select or button that is disabled while its own request
-  runs loses the focus to the top of the document. Keep it enabled and show the choice being saved; if a second
-  request could do harm, the server refuses or merges it (Shepherds → Updates). Older buttons that still disable
-  themselves are recorded in ARCHITECTURE-ALPHA §42.8.
+- **A control disabled while it has the focus gets it back.** Browsers move the focus of a control that becomes
+  disabled to the document and don't return it when it is enabled again (measured in Chromium and Firefox). The next
+  Tab still continues from there, but the focus ring disappears and a screen reader loses its place. The app's focus
+  guard (`watchFocusLoss` in `ui/modal.ts`, installed once in `main.tsx`) gives the focus back when the control is
+  enabled again, if it hasn't moved meanwhile. So a button may disable itself while its request runs.
+  - A setting that saves at once (a checkbox, a select) stays enabled and shows the choice being saved (Shepherds →
+    Updates).
+  - A control that stays disabled after its own success can't get the focus back: move it to where the person
+    continues. After an add that clears its field, that is the field.
 - **A box that scrolls on its own**, such as a long list inside a dialog, is reachable from the keyboard: give it
   `tabIndex={0}`, `role="region"` and a name.
 
@@ -262,10 +267,20 @@ How to write UI text:
 
 - **Loading is not empty, empty is not zero, and zero is not healthy.** Stale data says it is stale and since when.
   Unknown says unknown.
+  - A list's empty text comes from `emptyText()` in `ui/States.tsx`: *Loading …* while its data is on its way,
+    *Couldn't load …* after an error, and only then what an empty list means.
+  - A summary that gathers several sources ("Nothing needs attention") names a source it couldn't read and never shows
+    the ✓ then.
+  - Compliance, "in sync" or "no drift" is claimed only for what was checked: unknown and not-yet-applied are said.
 - **Hypothetical results say so.**
   - The firewall simulation: "A simulation: DROOL works out the answer from the firewall policy it wants for these
     hosts. It sends nothing to the hosts, tries no connection, and changes no policy."
   - The designer: "simulated on this draft: nothing is applied".
+- **Observed is not allowed.** An observed connection's policy status is the policy's verdict on connections like it.
+  Where DROOL's policy isn't in force on that host (Off, Monitor, Guided, not applied yet, rules missing), it reads as
+  what the policy *would* do: *Would be denied*, *not enforced*, *Would be allowed by policy …*. A host's Network page
+  says first whether the policy is in force there. Enforcement comes from what the host runs (its committed revision),
+  not from its mode.
 - **Previews say they change nothing.** The button that executes names what it does (§5).
 - **Destructive actions** use danger styling, are confirmed, and come last in menus.
 - **The UI never weakens a server check.** It can explain a refusal (a busy host, a missing permission, a blocked

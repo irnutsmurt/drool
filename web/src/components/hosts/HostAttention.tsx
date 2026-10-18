@@ -67,6 +67,10 @@ export function HostAttention({ h, hideStatus }: { h: Host; hideStatus: boolean 
   else if (m.active === "none" && m.reason) items.push({ key: "mgmt", tone: "warn", to: `/hosts/${h.id}/management`, action: "Management", text: m.reason });
   else if (ident?.status === "quarantined") items.push({ key: "quarantine", tone: "danger", to: `/hosts/${h.id}/management`, action: "Management", text: "Shepherd identity conflict: management is paused" });
 
+  // A source that couldn't be read is never "nothing to see" (DESIGN-STANDARD §8).
+  const failed = [can("alerts.read") && alerts.isError && "alerts", can("desired.read") && desired.isError && "Desired State",
+    can("firewall.read") && fw.isError && "the firewall", agent.isError && "the Shepherd"].filter(Boolean) as string[];
+  if (failed.length > 0) items.push({ key: "unchecked", tone: "warn", text: <>Couldn&apos;t check {failed.join(", ")}: this list may be incomplete.</> });
   const loading = (can("alerts.read") && alerts.isPending) || (can("desired.read") && desired.isPending) || (can("firewall.read") && fw.isPending) || agent.isPending;
   items.sort((x, y) => (x.tone === y.tone ? 0 : x.tone === "danger" ? -1 : 1));
   if (items.length === 0) {

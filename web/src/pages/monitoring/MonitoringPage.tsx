@@ -17,6 +17,7 @@ import { ConvertDialog } from "@/components/monitoring/ConvertDialog";
 import { useAlertSummary } from "@/components/alerts/queries";
 import { AlertCounts } from "@/components/alerts/ui";
 import { MonitoringTabs } from "./MonitoringTabs";
+import { emptyText } from "@/components/ui/States";
 
 const categories = [
   { key: "unhealthy", label: "Needs attention", group: "main" },
@@ -187,7 +188,7 @@ export function MonitoringPage() {
         )}
       </Card>
       <Card title="Active health issues" className="mt-4">
-        {(d?.issues ?? []).length === 0 ? <p className="text-sm text-muted">None.</p> : (
+        {(d?.issues ?? []).length === 0 ? <p className="text-sm text-muted">{emptyText("health issues", f, "None.")}</p> : (
           <ul className="divide-y divide-line">
             {d!.issues.map((i) => (
               <li key={i.id} className="flex flex-wrap items-start gap-2 py-2 text-sm">
@@ -224,14 +225,15 @@ function FleetFilters({ category, counts, hosts, setCat, q, reset }: {
   reset: () => void;
 }) {
   const [more, setMore] = useState(false);
-  const n = (key: string) => (key === "all" ? hosts : counts?.[key]) ?? 0;
+  // Not loaded yet: no count, rather than a zero that reads as "none".
+  const n = (key: string) => (key === "all" ? hosts : counts?.[key]);
   const main = categories.filter((c) => c.group === "main").sort((a, b) => (a.key === "all" ? -1 : b.key === "all" ? 1 : 0));
   const others = categories.filter((c) => c.group !== "main");
-  const visible = [...main, ...others.filter((c) => n(c.key) > 0 || c.key === category)];
+  const visible = [...main, ...others.filter((c) => (n(c.key) ?? 0) > 0 || c.key === category)];
   const chip = (c: (typeof categories)[number]) => (
     <button key={c.key} type="button" aria-pressed={category === c.key} onClick={() => setCat(c.key)}
       className={cx("rounded-ui border px-3 py-1.5 text-sm", category === c.key ? "border-accent bg-accent/15 font-medium" : "border-line hover:bg-surface-2")}>
-      {c.label} <span className={cx("ml-1 tabular-nums", n(c.key) ? "font-semibold" : "text-muted")}>{n(c.key)}</span>
+      {c.label} <span className={cx("ml-1 tabular-nums", n(c.key) ? "font-semibold" : "text-muted")}>{n(c.key) ?? "…"}</span>
     </button>
   );
   return (

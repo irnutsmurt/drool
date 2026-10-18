@@ -147,7 +147,7 @@ function Summary({ s }: { s: Schedule }) {
   } else {
     rows.push(
       ["What runs", c.workflow
-        ? <>Saved workflow <Link className="text-accent" to={`/jobs/workflows/${c.workflow.id}`}>{s.workflow_name || "workflow"}</Link>, revision {c.workflow.revision}
+        ? <>Saved workflow <Link className="text-accent underline" to={`/jobs/workflows/${c.workflow.id}`}>{s.workflow_name || "workflow"}</Link>, revision {c.workflow.revision}
           <span className="block text-xs text-muted">This revision, until you update the schedule: changing the workflow doesn&apos;t change what runs here.</span></>
         : <>{s.action}<span className="block text-xs text-muted">Its own steps, saved with this schedule.</span></>],
       ["Rollout", rolloutText(c.strategy ?? { concurrency: 10 })],

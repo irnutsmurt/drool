@@ -15,6 +15,7 @@ import { Table } from "@/components/ui/Table";
 import { errorMessage, formatDateTime } from "@/lib/format";
 import { SSHCertificateAuthority } from "@/components/credentials/SSHCertificateAuthority";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { emptyText } from "@/components/ui/States";
 
 type Mode = "generate" | "import" | "password" | "sudo_password";
 
@@ -118,7 +119,7 @@ export function CredentialsPage() {
         <Table<Credential>
           rows={list.data?.items ?? []}
           rowKey={(c) => c.id}
-          empty={list.isPending ? "Loading…" : "No credentials."}
+          empty={emptyText("credentials", list, "No credentials.")}
           columns={[
             { header: "Name", cell: (c) => (
               <span className="flex flex-wrap items-center gap-2">

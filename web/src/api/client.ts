@@ -84,7 +84,11 @@ export class ApiError extends Error {
     public status: number,
     public problem: Problem | undefined,
   ) {
-    super(problem?.detail ?? problem?.title ?? `Request failed (${status})`);
+    // Without DROOL's own problem details the answer came from something in
+    // front of it (a proxy) or a DROOL that isn't running: say so.
+    super(problem?.detail ?? problem?.title ?? (status >= 502 && status <= 504
+      ? `DROOL didn't answer (HTTP ${status}): it may be restarting, or a proxy in front of it can't reach it. Try again in a moment.`
+      : `The request failed (HTTP ${status}).`));
   }
 }
 

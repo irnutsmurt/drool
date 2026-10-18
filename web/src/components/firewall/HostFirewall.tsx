@@ -275,5 +275,5 @@ function ApproveSuggestion({ s, onClose }: { s: FwSuggestion; onClose: () => voi
 
 function History({ hostId }: { hostId: string }) {
   const txs = useFwTransactions(hostId);
-  return <TxList txs={txs.data?.items ?? []} />;
+  return <TxList txs={txs.data?.items ?? []} q={txs} />;
 }

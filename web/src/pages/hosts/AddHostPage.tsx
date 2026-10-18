@@ -95,7 +95,7 @@ export function AddHostPage() {
                   : onlyNoSystemd(probe)
                     ? <Alert tone="warn">Connected. {host.name} has no systemd, so service management and reboots won't work; commands, scripts and package operations will.</Alert>
                     : <Alert tone="warn">
-                        Some checks failed. Fix the issue on the host or adjust the settings, then test again.
+                        Some checks failed. Fix the issue on the host and test again, or change the address, user or credential (Change the settings).
                         {account.dedicated && ` DROOL needs to sign in as ${host.user} and become root to set up its own account.`}
                       </Alert>}
                 <ProbeSteps result={probe} />
@@ -104,7 +104,7 @@ export function AddHostPage() {
             <div className="flex gap-2">
               {account.dedicated && usable
                 ? <Button variant="primary" onClick={() => setStep(3)}>Continue</Button>
-                : <Button variant="primary" onClick={() => navigate(`/hosts/${host.id}`)}>{usable ? "Done" : "Go to host"}</Button>}
+                : <Button variant="primary" onClick={() => navigate(usable ? `/hosts/${host.id}` : `/hosts/${host.id}/management`)}>{usable ? "Done" : "Change the settings"}</Button>}
               <Button onClick={() => test.mutate(host.id)} disabled={test.isPending}>Test again</Button>
             </div>
           </div>

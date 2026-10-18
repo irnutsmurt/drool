@@ -4,7 +4,6 @@ import { Link, Outlet, useLocation } from "react-router";
 import { useAuth } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/Button";
 import { ConfirmHost } from "@/components/ui/ConfirmDialog";
-import { watchFocusLoss } from "@/components/ui/modal";
 import { cx } from "@/components/ui/cx";
 import {
   BellIcon, ChevronDownIcon, ChipIcon, ClockIcon, CloseIcon, GearIcon, HomeIcon, KeyIcon, LogIcon, MenuIcon, NetworkIcon, PackIcon, PlayIcon, PulseIcon,
@@ -35,8 +34,6 @@ export function AppShell() {
   useEffect(() => setNavOpen(false), [location.pathname, location.search]);
   // Tables that don't fit their space show as cards (lib/tableFit.ts).
   useEffect(() => watchTableFit(), []);
-  // Focus never falls back to the document when what had it disappears.
-  useEffect(() => watchFocusLoss(), []);
 
   // Ctrl+K / ⌘K anywhere; "/" when not typing in a field.
   useEffect(() => {
@@ -70,7 +67,7 @@ export function AppShell() {
         {info.data?.insecure_plaintext && (
           <div role="alert" className="bg-danger px-4 py-2 text-sm text-danger-fg">
             Security warning: this controller serves plaintext HTTP on a network address. Credentials and
-            sessions are exposed to anyone on the path.
+            sessions are exposed to anyone on the path. Use the built-in TLS (the default) or put HTTPS in front of DROOL.
           </div>
         )}
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-3 sm:px-4 lg:px-6">

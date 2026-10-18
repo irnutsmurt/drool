@@ -19,6 +19,7 @@ import { DesignerPage } from "@/components/firewall/designer/DesignerPage";
 import { Table } from "@/components/ui/Table";
 import { errorMessage } from "@/lib/format";
 import { TabPanel, Tabs } from "@/components/ui/Tabs";
+import { emptyText } from "@/components/ui/States";
 
 const tabs = [
   { id: "hosts", label: "Hosts" },
@@ -74,7 +75,7 @@ function HostsTab() {
         <Table
           rows={items}
           rowKey={(h) => h.host_id}
-          empty={hosts.isPending ? "Loading…" : "No hosts yet. Each host you add appears here with its firewall mode (Off until you choose) and status."}
+          empty={emptyText("the hosts' firewalls", hosts, "No hosts yet. Each host you add appears here with its firewall mode (Off until you choose) and status.")}
           columns={[
             { header: "", cell: (h) => can("firewall.write") && h.mode === "enforce" ? (
               <label className="inline-flex items-center gap-2">
@@ -165,7 +166,7 @@ function TransactionsTab() {
   const txs = useFwTransactions();
   const hosts = useHosts();
   const name = (id: string) => hosts.data?.items.find((h) => h.id === id)?.name ?? id;
-  return <Card title="Transactions"><TxList txs={txs.data?.items ?? []} hostName={name} /></Card>;
+  return <Card title="Transactions"><TxList txs={txs.data?.items ?? []} q={txs} hostName={name} /></Card>;
 }
 
 function SettingsTab() {

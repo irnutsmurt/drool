@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Table } from "@/components/ui/Table";
 import { errorMessage, formatDateTime } from "@/lib/format";
+import { emptyText } from "@/components/ui/States";
 
 type Event = Schemas["AuditEvent"];
 
@@ -28,7 +29,7 @@ export function AuditTable({ action, target, pageSize = 50, empty }: { action?: 
       <Table<Event>
         rows={rows}
         rowKey={(e) => e.id}
-        empty={q.isPending ? "Loading…" : empty ?? "No audit events."}
+        empty={emptyText("audit events", q, empty ?? "No audit events.", true)}
         columns={[
           { header: "#", cell: (e) => <span className="font-mono text-xs text-muted" title={e.hash ? `chain hash ${e.hash}` : "from before the hash chain"}>{e.seq ?? "—"}</span> },
           { header: "Time", cell: (e) => <span className="whitespace-nowrap">{formatDateTime(e.ts)}</span> },

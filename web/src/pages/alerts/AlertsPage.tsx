@@ -18,6 +18,7 @@ import { useSchedules, minutesText } from "@/components/automation/queries";
 import { ScheduleStateBadge } from "@/components/automation/ui";
 import { plainLink } from "@/components/ui/links";
 import { secondaryLink } from "@/components/ui/Button";
+import { emptyText } from "@/components/ui/States";
 
 const tabs = [
   { key: "active", label: "Active" },
@@ -142,7 +143,7 @@ function AlertList({ view, params, set }: { view: "active" | "acknowledged" | "r
           </>
         )}
       </div>
-      {q.error && <Notice>{errorMessage(q.error)}</Notice>}
+      {q.error && rows.length > 0 && <Notice>{errorMessage(q.error)}</Notice>}
       <div className="overflow-x-auto">
         <table className="rtable w-full text-left text-sm">
           <caption className="sr-only">{view} alerts</caption>
@@ -159,7 +160,7 @@ function AlertList({ view, params, set }: { view: "active" | "acknowledged" | "r
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={history ? 6 : 7} className="rt-empty px-3 py-6 text-center text-muted">{q.isLoading ? "Loading…" : empty}</td></tr>
+              <tr><td colSpan={history ? 6 : 7} className="rt-empty px-3 py-6 text-center text-muted">{emptyText("alerts", q, empty)}</td></tr>
             ) : rows.map((a) => <AlertRow key={a.id} a={a} history={history} onActions={setActing} inspected={acting?.id === a.id} />)}
           </tbody>
         </table>
@@ -222,10 +223,10 @@ function MaintenanceTab() {
         </div>
       }>
       <p className="mb-3 text-sm text-muted">Maintenance pauses notifications only. Alerts still open and close, marked “suppressed by maintenance”. Scheduled jobs skip hosts under maintenance unless they belong to that window.</p>
-      {m.error && <Notice>{errorMessage(m.error)}</Notice>}
+      {m.error && rows.length > 0 && <Notice>{errorMessage(m.error)}</Notice>}
       {end.error && <Notice>{errorMessage(end.error)}</Notice>}
       {rows.length === 0 ? (
-        <p className="text-sm text-muted">{state === "active" ? "No maintenance in progress." : "No ended maintenance."}</p>
+        <p className="text-sm text-muted">{emptyText("maintenance", m, state === "active" ? "No maintenance in progress." : "No ended maintenance.")}</p>
       ) : (
         <ul className="divide-y divide-line">
           {rows.map((x) => (

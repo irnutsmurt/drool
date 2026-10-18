@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { useGroups, useHosts } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
@@ -13,6 +13,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { Table } from "@/components/ui/Table";
 import { errorMessage, formatDateTime } from "@/lib/format";
 import { fk, useFwServices, type FwAllowance, type FwHostSummary, type FwPolicy, type FwPolicyInput, type FwSelector, type FwTransaction } from "./queries";
+import { emptyText } from "@/components/ui/States";
 
 /** Human labels for selectors. */
 export function useSelectorLabel() {
@@ -113,13 +114,13 @@ export function TxTimeline({ tx }: { tx: FwTransaction }) {
   );
 }
 
-export function TxList({ txs, hostName }: { txs: FwTransaction[]; hostName?: (id: string) => string }) {
+export function TxList({ txs, q, hostName }: { txs: FwTransaction[]; q: { isLoading: boolean; error: unknown }; hostName?: (id: string) => string }) {
   const [open, setOpen] = useState<string | null>(null);
   return (
     <Table
       rows={txs}
       rowKey={(t) => t.id}
-      empty="No firewall transactions yet."
+      empty={emptyText("firewall transactions", q, "No firewall transactions yet.")}
       columns={[
         { header: "When", cell: (t) => formatDateTime(t.created_at) },
         ...(hostName ? [{ header: "Host", cell: (t: FwTransaction) => <Link className="underline" to={`/hosts/${t.host_id}`}>{hostName(t.host_id)}</Link> }] : []),
@@ -297,6 +298,14 @@ export function ApplyDialog({ hostIds, names, remove, changes, onClose }: {
   const [confirmOverride, setConfirmOverride] = useState("");
   const anyOverride = overrideMgmt || overrideTimeout || allowDrift;
   const overrideConfirmed = !overrideMgmt || confirmOverride.trim().toUpperCase() === "OVERRIDE";
+  // Several hosts: each one's changes and refusals, reviewed here before
+  // anything is applied (DESIGN-STANDARD §5).
+  const plans = useQueries({
+    queries: (hostIds.length > 1 && !remove ? hostIds : []).map((id) => ({
+      queryKey: fk.host(id),
+      queryFn: () => unwrap(api.GET("/firewall/hosts/{id}", { params: { path: { id } } })),
+    })),
+  });
   const apply = useMutation({
     mutationFn: () => unwrap(api.POST("/firewall/apply", {
       body: { host_ids: hostIds, remove, override_mgmt: overrideMgmt, override_timeout: overrideTimeout, allow_drift: allowDrift, reason: anyOverride ? reason : undefined },
@@ -315,7 +324,31 @@ export function ApplyDialog({ hostIds, names, remove, changes, onClose }: {
             {changes.removed.map((a) => <span key={"-" + a} className="block text-xs text-danger">− {a}</span>)}
           </div>
         )}
-        {!changes && !remove && hostIds.length > 1 && <p className="text-xs text-muted">Each host's changes are listed on its firewall page.</p>}
+        {!changes && !remove && hostIds.length > 1 && (
+          <div className="rounded-ui border border-line p-3" data-testid="apply-review">
+            <div className="mb-1 font-medium">What changes, host by host</div>
+            <ul className="space-y-1 text-xs">
+              {hostIds.map((id, i) => {
+                const q = plans[i];
+                const pl = q?.data;
+                const refused = (pl?.policy.conflicts ?? []).length > 0;
+                return (
+                  <li key={id}>
+                    <strong>{names[i]}</strong>:{" "}
+                    {q?.error ? <span className="text-danger">couldn&apos;t load its changes: {errorMessage(q.error)}</span>
+                      : !pl ? <span className="text-muted">loading…</span>
+                        : refused ? <span className="text-danger">refused: a policy would cut DROOL&apos;s management path</span>
+                          : !pl.applied.enforced ? `${pl.explain.length} rules, applied for the first time`
+                            : pl.changes_added.length + pl.changes_removed.length === 0 ? <span className="text-muted">no changes (applying again re-verifies it)</span>
+                              : <>{pl.changes_added.length > 0 && <span className="text-ok">+{pl.changes_added.length} </span>}{pl.changes_removed.length > 0 && <span className="text-danger">−{pl.changes_removed.length} </span>}
+                                rule{pl.changes_added.length + pl.changes_removed.length === 1 ? "" : "s"}</>}
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="mt-1 text-xs text-muted">Each host&apos;s rules in full are on its firewall page. Nothing changes until you choose Apply.</p>
+          </div>
+        )}
         <p className="font-medium">Automatic rollback protection</p>
         <ol className="list-decimal space-y-1 pl-5 text-muted">
           <li>DROOL checks the host's firewall environment and measures a brand-new management connection.</li>
@@ -343,7 +376,7 @@ export function ApplyDialog({ hostIds, names, remove, changes, onClose }: {
                   <Field label='Type OVERRIDE to confirm'><Input value={confirmOverride} onChange={(e) => setConfirmOverride(e.target.value)} aria-label="Type OVERRIDE to confirm the emergency override" /></Field>
                 </div>
               )}
-              {anyOverride && <Field label="Reason (recorded in the audit log)"><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field>}
+              {anyOverride && <Field label="Reason (recorded in the audit log)" hint="At least 5 characters."><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field>}
             </div>
           </details>
         )}
@@ -355,7 +388,7 @@ export function ApplyDialog({ hostIds, names, remove, changes, onClose }: {
           <Button onClick={onClose}>{apply.data ? "Close" : "Cancel"}</Button>
           {!apply.data && (
             <Button variant={remove || overrideMgmt ? "danger" : "primary"} disabled={apply.isPending || (anyOverride && reason.trim().length < 5) || !overrideConfirmed} onClick={() => apply.mutate()}>
-              {remove ? "Remove policy" : overrideMgmt ? "Apply with emergency override" : "Apply"}
+              {remove ? "Remove policy" : overrideMgmt ? "Apply with emergency override" : hostIds.length > 1 ? `Apply to ${hostIds.length} hosts` : "Apply policy"}
             </Button>
           )}
         </div>

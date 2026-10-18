@@ -331,7 +331,9 @@ export function NewJobPage() {
           {submit.error && !reviewing && <Alert>{errorMessage(submit.error)}</Alert>}
           <div className="flex flex-wrap items-center gap-2">
             <Button type="submit" variant={kind === "reboot" ? "danger" : "primary"} disabled={!count || !stepReady || submit.isPending || preview.isPlaceholderData}>
-              {!count ? "Select targets" : `Review: ${kind === "reboot" ? "reboot" : "run on"} ${count} host${count === 1 ? "" : "s"}…`}
+              {/* While the targets are worked out, or after that failed, say so: never "Select targets" for targets already chosen. */}
+              {!hasTargets ? "Select targets" : preview.error ? "Couldn't work out the targets" : !preview.data || preview.isPlaceholderData ? "Working out the targets…"
+                : !count ? "No host to run on" : `Review: ${kind === "reboot" ? "reboot" : "run on"} ${count} host${count === 1 ? "" : "s"}…`}
             </Button>
             {can("schedules.manage") && (
               <Button type="button" disabled={!stepReady || !hasTargets}
@@ -374,7 +376,8 @@ export function NewJobPage() {
             </div>
           </Card>
           {hasTargets && (
-            <Card title={`Will run on ${count} host${count === 1 ? "" : "s"}${skipCount ? `, skip ${skipCount}` : ""}`}>
+            <Card title={!preview.data ? (preview.error ? "Couldn't work out the targets" : "Working out the targets…")
+              : `Will run on ${count} host${count === 1 ? "" : "s"}${skipCount ? `, skip ${skipCount}` : ""}`}>
               {preview.error && <Alert>{errorMessage(preview.error)}</Alert>}
               <ul className="space-y-1 text-sm">
                 {preview.data?.hosts.map((h) => (

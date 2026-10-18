@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from "react
 import { createPortal } from "react-dom";
 import { ArrowRightIcon, CloseIcon } from "./icons";
 import { isTopLayer, useModalLayer } from "./modal";
+import { canFocus } from "./Dialog";
 
 const focusable = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const nameOf = (el: Element) => el.getAttribute("aria-label") || (el as HTMLElement).innerText?.trim() || "";
@@ -57,7 +58,7 @@ export function Inspector({ title, subtitle, onClose, onBack, backLabel = "Back"
         (onBack ?? onClose)();
       }
       if (e.key === "Tab" && panel.current) {
-        const items = [...panel.current.querySelectorAll<HTMLElement>(focusable)].filter((x) => x.offsetParent !== null);
+        const items = [...panel.current.querySelectorAll<HTMLElement>(focusable)].filter(canFocus);
         if (items.length === 0) return;
         const [a, z] = [items[0]!, items[items.length - 1]!];
         if (e.shiftKey && document.activeElement === a) {

@@ -123,7 +123,7 @@ function StatusTiles({ managed }: { managed: Host[] }) {
   const fwHosts = fw.data?.items ?? [];
   const fwDrift = fwHosts.filter((h) => h.status === "drift").length;
   const fwBlocked = fwHosts.filter((h) => h.status === "conflicts").length;
-  const fwPending = fwHosts.filter((h) => h.status === "pending_transaction" || h.status === "changes_pending").length;
+  const fwPending = fwHosts.filter((h) => h.status === "pending_transaction" || h.status === "changes_pending" || h.status === "sets_pending").length;
   const fwEnforced = fwHosts.filter((h) => h.enforced).length;
   return (
     <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
@@ -144,13 +144,15 @@ function StatusTiles({ managed }: { managed: Host[] }) {
       )}
       {can("desired.read") && (
         <Tile label="Desired State" to="/desired" loading={!d} error={desired.error}
-          value={d ? (d.baselines === 0 ? "No baselines" : d.hosts.drift + d.resources.conflict + d.resources.failed === 0 ? "No drift" : `${plural(d.hosts.drift, "host")} drifted`) : undefined}
-          tone={d && d.baselines > 0 ? (d.resources.conflict || d.resources.failed ? "danger" : d.hosts.drift ? "warn" : "ok") : undefined}
+          value={d ? (d.baselines === 0 ? "No baselines" : d.hosts.drift + d.resources.conflict + d.resources.failed > 0 ? `${plural(d.hosts.drift, "host")} drifted`
+            : d.hosts.unknown > 0 ? `${plural(d.hosts.unknown, "host")} not checked` : "No drift") : undefined}
+          tone={d && d.baselines > 0 ? (d.resources.conflict || d.resources.failed ? "danger" : d.hosts.drift ? "warn" : d.hosts.unknown ? undefined : "ok") : undefined}
           detail={d && d.baselines > 0 ? <>{d.resources.conflict > 0 && `${plural(d.resources.conflict, "conflict")} · `}{d.resources.failed > 0 && `${plural(d.resources.failed, "failed restore")} · `}{d.hosts.compliant} of {d.hosts.total} compliant{d.resources.unknown > 0 && ` · ${d.resources.unknown} unknown`}</> : d ? "nothing is managed yet" : undefined} />
       )}
       {can("firewall.read") && (
         <Tile label="Firewall" to="/firewall" loading={!fw.data} error={fw.error}
-          value={fw.data ? (fwDrift + fwBlocked ? [fwDrift && `${fwDrift} drifted`, fwBlocked && `${fwBlocked} refused`].filter(Boolean).join(" · ") : fwEnforced ? "In sync" : "Not enforced") : undefined}
+          value={fw.data ? (fwDrift + fwBlocked ? [fwDrift && `${fwDrift} drifted`, fwBlocked && `${fwBlocked} refused`].filter(Boolean).join(" · ")
+            : fwPending ? `${plural(fwPending, "host")} not applied yet` : fwEnforced ? "In sync" : "Not enforced") : undefined}
           tone={fw.data ? (fwDrift || fwBlocked ? "danger" : fwPending ? "warn" : fwEnforced ? "ok" : undefined) : undefined}
           detail={fw.data ? `${plural(fwEnforced, "host")} enforced${fwPending ? ` · ${fwPending} with changes waiting` : ""}` : undefined} />
       )}
@@ -201,6 +203,10 @@ function AttentionCard({ managed }: { managed: Host[] }) {
     items.push({ key: "host" + host.id, tone: severe(reasons) ? "danger" : "warn",
       body: <><Link className={plainLink} to={`/hosts/${host.id}`}>{host.name}</Link>: {reasons.join(" · ")}</> });
   }
+  // A source that couldn't be read is never "nothing to see" (DESIGN-STANDARD §8).
+  const failed = [can("alerts.read") && alerts.isError && "alerts", jobs.isError && "runs",
+    can("desired.read") && desired.isError && "Desired State", can("firewall.read") && fw.isError && "the firewall"].filter(Boolean) as string[];
+  if (failed.length > 0) items.push({ key: "unchecked", tone: "warn", body: <>Couldn&apos;t check {failed.join(", ")}: this list may be incomplete.</> });
   items.sort((x, y) => (x.tone === y.tone ? 0 : x.tone === "danger" ? -1 : 1));
   const loading = (can("alerts.read") && alerts.isPending) || jobs.isPending || (can("desired.read") && desired.isPending) || (can("firewall.read") && fw.isPending);
   const more = hostItems.length - 8;

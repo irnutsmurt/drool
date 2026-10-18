@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Table } from "@/components/ui/Table";
 import { errorMessage } from "@/lib/format";
+import { emptyText } from "@/components/ui/States";
 
 /** Workflows: reusable, revisioned lists of steps. */
 export function WorkflowsPage() {
@@ -40,7 +41,7 @@ export function WorkflowsPage() {
           <Table<Workflow>
             rows={rows}
             rowKey={(w) => w.id}
-            empty={list.isPending ? "Loading…" : "No workflows."}
+            empty={emptyText("workflows", list, "No workflows.", true)}
             columns={[
               {
                 header: "Workflow",

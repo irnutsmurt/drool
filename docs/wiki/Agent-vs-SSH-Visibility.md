@@ -32,8 +32,10 @@ better.
 ## Listening sockets
 
 Every host shows what it **listens on**, from its inventory: the address and port, the program, the
-service, **Reachable from** (*all addresses*, *one address*, or *this host only (loopback)*), and
-**Observed inbound** (how many connections from how many addresses DROOL saw). *Process names show only
+service, **Accepts on** — which of the host's own addresses the socket accepts connections on (*all of
+the host's addresses*, *one of the host's addresses*, or *loopback only (this host)*); who can actually
+reach the port is up to the firewalls — and **Observed inbound** (how many connections from how many
+addresses DROOL saw). *Process names show only
 where DROOL could see them*: an SSH host without passwordless sudo, for example, shows *Unknown*.
 
 ## Turn continuous collection on or off

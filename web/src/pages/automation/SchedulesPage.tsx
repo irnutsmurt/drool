@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Table } from "@/components/ui/Table";
 import { plainLink } from "@/components/ui/links";
 import { errorMessage } from "@/lib/format";
+import { emptyText } from "@/components/ui/States";
 
 /** Schedules: what runs when, and whether it worked last time. */
 export function SchedulesPage() {
@@ -44,7 +45,7 @@ export function SchedulesPage() {
           <Table<Schedule>
             rows={rows}
             rowKey={(s) => s.id}
-            empty={list.isPending ? "Loading…" : "No schedules."}
+            empty={emptyText("schedules", list, "No schedules.", true)}
             columns={[
               {
                 header: "Schedule",

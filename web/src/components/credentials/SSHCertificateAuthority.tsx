@@ -115,7 +115,7 @@ export function SSHCertificateAuthority() {
               <summary className="cursor-pointer text-muted">Trusting it by hand</summary>
               <p className="mt-2 text-muted">Where DROOL can't change the sshd configuration (it already trusts another CA file, or there's no
                 sshd_config.d), add the public keys to the file that <code className="font-mono text-xs">TrustedUserCAKeys</code> names,
-                then use "Check CA trust" on the host page:</p>
+                then use "Set up CA trust" (or "Check CA trust again") in the SSH access card of the host&apos;s Management section:</p>
               <code className="mt-1 block whitespace-pre-wrap break-all font-mono text-xs">{live.map((c) => c.public_key).join("\n")}</code>
             </details>
           </>

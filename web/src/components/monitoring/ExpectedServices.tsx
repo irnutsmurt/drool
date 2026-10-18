@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
@@ -26,6 +26,7 @@ export function ExpectedServicesCard({ scope, groupId }: { scope: "group" | "glo
   });
   const [unit, setUnit] = useState("");
   const [value, setValue] = useState<Expected>("running");
+  const unitField = useId();
   const done = () => {
     void qc.invalidateQueries({ queryKey: key });
     void qc.invalidateQueries({ queryKey: ["monitoring"] });
@@ -43,7 +44,9 @@ export function ExpectedServicesCard({ scope, groupId }: { scope: "group" | "glo
   const where = scope === "group" ? "this pack's hosts" : "every host";
   function add(e: FormEvent) {
     e.preventDefault();
-    if (unit.trim()) put.mutate({ unit: unit.trim(), expected: value });
+    // Added: the cleared field takes the focus (Add stays disabled until it
+    // has a name again).
+    if (unit.trim()) put.mutate({ unit: unit.trim(), expected: value }, { onSuccess: () => document.getElementById(unitField)?.focus() });
   }
   return (
     <Card title={scope === "group" ? "Monitored services" : "Monitored services on every host"} className="mb-4">
@@ -76,7 +79,7 @@ export function ExpectedServicesCard({ scope, groupId }: { scope: "group" | "glo
         <form onSubmit={add} className="mt-3 flex flex-wrap items-end gap-2">
           <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-sm">
             <span className="font-medium">Service</span>
-            <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="nginx.service" className="font-mono" />
+            <Input id={unitField} value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="nginx.service" className="font-mono" />
           </label>
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium">Expected</span>

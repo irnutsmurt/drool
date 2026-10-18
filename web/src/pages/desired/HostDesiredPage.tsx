@@ -63,7 +63,7 @@ export function HostDesiredPage() {
       />
       {h.maintenance && <div className="mb-4"><Alert tone="warn">This host is in maintenance ({h.maintenance}). DROOL keeps checking it and shows drift; automatic restore waits until maintenance ends. Restoring by hand is still possible.</Alert></div>}
       {h.path.blocked && <div className="mb-4"><Alert>DROOL can't change this host: {h.path.reason}</Alert></div>}
-      {h.path.agent_state === "epoch_mismatch" && <div className="mb-4"><Alert>The agent belongs to another controller epoch; desired state isn't restored here until it is reconciled on the Agents page.</Alert></div>}
+      {h.path.agent_state === "epoch_mismatch" && <div className="mb-4"><Alert>This host&apos;s Shepherd still answers to the controller from before a restore: desired state isn&apos;t restored here until the restore is reconciled (Settings → System → Restore).</Alert></div>}
       <div className="grid gap-4">
         <Card title="Where this host's desired state comes from">
           {h.baselines.length === 0 ? (

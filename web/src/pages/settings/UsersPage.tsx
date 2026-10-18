@@ -11,6 +11,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Dialog } from "@/components/ui/Dialog";
 import { errorMessage, formatDateTime } from "@/lib/format";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { emptyText } from "@/components/ui/States";
 
 type User = Schemas["User"];
 type Role = Schemas["Role"];
@@ -83,7 +84,7 @@ export function UsersPage() {
         <Table<User>
           rows={list.data?.items ?? []}
           rowKey={(u) => u.id}
-          empty={list.isPending ? "Loading…" : "No users."}
+          empty={emptyText("users", list, "No users.")}
           columns={[
             { header: "Username", cell: (u) => <>{u.username}{u.id === me?.user.id && <span className="ml-2 text-muted">(you)</span>}</> },
             {

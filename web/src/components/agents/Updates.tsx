@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type Schemas } from "@/api/client";
@@ -470,12 +470,17 @@ function CustomReleases({ st, manage }: { st: UpdateStatus; manage: boolean }) {
   const [bin, setBin] = useState<File>();
   const [manifest, setManifest] = useState<File>();
   const [progress, setProgress] = useState<number>();
+  // After adding or uploading, the cleared field takes the focus: the
+  // button that did it stays disabled until there's something new.
+  const keyField = useId();
+  const manifestFile = useRef<HTMLInputElement>(null);
+  const binFile = useRef<HTMLInputElement>(null);
   const inv = () => {
     for (const k of [ak.releases, ak.releaseKeys, ak.updateStatus]) void qc.invalidateQueries({ queryKey: k });
   };
   const addKey = useMutation({
     mutationFn: () => unwrap(api.POST("/agents/release-keys", { body: { public_key: keyLine.trim() } })),
-    onSuccess: () => { setKeyLine(""); inv(); },
+    onSuccess: () => { setKeyLine(""); inv(); document.getElementById(keyField)?.focus(); },
   });
   const delKey = useMutation({ mutationFn: (id: string) => unwrap(api.DELETE("/agents/release-keys/{id}", { params: { path: { id } } })), onSuccess: inv });
   const uploadRelease = useMutation({
@@ -484,7 +489,11 @@ function CustomReleases({ st, manage }: { st: UpdateStatus; manage: boolean }) {
       // Without the program: a description of a Shepherd DROOL ships.
       return upload("POST", "/agents/releases", bin ?? new Blob([]), setProgress, undefined, { "X-DROOL-Release": btoa(m) });
     },
-    onSuccess: () => { setBin(undefined); setManifest(undefined); setProgress(undefined); inv(); },
+    onSuccess: () => {
+      setBin(undefined); setManifest(undefined); setProgress(undefined); inv();
+      for (const f of [manifestFile.current, binFile.current]) if (f) f.value = ""; // the chosen files are gone
+      manifestFile.current?.focus();
+    },
     onError: () => setProgress(undefined),
   });
   const rollOut = async (version: string) => {
@@ -523,7 +532,7 @@ function CustomReleases({ st, manage }: { st: UpdateStatus; manage: boolean }) {
           </ul>
           {manage && (
             <div className="flex flex-wrap gap-2">
-              <Input className="max-w-xl font-mono text-xs" aria-label="Release-signing public key" placeholder="drool-release-ed25519 AAAA… my builds"
+              <Input id={keyField} className="max-w-xl font-mono text-xs" aria-label="Release-signing public key" placeholder="drool-release-ed25519 AAAA… my builds"
                 value={keyLine} onChange={(e) => setKeyLine(e.target.value)} />
               <Button disabled={!keyLine.trim() || addKey.isPending} onClick={() => addKey.mutate()}>Add key</Button>
             </div>
@@ -533,10 +542,10 @@ function CustomReleases({ st, manage }: { st: UpdateStatus; manage: boolean }) {
         {manage && (
           <div className="grid gap-3 rounded-ui border border-line p-3 md:grid-cols-[1fr_1fr_auto]">
             <Field label="Signed description (.release.json)" hint="From drool release sign. The private key never comes near DROOL.">
-              <input type="file" accept=".json" className="text-sm" onChange={(e) => setManifest(e.target.files?.[0])} />
+              <input ref={manifestFile} type="file" accept=".json" className="text-sm" onChange={(e) => setManifest(e.target.files?.[0])} />
             </Field>
             <Field label="Shepherd program" hint="Not needed for an official release of this DROOL's own Shepherd (without internet access).">
-              <input type="file" className="text-sm" onChange={(e) => setBin(e.target.files?.[0])} />
+              <input ref={binFile} type="file" className="text-sm" onChange={(e) => setBin(e.target.files?.[0])} />
             </Field>
             <div className="self-end">
               <Button variant="primary" disabled={!manifest || uploadRelease.isPending} onClick={() => uploadRelease.mutate()}>

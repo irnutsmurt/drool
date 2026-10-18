@@ -279,3 +279,33 @@ test("Can A reach B? says it is a simulation", async () => {
   assert.match(await text(page), /(YES|NO|PARTLY)\s.*the policy (allows|blocks)|PARTLY/s);
   assert.deepEqual(page.errors, []);
 });
+
+test("a button disabled while its request runs gets the focus back", async () => {
+  // Browsers move the focus of a control that becomes disabled to the
+  // document and never give it back (ARCHITECTURE-ALPHA §43): the app's
+  // focus guard does. The request is held back so the button is disabled
+  // long enough for the browser to take the focus.
+  const p = await session(browser);
+  try {
+    const hold = (r) => {
+      if (r.method() === "POST" && /\/network\/snapshot$/.test(r.url())) sleep(800).then(() => r.continue());
+      else r.continue();
+    };
+    await go(p, `/hosts/${ids["web-1"]}/network`);
+    await waitFor(p, async () => (await text(p)).includes("Take snapshot"), "the snapshot button", 20000);
+    await p.setRequestInterception(true);
+    p.on("request", hold);
+    const btn = await p.evaluateHandle(() => [...document.querySelectorAll("main button")].find((b) => b.textContent.trim() === "Take snapshot"));
+    await btn.focus();
+    await p.keyboard.press("Enter");
+    await sleep(400);
+    assert.equal(await p.evaluate(() => document.activeElement === document.body), true, "the browser took the focus while the button was disabled");
+    await waitFor(p, async () => (await text(p)).includes("Snapshot taken"), "the snapshot", 60000);
+    await waitFor(p, async () => p.evaluate(() => document.activeElement?.textContent?.trim() === "Take snapshot"), "the focus back on the button", 5000);
+    p.off("request", hold);
+    await p.setRequestInterception(false);
+    assert.deepEqual(p.errors, []);
+  } finally {
+    await p.browserContext().close();
+  }
+});

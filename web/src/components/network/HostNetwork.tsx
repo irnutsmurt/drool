@@ -148,6 +148,11 @@ export function HostNetworkSummary({ hostId }: { hostId: string }) {
   );
 }
 
+// Which of the host's own addresses a socket accepts connections on (its
+// bind address): not who can reach it, which the firewalls decide.
+const boundTo = (e: string) =>
+  ({ "all addresses": "all of the host's addresses", "one address": "one of the host's addresses", "this host only (loopback)": "loopback only (this host)" })[e] ?? e;
+
 function Listening({ hn }: { hn: NonNullable<ReturnType<typeof useHostNetwork>["data"]> }) {
   return (
     <section aria-label="Listening">
@@ -163,7 +168,7 @@ function Listening({ hn }: { hn: NonNullable<ReturnType<typeof useHostNetwork>["
                 <th scope="col" className="px-2 py-1 font-medium">Listening on</th>
                 <th scope="col" className="px-2 py-1 font-medium">Process</th>
                 <th scope="col" className="px-2 py-1 font-medium">Service</th>
-                <th scope="col" className="px-2 py-1 font-medium">Reachable from</th>
+                <th scope="col" className="px-2 py-1 font-medium">Accepts on</th>
                 <th scope="col" className="px-2 py-1 font-medium">Observed inbound</th>
               </tr>
             </thead>
@@ -173,7 +178,7 @@ function Listening({ hn }: { hn: NonNullable<ReturnType<typeof useHostNetwork>["
                   <td data-primary="" className="px-2 py-1 font-mono text-xs">{l.address.includes(":") ? `[${l.address}]` : l.address}:{l.port} <span className="text-muted">{l.protocol.toUpperCase()}</span></td>
                   <td data-label="Process" className="px-2 py-1">{l.process ? <span className="font-mono text-xs">{l.process}</span> : <span className="text-xs italic text-muted">Unknown</span>}</td>
                   <td data-label="Service" className="px-2 py-1 text-xs">{l.service || "—"}</td>
-                  <td data-label="Reachable from" className="px-2 py-1 text-xs">{l.exposure}</td>
+                  <td data-label="Accepts on" className="px-2 py-1 text-xs">{boundTo(l.exposure)}</td>
                   <td data-label="Observed inbound" className="px-2 py-1 text-xs">{l.flows > 0 ? `${l.flows} flow(s) from ${l.peers} address(es)` : "none seen"}</td>
                 </tr>
               ))}
@@ -181,7 +186,7 @@ function Listening({ hn }: { hn: NonNullable<ReturnType<typeof useHostNetwork>["
           </table>
         </div>
       )}
-      {hn.listening_at && <p className="mt-1 text-[11px] text-muted">From the inventory, collected {formatAgo(hn.listening_at)}. Process names show only where DROOL could see them.</p>}
+      {hn.listening_at && <p className="mt-1 text-[11px] text-muted">From the inventory, collected {formatAgo(hn.listening_at)}. Process names show only where DROOL could see them. Who can reach a port is up to the firewalls.</p>}
     </section>
   );
 }

@@ -19,6 +19,8 @@ import { Table } from "@/components/ui/Table";
 import { errorMessage, formatAgo, formatDateTime } from "@/lib/format";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { TabPanel, Tabs } from "@/components/ui/Tabs";
+import { emptyText } from "@/components/ui/States";
+import { ReadOnlyNote } from "@/components/ui/ReadOnlyNote";
 
 const tabs = [
   { id: "agents", label: "Shepherds" },
@@ -29,18 +31,22 @@ const tabs = [
 ] as const;
 
 export function AgentsPage() {
+  const { can } = useAuth();
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") ?? "agents";
+  // Enrollment is for those who may enroll Shepherds.
+  const shown = tabs.filter((t) => t.id !== "enroll" || can("agents.enroll"));
   return (
     <>
       <PageHeader title="Shepherds"
         description={<>DROOL agents installed on managed hosts: enrollment, trust, capabilities and updates. A Shepherd is the DROOL agent
           (<span className="font-mono text-xs">drool-agent</span>); it reports continuously and runs work for DROOL within the limits its host allows.</>} />
       <Tabs label="Shepherd sections" id="shepherds" className="-mx-1 mb-4 overflow-x-auto px-1" current={tab}
-        tabs={tabs.map((t) => ({ key: t.id, label: t.label }))} onSelect={(k) => setParams({ tab: k })} />
+        tabs={shown.map((t) => ({ key: t.id, label: t.label }))} onSelect={(k) => setParams({ tab: k })} />
       <TabPanel id="shepherds" current={tab}>
         {tab === "agents" && <AgentsTab />}
-        {tab === "enroll" && <EnrollTab />}
+        {tab === "enroll" && (can("agents.enroll") ? <EnrollTab />
+          : <ReadOnlyNote>enrollment tokens and installers need the agents.enroll permission (administrators).</ReadOnlyNote>)}
         {tab === "updates" && <UpdatesTab />}
         {tab === "trust" && <TrustTab />}
         {tab === "endpoints" && <EndpointsTab />}
@@ -65,7 +71,7 @@ function AgentsTab() {
       <Table
         rows={agents.data?.items ?? []}
         rowKey={(a) => a.id}
-        empty={agents.isPending ? "Loading…" : "No Shepherds enrolled yet. Hosts without one are managed over SSH."}
+        empty={emptyText("Shepherds", agents, "No Shepherds enrolled yet. Hosts without one are managed over SSH.")}
         columns={[
           { header: "Host", cell: (a) => <Link className="font-medium text-accent" to={`/hosts/${a.host_id}`}>{name(a.host_id)}</Link> },
           { header: "State", cell: (a) => a.status === "quarantined" ? <Badge tone="danger">identity conflict</Badge> : !a.compatible ? <Badge tone="danger">incompatible</Badge> : a.connected ? <Badge tone="ok">connected</Badge> : <Badge tone="warn">offline {formatAgo(a.last_seen_at)}</Badge> },
@@ -115,7 +121,9 @@ function Installs() {
                   {open === r.id ? "Hide hosts" : "Show hosts"}</Button>
                 {can("agents.manage") && r.status === "paused" && <Button size="sm" onClick={() => act.mutate({ id: r.id, a: "resume" })}>Resume</Button>}
                 {can("agents.manage") && (r.status === "running" || r.status === "paused") &&
-                  <Button size="sm" variant="danger" onClick={() => act.mutate({ id: r.id, a: "cancel" })}>Cancel</Button>}
+                  <Button size="sm" variant="danger" onClick={() => void confirmAction({ title: `Stop installing Shepherd ${r.version}?`, confirmLabel: "Stop installing", danger: true,
+                    body: <p>Hosts not reached yet stay as they are, managed over SSH; an installation already under way finishes. Hosts that already have their Shepherd keep it.</p> })
+                    .then((ok) => ok && act.mutate({ id: r.id, a: "cancel" }))}>Stop installing…</Button>}
               </span>
             </div>
             {open === r.id && <RolloutHosts id={r.id} />}
@@ -178,7 +186,7 @@ function EnrollTab() {
       <Table
         rows={tokens.data?.items ?? []}
         rowKey={(t) => t.id}
-        empty="No tokens yet."
+        empty={emptyText("enrollment tokens", tokens, "No tokens yet.")}
         columns={[
           { header: "Created", cell: (t) => formatDateTime(t.created_at) },
           { header: "For", cell: (t) => t.host_name ? `host ${t.host_name}` : t.group_name ? `new hosts in ${t.group_name}` : "new hosts" },
@@ -208,7 +216,7 @@ function TrustTab() {
     mutationFn: (revoke: boolean) => unwrap(api.POST("/agents/pki/rotate", { body: { revoke_old: revoke, root_key_pem: rootKey.trim() || undefined } })),
     onSuccess: () => { setRootKey(""); inv(); },
   });
-  const importM = useMutation({ mutationFn: () => unwrap(api.POST("/agents/pki/manifests", { body: JSON.parse(manifestJSON) })), onSuccess: () => { setManifestJSON(""); inv(); } });
+  const importM = useMutation({ mutationFn: () => unwrap(api.POST("/agents/pki/manifests", { body: JSON.parse(manifestJSON) })), onSuccess: () => { setManifestJSON(""); inv(); document.getElementById("import-manifest")?.focus(); } });
   const s = pki.data;
   if (pki.error) return <Alert>{errorMessage(pki.error)}</Alert>;
   if (!s) return <p className="text-muted">Loading…</p>;
@@ -292,7 +300,7 @@ function TrustTab() {
       {can("agents.pki") && (
         <Card title="Import a trust manifest">
           <p className="mb-3 text-sm text-muted">For manifests signed on an offline machine with <span className="font-mono">drool agent-ca sign-manifest</span>. It must be signed by this root and be newer than version {s.manifest_version}.</p>
-          <textarea className="h-24 w-full rounded-ui border border-line bg-surface p-2 font-mono text-xs" value={manifestJSON} onChange={(e) => setManifestJSON(e.target.value)} placeholder='{"payload": "…", "signature": "…"}' />
+          <textarea id="import-manifest" aria-label="Signed trust manifest (JSON)" className="h-24 w-full rounded-ui border border-line bg-surface p-2 font-mono text-xs" value={manifestJSON} onChange={(e) => setManifestJSON(e.target.value)} placeholder='{"payload": "…", "signature": "…"}' />
           <Button className="mt-2" disabled={!manifestJSON.trim() || importM.isPending} onClick={() => importM.mutate()}>Import</Button>
           {importM.error && <div className="mt-2"><Alert>{errorMessage(importM.error)}</Alert></div>}
         </Card>
@@ -316,7 +324,7 @@ function EndpointsTab() {
   const m = useEndpointMigrations();
   const port = usePKI().data?.advertised_port;
   const [ep, setEp] = useState("");
-  const propose = useMutation({ mutationFn: () => unwrap(api.POST("/agents/endpoints", { body: { endpoint: ep.trim() } })), onSuccess: () => { setEp(""); void qc.invalidateQueries({ queryKey: ak.endpoints }); } });
+  const propose = useMutation({ mutationFn: () => unwrap(api.POST("/agents/endpoints", { body: { endpoint: ep.trim() } })), onSuccess: () => { setEp(""); void qc.invalidateQueries({ queryKey: ak.endpoints }); document.getElementById("endpoint-candidate")?.focus(); } });
   const commit = useMutation({ mutationFn: (id: string) => unwrap(api.POST("/agents/endpoints/{id}/commit", { params: { path: { id } } })), onSuccess: () => void qc.invalidateQueries({ queryKey: ak.endpoints }) });
   return (
     <Card title="Controller address for Shepherds">
@@ -325,7 +333,7 @@ function EndpointsTab() {
         A wrong address can't strand an agent.{port ? ` Without a port, an address gets port ${port}, the one Shepherds are told now.` : ""}</p>
       {can("agents.manage") && (
         <div className="mb-4 flex gap-2">
-          <Input className="max-w-sm font-mono" placeholder="drool.example.net" aria-label="New controller address" value={ep} onChange={(e) => setEp(e.target.value)} />
+          <Input id="endpoint-candidate" className="max-w-sm font-mono" placeholder="drool.example.net" aria-label="New controller address" value={ep} onChange={(e) => setEp(e.target.value)} />
           <Button disabled={!ep.trim() || propose.isPending} onClick={() => propose.mutate()}>Propose</Button>
         </div>
       )}
@@ -333,12 +341,13 @@ function EndpointsTab() {
       <Table
         rows={m.data?.items ?? []}
         rowKey={(x) => x.id}
-        empty="No address changes yet."
+        empty={emptyText("address changes", m, "No address changes yet.")}
         columns={[
           { header: "Address", cell: (x) => <span className="font-mono">{x.endpoint}</span> },
           { header: "Status", cell: (x) => <Badge tone={x.status === "committed" ? "ok" : "accent"}>{x.status}</Badge> },
           { header: "Shepherds", cell: (x) => <span className="text-sm">{x.confirmed} reached it, {x.failed} could not{x.status === "committed" && `, ${x.committed} switched`} (of {x.agents})</span> },
-          { header: "", cell: (x) => can("agents.manage") && x.status === "testing" && <Button size="sm" disabled={x.confirmed === 0} onClick={() => commit.mutate(x.id)}>Commit</Button> },
+          { header: "", cell: (x) => can("agents.manage") && x.status === "testing" && <Button size="sm" disabled={x.confirmed === 0} title={x.confirmed === 0 ? "No Shepherd has reached this address yet" : undefined}
+            onClick={() => commit.mutate(x.id)}>Commit address</Button> },
         ]}
       />
     </Card>

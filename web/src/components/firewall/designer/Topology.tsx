@@ -491,7 +491,7 @@ function TopologyInner(p: TopologyProps) {
           {mode !== "configured" && <>
             <span><span style={{ color: "var(--ui-edge-observed)" }}>┈┈</span> ✓ observed, covered</span>
             <span><span style={{ color: "var(--ui-warn)" }}>╌╌</span> ⚠ observed, unclassified</span>
-            <span><span style={{ color: "var(--ui-danger)" }}>┄┄</span> ✕ observed, denied</span>
+            <span><span style={{ color: "var(--ui-danger)" }}>┄┄</span> ✕ observed, denied or would be</span>
           </>}
         </div>
         {graph.nodes.length === 0 && (

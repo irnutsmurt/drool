@@ -3,7 +3,11 @@ import { createPortal } from "react-dom";
 import { CloseIcon } from "./icons";
 import { isTopLayer, useModalLayer } from "./modal";
 
-const focusable = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const focusable = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
+
+/** Can take the focus now. A closed <details> keeps its content laid out
+ * (offsetParent is set) but hidden: focusing a field in it does nothing. */
+export const canFocus = (x: HTMLElement) => (typeof x.checkVisibility === "function" ? x.checkVisibility() : x.offsetParent !== null);
 
 /** A modal dialog: on top of every open dialog (also when opened from one,
  * like the re-authentication prompt), focus moves into it, Tab stays
@@ -23,7 +27,10 @@ export function Dialog({ title, children, onClose, wide, footer, testId }: {
   const layer = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const titleId = useId();
-  useModalLayer(layer, () => box.current?.querySelector<HTMLElement>("[data-autofocus]") ?? box.current?.querySelector<HTMLElement>(focusable));
+  // The first field that can take the focus, else the dialog itself: focus
+  // is inside the dialog from the start, whatever is still loading.
+  useModalLayer(layer, () => box.current?.querySelector<HTMLElement>("[data-autofocus]")
+    ?? [...(box.current?.querySelectorAll<HTMLElement>(focusable) ?? [])].find(canFocus) ?? box.current);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!isTopLayer(layer.current)) return;
@@ -32,7 +39,7 @@ export function Dialog({ title, children, onClose, wide, footer, testId }: {
         onClose();
       }
       if (e.key === "Tab" && box.current) {
-        const items = [...box.current.querySelectorAll<HTMLElement>(focusable)].filter((x) => x.offsetParent !== null);
+        const items = [...box.current.querySelectorAll<HTMLElement>(focusable)].filter(canFocus);
         if (items.length === 0) return;
         const [a, z] = [items[0]!, items[items.length - 1]!];
         if (e.shiftKey && document.activeElement === a) {

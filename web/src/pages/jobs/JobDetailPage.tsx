@@ -100,7 +100,20 @@ export function JobDetailPage() {
               </Button>
             )}
             {!active && failedCount > 0 && !o?.reconcile_id && (
-              <Button onClick={() => action.mutate("rerun")} disabled={action.isPending}>Re-run unsuccessful hosts</Button>
+              <Button disabled={action.isPending} onClick={() => {
+                // A new run on real hosts: say which, before anything starts.
+                const again = items.filter((h) => ["failed", "timed_out", "cancelled", "skipped", "interrupted"].includes(h.state));
+                const unknown = again.filter((h) => h.state === "interrupted").length;
+                void confirmAction({
+                  title: `Run “${j.name}” again on ${again.length} host${again.length === 1 ? "" : "s"}?`,
+                  confirmLabel: `Start run on ${again.length} host${again.length === 1 ? "" : "s"}`,
+                  body: <>
+                    <p>The same steps, on the hosts where this run didn&apos;t succeed: {again.map((h) => h.host_name).join(", ")}. The hosts that succeeded are left alone.</p>
+                    {unknown > 0 && <p className="mt-2">{unknown === 1 ? "One of them was" : `${unknown} of them were`} interrupted, so DROOL doesn&apos;t know how far the
+                      steps got there: check {unknown === 1 ? "it" : "them"} first if running the steps twice could matter.</p>}
+                  </>,
+                }).then((ok) => ok && action.mutate("rerun"));
+              }}>Re-run unsuccessful hosts…</Button>
             )}
           </>
         )}

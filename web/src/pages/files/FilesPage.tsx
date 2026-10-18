@@ -53,7 +53,7 @@ export function FilesPage() {
   const [jump, setJump] = useState("");
   const [action, setAction] = useState<Action>(null);
   const [uploading, setUploading] = useState<{ name: string; progress: number } | null>(null);
-  const [notice, setNotice] = useState<string>();
+  const [notice, setNotice] = useState<{ tone: "ok" | "danger"; text: string }>();
   const fileInput = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -85,9 +85,9 @@ export function FilesPage() {
       try {
         await upload("PUT", `/hosts/${id}/files/content?path=${encodeURIComponent(dest)}&overwrite=${exists ? "true" : "false"}&elevated=${elevated}`,
           f, (p) => setUploading({ name: f.name, progress: p }), ctl.signal);
-        setNotice(`Uploaded ${f.name} (${formatBytes(f.size)}).`);
+        setNotice({ tone: "ok", text: `Uploaded ${f.name} (${formatBytes(f.size)}).` });
       } catch (e) {
-        setNotice(`${f.name}: ${errorMessage(e)}`);
+        setNotice({ tone: "danger", text: `${f.name}: ${errorMessage(e)}` });
       }
     }
     setUploading(null);
@@ -183,7 +183,7 @@ export function FilesPage() {
             <Button size="sm" onClick={() => abortRef.current?.abort()}>Cancel</Button>
           </div>
         )}
-        {notice && <div className="mb-3"><Alert tone={/:/.test(notice) && !notice.startsWith("Uploaded") ? "danger" : "ok"}>{notice}</Alert></div>}
+        {notice && <div className="mb-3"><Alert tone={notice.tone}>{notice.text}</Alert></div>}
         {err && !/not a directory/.test(errorMessage(err)) && <Alert>{errorMessage(err)}</Alert>}
         {listing.isPending && <p className="text-sm text-muted">Loading…</p>}
         {listing.data && (
@@ -194,7 +194,7 @@ export function FilesPage() {
 
       {action && (
         <ActionDialog action={action} hostId={id} dir={dir} elevated={elevated}
-          onClose={() => setAction(null)} onDone={(msg) => { setAction(null); setNotice(msg); refresh(); }} />
+          onClose={() => setAction(null)} onDone={(msg) => { setAction(null); setNotice({ tone: "ok", text: msg }); refresh(); }} />
       )}
     </>
   );

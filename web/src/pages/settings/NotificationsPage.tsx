@@ -22,6 +22,7 @@ import {
 } from "@/components/alerts/queries";
 import { categoryLabel, checkLabel } from "@/components/alerts/ui";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { emptyText } from "@/components/ui/States";
 
 const kinds = [
   { key: "discord", label: "Discord", hint: "Channel settings → Integrations → Webhooks → copy the URL." },
@@ -90,8 +91,8 @@ function Destinations() {
   const manage = can("notifications.manage");
   return (
     <Card title="Notifications" actions={manage && rows.length > 0 && <Button size="sm" variant="primary" onClick={() => setEdit("new")}>Add destination</Button>}>
-      {ds.error && <Notice>{errorMessage(ds.error)}</Notice>}
-      {rows.length === 0 && !ds.isLoading ? (
+      {ds.error && <Notice>Couldn&apos;t load the destinations: {errorMessage(ds.error)}</Notice>}
+      {rows.length === 0 && !ds.isLoading && !ds.error ? (
         <EmptyState title="No destinations configured" body="Add Discord, Slack, Telegram, email or a webhook, and DROOL tells you when something needs attention — and when it's fixed."
           action={manage && <Button variant="primary" onClick={() => setEdit("new")}>Add destination</Button>} />
       ) : (
@@ -343,7 +344,9 @@ function Routes() {
             {manage && (
               <div className="flex gap-2">
                 <Button size="sm" onClick={() => setEdit(r)}>Edit</Button>
-                {!r.is_default && <Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)}>Delete</Button>}
+                {!r.is_default && <Button size="sm" variant="ghost" onClick={() => void confirmAction({ title: `Delete the route ${r.name}?`, confirmLabel: "Delete route", danger: true,
+                  body: <p>Alerts it matches are sent by the other routes only (or not at all, if none matches them). Alerts themselves are not affected.</p> })
+                  .then((ok) => ok && del.mutate(r.id))}>Delete</Button>}
               </div>
             )}
           </li>
@@ -448,7 +451,7 @@ function DeliveryHistory() {
         </Field>
       </div>
       {q.error && <Notice>{errorMessage(q.error)}</Notice>}
-      {rows.length === 0 ? <p className="text-sm text-muted">{q.isLoading ? "Loading…" : "No deliveries yet."}</p> : (
+      {rows.length === 0 ? <p className="text-sm text-muted">{emptyText("deliveries", q, "No deliveries yet.", true)}</p> : (
         <ul className="divide-y divide-line text-sm">
           {rows.map((x) => (
             <li key={x.id} className="py-2">

@@ -250,7 +250,7 @@ export type TopologyMode = "configured" | "observed" | "both";
 const statusRank: Record<string, number> = { management: 0, covered: 1, unclassified: 2, denied: 3 };
 export const obsIcon: Record<string, string> = { covered: "✓", management: "⛨", unclassified: "⚠", denied: "✕" };
 export const obsStatusLabel: Record<string, string> = {
-  covered: "✓ Observed · covered", management: "⛨ Observed · DROOL management", unclassified: "⚠ Observed · unclassified", denied: "✕ Observed · denied",
+  covered: "✓ Observed · covered", management: "⛨ Observed · DROOL management", unclassified: "⚠ Observed · unclassified", denied: "✕ Observed · denied or would be",
 };
 
 /** "HTTPS 443, TCP 8812 +2" */

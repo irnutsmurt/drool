@@ -7,6 +7,10 @@ export function formatDateTime(iso: string | null | undefined): string {
 }
 
 export function errorMessage(err: unknown): string {
+  // The browser's own words when nothing answered at all.
+  if (err instanceof TypeError && /fetch|network/i.test(err.message)) {
+    return "DROOL can't be reached from this browser: the controller may be restarting, or the network or a proxy is down. Try again in a moment.";
+  }
   return err instanceof Error ? err.message : String(err);
 }
 

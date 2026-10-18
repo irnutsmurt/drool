@@ -22,7 +22,7 @@ export const destinations: Destination[] = [
   { id: "shepherds", title: "Shepherds", hint: "DROOL agents", section: "Fleet", to: "/agents", description: "DROOL agents installed on managed hosts.",
     aliases: ["agent", "agents", "drool agent", "drool-agent", "shepherd", "installed agents"], permissions: ["agents.read"] },
   { id: "shepherds-enroll", title: "Shepherd enrollment", section: "Fleet", to: "/agents?tab=enroll", description: "Single-use tokens and installers for new Shepherds (DROOL agents).",
-    aliases: ["enrollment token", "enroll agent", "install agent", "add agent", "agent installer"], permissions: ["agents.read"] },
+    aliases: ["enrollment token", "enroll agent", "install agent", "add agent", "agent installer"], permissions: ["agents.enroll"] },
   { id: "shepherds-updates", title: "Shepherd updates", section: "Fleet", to: "/agents?tab=updates", description: "Automatic agent updates, the update channel and status; custom releases.",
     aliases: ["agent update", "update agents", "upgrade agent", "agent release", "agent rollout", "automatic updates", "update channel",
       "release signing key", "custom release"], permissions: ["agents.read"] },

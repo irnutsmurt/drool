@@ -18,6 +18,7 @@ import { CountTile, DesiredStatusBadge } from "@/components/desired/ui";
 import { useDesiredHosts, useDesiredSummary, useInvalidateDesired, type DesiredHostRow } from "@/components/desired/queries";
 import { errorMessage } from "@/lib/format";
 import { DesiredTabs } from "./DesiredTabs";
+import { emptyText } from "@/components/ui/States";
 
 const filters = [
   ["attention", "Needs attention"],
@@ -127,7 +128,8 @@ export function DesiredOverviewPage() {
               </div>
               <Input className="ml-auto max-w-[14rem]" placeholder="Filter by host name" aria-label="Filter by host name" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
-            <HostTable rows={(hosts.data?.items ?? [])} loading={hosts.isPending} attention={status === "attention" && attention === 0} />
+            <HostTable rows={(hosts.data?.items ?? [])} q={hosts} filtered={q.trim() !== ""}
+              attention={status === "attention" && !!s && attention === 0 ? { all: s.hosts.compliant === s.hosts.total, unknown: s.hosts.unknown } : undefined} />
           </Card>
         </div>
       )}
@@ -136,12 +138,21 @@ export function DesiredOverviewPage() {
   );
 }
 
-function HostTable({ rows, loading, attention }: { rows: DesiredHostRow[]; loading: boolean; attention: boolean }) {
+function HostTable({ rows, q, filtered, attention }: {
+  rows: DesiredHostRow[]; q: { isLoading: boolean; error: unknown }; filtered: boolean; attention?: { all: boolean; unknown: number };
+}) {
+  // Compliance is claimed only when every managed host was verified
+  // compliant (DESIGN-STANDARD §8).
+  const none = filtered ? "No hosts match the filter."
+    : !attention ? "No hosts match."
+      : attention.all ? "Nothing needs attention: every managed host is compliant."
+        : attention.unknown > 0 ? `Nothing needs attention, but DROOL couldn't check ${attention.unknown} host${attention.unknown === 1 ? "" : "s"} (Unknown).`
+          : "Nothing needs attention.";
   return (
     <Table<DesiredHostRow>
       rows={rows}
       rowKey={(h) => h.host_id}
-      empty={loading ? "Loading…" : attention ? "Nothing needs attention: every managed host is compliant." : "No hosts match."}
+      empty={emptyText("the hosts' desired state", q, none)}
       columns={[
         { header: "Host", cell: (h) => <Link className={plainLink} to={`/hosts/${h.host_id}/desired`}>{h.name}</Link> },
         { header: "Status", cell: (h) => <span className="inline-flex flex-wrap items-center gap-1"><DesiredStatusBadge status={h.status} />{h.in_maintenance && <span className="text-xs text-muted">in maintenance</span>}</span> },

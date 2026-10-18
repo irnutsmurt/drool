@@ -34,7 +34,7 @@ const groups: Group[] = [
       { title: "Users and roles", to: "/settings/users", description: "Who can sign in, and what each role may do.", permissions: ["users.manage"] },
       { title: "Credentials", to: "/credentials", where: "Protect", description: "SSH keys and passwords DROOL uses to reach hosts, and DROOL's SSH certificate authority.", permissions: ["credentials.use"] },
       { title: "Shepherd trust (PKI)", to: "/agents?tab=trust", where: "Shepherds", description: "The Agent Root CA, its intermediates and the trust manifest Shepherds check.", permissions: ["agents.read"] },
-      { title: "Shepherd enrollment", to: "/agents?tab=enroll", where: "Shepherds", description: "Single-use tokens and installers for new Shepherds.", permissions: ["agents.read"] },
+      { title: "Shepherd enrollment", to: "/agents?tab=enroll", where: "Shepherds", description: "Single-use tokens and installers for new Shepherds.", permissions: ["agents.enroll"] },
     ],
   },
   {

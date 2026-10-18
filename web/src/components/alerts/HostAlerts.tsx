@@ -9,6 +9,7 @@ import { fmtSince } from "@/components/monitoring/format";
 import { useAlerts, useAlertSummary, useEndMaintenance } from "./queries";
 import { AlertSeverity, MaintenanceNote, NotificationBadge, untilText } from "./ui";
 import { MaintenanceDialog } from "./MaintenanceDialog";
+import { emptyText } from "@/components/ui/States";
 
 /** "In maintenance until 18:00 (Kernel upgrade)" with an End button. */
 export function HostMaintenanceBanner({ hostId }: { hostId: string }) {
@@ -47,7 +48,7 @@ export function HostAlertsCard({ hostId }: { hostId: string }) {
       }>
       {q.error && <Notice>{errorMessage(q.error)}</Notice>}
       {rows.length === 0 ? (
-        <p className="text-sm text-muted">{q.isLoading ? "Loading…" : "No open alerts."}</p>
+        <p className="text-sm text-muted">{emptyText("alerts", q, "No open alerts.", true)}</p>
       ) : (
         <ul className="space-y-2 text-sm">
           {rows.map((a) => (
