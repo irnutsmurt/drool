@@ -185,6 +185,21 @@ test("a host's network activity: summary on the host, its own page with listenin
   await click(page, 'button[aria-pressed]', "External");
   await waitFor(page, async () => { const r = await rows(); return r.length > 0 && r.every((x) => /External/.test(x)); }, "external rows");
   await shot(page, "network-host");
+  // Whether the policy the connections are judged against is in force here
+  // is said first; where it isn't, no connection reads as allowed or blocked
+  // by DROOL (ARCHITECTURE-ALPHA §43).
+  const fw = (await api(page, "GET", `/hosts/${id}/network`)).body.firewall;
+  const line = await page.$eval('[data-testid="network-firewall"]', (e) => e.innerText);
+  if (fw.enforcement === "enforced") {
+    assert.match(line, /policy is (still )?in force on this host/, line);
+  } else {
+    assert.match(line, /does not filter this host.*what DROOL's policy would do with it, not what happened to it/s, line);
+    await click(page, 'button[aria-pressed]', "All");
+    await waitFor(page, async () => (await rows()).length > 0, "all connections");
+    const r = await rows();
+    assert.ok(r.filter((x) => x.includes("Covered by policy")).every((x) => x.includes("not enforced")), "covered without 'not enforced'");
+    assert.ok(!r.some((x) => x.includes("✕Denied")), "a connection shown as denied on a host DROOL doesn't filter");
+  }
   assert.deepEqual(page.errors, []);
 });
 

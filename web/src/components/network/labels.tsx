@@ -2,21 +2,41 @@ import { Badge } from "@/components/ui/Badge";
 import type { NetCollection, NetEnrichState, NetFlow } from "./queries";
 
 // Every status is shown with words and a symbol, never by colour alone.
+//
+// A status is the policy's verdict on connections like this one. Whether it
+// decided anything depends on the host: where DROOL's rules aren't in force
+// (enforcement other than "enforced"), the verdict is only what the policy
+// would do, and an observed connection was never allowed or blocked by it.
 
 export const policyText: Record<string, { label: string; icon: string; tone: "ok" | "warn" | "danger" | "accent" | "neutral"; help: string }> = {
-  covered: { label: "Covered by policy", icon: "✓", tone: "ok", help: "A configured firewall policy allows this connection." },
+  covered: { label: "Covered by policy", icon: "✓", tone: "ok", help: "The firewall policy allows connections like this one." },
   management: { label: "Management path", icon: "⛨", tone: "accent", help: "A protected DROOL management path in the firewall policy (SSH from the controller or a jump host, or the Shepherd's connection)." },
-  unclassified: { label: "Not in policy", icon: "?", tone: "warn", help: "No firewall policy says anything about this connection." },
-  denied: { label: "Denied", icon: "✕", tone: "danger", help: "A deny policy, or the default drop on an enforced host, blocks this connection." },
+  unclassified: { label: "Not in policy", icon: "?", tone: "warn", help: "No firewall policy says anything about connections like this one." },
+  denied: { label: "Denied", icon: "✕", tone: "danger", help: "The policy enforced on this host drops connections like this one. This one was observed, so it got through when it was seen: before the policy took effect, or around DROOL's rules." },
 };
+
+/** The host firewall's state behind a connection's policy status. */
+export const enforcementText: Record<string, string> = {
+  unmanaged: "DROOL does not filter this host (mode Off)",
+  monitor: "Monitor mode: DROOL does not filter this host",
+  guided: "Guided mode: DROOL does not filter this host",
+  enforce_pending: "Enforce mode, but the policy isn't applied yet: DROOL does not filter this host",
+  enforced: "DROOL's policy is in force on this host",
+};
+
+export const isEnforced = (p: Pick<NetFlow["policy"], "enforcement">) => p.enforcement === "enforced";
 
 export function PolicyBadge({ flow }: { flow: Pick<NetFlow, "policy"> }) {
   const p = flow.policy;
-  const t = policyText[p.status] ?? policyText.unclassified!;
+  const enforced = isEnforced(p);
+  let t = policyText[p.status] ?? policyText.unclassified!;
+  // Nothing was denied where the policy isn't in force.
+  if (p.status === "denied" && !enforced) t = { ...t, label: "Would be denied", help: "The policy would drop connections like this one, but it isn't in force on this host: nothing was blocked." };
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
       <Badge tone={t.tone}><span aria-hidden className="mr-1">{t.icon}</span>{t.label}</Badge>
       {p.status !== "denied" && p.would_deny && <Badge tone="danger"><span aria-hidden className="mr-1">✕</span>would be denied</Badge>}
+      {!enforced && p.status !== "unclassified" && <Badge tone="neutral"><span aria-hidden className="mr-1">◌</span>not enforced</Badge>}
       {p.applied_verdict && <Badge tone="warn"><span aria-hidden className="mr-1">↻</span>not applied yet</Badge>}
     </span>
   );

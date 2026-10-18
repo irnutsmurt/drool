@@ -8,6 +8,7 @@ import (
 
 	"drool/internal/firewall/compile"
 	"drool/internal/firewall/nftables"
+	"drool/internal/store/db"
 )
 
 // Policy statuses of an observed flow (M10). The firewall compiler is the
@@ -61,6 +62,25 @@ type hostEval struct {
 	// same compiler, never a second evaluator.
 	outbound *compile.HostPolicy
 	fw       HostFirewall
+	st       db.FwHostState
+}
+
+// enforcement is whether DROOL's rules are in force on a host. The committed
+// state decides, not the mode: leaving Enforce keeps the last committed
+// revision on the host until someone removes it, and rules missing from the
+// host (drift "missing") enforce nothing. Then the mode: unmanaged (off),
+// monitor, guided, or enforce_pending (enforce, not applied yet).
+func enforcement(mode string, st db.FwHostState) string {
+	switch {
+	case st.Enforced != 0 && st.Drift != DriftMissing:
+		return "enforced"
+	case mode == ModeOff:
+		return "unmanaged"
+	case mode != ModeEnforce:
+		return mode
+	default:
+		return "enforce_pending"
+	}
 }
 
 // Classifier correlates observations with the firewall policy. It compiles
@@ -109,16 +129,8 @@ func (c *Classifier) host(ctx context.Context, hostID string) *hostEval {
 	}
 	he.fw = HostFirewall{Mode: cfg.Mode, Outbound: cfg.Outbound}
 	st, _ := c.s.d.Store.R.GetFwHostState(ctx, hostID)
-	switch {
-	case cfg.Mode == ModeOff:
-		he.fw.Enforcement = "unmanaged"
-	case cfg.Mode != ModeEnforce:
-		he.fw.Enforcement = cfg.Mode
-	case st.Enforced == 0:
-		he.fw.Enforcement = "enforce_pending"
-	default:
-		he.fw.Enforcement = "enforced"
-	}
+	he.st = st
+	he.fw.Enforcement = enforcement(cfg.Mode, st)
 	he.fw.Drift = st.Drift != ""
 	if st.Enforced != 0 {
 		rend := nftables.Render(he.desired)
@@ -190,13 +202,18 @@ func (c *Classifier) Classify(ctx context.Context, hostID, dir, proto string, po
 	default: // base rules (DHCP, ICMP errors, loopback)
 		out.Status = FlowCovered
 	}
-	switch he.fw.Enforcement {
-	case "unmanaged":
+	switch {
+	case he.st.Enforced != 0 && he.st.Drift == DriftMissing:
+		out.Notes = append(out.Notes, "DROOL's rules are missing on the host (changed outside DROOL): nothing of its policy is in force there; this is what the policy would do")
+	case he.fw.Enforcement == "unmanaged":
 		out.Notes = append(out.Notes, "DROOL does not manage this host's firewall (mode off): this is what the configured policy would do")
-	case ModeMonitor, ModeGuided:
+	case he.fw.Enforcement == ModeMonitor, he.fw.Enforcement == ModeGuided:
 		out.Notes = append(out.Notes, fmt.Sprintf("the firewall is in %s mode: the policy is not enforced yet", he.fw.Enforcement))
-	case "enforce_pending":
+	case he.fw.Enforcement == "enforce_pending":
 		out.Notes = append(out.Notes, "the policy has not been applied to this host yet")
+	case he.fw.Mode != ModeEnforce:
+		out.Notes = append(out.Notes, fmt.Sprintf("the firewall is in %s mode, but DROOL's last applied policy (revision %d) is still on the host and filters it: changes aren't applied",
+			he.fw.Mode, he.st.AppliedRevision))
 	}
 	if he.applied != nil {
 		av := he.applied.Evaluate(dir, pkt)
@@ -208,7 +225,7 @@ func (c *Classifier) Classify(ctx context.Context, hostID, dir, proto string, po
 	} else if he.fw.SetsPending {
 		out.Notes = append(out.Notes, "address set updates for this host are still pending")
 	}
-	if he.fw.Drift {
+	if he.fw.Drift && he.st.Drift != DriftMissing {
 		out.Notes = append(out.Notes, "the host's firewall was changed outside DROOL (drift)")
 	}
 	return out

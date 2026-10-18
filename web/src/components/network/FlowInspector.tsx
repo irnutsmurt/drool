@@ -6,17 +6,9 @@ import { Button } from "@/components/ui/Button";
 import { Inspector } from "@/components/ui/Inspector";
 import { errorMessage, formatDateTime } from "@/lib/format";
 import { ClassifyForm } from "./ClassifyDialog";
-import { ClassBadge, CollectionBadge, DirectionLabel, PolicyBadge, ScopeBadge, classSource, ep, noLookup, policyText, when } from "./labels";
+import { ClassBadge, CollectionBadge, DirectionLabel, PolicyBadge, ScopeBadge, classSource, enforcementText, ep, isEnforced, noLookup, policyText, when } from "./labels";
 import { useNetFlow, useNetRules, type NetEnrichState } from "./queries";
 import { GeoAttribution } from "./Enrichment";
-
-const enforcementText: Record<string, string> = {
-  unmanaged: "DROOL does not manage this host's firewall",
-  monitor: "Monitor mode (not enforced)",
-  guided: "Guided mode (not enforced)",
-  enforce_pending: "Enforce mode, policy not applied yet",
-  enforced: "Enforced",
-};
 
 /** One observed connection, inspected beside the list (Pattern A): who,
  * where, what, and what the firewall policy says about it. Classifying it
@@ -96,7 +88,8 @@ export function FlowInspector({ id, onClose }: { id: number; onClose: () => void
             <h3 className="mb-2 font-semibold">Firewall</h3>
             <p className="flex flex-wrap items-center gap-2">
               <PolicyBadge flow={f} />
-              {f.policy.policy_name ? <span>{f.policy.status === "denied" ? "Denied" : "Allowed"} by policy <strong>“{f.policy.policy_name}”</strong>{f.policy.rule && <span className="text-muted"> ({f.policy.rule})</span>}</span>
+              {f.policy.policy_name ? <span>{isEnforced(f.policy) ? (f.policy.status === "denied" ? "Denied" : "Allowed") : (f.policy.status === "denied" ? "Would be denied" : "Would be allowed")} by
+                policy <strong>“{f.policy.policy_name}”</strong>{f.policy.rule && <span className="text-muted"> ({f.policy.rule})</span>}</span>
                 : <span>{t!.help} <span className="text-muted">({f.policy.reason})</span></span>}
             </p>
             <p className="mt-1 text-xs text-muted">

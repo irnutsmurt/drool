@@ -182,7 +182,7 @@ function Status({ p, host }: { p: FwPlan; host: Host }) {
       )}
       {(p.management_warnings ?? []).map((w) => <p key={w} className="text-xs text-muted">{w}</p>)}
       {(p.policy.warnings ?? []).map((w) => <p key={w} className="text-xs text-warn">{w}</p>)}
-      {p.config.mode !== "enforce" && !p.applied.enforced && <p className="text-xs text-muted">Set the mode to Enforce to apply this policy. Until then, Explain shows what it would do.</p>}
+      {p.config.mode !== "enforce" && !p.applied.enforced && <p className="text-xs text-muted">Set the mode to Enforce to apply this policy. Until then, Effective policy shows what it would do.</p>}
       {p.config.mode !== "enforce" && p.applied.enforced && (
         <Alert tone="warn">DROOL's last committed policy (revision {p.applied.revision}) is still enforced on this host. Changing the mode doesn't remove it:
           use <strong>Remove DROOL policy</strong> to stop filtering, or switch back to Enforce to update it.</Alert>
@@ -201,12 +201,18 @@ function Status({ p, host }: { p: FwPlan; host: Host }) {
 }
 
 function ExplainSection({ p }: { p: FwPlan }) {
+  // What the host runs decides the wording, not the mode: leaving Enforce
+  // keeps the last committed revision on the host, rules missing from the
+  // host enforce nothing, and the list is always the saved policy.
+  const inForce = p.applied.enforced && p.applied.drift !== "missing";
   return (
     <div className="space-y-2 text-sm">
       <p className="text-muted">
-        {p.config.mode === "enforce" && p.applied.enforced
-          ? "What DROOL allows and denies on this host, and why."
-          : "What this host's policy would allow and deny once enforced, and why. DROOL doesn't filter this host right now."}
+        {!inForce
+          ? "What this host's policy would allow and deny once enforced, and why. DROOL doesn't filter this host right now."
+          : p.applied.rules_changed
+            ? `What the saved policy allows and denies, and why. It isn't applied yet: the host still runs revision ${p.applied.revision}.`
+            : "What DROOL allows and denies on this host, and why."}
         {" "}Rules are evaluated top to bottom: replies to allowed connections, the management path, denies, then allows.
       </p>
       <ExplainTable rows={p.explain} />

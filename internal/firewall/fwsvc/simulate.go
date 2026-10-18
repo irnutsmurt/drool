@@ -2,6 +2,7 @@ package fwsvc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -134,13 +135,28 @@ func (s *Service) Simulate(ctx context.Context, req SimRequest) (*SimResult, err
 		hop.Mode = cfg.Mode
 		st, _ := s.d.Store.R.GetFwHostState(ctx, ep.host.ID)
 		hp := hostPolicy(ep.host.ID)
+		pkt := compile.Packet{Family: famOf(peer), Proto: req.Protocol, Port: req.Port, Peer: peer}
+		// Out of Enforce, the last committed revision still filters the host
+		// until someone removes it: that is what answers, not the mode.
+		if ap := (&compile.HostPolicy{}); cfg.Mode != ModeEnforce && enforcement(cfg.Mode, st) == "enforced" &&
+			st.AppliedPolicyJson != "" && json.Unmarshal([]byte(st.AppliedPolicyJson), ap) == nil {
+			hop.Filtered = true
+			v := ap.Evaluate(dir, pkt)
+			hop.Verdict, hop.Reason = v.Verdict, v.Reason
+			if v.Rule != nil {
+				hop.Rule = compile.DescribeService(*v.Rule) + " " + map[string]string{"in": "from ", "out": "to "}[dir] + v.Rule.Peer.Label
+			}
+			hop.Notes = append(hop.Notes, fmt.Sprintf("%s is in %s mode, but DROOL's last applied policy (revision %d) is still on it and decides this: changes aren't applied",
+				ep.host.Name, cfg.Mode, st.AppliedRevision))
+			return hop
+		}
 		if cfg.Mode != ModeEnforce || hp == nil {
 			hop.Verdict = "accept"
 			hop.Reason = compile.Reason{Kind: compile.ReasonDefault, Text: fmt.Sprintf("DROOL doesn't filter %s (mode %s)", ep.host.Name, cfg.Mode)}
 			return hop
 		}
 		hop.Filtered = true
-		v := hp.Evaluate(dir, compile.Packet{Family: famOf(peer), Proto: req.Protocol, Port: req.Port, Peer: peer})
+		v := hp.Evaluate(dir, pkt)
 		hop.Verdict, hop.Reason = v.Verdict, v.Reason
 		if v.Rule != nil {
 			hop.Rule = compile.DescribeService(*v.Rule) + " " + map[string]string{"in": "from ", "out": "to "}[dir] + v.Rule.Peer.Label
@@ -155,7 +171,11 @@ func (s *Service) Simulate(ctx context.Context, req SimRequest) (*SimResult, err
 			case rend.SetsHash != st.AppliedSetsHash:
 				hop.Notes = append(hop.Notes, fmt.Sprintf("address sets on %s are still at generation %d (propagation pending)", ep.host.Name, st.SetsGenerationApplied))
 			}
-			if st.Drift != "" {
+			switch st.Drift {
+			case "":
+			case DriftMissing:
+				hop.Notes = append(hop.Notes, "DROOL's rules are missing on "+ep.host.Name+" (changed outside DROOL): until they are applied again, it filters nothing")
+			default:
 				hop.Notes = append(hop.Notes, "DROOL's rules on "+ep.host.Name+" were changed outside DROOL")
 			}
 		}

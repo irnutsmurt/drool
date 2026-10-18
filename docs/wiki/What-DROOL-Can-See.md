@@ -26,8 +26,9 @@ At the top:
 - **External**: connections to or from the internet, and how many **new destinations** appeared in
   the last 24 hours (**Show new destinations**).
 - **Not in policy**: connections no firewall rule describes (**Show them**).
-- **Denied or would be denied**: blocked by a deny rule, or by the default once the firewall is
-  enforced (**Show**).
+- **Denied or would be denied**: what the policy drops, or would drop on hosts where it isn't in force
+  (**Show**). Only on a host that enforces DROOL's policy does *denied* mean the firewall blocks it
+  ([Policy Classification](Policy-Classification.md)).
 - **How hosts are observed**: how many hosts are watched continuously (*conntrack* or *socket
   sampling*), how many by SSH snapshot, and how many SSH hosts have no snapshot yet.
 - While DROOL prepares its GeoIP/ASN databases (the first download), one quiet line above all this

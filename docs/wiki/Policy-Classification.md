@@ -4,16 +4,30 @@ Every observed connection shows what DROOL's firewall policy says about it, its 
 This is how you find the connections your rules don't cover yet, **before** you switch a host to
 Enforce, and the ones that are already blocked.
 
+A status is the policy's verdict on connections like this one. **It says what happened to the
+connection only on a host where DROOL's policy is in force.** Everywhere else — a host in Off,
+Monitor or Guided mode, or one whose policy isn't applied yet — it's what the policy *would* do, and
+the connection says **not enforced**. A host's Network page says at the top which it is
+(*Firewall: …*).
+
 | Status | Means |
 |---|---|
-| ✓ **Covered by policy** | *A configured firewall policy allows this connection.* The details name the rule |
+| ✓ **Covered by policy** | *The firewall policy allows connections like this one.* The details name the rule |
 | ⛨ **Management path** | *A protected DROOL management path in the firewall policy (SSH from the controller or a jump host, or the Shepherd's connection).* Always allowed ([Management Path Protection](Management-Path-Protection.md)) |
-| ? **Not in policy** | *No firewall policy says anything about this connection.* |
-| ✕ **Denied** | *A deny policy, or the default drop on an enforced host, blocks this connection.* |
+| ? **Not in policy** | *No firewall policy says anything about connections like this one.* |
+| ✕ **Denied** | *The policy enforced on this host drops connections like this one.* An observed one got through when it was seen: before the policy took effect, or around DROOL's rules |
+| ✕ **Would be denied** | A deny policy names it, but the policy isn't in force on this host: nothing was blocked |
 | ✕ **would be denied** (extra badge) | Not blocked today, but **would be** once the host is enforced, or the current policy is applied |
+| ◌ **not enforced** (extra badge) | DROOL's policy isn't in force on this host: the status is what it would do, not what happened |
 | ↻ **not applied yet** (extra badge) | The host still runs an older policy that treats this connection differently |
 
-The status is always shown with a word and a symbol, never by colour alone.
+The status is always shown with a word and a symbol, never by colour alone. A connection's details
+say the same in words (*Allowed by policy …* where it's in force, *Would be allowed by policy …*
+where it isn't) and name the host firewall's state.
+
+A host taken out of Enforce keeps its last applied policy until someone removes it: DROOL then still
+counts that policy as in force, and says so. A host whose DROOL rules were removed outside DROOL
+(*drift*, rules missing) counts as not filtered.
 
 ## Reading it before you enforce
 

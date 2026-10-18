@@ -401,6 +401,39 @@ services:
 	if f := e.flows(t, "host="+web+"&port=22").Items[0]; f.Policy.Status != "denied" {
 		t.Fatalf("default drop on an enforced host: %+v", f.Policy)
 	}
+	// Leaving Enforce keeps the committed revision on the host: it still
+	// filters there, and the views say so rather than "not enforced".
+	e.setHost(t, web, map[string]any{"mode": "monitor"})
+	if f := e.flows(t, "host="+web+"&port=22").Items[0]; f.Policy.Enforcement != "enforced" || f.Policy.Status != "denied" ||
+		!strings.Contains(strings.Join(f.Policy.Notes, " "), "monitor mode, but DROOL's last applied policy") {
+		t.Fatalf("monitor mode with a committed policy: %+v", f.Policy)
+	}
+	var sim struct {
+		Hops []struct {
+			Filtered bool     `json:"filtered"`
+			Notes    []string `json:"notes"`
+		} `json:"hops"`
+	}
+	if err := e.h.st.W.UpsertHostAddress(ctx, upsertAddr(web, "10.1.20.15")); err != nil {
+		t.Fatal(err)
+	}
+	r := e.c.do("POST", "/api/v1/firewall/simulate", map[string]any{"from_host": web, "to_address": "185.10.1.1", "protocol": "tcp", "port": 8812})
+	if r.status != 200 {
+		t.Fatalf("simulate: %d %s", r.status, r.body)
+	}
+	r.json(t, &sim)
+	if len(sim.Hops) != 1 || !sim.Hops[0].Filtered || !strings.Contains(strings.Join(sim.Hops[0].Notes, " "), "last applied policy (revision") {
+		t.Fatalf("simulation on a host out of Enforce, its policy still committed: %+v", sim)
+	}
+	// DROOL's rules missing on the host: nothing of its policy is in force,
+	// so the default drop is what it would do, not a denial.
+	e.h.st.Writer.Exec(`UPDATE fw_host_state SET drift = 'missing' WHERE host_id = ?`, web)
+	if f := e.flows(t, "host="+web+"&port=22").Items[0]; f.Policy.Enforcement == "enforced" || f.Policy.Status != "unclassified" || !f.Policy.WouldDeny ||
+		!strings.Contains(strings.Join(f.Policy.Notes, " "), "rules are missing") {
+		t.Fatalf("rules missing on the host: %+v", f.Policy)
+	}
+	e.h.st.Writer.Exec(`UPDATE fw_host_state SET drift = '' WHERE host_id = ?`, web)
+	e.setHost(t, web, map[string]any{"mode": "enforce"})
 
 	// Host summary: listening ports from inventory, with observed use.
 	var hn struct {

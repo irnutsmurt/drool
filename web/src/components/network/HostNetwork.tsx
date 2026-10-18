@@ -1,16 +1,18 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { modeInfo } from "@/components/firewall/parts";
 import { cx } from "@/components/ui/cx";
 import { errorMessage, formatAgo } from "@/lib/format";
-import { CollectionBadge, DirectionLabel, noLookup, PolicyBadge } from "./labels";
+import { CollectionBadge, DirectionLabel, enforcementText, noLookup, PolicyBadge } from "./labels";
 import { GeoAttribution } from "./Enrichment";
 import { FlowTable } from "./FlowTable";
-import { nk, useHostNetwork, useNetFlows, type NetFilter } from "./queries";
+import { nk, useHostNetwork, useNetFlows, type NetFilter, type NetHost } from "./queries";
 
 const views: { id: string; label: string; f: NetFilter }[] = [
   { id: "all", label: "All", f: {} },
@@ -68,6 +70,7 @@ export function HostNetworkPanel({ hostId }: { hostId: string }) {
         </div>
       </Card>
       <Card title="Connections">
+        {hn && <FirewallLine hostId={hostId} fw={hn.firewall} />}
         <div className="mb-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Show connections">
           {views.map((v) => (
             <button key={v.id} type="button" aria-pressed={view === v.id} onClick={() => setView(v.id)}
@@ -81,6 +84,26 @@ export function HostNetworkPanel({ hostId }: { hostId: string }) {
           empty={hn?.collection.mode === "snapshot" && !hn.collection.snapshot_at ? "No snapshot taken yet. SSH hosts are observed only when you take a snapshot." : "No connections observed."} />
       </Card>
     </div>
+  );
+}
+
+/** Whether the policy the connections are judged against is in force on
+ * this host: where it isn't, their policy status is what it would do with
+ * them, not what happened to them. */
+function FirewallLine({ hostId, fw }: { hostId: string; fw: NetHost["firewall"] }) {
+  const { can } = useAuth();
+  const text = fw.enforcement !== "enforced"
+    ? `${enforcementText[fw.enforcement] ?? fw.enforcement}. A connection's policy status is what DROOL's policy would do with it, not what happened to it.`
+    : fw.mode !== "enforce"
+      ? `DROOL's last applied policy is still in force on this host (mode ${modeInfo[fw.mode]?.label ?? fw.mode}): changes aren't applied.`
+      : fw.rules_changed
+        ? "DROOL's policy is in force on this host, with changes not applied yet: ↻ marks connections the host still treats differently."
+        : "DROOL's policy is in force on this host.";
+  return (
+    <p className="mb-2 text-xs text-muted" data-testid="network-firewall">
+      Firewall: {text}{fw.drift && " DROOL's rules were changed outside DROOL (drift)."}
+      {can("firewall.read") && <> <Link className="text-accent underline" to={`/hosts/${hostId}/firewall`}>This host&apos;s firewall</Link></>}
+    </p>
   );
 }
 

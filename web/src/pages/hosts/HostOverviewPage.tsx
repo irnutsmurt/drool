@@ -208,7 +208,8 @@ function FirewallTile({ h }: { h: Host }) {
       {q.error ? <p className="text-danger">Couldn&apos;t load: {errorMessage(q.error)}</p> : !p || !st ? <Loading /> : (
         <>
           <p className="flex flex-wrap items-center gap-2"><Badge tone={st.tone}>{st.text}</Badge><span>{fwModes[p.config.mode]?.label ?? p.config.mode}</span></p>
-          <p className="text-xs text-muted">{p.applied.enforced ? `Revision ${p.applied.revision} enforced` : "DROOL isn't filtering this host"}</p>
+          <p className="text-xs text-muted">{!p.applied.enforced ? "DROOL isn't filtering this host"
+            : p.applied.drift === "missing" ? "DROOL's rules are missing on the host" : `Revision ${p.applied.revision} enforced`}</p>
           {p.applied.drift && <p className="text-xs text-danger">Changed outside DROOL (drift)</p>}
         </>
       )}
@@ -227,7 +228,7 @@ function NetworkTile({ h }: { h: Host }) {
           <p className="text-xs">
             {n.counts.flows} connection{n.counts.flows === 1 ? "" : "s"} observed
             {n.counts.unclassified > 0 && <> · <span className="text-warn">{n.counts.unclassified} not in policy</span></>}
-            {n.counts.denied > 0 && <> · <span className="text-danger">{n.counts.denied} denied</span></>}
+            {n.counts.denied > 0 && <> · <span className="text-danger">{n.counts.denied} {n.firewall.enforcement === "enforced" ? "denied" : "would be denied"}</span></>}
           </p>
         </>
       )}

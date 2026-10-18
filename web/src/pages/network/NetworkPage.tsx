@@ -74,7 +74,7 @@ function Activity() {
             onClick={() => setFilter({ new: "host", since: "24h", direction: "out" })} action="Show new destinations" />
           <Stat label="Not in policy" value={s.counts.unclassified} detail="no firewall policy describes them" tone={s.counts.unclassified ? "warn" : undefined}
             onClick={() => setFilter({ policy: "unclassified" })} action="Show them" />
-          <Stat label="Denied or would be denied" value={s.counts.denied} detail="by a deny policy or an enforced default" tone={s.counts.denied ? "danger" : undefined}
+          <Stat label="Denied or would be denied" value={s.counts.denied} detail="what the policy drops, or would drop where it isn't in force" tone={s.counts.denied ? "danger" : undefined}
             onClick={() => setFilter({ policy: "denied" })} action="Show" />
         </div>
       )}

@@ -418,7 +418,7 @@ function ObservedEdge({ e, hosts, onClose }: { e: GEdge; hosts: { id: string; na
         <ul className="space-y-1">{o.flow_ids.slice(0, 6).map((id) => <FlowLine key={id} id={id} onOpen={() => setOpen(id)} />)}</ul>
         <Link className="mt-1 inline-block text-xs text-accent underline" to={flowsLink(e, hosts)}>Show all in Network Activity</Link>
       </div>
-      <p className="text-[11px] text-muted">Observed lines show traffic DROOL has seen, not routes. The firewall policy decides the status; nothing here changes it — use “Create policy from observed connection” in a connection&apos;s details to start a draft rule.</p>
+      <p className="text-[11px] text-muted">Observed lines show traffic DROOL has seen, not routes. Their status is the saved policy&apos;s verdict (not this draft&apos;s), whether or not a host enforces it; nothing here changes it — use “Create policy from observed connection” in a connection&apos;s details to start a draft rule.</p>
       {open !== undefined && <FlowInspector id={open} onClose={() => setOpen(undefined)} />}
     </div>
   );

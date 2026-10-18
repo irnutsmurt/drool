@@ -95,6 +95,11 @@ func (s *Service) PushCollection(ctx context.Context) {
 	}
 }
 
+// DriftMissing: DROOL's rules are gone from the host (it expected them and
+// finds none, as after a reload of nftables.service). Any other change is
+// "drift".
+const DriftMissing = "missing"
+
 // recordStatus stores the tooling status and derives drift.
 func (s *Service) recordStatus(ctx context.Context, hostID string, st map[string]string) {
 	if st["tool_version"] == "" || st["tool_version"] == "none" {
@@ -113,7 +118,7 @@ func (s *Service) recordStatus(ctx context.Context, hostID string, st map[string
 		// committed yet. That's not drift; the transaction settles it.
 		drift = prev.Drift
 	case expected != "" && expected != "none" && live == "none":
-		drift = "missing"
+		drift = DriftMissing
 	case expected != "" && live != expected:
 		drift = "drift"
 	case expected == "" && live != "" && live != "none":
