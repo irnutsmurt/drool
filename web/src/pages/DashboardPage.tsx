@@ -299,11 +299,14 @@ function UpdatesCard({ managed }: { managed: Host[] }) {
   const reboot = managed.filter((h) => h.health?.reboot_required);
   const failedUnits = total(managed, (h) => h.health?.failed_units);
   const failedHosts = managed.filter((h) => (h.health?.failed_units ?? 0) > 0).length;
+  // "None" only for hosts that reported recently (DESIGN-STANDARD §8).
+  const silent = managed.filter((h) => !h.health || h.health.stale).length;
+  const unknownThere = silent > 0 ? ` on the hosts that report (${plural(silent, "host")} ${silent === 1 ? "hasn't" : "haven't"} recently: not known there)` : "";
   return (
     <Card title="Updates and reboots">
       <ul className="space-y-2 text-sm">
         <li>
-          {updates == null ? <span className="text-muted">Pending updates aren&apos;t known yet (no package cache reported).</span> : updates === 0 ? "No pending updates." : (
+          {updates == null ? <span className="text-muted">Pending updates aren&apos;t known yet (no package cache reported).</span> : updates === 0 ? `No pending updates${unknownThere}.` : (
             <>
               <b>{updates}</b> pending update{updates === 1 ? "" : "s"} on {plural(updatable.length, "host")}
               {security ? <span className="text-warn">, {security} security</span> : security === 0 ? ", none security" : ""}
@@ -312,7 +315,7 @@ function UpdatesCard({ managed }: { managed: Host[] }) {
           )}
         </li>
         <li>
-          {reboot.length === 0 ? "No host needs a reboot." : (
+          {reboot.length === 0 ? `No host needs a reboot${unknownThere}.` : (
             <><span className="text-warn">{plural(reboot.length, "host")} need{reboot.length === 1 ? "s" : ""} a reboot</span>: {reboot.slice(0, 6).map((h, i) => <span key={h.id}>{i > 0 && ", "}<Link className={plainLink} to={`/hosts/${h.id}`}>{h.name}</Link></span>)}{reboot.length > 6 && " …"}</>
           )}
         </li>

@@ -287,6 +287,7 @@ export function PolicyEditor({ initial, draft, onClose }: { initial?: FwPolicy; 
 // --- apply ---
 
 export function ApplyDialog({ hostIds, names, remove, changes, onClose }: {
+  /** names[i] is hostIds[i]'s name. */
   hostIds: string[]; names: string[]; remove?: boolean; changes?: { added: string[]; removed: string[] }; onClose: () => void;
 }) {
   const { can } = useAuth();

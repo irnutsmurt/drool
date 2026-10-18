@@ -94,7 +94,7 @@ function HostsTab() {
           ]}
         />
       </Card>
-      {applying && <ApplyDialog hostIds={sel} names={items.filter((h) => sel.includes(h.host_id)).map((h) => h.host_name)} onClose={() => { setApplying(false); setSel([]); }} />}
+      {applying && <ApplyDialog hostIds={sel} names={sel.map((id) => items.find((h) => h.host_id === id)?.host_name ?? id)} onClose={() => { setApplying(false); setSel([]); }} />}
     </div>
   );
 }
