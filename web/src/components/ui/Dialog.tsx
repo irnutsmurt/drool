@@ -27,10 +27,11 @@ export function Dialog({ title, children, onClose, wide, footer, testId }: {
   const layer = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const titleId = useId();
-  // The first field that can take the focus, else the dialog itself: focus
-  // is inside the dialog from the start, whatever is still loading.
+  // The first field that can take the focus (not a disclosure, which Enter
+  // would open), else the dialog itself: focus is inside the dialog from
+  // the start, whatever is still loading.
   useModalLayer(layer, () => box.current?.querySelector<HTMLElement>("[data-autofocus]")
-    ?? [...(box.current?.querySelectorAll<HTMLElement>(focusable) ?? [])].find(canFocus) ?? box.current);
+    ?? [...(box.current?.querySelectorAll<HTMLElement>(focusable) ?? [])].find((x) => canFocus(x) && x.tagName !== "SUMMARY") ?? box.current);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!isTopLayer(layer.current)) return;
