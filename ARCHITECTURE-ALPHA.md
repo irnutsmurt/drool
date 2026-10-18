@@ -3124,6 +3124,43 @@ ever, belong to plugins or integrations outside the core. Monitoring and control
 follow the 1.0 rules: data collected over SSH or by the Shepherd within its capability ceiling,
 honest about what each path can see, typed operations, RBAC, audit, no rules language.
 
+### 39.1 M19 (proposed): a firewall baseline from observed traffic
+
+Recorded during the 1.0 readiness pass (§43); not in 1.0, and no rule is ever generated automatically in 1.0.
+
+**Why.** Writing the first policy for a host that already runs services is the hardest step in adopting DROOL's
+firewall. DROOL already observes the traffic (DESIGN §19: continuously through a Shepherd, a snapshot over SSH) and
+can already turn one observed connection into a draft rule (*Create policy from observed connection*) or a Guided-mode
+suggestion (`fwsvc` `Suggestions`, `SuggestDraft`). M19 turns everything a host was seen doing into one baseline that a
+person edits, reviews and approves.
+
+**How it would work:**
+
+1. **Learn.** A person picks hosts or a Pack and a learning window (for example a week). A baseline needs continuous
+   observation (a Shepherd); hosts observed only by SSH snapshots are marked incomplete. For containers (Docker and
+   Podman hosts, after the 1.1 container visibility of §39), published ports and container-to-container traffic are
+   mapped onto the host's rules the way the compiler already coexists with Docker's chains (DESIGN §16).
+2. **Propose.** DROOL groups the observed flows into named services and peers (hosts, Packs, named networks), proposes an
+   allow rule for each, always keeps the management path, and leaves each default (inbound and outbound) to the person.
+   Countries and networks (ASN) are context, never rules. Whatever is ambiguous — ephemeral ports, unknown peers,
+   one-off connections — is listed for a decision, never allowed silently.
+3. **Review** in the existing Firewall Designer as a draft (topology, rules and YAML), with the evidence behind each
+   rule (connections, first and last seen, processes). The existing simulation is run against the observed traffic:
+   every observed connection the draft would deny is listed before anything can be applied, and so is what the window
+   can't have seen (monthly jobs, backups, failover paths).
+4. **Approve and deploy explicitly.** Someone with `firewall.write` saves the policy and applies it through the existing
+   path: preview, management-path protection, Monitor or Guided first if wanted, and the dead-man transaction with its
+   automatic rollback.
+
+**Never automatic.** No rule is created, saved or applied without a person approving it; the learning window enforces
+nothing; observed traffic never becomes "allowed" by having been seen.
+
+**Reuse:** the connection classifier and suggestions, the compiler's evaluation (Explain, simulation), the Designer,
+the transaction protocol and its rollback. **New:** the baseline generator, its review step with per-rule evidence, and
+the container mapping. **Risks:** a window misses rare traffic (so the review names what it couldn't see and
+recommends Monitor or Guided first); rules overfitted to ephemeral ports; scale on large fleets; privacy stays as in
+DESIGN §19.4 (no payloads, `network.read`).
+
 ---
 
 ## 40. Dogfooding correction batch (after the freeze)
