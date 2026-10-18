@@ -97,29 +97,38 @@ epoch=$(git -C "$src" log -1 --format=%ct "$commit")
 date=$(date -u -d "@$epoch" +%Y-%m-%dT%H:%M:%SZ)
 export SOURCE_DATE_EPOCH=$epoch
 
+# A release — stable or a candidate — needs a license, a real maintainer and
+# the Shepherd release key in its commit: the stable tag goes on the final
+# candidate's commit (RELEASING.md), so a candidate without them could never
+# become the release, and sign.sh refuses to sign its Shepherds. Development
+# builds only warn.
+release=0 what="$channel build"
+[[ $channel == stable ]] && release=1 what="stable release"
+[[ $channel == prerelease ]] && release=1 what="release candidate"
+
 # DROOL's own license: LICENSE plus its SPDX id in packaging/release/license.
 license_id=NOASSERTION
 if [[ -f $src/LICENSE ]]; then
   [[ -s $src/packaging/release/license ]] || die "LICENSE exists but packaging/release/license (its SPDX id) doesn't"
   license_id=$(tr -d ' \n' < "$src/packaging/release/license")
-elif [[ $channel == stable ]]; then
-  die "the source has no LICENSE: a stable release can't be distributed without one (the project owner chooses it)"
+elif [[ $release == 1 ]]; then
+  die "the source has no LICENSE: a $what can't be distributed without one (the project owner chooses it)"
 else
   note "warning: no LICENSE in the source; packages and SBOMs say NOASSERTION. Not distributable as is."
 fi
 
-# The packages' maintainer field names who answers for them: a stable
-# release needs a real contact (DROOL_MAINTAINER, or the default above).
+# The packages' maintainer field names who answers for them: a release
+# needs a real contact (DROOL_MAINTAINER, or the default above).
 if [[ $MAINTAINER == *@drool.invalid* ]]; then
-  [[ $channel != stable ]] || die "the packages' maintainer is the placeholder \"$MAINTAINER\": a stable release needs a real contact (DROOL_MAINTAINER, or the default in build.sh)"
+  [[ $release == 0 ]] || die "the packages' maintainer is the placeholder \"$MAINTAINER\": a $what needs a real contact (DROOL_MAINTAINER, or the default in build.sh)"
   note "warning: the packages' maintainer is the placeholder \"$MAINTAINER\" (DROOL_MAINTAINER)"
 fi
 
 # The DROOL project's Shepherd release key, built into every binary
 # (internal/release/official_keys.txt): Shepherds built without it can
-# never take an official update, so a stable release needs it.
+# never take an official update, so a release needs it.
 if ! grep -qE '^drool-release-ed25519 ' "$src/internal/release/official_keys.txt"; then
-  [[ $channel != stable ]] || die "internal/release/official_keys.txt lists no Shepherd release key: this release's Shepherds could never take an official update (RELEASING.md, \"The Shepherd release key\")"
+  [[ $release == 0 ]] || die "internal/release/official_keys.txt lists no Shepherd release key: this $what's Shepherds could never take an official update (RELEASING.md, \"The Shepherd release key\")"
   note "warning: no Shepherd release key in internal/release/official_keys.txt: this build's Shepherds can't take official updates"
 fi
 

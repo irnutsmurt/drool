@@ -12,6 +12,6 @@
 #
 # None yet: no release is official until the project's key is listed here.
 # Shepherds built without it can't take official updates, so it has to be
-# here before the first release candidate (build.sh refuses a stable build
-# without it). Operators' own keys go on each host
+# here before the first release candidate (build.sh refuses a candidate or
+# stable build without it). Operators' own keys go on each host
 # (/etc/drool/release-keys.d/*.pub, drool-agent trust-release-key).

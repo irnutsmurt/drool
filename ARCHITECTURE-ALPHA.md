@@ -2409,7 +2409,7 @@ What the repository had before M17, and what became of it:
 
 `packaging/release/build.sh` (= `make release`):
 
-1. Resolves the commit; the tag decides the version and channel (`--version` names an untagged candidate, still `development`). A stable build refuses uncommitted changes in the working tree and a source without `LICENSE`.
+1. Resolves the commit; the tag decides the version and channel (`--version` names an untagged candidate, still `development`). A stable or candidate build refuses uncommitted changes in the working tree and a source without `LICENSE` (and, since §42.7, without a real maintainer or the Shepherd release key).
 2. Creates a fresh repository holding exactly that commit (`git init` + `fetch` of the commit and the tags), so nothing uncommitted or untracked can get in, and derives `SOURCE_DATE_EPOCH` from the commit.
 3. Runs BuildKit through `packaging/release/buildx` (the docker plugin, or a pinned standalone buildx: dockerd's own BuildKit, nothing installed) twice on the same build graph: `--target artifacts` → the binaries and notices per platform; the image → an OCI layout with both platforms, `rewrite-timestamp`, no provenance attestations.
 4. Checks: every file is there; the image's three binaries per platform are byte for byte the archived ones (`relkit oci`); the notices match across platforms; the host's controller binary reports the version, channel and commit, unmodified, and its Shepherd the version.
@@ -2448,7 +2448,7 @@ Runtimes (§34.13 for the evidence): Docker Engine rootful (the release tests' o
 - Signing: `packaging/release/sign.sh` signs `SHA256SUMS` offline with the DROOL release key (OpenSSH Ed25519, `ssh-keygen -Y sign -n drool-release`) after checking every file, and verifies against `packaging/keys/allowed_signers`; users verify with `ssh-keygen -Y verify` (README). The key never enters the repository, CI or a controller; until its public half is in `allowed_signers`, nothing verifies and no build is official. It is separate from the DROOL Shepherd release key (official Shepherd updates, §42.3) and the operators' own Shepherd release keys (§23.7), the Agent Root CA, the SSH user CA and the master key. `release.json` says how a release is signed; a build never is.
 - SBOMs: SPDX 2.3 JSON (syft) for each platform's binaries (Go modules with licenses from the module cache, and the npm packages bundled in the web UI — development-only ones excluded) and for each platform's image (adding the base image's Debian packages).
 - `THIRD_PARTY_NOTICES.txt` (in the archives, the packages, the image's `/usr/share/doc/drool/` and the release) carries every bundled component's license texts.
-- DROOL's own license: the GNU GPL version 3, since its owner added `LICENSE` on 2026-10-17, with the SPDX id `GPL-3.0-only` in `packaging/release/license` (§42.1). Packages, the image's `org.opencontainers.image.licenses` label and DROOL's own packages in the SBOMs carry it. Without `LICENSE`, packages and SBOMs say `NOASSERTION` and a stable build refuses; with `LICENSE` but no SPDX id, every build refuses.
+- DROOL's own license: the GNU GPL version 3, since its owner added `LICENSE` on 2026-10-17, with the SPDX id `GPL-3.0-only` in `packaging/release/license` (§42.1). Packages, the image's `org.opencontainers.image.licenses` label and DROOL's own packages in the SBOMs carry it. Without `LICENSE`, packages and SBOMs say `NOASSERTION` and a stable or candidate build refuses; with `LICENSE` but no SPDX id, every build refuses.
 
 ### 34.7 Support matrix, and why
 
@@ -3966,9 +3966,12 @@ and the tests):
   `official_release_keys` (a warning for development builds; `OFFICIAL_RELEASE_KEYS` replaces the list in tests), and
   only then writes `SHA256SUMS.sig`. `TestReleaseSigning` covers the refusal and the descriptions.
 - `build.sh` refuses a stable build without a Shepherd release key in `official_keys.txt` (Shepherds built without it
-  could never take an official update) and with the placeholder maintainer `maintainers@drool.invalid`; both are
-  warnings for other builds. `TestReleaseArtifacts` checks that the controller, the Shepherds and `release.json` name
-  the same built-in keys, and at least one for a stable release.
+  could never take an official update) and with the placeholder maintainer `maintainers@drool.invalid`. Since the
+  readiness pass it refuses a release candidate the same way, and without `LICENSE`: the stable tag goes on the final
+  candidate's commit, so a candidate without them could never become the release (and `sign.sh` already refused to
+  sign its Shepherds). Development builds only warn. Shown by building tags `v1.0.0-rc.3` and `v1.0.0` in a
+  throwaway clone. `TestReleaseArtifacts` checks that the controller, the Shepherds and `release.json` name the
+  same built-in keys, and at least one for a candidate or stable release.
 - The workflows name their runner image (`ubuntu-24.04`): GitHub moves `ubuntu-latest` to Ubuntu 26 from 2026-10-19,
   and a qualification must not change runner image halfway (§42.1's license fix restored `main`'s release job).
 
@@ -4046,11 +4049,11 @@ unknowns honest, are settings where people look for them.
 
 - **The DROOL Shepherd release key**: created offline (`drool release keygen`), its public line committed to
   `internal/release/official_keys.txt` before the release candidate. Until then every build says official releases
-  can't be verified, and a stable build refuses. Its private half signs each release's Shepherd descriptions
-  (`sign.sh`).
+  can't be verified, and a candidate or stable build refuses. Its private half signs each release's Shepherd
+  descriptions (`sign.sh`).
 - **The DROOL release key** (OpenSSH), its public half in `packaging/keys/allowed_signers` (unchanged).
-- **The packages' maintainer**: a real contact in `build.sh` or `DROOL_MAINTAINER`; a stable build refuses the
-  placeholder.
+- **The packages' maintainer**: a real contact, committed as the default in `build.sh` (the release workflow doesn't
+  set `DROOL_MAINTAINER`); a candidate or stable build refuses the placeholder.
 - **GPL-3.0-only or -or-later**: `LICENSE` is the FSF's GPLv3 text; "only" was taken as the literal reading.
 - Pre-1.0 Shepherds (development builds, the dogfooding fleet) can't take official updates: one custom release or a
   reinstall each, once.

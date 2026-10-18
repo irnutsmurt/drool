@@ -81,9 +81,12 @@ Node images and the base image in the `Dockerfile`; nfpm and syft in `build.sh`)
 What the pipeline guarantees:
 
 - **One source revision.** It builds from a fresh repository holding exactly that commit:
-  uncommitted changes and untracked files can't get in. A stable build refuses when the working
-  tree has uncommitted changes (they wouldn't be in it, which confuses), and when there is no
-  `LICENSE`.
+  uncommitted changes and untracked files can't get in. A release build (stable or candidate)
+  refuses when the working tree has uncommitted changes (they wouldn't be in it, which confuses).
+- **A release is complete.** A stable or candidate build refuses without `LICENSE` and its SPDX id,
+  without a real maintainer contact, and without the Shepherd release key's public half in
+  `internal/release/official_keys.txt`. The stable tag goes on the final candidate's commit, so a
+  candidate without them could never become the release. Development builds only warn.
 - **One build of each binary.** The Dockerfile is the only build definition. The image's binaries
   are checked to be byte for byte the archived ones, and the host's binaries to report the release's
   version, channel and clean commit.
@@ -176,7 +179,7 @@ drool release keygen -o shepherd-release -name "DROOL project"   # the same mach
   `release@drool namespaces="drool-release" ssh-ed25519 AAAA…` — in a commit before the first signed release.
 - The Shepherd key's public half (the line in `shepherd-release.pub`) goes into
   `internal/release/official_keys.txt` **before the first release candidate**: Shepherds built without it can never
-  take an official update (they'd need a custom release or a reinstall), and a stable build refuses without it.
+  take an official update (they'd need a custom release or a reinstall), and a candidate or stable build refuses without it.
 - Replacing a key: add the new key's line, sign the next release with it, keep the old line until releases signed
   with it are no longer offered (for the Shepherd key: until no supported Shepherd needs it), and say so in the
   release notes.
@@ -207,12 +210,12 @@ No release is published automatically (only `main`'s development image, above). 
 
 ## Checklist
 
-- [ ] `LICENSE` present and `packaging/release/license` holds its SPDX id (a stable build refuses otherwise).
+- [ ] `LICENSE` present and `packaging/release/license` holds its SPDX id (a candidate or stable build refuses otherwise).
 - [ ] The release key's public half in `packaging/keys/allowed_signers`.
 - [ ] The Shepherd release key's public half in `internal/release/official_keys.txt`, **before the release candidate**
-      (a stable build refuses without it; `release.json` lists it under `official_release_keys`).
-- [ ] The packages' maintainer is a real contact (`DROOL_MAINTAINER` or the default in `build.sh`; a stable build
-      refuses the placeholder `maintainers@drool.invalid`).
+      (a candidate or stable build refuses without it; `release.json` lists it under `official_release_keys`).
+- [ ] The packages' maintainer is a real contact, committed as the default in `build.sh` (the release workflow
+      doesn't set `DROOL_MAINTAINER`; a candidate or stable build refuses the placeholder `maintainers@drool.invalid`).
 - [ ] Docs describe this release: README (status, quick start, supported platforms, limitations), the
       user guide (installing, updating, supported platforms), DESIGN, ARCHITECTURE-ALPHA, the
       maintainer field (`DROOL_MAINTAINER` or the default in `build.sh`).

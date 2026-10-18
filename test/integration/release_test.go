@@ -258,8 +258,8 @@ func TestReleaseArtifacts(t *testing.T) {
 	expect(t, err == nil && strings.TrimSpace(string(agentOut)) == r.Version, "drool-agent version: %q %v", agentOut, err)
 	// The Shepherd release keys built in: what release.json says, in the
 	// controller and in the Shepherds; a release has at least one (build.sh
-	// refuses a stable build without), or its Shepherds could never take an
-	// official update.
+	// refuses a stable or candidate build without), or its Shepherds could
+	// never take an official update.
 	agentJSON, _ := exec.Command(filepath.Join(r.binDir, "drool-agent-linux-"+runtime.GOARCH), "version", "--json").Output()
 	var av struct {
 		OfficialKeys []string `json:"official_release_keys"`
@@ -267,8 +267,8 @@ func TestReleaseArtifacts(t *testing.T) {
 	json.Unmarshal(agentJSON, &av)
 	expect(t, strings.Join(v.OfficialKeys, ",") == strings.Join(r.OfficialKeys, ",") && strings.Join(av.OfficialKeys, ",") == strings.Join(r.OfficialKeys, ","),
 		"official Shepherd release keys: drool %v, drool-agent %v, release.json %v", v.OfficialKeys, av.OfficialKeys, r.OfficialKeys)
-	if r.Channel == "stable" {
-		expect(t, len(r.OfficialKeys) > 0, "a stable release without a Shepherd release key")
+	if r.Channel == "stable" || r.Channel == "prerelease" {
+		expect(t, len(r.OfficialKeys) > 0, "a %s release without a Shepherd release key", r.Channel)
 	}
 
 	for _, arch := range []string{"amd64", "arm64"} {
