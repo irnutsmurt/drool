@@ -215,6 +215,16 @@ SELECT * FROM agent_rollouts WHERE status = 'running' ORDER BY created_at;
 -- name: SetRolloutStatus :exec
 UPDATE agent_rollouts SET status = ?, paused_reason = ?, updated_at = ? WHERE id = ?;
 
+-- name: ResumeRollout :exec
+UPDATE agent_rollouts SET status = 'running', paused_reason = '', failures = 0, resumed_at = ?, updated_at = ?
+WHERE id = ? AND status = 'paused';
+
+-- name: UnfinishedRollouts :many
+SELECT * FROM agent_rollouts WHERE status IN ('running', 'paused') ORDER BY created_at;
+
+-- name: ListUpdateRolloutsForVersion :many
+SELECT * FROM agent_rollouts WHERE kind = 'update' AND version = ? ORDER BY created_at DESC;
+
 -- name: SetRolloutFailures :exec
 UPDATE agent_rollouts SET failures = ?, updated_at = ? WHERE id = ?;
 

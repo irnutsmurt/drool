@@ -165,8 +165,9 @@ function Overview({ st, manage }: { st: UpdateStatus; manage: boolean }) {
         </div>
         {st.latest && (
           <p className="rounded-ui border border-line bg-surface-2 px-3 py-2 text-sm" data-testid="updates-latest">
-            <span className="font-medium">DROOL {st.latest.version} is available</span> (this is {st.controller.version}). Update DROOL, and its
-            Shepherds update automatically. <GuideLink page="Updating-DROOL">How to update DROOL</GuideLink>
+            <span className="font-medium">DROOL {st.latest.version} is available</span> (this is {st.controller.version}).
+            {automatic && officialWorks(st) ? " Update DROOL, and its Shepherds update automatically." : " Update DROOL, then update its Shepherds here."}{" "}
+            <GuideLink page="Updating-DROOL">How to update DROOL</GuideLink>
           </p>
         )}
         {notice.tone && <Alert tone={notice.tone}>{notice.text}</Alert>}
@@ -200,7 +201,7 @@ function Overview({ st, manage }: { st: UpdateStatus; manage: boolean }) {
           <dt className="font-medium">Last checked</dt>
           <dd className="space-y-1" data-testid="updates-last-checked">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              {!st.check.enabled ? <span className="text-muted">Not checked: {notice.text ? st.official.detail.replace(/\.$/, "") : "checks are off"}.</span>
+              {!st.check.enabled ? <span className="text-muted">{notice.text ? "Not checked (the note above says why)." : "Not checked: checks are off."}</span>
                 : st.check.checking ? <span>Checking…</span>
                   : st.check.last_success ? <span title={formatDateTime(st.check.last_success)}>{formatAgo(st.check.last_success)}</span>
                     : <span className="text-muted">Not checked yet: DROOL checks shortly after it starts.</span>}
@@ -228,7 +229,7 @@ function Overview({ st, manage }: { st: UpdateStatus; manage: boolean }) {
             )}
           </dd>
         </dl>
-        {manage && st.state === "available" && !automatic && st.target && (
+        {manage && st.state === "available" && (!automatic || st.stopped) && st.target && (
           <Button variant="primary" onClick={() => void updateNow()} disabled={start.isPending}>
             Update {plural(c.behind, "Shepherd")} to {st.target}…</Button>
         )}

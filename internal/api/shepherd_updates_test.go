@@ -646,8 +646,210 @@ func TestOfficialShepherdUpdateRollback(t *testing.T) {
 		t.Errorf("retry rollout: %+v", again)
 	}
 	eventually(t, 20*time.Second, "offered again", func() bool { return a.upd.count() == 2 })
+	// Accepting the Try again set the earlier result aside.
+	var prev struct{ State, To string }
+	if b, err := os.ReadFile(filepath.Join(a.paths.State, "update", "result.previous.json")); err != nil || json.Unmarshal(b, &prev) != nil ||
+		prev.State != "rolled_back" || prev.To != "v1.4.0" {
+		t.Errorf("the earlier result wasn't set aside: %+v %v", prev, err)
+	}
 	a.restart(t, e, "v1.4.0")
 	eventually(t, 20*time.Second, "healthy on the second try", func() bool { st, _, _ := e.rolloutHost(t, again.ID, a.host); return st == "healthy" })
+}
+
+// Resume after the failure limit paused an update: the failures so far are
+// accepted, the rollout continues with a new canary instead of pausing
+// again at once, and it completes (ARCHITECTURE-ALPHA §43).
+func TestOfficialShepherdUpdateResume(t *testing.T) {
+	o := newOfficialSource(t, "v1.4.0", "stable")
+	e := newAgentEnv(t)
+	o.attach(e)
+	o.publishOwn()
+	a := e.shepherd(t, "v1.3.0", "")
+	b := e.shepherd(t, "v1.3.0", "")
+	a.upd.outcome = "rolled_back"
+	e.check(t)
+	e.h.agents.RunUpdatePass(context.Background())
+	eventually(t, 20*time.Second, "the canary switched", func() bool { return a.upd.count() == 1 })
+	a.restart(t, e, "v1.3.0") // the helper rolled back
+	var ro rolloutRow
+	eventually(t, 20*time.Second, "the rollout paused", func() bool {
+		for _, r := range e.rollouts(t) {
+			if r.Version == "v1.4.0" && r.Status == "paused" {
+				ro = r
+				return true
+			}
+		}
+		return false
+	})
+	if r := e.c.do("POST", "/api/v1/agents/rollouts/"+ro.ID+"/resume", nil); r.status != 200 {
+		t.Fatalf("resume: %d %s", r.status, r.body)
+	}
+	eventually(t, 20*time.Second, "b offered as the new canary", func() bool { return b.upd.count() == 1 })
+	for _, r := range e.rollouts(t) {
+		if r.ID == ro.ID && r.Status != "running" {
+			t.Fatalf("paused again after resume: %+v", r)
+		}
+	}
+	b.restart(t, e, "v1.4.0")
+	eventually(t, 20*time.Second, "the resumed update completed", func() bool {
+		for _, r := range e.rollouts(t) {
+			if r.ID == ro.ID {
+				return r.Status == "completed"
+			}
+		}
+		return false
+	})
+	if st, _, _ := e.rolloutHost(t, ro.ID, a.host); st != "rolled_back" {
+		t.Errorf("the canary's failure is kept in the history: %s", st)
+	}
+	if a.upd.count() != 1 {
+		t.Error("resuming offered the version again where it failed")
+	}
+}
+
+// An update cut off with the Shepherd's session before its helper started
+// is offered again when the Shepherd reconnects, not counted as a failure;
+// a result the Shepherd still has from an earlier attempt at the same
+// version is never taken for the new attempt's (ARCHITECTURE-ALPHA §43).
+func TestOfficialShepherdUpdateInterrupted(t *testing.T) {
+	o := newOfficialSource(t, "v1.4.0", "stable")
+	e := newAgentEnv(t)
+	o.attach(e)
+	o.publishOwn()
+	p := agentsvc.DefaultUpdatePolicy()
+	p.Policy = "manual"
+	if r := e.c.do("PUT", "/api/v1/agents/updates/policy", p); r.status != 200 {
+		t.Fatal(r.status)
+	}
+	a := e.shepherd(t, "v1.3.0", "")
+	e.check(t)
+	// "Offered, then the session ended": the host went away before the
+	// offer reached its helper.
+	interrupt := func(rolloutID string) {
+		t.Helper()
+		if _, err := e.h.st.Writer.Exec(`UPDATE agent_rollout_hosts SET state = 'offered' WHERE rollout_id = ? AND host_id = ?`, rolloutID, a.host); err != nil {
+			t.Fatal(err)
+		}
+	}
+	start := func(body map[string]any) rolloutRow {
+		t.Helper()
+		var ro rolloutRow
+		r := e.c.do("POST", "/api/v1/agents/rollouts", body)
+		if r.status != 201 {
+			t.Fatalf("start: %d %s", r.status, r.body)
+		}
+		r.json(t, &ro)
+		return ro
+	}
+	a.run.stop()
+	eventually(t, 10*time.Second, "a offline", func() bool { return !e.connected(a.host) })
+	ro := start(map[string]any{"version": "v1.4.0"})
+	interrupt(ro.ID)
+	// The helper fails this time, from the start: the first real attempt.
+	a.upd.outcome = "rolled_back"
+	a.start(t, e, "v1.3.0")
+	eventually(t, 20*time.Second, "offered again on reconnect", func() bool { return a.upd.count() == 1 })
+	a.restart(t, e, "v1.3.0") // rolled back
+	eventually(t, 20*time.Second, "the update rolled back and paused", func() bool {
+		st, _, _ := e.rolloutHost(t, ro.ID, a.host)
+		return st == "rolled_back"
+	})
+	// Try again, cut off the same way: the Shepherd accepted it, which sets
+	// the rollback above aside as an earlier result, and its session ended
+	// before the update's helper started. The attempt is offered again; the
+	// earlier result doesn't answer for it.
+	a.upd.mu.Lock()
+	a.upd.outcome = "healthy"
+	a.upd.mu.Unlock()
+	a.run.stop()
+	eventually(t, 10*time.Second, "a offline", func() bool { return !e.connected(a.host) })
+	again := start(map[string]any{"version": "v1.4.0", "host_ids": []string{a.host}, "retry": true})
+	interrupt(again.ID)
+	upd := filepath.Join(a.paths.State, "update")
+	if err := os.Rename(filepath.Join(upd, "result.json"), filepath.Join(upd, "result.previous.json")); err != nil {
+		t.Fatal(err)
+	}
+	a.start(t, e, "v1.3.0")
+	eventually(t, 20*time.Second, "the retry offered again on reconnect", func() bool { return a.upd.count() == 2 })
+	if st, d, _ := e.rolloutHost(t, again.ID, a.host); st == "rolled_back" || st == "failed" {
+		t.Fatalf("the earlier attempt's result was taken for the retry: %s %q", st, d)
+	}
+	a.restart(t, e, "v1.4.0")
+	eventually(t, 20*time.Second, "healthy", func() bool { st, _, _ := e.rolloutHost(t, again.ID, a.host); return st == "healthy" })
+
+	// A host that stays away past the health window doesn't fail the
+	// rollout either: an attempt that never reached its helper waits.
+	b := e.shepherd(t, "v1.3.0", "")
+	b.run.stop()
+	eventually(t, 10*time.Second, "b offline", func() bool { return !e.connected(b.host) })
+	third := start(map[string]any{"version": "v1.4.0", "host_ids": []string{b.host}})
+	if _, err := e.h.st.Writer.Exec(`UPDATE agent_rollout_hosts SET state = 'offered', updated_at = ? WHERE rollout_id = ? AND host_id = ?`,
+		time.Now().Add(-time.Hour).UnixMilli(), third.ID, b.host); err != nil {
+		t.Fatal(err)
+	}
+	e.h.agents.RunUpdatePass(context.Background())
+	if st, d, _ := e.rolloutHost(t, third.ID, b.host); st != "pending" || !strings.Contains(d, "interrupted") {
+		t.Errorf("an attempt cut off with an offline host: %s %q", st, d)
+	}
+	for _, r := range e.rollouts(t) {
+		if r.ID == third.ID && r.Status != "running" {
+			t.Errorf("rollout %s: %+v", r.Status, r)
+		}
+	}
+}
+
+// A person who cancels the update to the target stops automatic updates for
+// that version: the status says so instead of promising them, and the
+// update can be started by hand. A host that was only busy finishing
+// another update is offered again (ARCHITECTURE-ALPHA §43).
+func TestOfficialShepherdUpdateStopped(t *testing.T) {
+	o := newOfficialSource(t, "v1.4.0", "stable")
+	e := newAgentEnv(t)
+	o.attach(e)
+	o.publishOwn()
+	a := e.shepherd(t, "v1.3.0", "")
+	a.run.stop()
+	eventually(t, 10*time.Second, "a offline", func() bool { return !e.connected(a.host) })
+	e.check(t)
+	e.h.agents.RunUpdatePass(context.Background())
+	var ro rolloutRow
+	eventually(t, 10*time.Second, "an automatic rollout", func() bool {
+		for _, r := range e.rollouts(t) {
+			if r.Version == "v1.4.0" && r.Automatic {
+				ro = r
+				return true
+			}
+		}
+		return false
+	})
+	if r := e.c.do("POST", "/api/v1/agents/rollouts/"+ro.ID+"/cancel", nil); r.status != 200 {
+		t.Fatalf("cancel: %d %s", r.status, r.body)
+	}
+	e.h.agents.RunUpdatePass(context.Background())
+	if n := len(e.rollouts(t)); n != 1 {
+		t.Fatalf("automatic updates started the cancelled version again: %d rollouts", n)
+	}
+	var st struct {
+		updStatus
+		Stopped string `json:"stopped"`
+	}
+	e.c.do("GET", "/api/v1/agents/updates/status", nil).json(t, &st)
+	if st.State != "available" || st.Stopped != "cancelled by admin" || strings.Contains(st.Summary, "automatically") ||
+		!strings.Contains(st.Summary, "Automatic updates won't start it again (cancelled by admin)") {
+		t.Errorf("status after a cancel: %s %q stopped=%q", st.State, st.Summary, st.Stopped)
+	}
+
+	// A busy refusal isn't a decision about the version.
+	b := e.shepherd(t, "v1.3.0", "")
+	if _, err := e.h.st.Writer.Exec(`UPDATE agent_rollouts SET status = 'completed', paused_reason = '' WHERE id = ?`, ro.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.h.st.Writer.Exec(`INSERT INTO agent_rollout_hosts (rollout_id, host_id, wave, state, from_version, detail, updated_at)
+		VALUES (?, ?, 1, 'skipped', 'v1.3.0', 'another update is still in progress', ?)`, ro.ID, b.host, time.Now().UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	e.h.agents.RunUpdatePass(context.Background())
+	eventually(t, 20*time.Second, "b offered after a busy refusal", func() bool { return b.upd.count() == 1 })
 }
 
 // An explicit "manual" is kept: DROOL says an update is available and
@@ -705,6 +907,19 @@ func TestOfficialReleaseManifestUpload(t *testing.T) {
 	}
 	if rels := e.releases(t); len(rels) != 1 || !rels[0].Official {
 		t.Errorf("releases: %+v", rels)
+	}
+	// An official release newer than this DROOL, uploaded with its binary,
+	// is stored, but automatic updates don't take Shepherds past DROOL.
+	newer := []byte("#!/bin/sh\necho v1.5.0\n")
+	signed, err := agentsvc.ParseSignedRelease(o.signed(o.priv, release.Manifest{Version: "v1.5.0", Channel: "stable"}, newer))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.h.agents.AddRelease(context.Background(), signed, bytes.NewReader(newer), ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.h.agents.AutoTarget(context.Background(), agentsvc.DefaultUpdatePolicy()); got != "v1.4.0" {
+		t.Errorf("automatic target with an official release newer than DROOL: %s", got)
 	}
 }
 

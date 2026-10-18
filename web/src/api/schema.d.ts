@@ -4582,6 +4582,8 @@ export interface components {
                 issued_at: string;
                 url: string;
             };
+            /** @description Why automatic updates leave the target alone (a person paused or cancelled its rollout); absent when they don't. */
+            stopped?: string;
             counts: {
                 total: number;
                 current: number;

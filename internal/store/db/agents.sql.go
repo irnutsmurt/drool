@@ -11,7 +11,7 @@ import (
 )
 
 const activeRollouts = `-- name: ActiveRollouts :many
-SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset, web_host, retry FROM agent_rollouts WHERE status = 'running' ORDER BY created_at
+SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset, web_host, retry, resumed_at FROM agent_rollouts WHERE status = 'running' ORDER BY created_at
 `
 
 func (q *Queries) ActiveRollouts(ctx context.Context) ([]AgentRollout, error) {
@@ -41,6 +41,7 @@ func (q *Queries) ActiveRollouts(ctx context.Context) ([]AgentRollout, error) {
 			&i.Preset,
 			&i.WebHost,
 			&i.Retry,
+			&i.ResumedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -405,7 +406,7 @@ func (q *Queries) GetReleaseFor(ctx context.Context, arg GetReleaseForParams) (A
 }
 
 const getRollout = `-- name: GetRollout :one
-SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset, web_host, retry FROM agent_rollouts WHERE id = ?
+SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset, web_host, retry, resumed_at FROM agent_rollouts WHERE id = ?
 `
 
 func (q *Queries) GetRollout(ctx context.Context, id string) (AgentRollout, error) {
@@ -429,6 +430,7 @@ func (q *Queries) GetRollout(ctx context.Context, id string) (AgentRollout, erro
 		&i.Preset,
 		&i.WebHost,
 		&i.Retry,
+		&i.ResumedAt,
 	)
 	return i, err
 }
@@ -1304,7 +1306,7 @@ func (q *Queries) ListRolloutHosts(ctx context.Context, rolloutID string) ([]Lis
 }
 
 const listRollouts = `-- name: ListRollouts :many
-SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset, web_host, retry FROM agent_rollouts ORDER BY created_at DESC LIMIT 50
+SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset, web_host, retry, resumed_at FROM agent_rollouts ORDER BY created_at DESC LIMIT 50
 `
 
 func (q *Queries) ListRollouts(ctx context.Context) ([]AgentRollout, error) {
@@ -1334,6 +1336,7 @@ func (q *Queries) ListRollouts(ctx context.Context) ([]AgentRollout, error) {
 			&i.Preset,
 			&i.WebHost,
 			&i.Retry,
+			&i.ResumedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1405,6 +1408,52 @@ func (q *Queries) ListTrustManifests(ctx context.Context) ([]AgentTrustManifest,
 			&i.Payload,
 			&i.Signature,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUpdateRolloutsForVersion = `-- name: ListUpdateRolloutsForVersion :many
+SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset, web_host, retry, resumed_at FROM agent_rollouts WHERE kind = 'update' AND version = ? ORDER BY created_at DESC
+`
+
+func (q *Queries) ListUpdateRolloutsForVersion(ctx context.Context, version string) ([]AgentRollout, error) {
+	rows, err := q.db.QueryContext(ctx, listUpdateRolloutsForVersion, version)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AgentRollout{}
+	for rows.Next() {
+		var i AgentRollout
+		if err := rows.Scan(
+			&i.ID,
+			&i.Version,
+			&i.Status,
+			&i.Canary,
+			&i.BatchSize,
+			&i.MaxFailures,
+			&i.HealthWindowS,
+			&i.Failures,
+			&i.PausedReason,
+			&i.Automatic,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Kind,
+			&i.Preset,
+			&i.WebHost,
+			&i.Retry,
+			&i.ResumedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1543,6 +1592,22 @@ func (q *Queries) RestoreAgentCAKey(ctx context.Context, arg RestoreAgentCAKeyPa
 		arg.KeyVersion,
 		arg.ID,
 	)
+	return err
+}
+
+const resumeRollout = `-- name: ResumeRollout :exec
+UPDATE agent_rollouts SET status = 'running', paused_reason = '', failures = 0, resumed_at = ?, updated_at = ?
+WHERE id = ? AND status = 'paused'
+`
+
+type ResumeRolloutParams struct {
+	ResumedAt int64
+	UpdatedAt int64
+	ID        string
+}
+
+func (q *Queries) ResumeRollout(ctx context.Context, arg ResumeRolloutParams) error {
+	_, err := q.db.ExecContext(ctx, resumeRollout, arg.ResumedAt, arg.UpdatedAt, arg.ID)
 	return err
 }
 
@@ -1939,6 +2004,52 @@ type TouchIdentityParams struct {
 func (q *Queries) TouchIdentity(ctx context.Context, arg TouchIdentityParams) error {
 	_, err := q.db.ExecContext(ctx, touchIdentity, arg.LastSeenAt, arg.BootID, arg.ID)
 	return err
+}
+
+const unfinishedRollouts = `-- name: UnfinishedRollouts :many
+SELECT id, version, status, canary, batch_size, max_failures, health_window_s, failures, paused_reason, automatic, created_by, created_at, updated_at, kind, preset, web_host, retry, resumed_at FROM agent_rollouts WHERE status IN ('running', 'paused') ORDER BY created_at
+`
+
+func (q *Queries) UnfinishedRollouts(ctx context.Context) ([]AgentRollout, error) {
+	rows, err := q.db.QueryContext(ctx, unfinishedRollouts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AgentRollout{}
+	for rows.Next() {
+		var i AgentRollout
+		if err := rows.Scan(
+			&i.ID,
+			&i.Version,
+			&i.Status,
+			&i.Canary,
+			&i.BatchSize,
+			&i.MaxFailures,
+			&i.HealthWindowS,
+			&i.Failures,
+			&i.PausedReason,
+			&i.Automatic,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Kind,
+			&i.Preset,
+			&i.WebHost,
+			&i.Retry,
+			&i.ResumedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateIdentityCert = `-- name: UpdateIdentityCert :exec

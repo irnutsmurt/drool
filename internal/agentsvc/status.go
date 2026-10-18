@@ -36,7 +36,11 @@ type UpdateStatus struct {
 	Check          CheckStatus    `json:"check"`
 	// Latest is a newer DROOL than this controller, when the release source
 	// has one and it verified.
-	Latest   *LatestRelease    `json:"latest,omitempty"`
+	Latest *LatestRelease `json:"latest,omitempty"`
+	// Stopped: why automatic updates leave the target alone — a person
+	// paused or cancelled its rollout ("" when they don't). Shepherds behind
+	// it are then updated only when someone starts it.
+	Stopped  string            `json:"stopped,omitempty"`
 	Counts   UpdateCounts      `json:"counts"`
 	Blocked  []BlockedShepherd `json:"blocked"`
 	Problems []UpdateProblem   `json:"problems"`
@@ -179,6 +183,10 @@ func (s *Service) UpdateStatus(ctx context.Context) (*UpdateStatus, error) {
 
 	// What automatic updates keep Shepherds on.
 	out.Target = s.AutoTarget(ctx, p)
+	if out.Target != "" {
+		atTarget, _ := s.st.R.ListUpdateRolloutsForVersion(ctx, out.Target)
+		out.Stopped = stoppedBy(atTarget)
+	}
 	rels := map[string]*db.AgentRelease{}
 	if out.Target != "" {
 		rels = s.platformReleases(ctx, out.Target)
@@ -331,6 +339,9 @@ func (s *Service) UpdateStatus(ctx context.Context) (*UpdateStatus, error) {
 	case out.Counts.Waiting > 0:
 		out.State, out.Summary = "updating", fmt.Sprintf("%s run %s; %s will update when %s.", plural(out.Counts.Current, "Shepherd"),
 			activeVersion(out.Active, out.Target), plural(out.Counts.Waiting, "offline Shepherd"), reconnects(out.Counts.Waiting))
+	case out.Counts.Behind > 0 && p.Policy == "automatic" && out.Stopped != "":
+		out.State, out.Summary = "available", fmt.Sprintf("An update to %s is available for %s. Automatic updates won't start it again (%s).",
+			out.Target, plural(out.Counts.Behind, "Shepherd"), out.Stopped)
 	case out.Counts.Behind > 0 && p.Policy == "automatic":
 		out.State, out.Summary = "available", fmt.Sprintf("%s will update to %s automatically.", plural(out.Counts.Behind, "Shepherd"), out.Target)
 	case out.Counts.Behind > 0:
@@ -425,6 +436,9 @@ func noReleaseReason(o OfficialStatus) string {
 		return "they already run this DROOL's Shepherd version or a newer one"
 	case "", OfficialPending:
 		return "DROOL hasn't checked for its official Shepherd release yet"
+	case OfficialNoKey, OfficialDevelopment, OfficialOff:
+		// The status's notice says why, once; each host needn't repeat it.
+		return "official Shepherd releases can't be used by this DROOL"
 	}
 	return strings.TrimSuffix(lowerFirst(o.Detail), ".")
 }

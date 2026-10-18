@@ -1217,11 +1217,8 @@ func (s *Server) handleRolloutAction(action string) http.HandlerFunc {
 		case "cancel":
 			reason = "cancelled by " + principalFrom(r.Context()).Username
 		}
-		if action == "resume" {
-			// Resuming accepts the failures so far: count from zero again.
-			s.d.Store.W.SetRolloutFailures(r.Context(), db.SetRolloutFailuresParams{Failures: 0, UpdatedAt: time.Now().UnixMilli(), ID: id})
-		}
-		if err := s.d.Agents.SetRolloutStatus(r.Context(), id, next, reason); err != nil {
+		// Under the rollout lock; resuming accepts the failures so far.
+		if err := s.d.Agents.ChangeRolloutStatus(r.Context(), id, next, reason); err != nil {
 			writeProblem(w, r, errInternal)
 			return
 		}

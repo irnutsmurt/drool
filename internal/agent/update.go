@@ -283,6 +283,12 @@ func (a *Agent) handleUpdateOffer(ctx context.Context, s *session, o *pb.UpdateO
 		a.reportUpdate(s, UpdHealthy, o.ReleaseId, m.Version, "already running this version")
 		return
 	}
+	if o.Retry {
+		// A Try again: the last result may be this version's earlier
+		// failure. Set it aside, so that a reconnect before this attempt
+		// finishes doesn't report it for this one.
+		os.Rename(filepath.Join(a.paths.updDir(), "result.json"), filepath.Join(a.paths.updDir(), "result.previous.json"))
+	}
 	a.oplog.Write(OpEvent{Event: "update", Controller: s.controller, Summary: fmt.Sprintf("verified release %s (%s, key %s)", m.Version, m.SHA256[:16], o.KeyId)})
 	if err := a.stage(ctx, s, o.ReleaseId, m); err != nil {
 		fail(err)
@@ -444,6 +450,13 @@ func (a *Agent) stage(ctx context.Context, s *session, releaseID string, m *rele
 	pctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(pctx, dst, "version").Output()
+	// A process this Shepherd started meanwhile (telemetry, a run) can hold
+	// the file's write handle for a moment between its fork and its exec:
+	// "text file busy" says so, not that the binary is bad. Try again.
+	for i := 0; i < 20 && errors.Is(err, syscall.ETXTBSY) && pctx.Err() == nil; i++ {
+		time.Sleep(50 * time.Millisecond)
+		out, err = exec.CommandContext(pctx, dst, "version").Output()
+	}
 	if err != nil || strings.TrimSpace(string(out)) != m.Version {
 		os.RemoveAll(a.paths.versionDir(m.Version))
 		return fmt.Errorf("the new binary did not report version %s (got %q, %v)", m.Version, strings.TrimSpace(string(out)), err)

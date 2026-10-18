@@ -46,10 +46,11 @@ test("the update page: status first, two settings, the rest under Advanced", asy
   assert.match(t, /Automatic updates/);
   assert.match(t, /Update channel/);
   assert.match(t, /Last checked/);
-  // Honest: this build can't verify official releases, and says so where the
-  // status is, and where the last check would be.
+  // Honest: this build can't verify official releases, and says so once,
+  // next to the settings; the last check points there.
   assert.match(t, /no DROOL release key built in/);
-  assert.match(t, /Not checked: This DROOL build has no DROOL release key/);
+  assert.equal(t.match(/no DROOL release key built in/g).length, 1, "the reason said once");
+  assert.match(t, /Not checked \(the note above says why\)/);
   // Nothing of the expert workflow on the first screen.
   for (const word of ["Release-signing", "Upload release", "Canary", "Health window", "Exactly this version", "manifest"]) {
     assert.ok(!t.includes(word), `"${word}" on the first screen`);

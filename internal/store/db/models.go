@@ -142,6 +142,7 @@ type AgentRollout struct {
 	Preset        string
 	WebHost       string
 	Retry         int64
+	ResumedAt     int64
 }
 
 type AgentRolloutHost struct {

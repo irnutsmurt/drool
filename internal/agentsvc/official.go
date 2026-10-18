@@ -426,6 +426,9 @@ func (s *Service) checkLatest(ctx context.Context, b version.Build) (string, tim
 	if err != nil || m.Version != tag {
 		return "", time.Time{}, "", fmt.Errorf("the newest release (%s) didn't verify against the DROOL release key; it is ignored", tag)
 	}
+	if m.Channel != version.Stable {
+		return "", time.Time{}, "", nil // a mirror's newest may be a candidate: the notice is for releases
+	}
 	if b.Channel == version.Development && release.CompareVersions(tag, b.Version) <= 0 {
 		return "", time.Time{}, "", nil
 	}

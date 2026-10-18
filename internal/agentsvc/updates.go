@@ -314,6 +314,14 @@ var ErrNothingToUpdate = errors.New("every chosen Shepherd already runs this ver
 // listed as skipped with the reason (a person's rollout) or left out (an
 // automatic one, which the status page explains).
 func (s *Service) StartRollout(ctx context.Context, v string, o RolloutOptions) (string, error) {
+	s.rollMu.Lock()
+	defer s.rollMu.Unlock()
+	return s.startRollout(ctx, v, o)
+}
+
+// startRollout is StartRollout with the rollout lock held: which hosts are
+// already in a rollout can't change between the check and the insert.
+func (s *Service) startRollout(ctx context.Context, v string, o RolloutOptions) (string, error) {
 	p := o.Policy
 	if err := p.normalize(); err != nil {
 		return "", err
@@ -430,9 +438,9 @@ func (s *Service) StartRollout(ctx context.Context, v string, o RolloutOptions) 
 // rollout (other than except) to that rollout.
 func (s *Service) hostsInActiveRollouts(ctx context.Context, except string) map[string]db.AgentRollout {
 	out := map[string]db.AgentRollout{}
-	rolls, _ := s.st.R.ListRollouts(ctx)
+	rolls, _ := s.st.R.UnfinishedRollouts(ctx)
 	for _, r := range rolls {
-		if r.Kind != "update" || r.ID == except || (r.Status != "running" && r.Status != "paused") {
+		if r.Kind != "update" || r.ID == except {
 			continue
 		}
 		hosts, _ := s.st.R.ListRolloutHosts(ctx, r.ID)
@@ -457,6 +465,25 @@ func (s *Service) hostNames(ctx context.Context) map[string]string {
 // SetRolloutStatus pauses, resumes or cancels a rollout.
 func (s *Service) SetRolloutStatus(ctx context.Context, id, st, reason string) error {
 	return s.st.W.SetRolloutStatus(ctx, db.SetRolloutStatusParams{Status: st, PausedReason: reason, UpdatedAt: s.now().UnixMilli(), ID: id})
+}
+
+// ChangeRolloutStatus is a person's pause, resume or cancel, under the
+// rollout lock so that a wave pass running meanwhile can't overwrite it.
+// Resuming accepts the failures so far: only hosts that fail after it count
+// toward the rollout's failure limit, so it continues (with a new canary
+// when the canary was what failed) instead of pausing again at once.
+func (s *Service) ChangeRolloutStatus(ctx context.Context, id, st, reason string) error {
+	s.rollMu.Lock()
+	defer s.rollMu.Unlock()
+	now := s.now().UnixMilli()
+	if st == "running" {
+		if err := s.st.W.ResumeRollout(ctx, db.ResumeRolloutParams{ResumedAt: now, UpdatedAt: now, ID: id}); err != nil {
+			return err
+		}
+		go s.advanceRollouts(context.Background())
+		return nil
+	}
+	return s.st.W.SetRolloutStatus(ctx, db.SetRolloutStatusParams{Status: st, PausedReason: reason, UpdatedAt: now, ID: id})
 }
 
 var terminal = map[string]bool{"healthy": true, "rolled_back": true, "failed": true, "skipped": true}
@@ -495,8 +522,15 @@ func (s *Service) AutoTarget(ctx context.Context, p UpdatePolicy) string {
 		return ""
 	}
 	target := ""
+	own := version.Get().Version
 	for _, r := range rels {
 		if !s.speaks(r) {
+			continue
+		}
+		// Shepherds follow DROOL: an official release newer than this DROOL
+		// (uploaded by hand) waits for DROOL's own update. A custom release
+		// is the operator's to roll out.
+		if release.IsOfficialKey(r.KeyID) && release.CompareVersions(r.Version, own) > 0 {
 			continue
 		}
 		if p.Version != "" {
@@ -535,18 +569,13 @@ func (s *Service) autoPolicy(ctx context.Context) {
 	if target == "" {
 		return
 	}
-	rolls, _ := s.st.R.ListRollouts(ctx)
-	for _, r := range rolls {
-		if r.Kind != "update" || r.Version != target {
-			continue
-		}
-		if r.Status == "paused" || r.Status == "cancelled" && !strings.HasPrefix(r.PausedReason, supersededPrefix) {
-			return // a person decides what happens to this version next
-		}
+	atTarget, _ := s.st.R.ListUpdateRolloutsForVersion(ctx, target)
+	if stoppedBy(atTarget) != "" {
+		return // a person decides what happens to this version next
 	}
-	for _, r := range rolls {
-		if r.Kind == "update" && r.Automatic != 0 && (r.Status == "running" || r.Status == "paused") &&
-			release.CompareVersions(r.Version, target) < 0 {
+	unfinished, _ := s.st.R.UnfinishedRollouts(ctx)
+	for _, r := range unfinished {
+		if r.Kind == "update" && r.Automatic != 0 && release.CompareVersions(r.Version, target) < 0 {
 			s.SetRolloutStatus(ctx, r.ID, "cancelled", supersededPrefix+target)
 			s.audit.Record(ctx, audit.Event{Action: "agent.rollout.supersede", TargetType: "agent_rollout", TargetID: r.ID, Actor: &audit.System,
 				Details: map[string]any{"version": r.Version, "by": target}})
@@ -563,10 +592,13 @@ func (s *Service) autoPolicy(ctx context.Context) {
 		if _, ok := busy[id.HostID]; ok {
 			continue
 		}
+		if s.updateInProgress(id) {
+			continue // finishing another update (one a newer target superseded): offered when it's done
+		}
 		if Blocker(id, IdentityTrust(id), target, rels[id.Os+"/"+id.Arch], false) != "" {
 			continue // the status page says why
 		}
-		if s.triedAutomatically(rolls, id.HostID, target) {
+		if s.triedAutomatically(atTarget, id.HostID) {
 			continue
 		}
 		hosts = append(hosts, id.HostID)
@@ -574,24 +606,57 @@ func (s *Service) autoPolicy(ctx context.Context) {
 	if len(hosts) == 0 {
 		return
 	}
-	if _, err := s.StartRollout(ctx, target, RolloutOptions{HostIDs: hosts, Policy: p, Automatic: true}); err != nil && !errors.Is(err, ErrNothingToUpdate) {
+	if _, err := s.startRollout(ctx, target, RolloutOptions{HostIDs: hosts, Policy: p, Automatic: true}); err != nil && !errors.Is(err, ErrNothingToUpdate) {
 		s.log.Warn("automatic Shepherd update rollout", "version", target, "err", err)
 	}
 }
 
-// triedAutomatically: an automatic rollout to v already finished with this
-// host (skipped, refused or failed): it isn't offered again by itself.
-func (s *Service) triedAutomatically(rolls []db.AgentRollout, hostID, v string) bool {
+// stoppedBy is why automatic updates leave a version alone: a rollout to it
+// that a person paused or cancelled ("" when none). rolls are that version's.
+func stoppedBy(rolls []db.AgentRollout) string {
 	for _, r := range rolls {
-		if r.Kind != "update" || r.Version != v || r.Automatic == 0 {
+		if r.Kind != "update" {
+			continue
+		}
+		if r.Status == "paused" || r.Status == "cancelled" && !strings.HasPrefix(r.PausedReason, supersededPrefix) {
+			if r.PausedReason == "" {
+				return r.Status
+			}
+			return r.PausedReason
+		}
+	}
+	return ""
+}
+
+// busyDetail is what a Shepherd says when it refuses an offer because it
+// is still finishing another update: a transient refusal.
+const busyDetail = "another update is still in progress"
+
+// triedAutomatically: an automatic rollout to this version (rolls are its
+// rollouts) already finished with this host — skipped, refused or failed —
+// so it isn't offered again by itself. A host that was only busy finishing
+// another update is offered again.
+func (s *Service) triedAutomatically(rolls []db.AgentRollout, hostID string) bool {
+	for _, r := range rolls {
+		if r.Kind != "update" || r.Automatic == 0 {
 			continue
 		}
 		hosts, _ := s.st.R.ListRolloutHosts(context.Background(), r.ID)
 		for _, h := range hosts {
-			if h.HostID == hostID && terminal[h.State] && h.State != "healthy" {
+			if h.HostID == hostID && terminal[h.State] && h.State != "healthy" && !(h.State == "skipped" && strings.Contains(h.Detail, busyDetail)) {
 				return true
 			}
 		}
+	}
+	return false
+}
+
+// updateInProgress: the Shepherd was last offered an update, or reported
+// one under way, recently enough that it may still be at it.
+func (s *Service) updateInProgress(id db.AgentIdentity) bool {
+	switch id.UpdateState {
+	case "offered", "staged", "updating":
+		return id.UpdateAt.Valid && s.now().Sub(time.UnixMilli(id.UpdateAt.Int64)) < 30*time.Minute
 	}
 	return false
 }
@@ -618,15 +683,25 @@ func (s *Service) advanceRollouts(ctx context.Context) {
 		failures, open := 0, 0
 		now := s.now()
 		connected := func(hostID string) bool { _, ok := s.SessionFor(hostID); return ok }
-		for _, h := range hosts {
-			if h.State == "rolled_back" || h.State == "failed" {
+		for i, h := range hosts {
+			// Resuming accepted the failures before it.
+			if (h.State == "rolled_back" || h.State == "failed") && h.UpdatedAt > r.ResumedAt {
 				failures++
 			}
-			// A host that accepted an offer but never reported back.
 			if (h.State == "offered" || h.State == "staged" || h.State == "updating") &&
 				now.Sub(time.UnixMilli(h.UpdatedAt)) > time.Duration(r.HealthWindowS)*time.Second+10*time.Minute &&
 				!s.converting(r.ID, h.HostID) {
+				if r.Kind == "update" && h.State != "updating" && !connected(h.HostID) {
+					// Cut off with its session before the update helper
+					// started: nothing changed there; it is offered again
+					// when it reconnects.
+					s.setHostState(ctx, r.ID, h.HostID, "pending", interruptedDetail)
+					hosts[i].State = "pending"
+					continue
+				}
+				// A host that accepted an offer but never reported back.
 				s.setHostState(ctx, r.ID, h.HostID, "failed", "no report from the agent")
+				hosts[i].State = "failed"
 				failures++
 			}
 		}
@@ -786,11 +861,50 @@ func refusalOf(u *pb.UpdateReport) string {
 	return ""
 }
 
+// interruptedDetail: an offered update that didn't reach the update helper
+// before the Shepherd's session ended. Nothing changed on the host.
+const interruptedDetail = "interrupted before it was applied (the Shepherd's connection ended); offered again"
+
+// onHelloUpdate takes what a (re)connecting Shepherd says about updates. An
+// offered attempt (offered or staged) whose version the hello says nothing
+// about — no update under way and no result for it — ended with the session
+// that carried it before its helper started: nothing changed on the host,
+// so it goes back to pending and is offered again. A hello that does report
+// on that version (under way, or a result) is taken as the attempt's own:
+// a failure is never dropped, so a rolled-back canary still pauses the
+// rollout. (A Shepherd sets an earlier result aside when it accepts a Try
+// again, so that one isn't reported for the new attempt.)
+func (s *Service) onHelloUpdate(ctx context.Context, ident db.AgentIdentity, u *pb.UpdateReport) {
+	s.rollMu.Lock()
+	rolls, _ := s.st.R.UnfinishedRollouts(ctx)
+	for _, r := range rolls {
+		if r.Kind != "update" {
+			continue
+		}
+		hosts, _ := s.st.R.ListRolloutHosts(ctx, r.ID)
+		for _, h := range hosts {
+			if h.HostID != ident.HostID || (h.State != "offered" && h.State != "staged") {
+				continue
+			}
+			if u != nil && u.Version == r.Version {
+				continue // the report below answers for it
+			}
+			s.setHostState(ctx, r.ID, h.HostID, "pending", interruptedDetail)
+		}
+	}
+	s.rollMu.Unlock()
+	if u != nil {
+		s.onUpdateReport(ctx, ident, u)
+	}
+}
+
 // onUpdateReport records an agent's update progress.
 func (s *Service) onUpdateReport(ctx context.Context, ident db.AgentIdentity, u *pb.UpdateReport) {
 	if u.State == "" {
 		return
 	}
+	s.rollMu.Lock()
+	defer s.rollMu.Unlock()
 	refused := refusalOf(u)
 	if u.Version == "" && u.ReleaseId != "" {
 		// Refused before the agent trusted the manifest: the controller
@@ -805,9 +919,9 @@ func (s *Service) onUpdateReport(ctx context.Context, ident db.AgentIdentity, u 
 	}
 	s.st.W.SetIdentityUpdate(ctx, db.SetIdentityUpdateParams{UpdateState: idState, UpdateVersion: u.Version, UpdateDetail: u.Detail,
 		UpdateAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}, ID: ident.ID})
-	rolls, _ := s.st.R.ListRollouts(ctx)
+	rolls, _ := s.st.R.UnfinishedRollouts(ctx)
 	for _, r := range rolls {
-		if r.Status != "running" && r.Status != "paused" || r.Kind != "update" {
+		if r.Kind != "update" {
 			continue
 		}
 		if u.Version != "" && u.Version != r.Version {

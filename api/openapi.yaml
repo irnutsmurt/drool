@@ -4226,6 +4226,9 @@ components:
             version: { type: string }
             issued_at: { type: string, format: date-time }
             url: { type: string }
+        stopped:
+          type: string
+          description: Why automatic updates leave the target alone (a person paused or cancelled its rollout); absent when they don't.
         counts:
           type: object
           required: [total, current, behind, updating, waiting, blocked, offline]

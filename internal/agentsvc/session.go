@@ -285,9 +285,7 @@ func (s *Service) Session(stream pb.Agent_SessionServer) error {
 	}()
 
 	s.compareState(ctx, ident.HostID, hello)
-	if hello.Update != nil {
-		s.onUpdateReport(ctx, ident, hello.Update)
-	}
+	s.onHelloUpdate(ctx, ident, hello.Update)
 	ack := &pb.HelloAck{Protocol: se.protocol, Compatible: true, ControllerEpoch: s.epoch, ServerTimeUnix: now.Unix(),
 		HeartbeatSeconds: uint32(heartbeatEvery / time.Second), Quarantined: se.quarantined, HostId: ident.HostID}
 	if h, err := s.st.R.GetHost(ctx, ident.HostID); err == nil {
