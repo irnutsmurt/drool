@@ -4197,7 +4197,28 @@ whose Pack monitors the unit.
 | Builds without them | A candidate now refuses like a stable build (`34f2b15`): the stable tag goes on the final candidate's commit; shown on tags `v1.0.0-rc.3` and `v1.0.0` in a throwaway clone. `sign.sh` refuses a Shepherd key the release doesn't have built in |
 | CI | `origin/main` (`dec927a`) fails its release job (LICENSE without the SPDX id) until these commits are pushed; the runners are pinned to `ubuntu-24.04` |
 
-### 43.6 After 1.0
+### 43.6 Results
+
+- **Go:** `go test ./...` passes, 51 packages; `make test-race` passes, 51 packages (run under load).
+- **Update tests:** they pass 3× under `-race`; `TestOfficialShepherdUpdateAutomatic` passes 10/10. Each new
+  rollout test, and the focus test, fails with its fix reverted.
+- **Web:** typecheck and 131 unit tests pass.
+- **Release built from `249508c`** (a development build: placeholder maintainer, no keys). Against it, all pass (322 s):
+  `TestReleaseArtifacts`, `TestReleaseSigning`, `TestContainerImage` and its upgrade, `TestReleasePackages`
+  (10 distributions), `TestReleaseUpgrade` (alpha, M16), `TestMixedVersionShepherds`, `TestAgentUpdates` and
+  `TestOfficialShepherdUpdates`.
+- **TestBrowser:** 95 of 95, plus both enrichment phases (19.4 min).
+- **Accessibility and layout audit** (552 page loads):
+  - axe violations 4, the accepted baseline's (8 before the fixes);
+  - focus problems 10 (baseline 24);
+  - nothing scrolls sideways, is cut off or overlaps;
+  - contrast 0;
+  - keyboard paths 45/46 per theme; the remaining one needs a reachable host.
+- **Screenshot labs:** 12 views and 7 update states, at 1440 and 390 px in both themes, without page errors. Looking at
+  them found two defects the tests didn't (`249508c`): the multi-host apply review paired changes with the wrong hosts,
+  and "No pending updates" was claimed with hosts not reporting.
+
+### 43.7 After 1.0
 
 Recorded, not started: the terminology sweep (UI text still says *agent* where the term is Shepherd in about 25 places,
 *job* where it is Run in about 30, lowercase *pack*); button labels without an object; navigation search entries for a
