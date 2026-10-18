@@ -15,7 +15,7 @@ program kept the lock for longer than that.
 
 ## What to do
 
-1. **Wait** a few minutes, then run it again, for example with **Re-run unsuccessful hosts** on the
+1. **Wait** a few minutes, then run it again, for example with **Re-run unsuccessful hosts…** on the
    run's page. Automatic updates can take a while on a host that hasn't been updated for some time.
 2. To see what holds the lock, on the host:
 

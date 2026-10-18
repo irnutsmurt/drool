@@ -33,7 +33,9 @@ is an ordinary [run](Understanding-Run-Results.md), listed under **Runs**.
 ## Apply to several hosts
 
 - **Firewall → Hosts**: tick the hosts (only enforced hosts have a checkbox), then **Apply to 2
-  host(s)…**.
+  host(s)…**. The dialog lists what changes on each host (rules added and removed, a first apply, or
+  *refused* when a policy would cut DROOL's management path) before anything is applied; **Apply to 2
+  hosts** starts it.
 - Or, in **Firewall → Policy**, after saving: the **Preview** offers **Apply to 3 enforced host(s)…**
   for the hosts the change affects.
 

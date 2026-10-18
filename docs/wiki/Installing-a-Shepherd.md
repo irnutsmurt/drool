@@ -115,7 +115,8 @@ sudo ./drool-agent-linux-amd64 install --preset managed --token-file -
 Paste the token, press Enter, then **Ctrl-D**.
 
 Unused tokens are listed under **Shepherds → Enrollment → Enrollment tokens**, where you can
-**Revoke** them.
+**Revoke** them. The **Enrollment** tab is there for those who may enroll Shepherds (the
+**agents.enroll** permission, administrators).
 
 ## Many SSH hosts at once
 

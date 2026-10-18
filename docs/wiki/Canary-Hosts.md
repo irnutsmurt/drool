@@ -50,7 +50,7 @@ Look at the failed host's output (click its name in the **Hosts** list) and deci
   resume doesn't retry it. Use this when the failure had nothing to do with the change (the canary
   was rebooting, its disk was full).
 - **Cancel**: nothing else starts. Fix the problem, then start a new run (or **Re-run unsuccessful
-  hosts**).
+  hosts…**).
 
 A paused run waits for you as long as it takes. **Rollout progress** on the run's page shows each wave
 and how it went.

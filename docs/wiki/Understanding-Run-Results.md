@@ -74,10 +74,11 @@ file. That's a success, not a skipped host.
   that haven't started won't start. What already changed on a host stays changed.* Click **Cancel
   the run**, or **Keep it running**. For a scheduled run, the schedule stays enabled.
 - **Resume** (while paused) — continues with the hosts that haven't started. Failed hosts stay failed.
-- **Re-run unsuccessful hosts** (when finished) — a **new** run with the same definition, on every host
-  that didn't succeed: failed, timed out, cancelled, skipped or interrupted. The new run says it's a
-  *re-run of earlier job*, with a link. Check interrupted hosts (and hosts whose outcome is unknown)
-  before you re-run: their first attempt may have done its work
+- **Re-run unsuccessful hosts…** (when finished) — a **new** run with the same definition, on every host
+  that didn't succeed: failed, timed out, cancelled, skipped or interrupted. DROOL asks first, naming
+  the hosts and how many were interrupted. The new run says it's a *re-run of earlier job*, with a
+  link. Check interrupted hosts (and hosts whose outcome is unknown) before you re-run: their first
+  attempt may have done its work
   ([why](Failed-Interrupted-and-Unknown-Outcomes.md)).
 
 ## Related

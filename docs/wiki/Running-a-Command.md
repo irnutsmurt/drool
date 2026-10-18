@@ -64,7 +64,7 @@ workflow** to reuse it ([Workflows](Workflows.md)).
 
 Each host gets a state (*succeeded*, *failed*, *timed out*…), its exit code, the path DROOL used
 (**Via**: *agent*, *SSH*, or *SSH fallback*), how long it took, and the problem if there was one.
-Click a host's name to see its output. **Re-run unsuccessful hosts** starts a new run for the hosts
+Click a host's name to see its output. **Re-run unsuccessful hosts…** starts a new run for the hosts
 that didn't succeed. [Understanding Run Results](Understanding-Run-Results.md) explains everything
 on this page.
 

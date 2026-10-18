@@ -18,7 +18,7 @@ The full explanation, with every result word: [Failed, Interrupted and Unknown O
    - did the script's work happen? (`ls -l /srv/backups/` for a backup script);
    - is it still running? (`pgrep -af backup.sh`);
    - for a file deployment: open the file in the [file manager](Browsing-Files.md).
-3. **Then decide:** run it again (for example with **Re-run unsuccessful hosts**), finish it by hand, or
+3. **Then decide:** run it again (for example with **Re-run unsuccessful hosts…**), finish it by hand, or
    leave it.
 
 DROOL retries by itself only operations that are naturally safe to repeat (installing or removing a

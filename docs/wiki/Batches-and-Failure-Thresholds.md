@@ -40,7 +40,7 @@ Alex updates 13 hosts with: 1 canary, batch size 5, 5 at a time, pause after 2 f
   terminated. DROOL asks first (*Cancel this run?*); **Cancel the run** stops it, **Keep it running**
   doesn't.
 
-To try the failed hosts again later, open the run and click **Re-run unsuccessful hosts**.
+To try the failed hosts again later, open the run and click **Re-run unsuccessful hosts…**.
 
 ## What counts as a failure
 

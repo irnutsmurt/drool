@@ -31,7 +31,7 @@ by themselves after a dropped connection.
 1. Look at the host: did the change happen? (Run a read-only command, open the file manager, look
    at the service.)
 2. If the operation is still running there (a long script), wait for it.
-3. Then decide: run it again (for example with **Re-run unsuccessful hosts**), finish it by hand, or
+3. Then decide: run it again (for example with **Re-run unsuccessful hosts…**), finish it by hand, or
    leave it.
 
 ## All the outcome words

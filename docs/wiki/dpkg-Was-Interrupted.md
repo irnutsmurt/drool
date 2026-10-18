@@ -25,7 +25,7 @@ machine.
    ```
 
 3. Then fix anything still broken: `sudo apt-get -f install`.
-4. Run the DROOL operation again (**Re-run unsuccessful hosts**).
+4. Run the DROOL operation again (**Re-run unsuccessful hosts…**).
 
 Without a terminal on the host, you can do step 2 as a DROOL [command](Running-a-Command.md) with
 **Run as root (sudo)**. A run can't answer questions, so tell dpkg to keep your configuration files
