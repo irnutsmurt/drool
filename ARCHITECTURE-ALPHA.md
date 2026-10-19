@@ -4226,3 +4226,62 @@ few settings (firewall settings, the SSH CA, audit integrity); expert tuning on 
 Advanced disclosure; the designer's Pack editing (a second editor of Packs); headers with more than two actions;
 hand-rolled tab rows; the add-host and Shepherds-list items of §42.8; the focus residuals of §43.4; M19 (§39.1).
 
+
+### 43.8 Source review (before the release candidate)
+
+An independent review of the source behind §43.1, §43.2 and the accessibility residuals (2026-10-19) passed the
+Shepherd update recovery and accepted the accessibility residuals for the release candidate, and found one firewall
+correctness issue, fixed narrowly with the existing compiler and state:
+
+- **The simulation reported Filtered where DROOL's rules weren't in force.** In Enforce, a host never applied, or
+  whose rules were missing, was simulated as filtered by the policy DROOL wants. Now each step's answer is still the
+  policy's (the simulation, of the stored policy or a draft), but `filtered` is true only where DROOL's rules are in
+  force (committed, neither missing nor changed outside DROOL), and a new `current` says what DROOL's rules on the host
+  do now where that isn't the answer: `accept` (not applied, missing, or the revision in force allows it), `drop`, or
+  `unknown` (changed outside DROOL, or the applied policy unreadable). The page words such a step *would be allowed /
+  blocked* and the summary *would allow / would block*; the notes say why.
+- **A desired verdict read as the effective one.** On a host whose saved changes weren't applied yet, a connection the
+  revision in force decides differently was marked enforced: "✕ Denied" while the host allows it. Its `enforcement` is
+  now `changes_pending` (with `applied_verdict`), so it reads *Would be denied … ↻ not applied yet*, and the details
+  say what the host does now. Address-set changes not propagated yet count too. A connection both decide the same way
+  stays `enforced`.
+- **Rules changed outside DROOL were treated as in force.** Drift other than "missing" makes a host's enforcement
+  `drift`: what the host does isn't known, and the views say so (*⚠ changed outside DROOL*) instead of evaluating
+  DROOL's last revision as if it were still there. The applied verdict is no longer offered for a host whose rules are
+  missing.
+
+The Firewall page's simulation still says it is one, and nothing is sent to the hosts. The classification's status
+stays the desired policy's verdict, so the Designer's observed overlay and Guided mode's suggestions are unchanged.
+
+**Menu resize.** An open menu threw on a window resize (`Menu.tsx` passed the window to `Node.contains`) and stayed
+where it was; a one-line fix, and a browser test that resizes with a menu open.
+
+**Design Standard, final for 1.0.** It records the two undersized topology labels as its one known limitation (§10),
+with the Rules view as the accessible alternative, not as an exception to the touch-target rule; §8 adds what is in
+force decides and unknown is said. `CLAUDE.md` makes the standard binding: the checks that ran are named in the commit,
+honest state and safeguards are release blockers, and no new exception or limitation without the maintainer.
+
+**Tests.**
+- `TestFirewallWhatIsInForce` (new) covers, for both a connection's status and a simulated step:
+  - never applied;
+  - in force;
+  - changes not applied, both ways, plus a connection both revisions decide alike;
+  - rules missing;
+  - rules changed outside DROOL;
+  - out of Enforce with the last revision still on the host.
+
+  `TestNetworkMonitoring` now expects `changes_pending` for its stale policy. Five mutations of the fix (a filtered
+  step from the mode, no `current`, a definite summary, the desired verdict as in force, drift as in force) each fail
+  it.
+- The browser test "an open menu follows its button when the window is resized" fails without the `Menu.tsx` fix.
+
+**Results.**
+- **Go:** `go test ./...` passes (51 packages). The firewall, network and designer API tests pass under `-race`.
+  `gofmt` and `go vet` (also with the integration tag) are clean, and the generated types are current.
+- **Web:** typecheck and 131 unit tests pass.
+- **Browser:** TestBrowser with the affected files (network, designer, accessibility) passes, 25 of 25, plus both
+  enrichment phases.
+- **Lab:** "Can A reach B?" to a host in Enforce whose policy isn't applied, at 1440, 1280, 1024 and 390 px in both
+  themes: *would be blocked* with its note, no sideways scroll, no page errors.
+- **Not re-run for this change:** the other browser files, `make test-race` across all packages, the full
+  accessibility audit and the release suites. Nothing here touches what they cover beyond the files above.
