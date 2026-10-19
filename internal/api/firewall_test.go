@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -883,6 +884,67 @@ func TestFirewallStatusFromBeforeTheMove(t *testing.T) {
 	record(epoch)
 	report("another-epoch", 1, "h1")
 	check("an epoch this controller wasn't restored from", "epoch_mismatch")
+}
+
+// A report collected before restore reconciliation's move and handled while
+// the move is being recorded doesn't undo it: reading the controller's
+// record and marking it is one write transaction, as the move is. Before,
+// the report could read the record from before the move and mark the host
+// after it, and every later firewall change on the host was refused (CI on
+// 3ffda09, TestRestoreReconciliationFirewall under -race).
+func TestFirewallStatusDuringTheMove(t *testing.T) {
+	h := newHarness(t)
+	h.mkUser("admin", auth.RoleAdmin)
+	c := h.login("admin")
+	var host hostJSON
+	c.do("POST", "/api/v1/hosts", map[string]any{"name": "fw-moving", "address": "192.0.2.83", "port": 22, "user": "deploy"}).json(t, &host)
+	ctx := context.Background()
+	epoch, backup := h.fw.Epoch(), "epoch-of-the-backup"
+	if _, err := h.st.Writer.ExecContext(ctx, `INSERT INTO controller_restores (id, restored_at, backup_created_at, previous_epoch, epoch, status)
+		VALUES ('rst_moving', 1, 0, ?, ?, 'reconciling')`, backup, epoch); err != nil {
+		t.Fatal(err)
+	}
+	record := func(q *db.Queries, ep string) error {
+		if err := q.UpsertStateVersion(ctx, db.UpsertStateVersionParams{HostID: host.ID, Domain: "firewall", Epoch: ep, Revision: 1,
+			ContentHash: "sha256:h1", UpdatedAt: 1}); err != nil {
+			return err
+		}
+		return q.ReportStateVersion(ctx, db.ReportStateVersionParams{ReportedEpoch: ep, ReportedRevision: 1, ReportedHash: "h1",
+			Status: "ok", HostID: host.ID, Domain: "firewall"})
+	}
+	if err := record(h.st.W, backup); err != nil { // as the backup brought it
+		t.Fatal(err)
+	}
+	// The host's report from before the move is read; reconciliation then
+	// records the move, as it does, in a write transaction of its own.
+	moved := make(chan error, 1)
+	var once sync.Once
+	h.fw.SetTestStatusRead(func(id string) {
+		if id != host.ID {
+			return
+		}
+		once.Do(func() {
+			go func() { moved <- h.st.InTx(ctx, func(q *db.Queries) error { return record(q, epoch) }) }()
+			time.Sleep(300 * time.Millisecond)
+		})
+	})
+	st := map[string]string{"tool_version": "1", "now": "3000", "journal_state": "committed", "expected_live": "h1", "live_hash": "h1",
+		"committed_epoch": backup, "committed_revision": "1", "committed_hash": "h1"}
+	b, _ := json.Marshal(map[string]any{"status": st})
+	h.fw.OnTelemetry(host.ID, "firewall", b)
+	h.fw.SetTestStatusRead(nil)
+	select {
+	case err := <-moved:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the move wasn't recorded")
+	}
+	sv, err := h.st.R.GetStateVersion(ctx, db.GetStateVersionParams{HostID: host.ID, Domain: "firewall"})
+	if err != nil || sv.Status != "ok" || sv.ReportedEpoch != epoch {
+		t.Fatalf("after the move: status %q, reported epoch %q (%v); want ok in %s", sv.Status, sv.ReportedEpoch, err, epoch)
+	}
 }
 
 func auditCount(t *testing.T, h *harness, action string) int {

@@ -135,16 +135,28 @@ func (s *Service) recordStatus(ctx context.Context, hostID string, st map[string
 	// A restored controller: the host is ahead (DESIGN §10.3).
 	crev, _ := strconv.ParseInt(st["committed_revision"], 10, 64)
 	if crev > 0 {
-		cur, err := s.d.Store.R.GetStateVersion(ctx, db.GetStateVersionParams{HostID: hostID, Domain: "firewall"})
 		foreign := st["committed_epoch"] != "" && st["committed_epoch"] != s.epoch
-		switch {
-		case foreign && err == nil && s.collectedBeforeMove(ctx, cur, st["committed_epoch"], crev, st["committed_hash"]):
-			// The move to this epoch is newer; nothing to mark.
-		case foreign:
-			s.markState(ctx, hostID, "epoch_mismatch", st["committed_epoch"], crev, st["committed_hash"])
-		case err != nil || crev > cur.Revision:
-			s.markState(ctx, hostID, "host_ahead", s.epoch, crev, st["committed_hash"])
-		}
+		// Read and mark in one write transaction. Restore reconciliation
+		// records a host's move in one too, so a report can't read the state
+		// from before the move and mark the host after it, undoing the move.
+		s.d.Store.InTx(ctx, func(q *db.Queries) error {
+			cur, err := q.GetStateVersion(ctx, db.GetStateVersionParams{HostID: hostID, Domain: "firewall"})
+			s.mu.Lock()
+			hook := s.testStatusRead
+			s.mu.Unlock()
+			if hook != nil {
+				hook(hostID)
+			}
+			switch {
+			case foreign && err == nil && s.collectedBeforeMove(ctx, cur, st["committed_epoch"], crev, st["committed_hash"]):
+				// The move to this epoch is newer; nothing to mark.
+			case foreign:
+				return s.markStateQ(ctx, q, hostID, "epoch_mismatch", st["committed_epoch"], crev, st["committed_hash"])
+			case err != nil || crev > cur.Revision:
+				return s.markStateQ(ctx, q, hostID, "host_ahead", s.epoch, crev, st["committed_hash"])
+			}
+			return nil
+		})
 	}
 }
 

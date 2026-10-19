@@ -4285,3 +4285,29 @@ honest state and safeguards are release blockers, and no new exception or limita
   themes: *would be blocked* with its note, no sideways scroll, no page errors.
 - **Not re-run for this change:** the other browser files, `make test-race` across all packages, the full
   accessibility audit and the release suites. Nothing here touches what they cover beyond the files above.
+
+### 43.9 Branch CI after the push
+
+The 23 commits were pushed on the owner's authorization (`dec927a..3ffda09`). CI run 39307044472 on `3ffda09` failed in
+its checks job: `TestRestoreReconciliationFirewall` under `-race`. It failed 1 of 30 runs locally too.
+
+**The race.** It is the one `c9e1d29` addressed (§41.1), entered another way:
+- When a Shepherd host's hello carries its firewall status from before restore reconciliation's epoch move,
+  `recordStatus` read the controller's record, decided, then wrote its mark.
+- `c9e1d29` covers a report handled after the move is recorded.
+- A report that read the record before the move was recorded, and wrote its mark after it, still overwrote the move
+  with `epoch_mismatch`. Nothing clears that, so every later firewall change on the host was refused, although it had
+  moved.
+
+The extra work a hello now does for Shepherd updates (§43.1) shifted the timing enough for CI to hit it.
+
+**The fix.** The read, the decision and the mark are now one write transaction (`markStateQ`). Restore reconciliation
+records the move in one too, and the store has one writer whose transactions take the lock up front. So the two are
+ordered: the report either sees the move, or its mark is overwritten by it.
+
+**Tests.**
+- `TestFirewallStatusDuringTheMove` (new) puts the move between the report's read and its mark through a test hook
+  (`SetTestStatusRead`). It fails on every run without the fix (`epoch_mismatch` in the backup's epoch) and passes
+  with it.
+- With a delay forced between the read and the mark, the restore test failed 4 of 5 runs.
+- With the fix, `TestRestoreReconciliationFirewall` passes 40 of 40 under `-race`.

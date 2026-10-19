@@ -90,6 +90,9 @@ type Service struct {
 	testSkipCommit bool
 	// testControlFile (DROOL_TEST_FW_CONTROL) sets both per host.
 	testControlFile string
+	// testStatusRead runs between a status report's read of the host's
+	// recorded state and its mark (tests; SetTestStatusRead).
+	testStatusRead func(hostID string)
 }
 
 // New creates the service.
@@ -139,6 +142,14 @@ func (s *Service) testControl(hostName string) (time.Duration, bool) {
 		}
 	}
 	return s.testCommitDelay, s.testSkipCommit
+}
+
+// SetTestStatusRead runs f between a firewall status report's read of the
+// host's recorded state and what it marks there (tests only).
+func (s *Service) SetTestStatusRead(f func(hostID string)) {
+	s.mu.Lock()
+	s.testStatusRead = f
+	s.mu.Unlock()
 }
 
 // SetTestCommitDelay holds transactions between apply and verification

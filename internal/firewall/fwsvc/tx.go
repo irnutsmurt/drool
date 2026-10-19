@@ -340,14 +340,18 @@ func (s *Service) checkHostState(ctx context.Context, hostID string, st map[stri
 }
 
 func (s *Service) markState(ctx context.Context, hostID, status, epoch string, rev int64, hash string) {
+	s.markStateQ(ctx, s.d.Store.W, hostID, status, epoch, rev, hash)
+}
+
+// markStateQ is markState with the caller's queries (a transaction's).
+func (s *Service) markStateQ(ctx context.Context, q *db.Queries, hostID, status, epoch string, rev int64, hash string) error {
 	now := s.now().UnixMilli()
-	_, err := s.d.Store.R.GetStateVersion(ctx, db.GetStateVersionParams{HostID: hostID, Domain: "firewall"})
+	_, err := q.GetStateVersion(ctx, db.GetStateVersionParams{HostID: hostID, Domain: "firewall"})
 	if errors.Is(err, sql.ErrNoRows) {
-		s.d.Store.W.InsertReportedOnlyState(ctx, db.InsertReportedOnlyStateParams{HostID: hostID, Domain: "firewall", Epoch: s.epoch,
+		return q.InsertReportedOnlyState(ctx, db.InsertReportedOnlyStateParams{HostID: hostID, Domain: "firewall", Epoch: s.epoch,
 			UpdatedAt: now, ReportedEpoch: epoch, ReportedRevision: rev, ReportedHash: hash, ReportedAt: sql.NullInt64{Int64: now, Valid: true}, Status: status})
-		return
 	}
-	s.d.Store.W.ReportStateVersion(ctx, db.ReportStateVersionParams{ReportedEpoch: epoch, ReportedRevision: rev, ReportedHash: hash,
+	return q.ReportStateVersion(ctx, db.ReportStateVersionParams{ReportedEpoch: epoch, ReportedRevision: rev, ReportedHash: hash,
 		ReportedAt: sql.NullInt64{Int64: now, Valid: true}, Status: status, HostID: hostID, Domain: "firewall"})
 }
 
