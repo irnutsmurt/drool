@@ -112,6 +112,33 @@ test("tab rows and menus work from the keyboard", async () => {
   assert.deepEqual(page.errors, []);
 });
 
+test("an open menu follows its button when the window is resized", async () => {
+  // Resizing with a menu open threw ("parameter 1 is not of type 'Node'":
+  // the resize's target is the window), and the menu stayed where it was.
+  const p = await session(browser);
+  try {
+    await go(p, `/hosts/${ids["web-1"]}`);
+    await p.focus('[data-testid="host-actions"]');
+    await p.keyboard.press("Enter");
+    await p.waitForSelector('[role="menu"]');
+    await sleep(300);
+    const offset = () => p.evaluate(() => {
+      const m = document.querySelector('[role="menu"]')?.getBoundingClientRect();
+      const b = document.querySelector('[data-testid="host-actions"]').getBoundingClientRect();
+      return m ? { dx: Math.round(m.right - b.right), dy: Math.round(m.top - b.bottom), right: Math.round(m.right), vw: innerWidth } : null;
+    });
+    const before = await offset();
+    await p.setViewport({ width: 1100, height: 1000 });
+    await sleep(500);
+    const after = await offset();
+    assert.ok(before && after && Math.abs(after.dx - before.dx) <= 2 && Math.abs(after.dy - before.dy) <= 2 && after.right <= after.vw,
+      `the menu follows its button: before ${JSON.stringify(before)}, after ${JSON.stringify(after)}`);
+    assert.deepEqual(p.errors, []);
+  } finally {
+    await p.browserContext().close();
+  }
+});
+
 test("focus follows an inspector's step and comes back from a popover", async () => {
   await go(page, "/network");
   await page.waitForSelector('[data-testid="flow-table"] tbody tr[data-flow-id] button', { timeout: 20000 });

@@ -78,7 +78,8 @@ export function MenuButton({ label, items, align = "end", size = "md", testId, a
   useEffect(() => {
     if (!open || !placed) return;
     entries()[0]?.focus({ preventScroll: true });
-    const inside = (t: EventTarget | null) => !!t && (box.current?.contains(t as Node) || list.current?.contains(t as Node));
+    // A resize's target is the window, not a Node.
+    const inside = (t: EventTarget | null) => t instanceof Node && (box.current?.contains(t) || list.current?.contains(t));
     const onDown = (e: MouseEvent) => { if (!inside(e.target)) setOpen(false); };
     // Scrolling (or resizing) moves the list with its button, also a scroll
     // still settling as it opens (a touch flick, a button scrolled into
