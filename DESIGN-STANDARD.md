@@ -4,6 +4,9 @@ The conventions of DROOL's web UI as built and verified for 1.0. They are rules 
 reasons behind them are in [DESIGN.md](DESIGN.md) §2.5 and §2.7, and the as-built record is in
 [ARCHITECTURE-ALPHA.md](ARCHITECTURE-ALPHA.md) §41, §42 and §43.
 
+**Status: final for 1.0** (2026-10-19). It passed the independent UI, accessibility and source reviews of the readiness
+pass (ARCHITECTURE-ALPHA §43). What falls short of it at 1.0 is listed in §10, and nowhere else.
+
 This standard describes what has been validated; it doesn't freeze every layout. When a convention has to change,
 change it here in the same change as the code, and say why. Don't let the code drift away from it quietly.
 
@@ -191,7 +194,8 @@ These are requirements, not aims. Check them at **1440, 1280, 1024 and 390 px**,
 - A button styled as a link (`underline`, `plainLink`) keeps the height of the text around it, like a link. When it
   stands on its own beside other controls, as More filters does, give it `pointer-coarse:min-h-11`.
 - Links inside sentences are exempt. Everything else is at least 24 × 24 px, or has the spacing WCAG 2.5.8 accepts
-  instead: a 24 px circle on it touches no other target.
+  instead: a 24 px circle on it touches no other target. There is no exception for canvases or dense views; §10
+  records the one place that falls short at 1.0.
 
 ### Colour and contrast
 
@@ -276,11 +280,18 @@ How to write UI text:
   - The firewall simulation: "A simulation: DROOL works out the answer from the firewall policy it wants for these
     hosts. It sends nothing to the hosts, tries no connection, and changes no policy."
   - The designer: "simulated on this draft: nothing is applied".
+  - A simulated step says *allowed* or *blocked* only where that is what DROOL's rules on the host do now. Elsewhere it
+    says *would be allowed* or *would be blocked*, and its notes say what the host does now.
 - **Observed is not allowed.** An observed connection's policy status is the policy's verdict on connections like it.
   Where DROOL's policy isn't in force on that host (Off, Monitor, Guided, not applied yet, rules missing), it reads as
   what the policy *would* do: *Would be denied*, *not enforced*, *Would be allowed by policy …*. A host's Network page
   says first whether the policy is in force there. Enforcement comes from what the host runs (its committed revision),
   not from its mode.
+- **What is in force decides, and unknown is said.** Where the host still runs an earlier revision that decides a
+  connection differently, the status is marked *↻ not applied yet* and reads as *would be*; the details say what the
+  host does now. Where DROOL's rules were changed outside DROOL, what the host does isn't known: *⚠ changed outside
+  DROOL*, never a guess. The server decides these states (`enforcement` on a connection, `current` on a simulated
+  step); the UI words them and doesn't work them out itself.
 - **Previews say they change nothing.** The button that executes names what it does (§5).
 - **Destructive actions** use danger styling, are confirmed, and come last in menus.
 - **The UI never weakens a server check.** It can explain a refusal (a busy host, a missing permission, a blocked
@@ -320,3 +331,13 @@ go test -tags integration -run TestBrowser ./test/integration
 For changes that reach across the UI, repeat the 1.0 audit: axe-core's WCAG 2.2 A and AA rules, plus the layout,
 contrast, touch-target, focus and hidden-Tab-stop checks at the four widths. Read the per-control findings, not only
 the totals. See ARCHITECTURE-ALPHA.md §41.12.
+
+## 10. Known limitations at 1.0
+
+Each entry is safe, documented in the user guide or the as-built record, and doesn't get in the way of normal use. It is
+not an exception to the rule it falls short of: new work meets the rule, and an entry is removed once it's fixed. Add an
+entry only with the maintainer's agreement.
+
+| Where | Falls short of | Accessible alternative | Record |
+|---|---|---|---|
+| Firewall → Policy, **Topology** view, at 1440 px: two rule labels on the canvas ("ssh (TCP 22)" in the review data), 56.8 × 14.8 px, one 0.6 px from a neighbouring target (axe `target-size`) | §6 Touch: 24 × 24 px, or WCAG 2.5.8's spacing | The **Rules** view, one click away on the same page, lists every rule with full-size controls; the Designer opens in it below 1024 px. A label only selects its connection and shows its details: it changes nothing, and it is a named Tab stop with a visible focus | ARCHITECTURE-ALPHA §43.8 |

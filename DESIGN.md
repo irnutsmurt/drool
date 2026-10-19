@@ -1,7 +1,7 @@
 # DROOL: Distributed Remote Operations & Observability Layer
 
-**Design Document v0.3.18**
-Status: Draft · 2026-10-17 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
+**Design Document v0.3.19**
+Status: Draft · 2026-10-19 · High-level design frozen; further work moves to `ARCHITECTURE-ALPHA.md`
 Product name: **DROOL** (Distributed Remote Operations & Observability Layer). Binary: `drool`.
 
 > DROOL is a web-first platform for managing, automating, monitoring, and eventually segmenting Linux systems through SSH or an agent.
@@ -13,6 +13,15 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 ---
 
 ## 0. Changes
+
+### v0.3.18 → v0.3.19 (source review, before the release candidate)
+
+Corrections from the independent source review; no new capability (`ARCHITECTURE-ALPHA.md` §43.8):
+
+| # | As built | Section |
+|---|---|---|
+| 1 | **What is in force decides the wording:** a connection's status and a simulated step read as what happens now only where DROOL's rules on the host decide it so. Saved changes not applied yet, rules missing and rules changed outside DROOL are said, never assumed from the desired policy or the mode; where what the host does can't be known, DROOL says so | §19.4 |
+| 2 | **The Design Standard is final for 1.0.** It records one known limitation (two topology canvas labels under 24 px, with the Rules view as the accessible alternative), not a general exception to its touch-target rule | §2.7 |
 
 ### v0.3.17 → v0.3.18 (1.0 readiness pass, before the release candidate)
 
@@ -1386,7 +1395,10 @@ Observed flows answer "what is this host talking to, over what port, using what 
 - **Drafts, not rules:** an observed connection can start a draft rule in the Designer; it is never applied by itself.
 - **Observed is not allowed:** the policy relationship of an observed connection is the policy's verdict; where DROOL's
   policy isn't in force on the host (Off, Monitor, Guided, not applied yet, rules missing) it is shown as what the
-  policy *would* do, never as having allowed or blocked the connection. A baseline built from observed traffic, for a
+  policy *would* do, never as having allowed or blocked the connection. Where the host still runs an earlier revision
+  that decides it differently, that is what it does now; where DROOL's rules were changed outside DROOL, what it does
+  isn't known, and DROOL says so. "Can A reach B?" is a simulation of the policy: a step reads as allowed or blocked
+  only where that is what DROOL's rules on the host do now, and as *would be* elsewhere. A baseline built from observed traffic, for a
   person to review and approve, is proposed for after 1.0 (`ARCHITECTURE-ALPHA.md` §39.1, M19).
 
 ---

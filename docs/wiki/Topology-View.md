@@ -49,6 +49,11 @@ preview** opens it by hand and **Hide side panel** puts it away.
 ## Good to know
 
 - Topology is a desktop view: on a phone, the policy opens in the [Rules view](Rules-View.md).
+- **Known limitation:** the labels on the lines are small, and where lines run close together two
+  labels can sit almost on top of each other, which makes them hard to hit with a finger or an
+  unsteady pointer. A label only shows its line's details, so picking the wrong one changes nothing.
+  The [Rules view](Rules-View.md) (**Rules**, above the canvas) lists every rule with full-size
+  controls, and each label is also reachable with **Tab**.
 - Very large expanded Packs (hundreds of hosts) are slow to draw: keep them collapsed or filter.
 - Your layout is saved per browser, not per account.
 
