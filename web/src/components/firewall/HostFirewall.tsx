@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Link } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
@@ -12,6 +12,7 @@ import { CodeBlock } from "@/components/ui/CodeBlock";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { errorMessage, formatAgo } from "@/lib/format";
 import { ApplyDialog, ExplainTable, modeInfo, PolicyEditor, statusLabels, TxList } from "./parts";
+import { InstallNftables } from "./InstallNftables";
 import { fk, useFwHost, useFwSuggestions, useFwTransactions, type FwPlan, type FwSuggestion } from "./queries";
 import { TabPanel, Tabs } from "@/components/ui/Tabs";
 
@@ -28,7 +29,7 @@ export function HostFirewall({ host }: { host: Host }) {
       <Card title="Mode and environment">
         <div className="grid gap-4 lg:grid-cols-2">
           <ModeForm p={p} />
-          <Environment p={p} />
+          <Environment p={p} hostName={host.name} />
         </div>
       </Card>
       <Card title="Enforcement">
@@ -101,6 +102,7 @@ function ModeForm({ p }: { p: FwPlan }) {
           {Object.entries(modeInfo).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </Select>
       </Field>
+      <p className="text-xs text-muted" data-testid="fw-in-force">{inForce(p)}</p>
       <Field label="Outbound traffic" hint={outbound === "restrict" ? "Only what policies allow (plus the management path)." : "Not filtered (denies still apply)."}>
         <Select value={outbound} disabled={!can("firewall.write")} onChange={(e) => setOutbound(e.target.value as "allow" | "restrict")}>
           <option value="allow">Allow (recommended)</option>
@@ -119,19 +121,46 @@ function ModeForm({ p }: { p: FwPlan }) {
       </details>
       <p className="text-xs text-muted">Learning: {p.learning === "continuous" ? "continuous (Shepherd)" : p.learning === "snapshot" ? "connection snapshots only (SSH host)" : "off"}</p>
       {save.error && <Alert>{errorMessage(save.error)}</Alert>}
+      {can("firewall.write") && dirty && mode === "enforce" && !p.applied.enforced && (
+        <p className="text-xs text-muted">Saving sets the mode only: nothing on the host changes until you apply the policy (Enforcement, below).</p>
+      )}
       {can("firewall.write") && dirty && <Button size="sm" variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>Save</Button>}
     </div>
   );
 }
 
-function Environment({ p }: { p: FwPlan }) {
+/** What DROOL's firewall actually does on the host, beside the mode it is
+ * set to (DESIGN-STANDARD §8): the setting is a wish until a policy is
+ * applied, and an applied revision stays in force whatever the mode. */
+function inForce(p: FwPlan): string {
+  const { applied } = p;
+  if (applied.enforced && applied.drift !== "missing") {
+    return `In force on the host: DROOL's policy, revision ${applied.revision}${applied.rules_changed ? ", with saved changes not applied yet" : ""}.`;
+  }
+  return `In force on the host: nothing of DROOL's${applied.drift === "missing" ? " (its rules are missing from the host)" : ""}. The mode is what DROOL is set to do${
+    p.config.mode === "enforce" ? "; Enforce takes effect when the policy is applied" : ""}.`;
+}
+
+function Environment({ p, hostName }: { p: FwPlan; hostName: string }) {
   const { can } = useAuth();
   const qc = useQueryClient();
+  // Check only inspects the host (read-only); installing is a separate,
+  // confirmed step (InstallNftables).
   const detect = useMutation({
     mutationFn: () => unwrap(api.POST("/firewall/hosts/{id}/detect", { params: { path: { id: p.host_id } } })),
     onSuccess: () => void qc.invalidateQueries({ queryKey: fk.host(p.host_id) }),
   });
+  const { mutate: check } = detect;
+  const recheck = useCallback(() => check(), [check]);
+  const [nftJob, setNftJob] = useState<string>();
   const el = p.eligibility;
+  const enforce = p.config.mode === "enforce";
+  const nftMissing = p.environment?.nft === "";
+  const reasons = (el?.reasons ?? []).map((r) => <span key={r} className="block">• {r}</span>);
+  const install = (nftMissing || nftJob) && (
+    <InstallNftables hostId={p.host_id} hostName={hostName} mode={p.config.mode} jobId={nftJob} onStarted={setNftJob}
+      onInstalled={recheck} checking={detect.isPending} />
+  );
   return (
     <div className="space-y-2 text-sm">
       <div className="flex items-center justify-between">
@@ -143,8 +172,19 @@ function Environment({ p }: { p: FwPlan }) {
         <>
           {el.supported
             ? <Alert tone="ok">Enforcement is supported here: plain nftables, no other firewall manager.</Alert>
-            : <Alert><strong>Firewall enforcement unavailable.</strong> {(el.reasons ?? []).map((r) => <span key={r} className="block">• {r}</span>)}
-              <span className="mt-1 block text-xs">Monitoring, simulation and explanation still work.</span></Alert>}
+            : enforce
+              // Enforce is set but can't take effect: a problem to resolve.
+              ? <Alert><strong>Enforce is set, but DROOL can&apos;t enforce on this host:</strong> nothing is filtered until this is resolved.
+                {reasons}
+                <span className="mt-1 block text-xs">Monitoring, simulation and explanation still work.</span></Alert>
+              // In the other modes enforcement isn't asked for: information.
+              : <div className="rounded-ui border border-line px-3 py-2" data-testid="fw-env-info">
+                <p><strong>Enforcement isn&apos;t available here yet.</strong>{" "}
+                  {p.config.mode === "off" ? "That matters only if you switch to Enforce."
+                    : `${modeInfo[p.config.mode]?.label ?? p.config.mode} mode doesn't need it: monitoring, simulation and explanation work. Resolve it before you switch to Enforce.`}</p>
+                <div className="text-muted">{reasons}</div>
+              </div>}
+          {install}
           {(el.warnings ?? []).map((w) => <p key={w} className="text-xs text-warn">{w}</p>)}
           {(el.detected ?? []).length > 0 && <p className="text-xs text-muted">Detected: {(el.detected ?? []).join(" · ")}</p>}
           {p.environment_checked_at && <p className="text-xs text-muted">checked {formatAgo(p.environment_checked_at)}</p>}

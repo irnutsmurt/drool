@@ -4311,3 +4311,46 @@ ordered: the report either sees the move, or its mark is overwritten by it.
   with it.
 - With a delay forced between the read and the mark, the restore test failed 4 of 5 runs.
 - With the fix, `TestRestoreReconciliationFirewall` passes 40 of 40 under `-race`.
+
+### 43.10 Installing nftables from the environment check
+
+A workflow correction, not a feature. Where the firewall environment check found nftables missing, the page sent the
+user to start a package run by hand, although DROOL can do that safely itself (DESIGN-STANDARD §1, Workflow first).
+
+**Check is unchanged.** It is read-only and never installs anything.
+
+**Install nftables…** (`firewall/InstallNftables.tsx`) appears beside the result when the environment has no `nft`, and
+uses what exists:
+- the package engine's dry run (`POST /jobs/simulate`), to show what the host's package manager would install;
+- a confirmation that names the action and says the mode stays as it is and nothing is enforced;
+- an ordinary package run (`POST /jobs`), with the same authorization, locks, capability checks and audit as any
+  install;
+- the run's progress and outcome, inline;
+- the environment check again once the install succeeds.
+
+It never changes the mode or applies anything.
+
+**Where it can't install, it says why** instead of offering the action:
+- the dry run's skip or error (no supported package manager, an unreachable host);
+- a dry run that would remove other packages (not done from here);
+- missing permission (it needs `jobs.execute` and `firewall.write`: an administrator).
+
+**Wording.**
+- Outside Enforce, the unavailable environment is information: "Enforcement isn't available here yet. Monitor mode
+  doesn't need it: monitoring, simulation and explanation work."
+- In Enforce it stays a problem: "Enforce is set, but DROOL can't enforce on this host: nothing is filtered until this
+  is resolved".
+- The mode now has the state in force beside it ("In force on the host: …; the mode is what DROOL is set to do").
+- Saving Enforce on a host with nothing applied says that nothing changes until the policy is applied.
+- The refusal reason says DROOL can install nftables, instead of naming a package run.
+- The shared package-preview row can start with its package list open (`showPackages`).
+
+**Tests.** `firewall-nftables.test.mjs` stubs the host's state and the run API, so nothing is installed. It covers:
+- Monitor: information, Check read-only, the dry run, the confirmation, the run, the outcome and the check again,
+  with no mode change and no apply;
+- Enforce: a problem;
+- a host without a supported package manager, and a dry run that would remove packages, with the keyboard path;
+- an operator, who sees why the action isn't offered;
+- the action and its dialog at 1440, 1280, 1024 and 390 px in both themes.
+
+The end-to-end test fails if the check after the install is removed.

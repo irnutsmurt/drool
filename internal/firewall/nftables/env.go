@@ -244,7 +244,7 @@ func (e *Env) Eligibility() Eligibility {
 		refuse("systemd is not running: enforcement needs it for the boot loader (drool-firewall.service) and the automatic rollback timer")
 	}
 	if e.Nft == "" {
-		refuse("nftables (nft) is not installed: install the nftables package (for example with a DROOL package job), then check again")
+		refuse("nftables (nft) is not installed: DROOL can install it (Install nftables…, under Firewall environment)")
 	} else {
 		el.Detected = append(el.Detected, "nftables "+strings.TrimPrefix(e.NftVersion, "nftables "))
 	}

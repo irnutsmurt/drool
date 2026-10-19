@@ -216,7 +216,9 @@ export function SimulatePanel({ targets, step, allow, setAllow, hasTargets, onRe
   );
 }
 
-export function SimHostRow({ h }: { h: SimHost }) {
+/** One host's dry run. showPackages: the package list starts open (a
+ * confirmation about one package, where the list is the point). */
+export function SimHostRow({ h, showPackages = false }: { h: SimHost; showPackages?: boolean }) {
   const p = h.plan;
   const counts = p && [
     p.upgrade.length && `${p.upgrade.length} to upgrade`,
@@ -241,7 +243,7 @@ export function SimHostRow({ h }: { h: SimHost }) {
         </div>
       )}
       {p && p.upgrade.length + p.install.length + p.downgrade.length > 0 && (
-        <details>
+        <details open={showPackages}>
           <summary className="cursor-pointer text-xs text-muted">Show packages</summary>
           {p.install.length > 0 && <><div className="mt-1 text-xs font-medium uppercase text-muted">Installs</div><ChangeList items={p.install} /></>}
           {p.upgrade.length > 0 && <><div className="mt-1 text-xs font-medium uppercase text-muted">Upgrades</div><ChangeList items={p.upgrade} /></>}

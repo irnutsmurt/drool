@@ -12,10 +12,17 @@ to **Enforce**.
    keyboard, an IPMI or cloud console) lets you [recover by hand](Recovering-From-a-Firewall-Problem.md#locked-out-anyway)
    if you ever need to.
 2. **Check the host's firewall environment.** Open the host's **Firewall** section → **Check**
-   under **Firewall environment**. You want *Enforcement is supported here: plain nftables, no other
-   firewall manager.* If it says *refused*, read why:
-   - *nftables (nft) is not installed*: install the `nftables` package
-     ([Installing Packages](Installing-Packages.md)), then **Check** again.
+   under **Firewall environment**. **Check** only looks at the host; it never installs or changes
+   anything. You want *Enforcement is supported here: plain nftables, no other firewall manager.*
+   Otherwise, read why:
+   - *nftables (nft) is not installed*: choose **Install nftables…** beside the result. DROOL asks the
+     host's package manager what that involves (a dry run) and shows you, then installs it as a normal
+     package run once you confirm, shows its progress, and checks again by itself. It doesn't change the
+     mode or enforce anything. In **Monitor** or **Guided** mode this is only information: monitoring,
+     simulation and explanation work without nftables. Where DROOL can't install it (you need permission
+     to run jobs and to manage the firewall; the host needs apt or dnf; DROOL won't remove other packages
+     for it), it says why: install it yourself ([Installing Packages](Installing-Packages.md)), then
+     **Check** again.
    - Docker, firewalld, UFW, Tailscale, or other iptables/nftables rules: DROOL won't share the
      firewall with another manager. Enforce on other hosts, or remove the other manager first.
      After `ufw disable`, UFW's rules stay loaded until the next reboot.

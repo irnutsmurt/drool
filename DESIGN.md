@@ -16,12 +16,13 @@ Product name: **DROOL** (Distributed Remote Operations & Observability Layer). B
 
 ### v0.3.18 → v0.3.19 (source review, before the release candidate)
 
-Corrections from the independent source review; no new capability (`ARCHITECTURE-ALPHA.md` §43.8):
+Corrections from the independent source review and one workflow correction; no new capability (`ARCHITECTURE-ALPHA.md` §43.8, §43.10):
 
 | # | As built | Section |
 |---|---|---|
 | 1 | **What is in force decides the wording:** a connection's status and a simulated step read as what happens now only where DROOL's rules on the host decide it so. Saved changes not applied yet, rules missing and rules changed outside DROOL are said, never assumed from the desired policy or the mode; where what the host does can't be known, DROOL says so | §19.4 |
 | 2 | **The Design Standard is final for 1.0.** It records one known limitation (two topology canvas labels under 24 px, with the Rules view as the accessible alternative), not a general exception to its touch-target rule | §2.7 |
+| 3 | **Install nftables from the environment check:** where Check finds nftables missing, **Install nftables…** beside the result runs the ordinary package run (dry run shown, confirmed, progress and outcome, then Check again). Check stays read-only; the mode and enforcement are untouched; outside Enforce the missing dependency is information. Where it can't, it says why | §16 |
 
 ### v0.3.17 → v0.3.18 (1.0 readiness pass, before the release candidate)
 

@@ -70,7 +70,7 @@ func TestEligibility(t *testing.T) {
 		{"tailscale", map[string]string{"tailscale_running": "yes"}, "", "Tailscale is running"},
 		{"legacy iptables", map[string]string{"legacy": "iptables-legacy-save 4"}, "", "legacy iptables rules are present (4)"},
 		{"no systemd", map[string]string{"systemd": "no"}, "", "systemd is not running"},
-		{"no nft", map[string]string{"nft": "none"}, "", "nftables (nft) is not installed: install the nftables package"},
+		{"no nft", map[string]string{"nft": "none"}, "", "nftables (nft) is not installed: DROOL can install it"},
 		{"missing flock", map[string]string{"missing": "flock"}, "", "required tools are missing: flock"},
 		{"iptables service", map[string]string{"service": "iptables active"}, "", "the iptables service"},
 		{"unreadable", nil, "Error: Could not process rule", "could not read the nftables ruleset"},
