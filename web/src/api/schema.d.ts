@@ -6395,7 +6395,7 @@ export interface components {
             name: string;
             groups: string[];
         };
-        /** @description The firewall compiler's view of a flow, against the desired policy and, on enforced hosts with unapplied changes, the applied one. */
+        /** @description The firewall compiler's view of a flow, against the desired policy and, on enforced hosts with unapplied changes, the applied one. status and verdict are the desired policy's; enforcement says whether that is what the host does now (enforced), what DROOL's rules in force do instead (changes_pending, applied_verdict), that DROOL's rules were changed outside DROOL so it isn't known (drift), or that nothing of DROOL's is in force (the other values). */
         NetCorrelation: {
             /** @enum {string} */
             status: "management" | "covered" | "unclassified" | "denied";
@@ -6407,7 +6407,7 @@ export interface components {
             policy_name?: string;
             rule?: string;
             /** @enum {string} */
-            enforcement: "unmanaged" | "monitor" | "guided" | "enforce_pending" | "enforced";
+            enforcement: "unmanaged" | "monitor" | "guided" | "enforce_pending" | "enforced" | "changes_pending" | "drift";
             applied_verdict?: string;
             notes: string[];
         };
@@ -6955,11 +6955,20 @@ export interface components {
             /** @enum {string} */
             direction: "in" | "out";
             mode: string;
+            /** @description DROOL's rules are in force on this host (committed, neither missing nor changed outside DROOL). */
             filtered: boolean;
-            /** @enum {string} */
+            /**
+             * @description What the policy simulated (stored or draft) decides on this host.
+             * @enum {string}
+             */
             verdict: "accept" | "drop";
             reason: components["schemas"]["FwReason"];
             rule?: string;
+            /**
+             * @description What DROOL's rules on the host do with it now, when that isn't verdict (unknown: changed outside DROOL). Absent: verdict is what happens now, as far as DROOL's rules go.
+             * @enum {string}
+             */
+            current?: "accept" | "drop" | "unknown";
             notes?: string[];
         };
         FwSimResult: {

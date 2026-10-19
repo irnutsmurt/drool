@@ -393,7 +393,9 @@ services:
     port: 8812
 `, cur.Revision)
 	p = e.flows(t, "host="+web+"&peer=185.10.1.1")
-	if f := p.Items[0]; f.Policy.Status != "denied" || f.Policy.PolicyName != "no-8812" || f.Policy.AppliedVerdict != "accept" || f.Policy.Enforcement != "enforced" ||
+	// The status is the saved policy's; the host still allows it, so it
+	// isn't presented as in force (source review before v1.0.0-rc.3).
+	if f := p.Items[0]; f.Policy.Status != "denied" || f.Policy.PolicyName != "no-8812" || f.Policy.AppliedVerdict != "accept" || f.Policy.Enforcement != "changes_pending" ||
 		!strings.Contains(strings.Join(f.Policy.Notes, " "), "not applied yet") {
 		t.Fatalf("stale: %+v", f.Policy)
 	}

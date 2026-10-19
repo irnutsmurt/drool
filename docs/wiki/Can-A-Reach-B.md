@@ -29,8 +29,16 @@ policy allows some of the addresses involved), marked *(simulated)*. Below it, e
 - **arriving** at the destination: allowed or blocked, and why: the **matching rule**, the
   **management path**, or *DROOL doesn't filter database-01 (mode monitor)*.
 
-Notes in orange say where the answer is about the policy DROOL **wants**, but a host hasn't applied it
-yet (*Simulation uses the policy DROOL wants; notes show where hosts haven't applied it yet*).
+A step says **allowed** or **blocked** only where that is what DROOL's rules on the host do now.
+Where it isn't, it says **would be allowed** or **would be blocked**, and its orange notes say what the
+host does now:
+
+- the policy isn't applied to the host yet, or DROOL's rules are missing from it: they block nothing
+  there now;
+- the host still runs an earlier revision that decides this differently, until the changes are
+  applied;
+- DROOL's rules on the host were changed outside DROOL ([drift](Firewall-Drift.md)): what it does now
+  isn't known.
 **Evaluated** lists the address pairs that were checked (IPv4 and IPv6).
 
 ## While editing the policy

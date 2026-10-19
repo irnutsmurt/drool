@@ -16,10 +16,11 @@ the connection says **not enforced**. A host's Network page says at the top whic
 | ⛨ **Management path** | *A protected DROOL management path in the firewall policy (SSH from the controller or a jump host, or the Shepherd's connection).* Always allowed ([Management Path Protection](Management-Path-Protection.md)) |
 | ? **Not in policy** | *No firewall policy says anything about connections like this one.* |
 | ✕ **Denied** | *The policy enforced on this host drops connections like this one.* An observed one got through when it was seen: before the policy took effect, or around DROOL's rules |
-| ✕ **Would be denied** | A deny policy names it, but the policy isn't in force on this host: nothing was blocked |
+| ✕ **Would be denied** | The policy drops connections like this one, but that isn't what happens on this host now: its policy isn't in force, its saved changes aren't applied yet, or its rules were changed outside DROOL |
 | ✕ **would be denied** (extra badge) | Not blocked today, but **would be** once the host is enforced, or the current policy is applied |
 | ◌ **not enforced** (extra badge) | DROOL's policy isn't in force on this host: the status is what it would do, not what happened |
-| ↻ **not applied yet** (extra badge) | The host still runs an older policy that treats this connection differently |
+| ↻ **not applied yet** (extra badge) | The host still runs an older policy that treats this connection differently: the status is what the saved policy will do once applied, and the details say what the host does now |
+| ⚠ **changed outside DROOL** (extra badge) | DROOL's rules on this host were changed outside DROOL ([drift](Firewall-Drift.md)): what the host does with this connection isn't known |
 
 The status is always shown with a word and a symbol, never by colour alone. A connection's details
 say the same in words (*Allowed by policy …* where it's in force, *Would be allowed by policy …*
@@ -27,7 +28,9 @@ where it isn't) and name the host firewall's state.
 
 A host taken out of Enforce keeps its last applied policy until someone removes it: DROOL then still
 counts that policy as in force, and says so. A host whose DROOL rules were removed outside DROOL
-(*drift*, rules missing) counts as not filtered.
+(rules missing) counts as not filtered. On a host whose DROOL rules were *changed* outside DROOL
+(drift), DROOL doesn't guess: it says what the policy would do, and that what the host does isn't
+known until the policy is applied again.
 
 ## Reading it before you enforce
 

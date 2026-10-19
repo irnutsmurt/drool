@@ -22,7 +22,8 @@ const (
 
 // Correlation is the firewall's view of one observed flow, against the
 // desired policy (what DROOL would enforce) and, on enforced hosts, the
-// policy actually applied.
+// policy actually applied. Status and Verdict are always the desired
+// policy's; Enforcement says whether that is what the host does now.
 type Correlation struct {
 	Status     string `json:"status"`
 	Verdict    string `json:"verdict"`    // accept | drop under the desired policy
@@ -32,8 +33,14 @@ type Correlation struct {
 	PolicyID   string `json:"policy_id,omitempty"`
 	PolicyName string `json:"policy_name,omitempty"`
 	Rule       string `json:"rule,omitempty"` // "TCP 443 to the internet"
-	// Enforcement is the host's firewall state: unmanaged (mode off),
-	// monitor, guided, enforce_pending (enforce, not applied yet), enforced.
+	// Enforcement is whether the status is in force for this flow:
+	// enforced (DROOL's rules on the host decide it so now); changes_pending
+	// (DROOL's rules are in force, but decide it differently until the
+	// desired policy is applied: AppliedVerdict); drift (DROOL's rules were
+	// changed outside DROOL: what the host does isn't known); otherwise
+	// nothing of DROOL's is in force and the status is what the policy would
+	// do: unmanaged (mode off), monitor, guided, enforce_pending (enforce,
+	// not applied yet, or its rules missing from the host).
 	Enforcement string `json:"enforcement"`
 	// Applied is what the policy applied on the host does, when it differs
 	// from the desired one (changes not applied yet).
@@ -55,7 +62,11 @@ type HostFirewall struct {
 
 type hostEval struct {
 	desired *compile.HostPolicy
-	applied *compile.HostPolicy // nil unless enforced with different rules
+	// applied: the policy in force, when it differs from the desired one
+	// (enforced, with rules or address sets not applied yet); unreadable
+	// when DROOL can't read it back.
+	applied    *compile.HostPolicy
+	unreadable bool
 	// outbound: the host compiled as if outbound traffic were restricted.
 	// With unrestricted outbound the compiler emits no outbound allows, so
 	// this is how "a policy covers this outbound flow" is answered — by the
@@ -65,13 +76,23 @@ type hostEval struct {
 	st       db.FwHostState
 }
 
+// Enforcement states besides the modes (Correlation.Enforcement).
+const (
+	EnforcementDrift   = "drift"           // DROOL's rules changed outside DROOL: unknown
+	EnforcementPending = "changes_pending" // in force, deciding this flow differently
+)
+
 // enforcement is whether DROOL's rules are in force on a host. The committed
 // state decides, not the mode: leaving Enforce keeps the last committed
 // revision on the host until someone removes it, and rules missing from the
-// host (drift "missing") enforce nothing. Then the mode: unmanaged (off),
-// monitor, guided, or enforce_pending (enforce, not applied yet).
+// host (drift "missing") enforce nothing. DROOL's rules changed outside DROOL
+// (any other drift) make what the host does unknown. Then the mode:
+// unmanaged (off), monitor, guided, or enforce_pending (enforce, not applied
+// yet).
 func enforcement(mode string, st db.FwHostState) string {
 	switch {
+	case st.Drift != "" && st.Drift != DriftMissing:
+		return EnforcementDrift
 	case st.Enforced != 0 && st.Drift != DriftMissing:
 		return "enforced"
 	case mode == ModeOff:
@@ -136,14 +157,21 @@ func (c *Classifier) host(ctx context.Context, hostID string) *hostEval {
 		rend := nftables.Render(he.desired)
 		he.fw.RulesChanged = rend.RulesHash != st.AppliedRulesHash
 		he.fw.SetsPending = !he.fw.RulesChanged && rend.SetsHash != st.AppliedSetsHash
-		if he.fw.RulesChanged && st.AppliedPolicyJson != "" {
-			ap := &compile.HostPolicy{}
-			if json.Unmarshal([]byte(st.AppliedPolicyJson), ap) == nil {
-				he.applied = ap
-			}
+		if he.fw.Enforcement == "enforced" && (he.fw.RulesChanged || he.fw.SetsPending) {
+			he.applied, he.unreadable = appliedPolicy(st)
 		}
 	}
 	return he
+}
+
+// appliedPolicy is the policy DROOL last applied to a host, as committed;
+// unreadable when it can't be read back.
+func appliedPolicy(st db.FwHostState) (*compile.HostPolicy, bool) {
+	ap := &compile.HostPolicy{}
+	if st.AppliedPolicyJson == "" || json.Unmarshal([]byte(st.AppliedPolicyJson), ap) != nil {
+		return nil, true
+	}
+	return ap, false
 }
 
 // Firewall returns a host's firewall summary.
@@ -203,6 +231,8 @@ func (c *Classifier) Classify(ctx context.Context, hostID, dir, proto string, po
 		out.Status = FlowCovered
 	}
 	switch {
+	case he.fw.Enforcement == EnforcementDrift:
+		out.Notes = append(out.Notes, "DROOL's rules on the host were changed outside DROOL (drift): what it does with connections like this one isn't known; this is what the policy would do")
 	case he.st.Enforced != 0 && he.st.Drift == DriftMissing:
 		out.Notes = append(out.Notes, "DROOL's rules are missing on the host (changed outside DROOL): nothing of its policy is in force there; this is what the policy would do")
 	case he.fw.Enforcement == "unmanaged":
@@ -215,18 +245,20 @@ func (c *Classifier) Classify(ctx context.Context, hostID, dir, proto string, po
 		out.Notes = append(out.Notes, fmt.Sprintf("the firewall is in %s mode, but DROOL's last applied policy (revision %d) is still on the host and filters it: changes aren't applied",
 			he.fw.Mode, he.st.AppliedRevision))
 	}
-	if he.applied != nil {
-		av := he.applied.Evaluate(dir, pkt)
-		if av.Verdict != v.Verdict {
-			out.AppliedVerdict = av.Verdict
+	// Changes not applied yet: the policy in force decides, and the status
+	// is what the desired policy will do once applied.
+	switch {
+	case he.applied != nil:
+		if av := he.applied.Evaluate(dir, pkt); av.Verdict != v.Verdict {
+			out.Enforcement, out.AppliedVerdict = EnforcementPending, av.Verdict
 			out.Notes = append(out.Notes, fmt.Sprintf("policy changes are not applied yet: the firewall on the host currently %s this (%s)",
 				map[string]string{"accept": "allows", "drop": "drops"}[av.Verdict], av.Reason.Text))
+		} else if he.fw.SetsPending {
+			out.Notes = append(out.Notes, "address set updates for this host are still pending")
 		}
-	} else if he.fw.SetsPending {
-		out.Notes = append(out.Notes, "address set updates for this host are still pending")
-	}
-	if he.fw.Drift && he.st.Drift != DriftMissing {
-		out.Notes = append(out.Notes, "the host's firewall was changed outside DROOL (drift)")
+	case he.unreadable:
+		out.Enforcement = EnforcementPending
+		out.Notes = append(out.Notes, "policy changes are not applied yet, and DROOL can't read back the policy it last applied: what the host does with this now isn't known")
 	}
 	return out
 }

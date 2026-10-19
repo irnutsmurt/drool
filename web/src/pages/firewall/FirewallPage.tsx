@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { useHosts } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
-import { ApplyDialog, modeInfo, statusLabels, TxList } from "@/components/firewall/parts";
+import { ApplyDialog, hopVerdict, modeInfo, statusLabels, TxList } from "@/components/firewall/parts";
 import { fk, useFwGroups, useFwHosts, useFwSettings, useFwTransactions, type FwSimResult } from "@/components/firewall/queries";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
@@ -148,14 +148,14 @@ function SimulateTab() {
             {r.hops.map((h) => (
               <li key={h.host + h.direction} className="rounded-ui border border-line p-2">
                 <strong>{h.host}</strong> ({h.direction === "out" ? "leaving" : "arriving"}):{" "}
-                <Badge tone={h.verdict === "accept" ? "ok" : "danger"}>{h.verdict === "accept" ? "allowed" : "blocked"}</Badge>{" "}
+                <Badge tone={h.verdict === "accept" ? "ok" : "danger"}>{hopVerdict(h)}</Badge>{" "}
                 {h.reason.kind === "management" && <Badge tone="accent">management path</Badge>} {h.reason.text}
                 {h.rule && <span className="block text-xs text-muted">matching rule: {h.rule}</span>}
                 {(h.notes ?? []).map((n) => <span key={n} className="block text-xs text-warn">{n}</span>)}
               </li>
             ))}
           </ul>
-          <p className="text-xs text-muted">Evaluated: {r.pairs.join(", ")}. Simulated from the policy DROOL wants; notes show where hosts haven&apos;t applied it yet. Nothing was sent to the hosts.</p>
+          <p className="text-xs text-muted">Evaluated: {r.pairs.join(", ")}. Simulated from the policy DROOL wants: &ldquo;would be&rdquo; marks a host where that isn&apos;t what happens now, and its notes say why. Nothing was sent to the hosts.</p>
         </div>
       )}
     </Card>

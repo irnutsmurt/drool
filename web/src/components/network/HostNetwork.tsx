@@ -101,7 +101,7 @@ function FirewallLine({ hostId, fw }: { hostId: string; fw: NetHost["firewall"] 
         : "DROOL's policy is in force on this host.";
   return (
     <p className="mb-2 text-xs text-muted" data-testid="network-firewall">
-      Firewall: {text}{fw.drift && " DROOL's rules were changed outside DROOL (drift)."}
+      Firewall: {text}{fw.drift && fw.enforcement !== "drift" && " DROOL's rules are missing from the host (changed outside DROOL)."}
       {can("firewall.read") && <> <Link className="text-accent underline" to={`/hosts/${hostId}/firewall`}>This host&apos;s firewall</Link></>}
     </p>
   );

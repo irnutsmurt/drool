@@ -2,7 +2,6 @@ package fwsvc
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -28,17 +27,25 @@ type SimRequest struct {
 	YAML     *string            `json:"yaml,omitempty"`
 }
 
-// SimHop is one host's decision.
+// SimHop is one host's decision: what the policy simulated (the stored one
+// or a draft) decides there, and whether that is what the host does now.
 type SimHop struct {
-	HostID    string         `json:"host_id"`
-	Host      string         `json:"host"`
-	Direction string         `json:"direction"` // out (source) | in (destination)
-	Mode      string         `json:"mode"`
-	Filtered  bool           `json:"filtered"` // DROOL enforces a policy on this host
-	Verdict   string         `json:"verdict"`  // accept | drop
-	Reason    compile.Reason `json:"reason"`
-	Rule      string         `json:"rule,omitempty"`
-	Notes     []string       `json:"notes,omitempty"`
+	HostID    string `json:"host_id"`
+	Host      string `json:"host"`
+	Direction string `json:"direction"` // out (source) | in (destination)
+	Mode      string `json:"mode"`
+	// Filtered: DROOL's rules are in force on this host (committed, and
+	// neither missing nor changed outside DROOL).
+	Filtered bool           `json:"filtered"`
+	Verdict  string         `json:"verdict"` // accept | drop, by the policy simulated
+	Reason   compile.Reason `json:"reason"`
+	Rule     string         `json:"rule,omitempty"`
+	// Current is what DROOL's rules on the host do with it now, when that
+	// isn't Verdict: accept (they don't block it, or nothing of DROOL's is
+	// in force), drop, or unknown (changed outside DROOL). Empty: Verdict
+	// is what happens now, as far as DROOL's rules go.
+	Current string   `json:"current,omitempty"`
+	Notes   []string `json:"notes,omitempty"`
 }
 
 // SimResult is the answer with its reasons.
@@ -83,7 +90,9 @@ func famOf(a netip.Addr) int {
 	return 6
 }
 
-// Simulate answers a reachability question with the desired policy.
+// Simulate answers a reachability question with the desired policy (or a
+// draft). It is a simulation: nothing is sent to the hosts. Each hop says
+// whether its answer is what DROOL's rules there do now.
 func (s *Service) Simulate(ctx context.Context, req SimRequest) (*SimResult, error) {
 	if req.Protocol != policy.TCP && req.Protocol != policy.UDP {
 		return nil, ValidationError("protocol must be tcp or udp")
@@ -129,6 +138,7 @@ func (s *Service) Simulate(ctx context.Context, req SimRequest) (*SimResult, err
 		compiled[id] = hp
 		return hp
 	}
+	verb := map[string]string{"accept": "allows", "drop": "blocks"}
 	decide := func(ep endpoint, dir string, peer netip.Addr) SimHop {
 		hop := SimHop{HostID: ep.host.ID, Host: ep.host.Name, Direction: dir}
 		cfg := s.HostConfig(ctx, ep.host.ID)
@@ -136,48 +146,64 @@ func (s *Service) Simulate(ctx context.Context, req SimRequest) (*SimResult, err
 		st, _ := s.d.Store.R.GetFwHostState(ctx, ep.host.ID)
 		hp := hostPolicy(ep.host.ID)
 		pkt := compile.Packet{Family: famOf(peer), Proto: req.Protocol, Port: req.Port, Peer: peer}
-		// Out of Enforce, the last committed revision still filters the host
-		// until someone removes it: that is what answers, not the mode.
-		if ap := (&compile.HostPolicy{}); cfg.Mode != ModeEnforce && enforcement(cfg.Mode, st) == "enforced" &&
-			st.AppliedPolicyJson != "" && json.Unmarshal([]byte(st.AppliedPolicyJson), ap) == nil {
-			hop.Filtered = true
-			v := ap.Evaluate(dir, pkt)
+		// The simulation's answer: what DROOL wants on this host — the
+		// policy in Enforce, nothing filtered in the other modes.
+		if cfg.Mode != ModeEnforce || hp == nil {
+			hop.Verdict = "accept"
+			hop.Reason = compile.Reason{Kind: compile.ReasonDefault, Text: fmt.Sprintf("DROOL doesn't filter %s (mode %s)", ep.host.Name, cfg.Mode)}
+		} else {
+			v := hp.Evaluate(dir, pkt)
 			hop.Verdict, hop.Reason = v.Verdict, v.Reason
 			if v.Rule != nil {
 				hop.Rule = compile.DescribeService(*v.Rule) + " " + map[string]string{"in": "from ", "out": "to "}[dir] + v.Rule.Peer.Label
 			}
-			hop.Notes = append(hop.Notes, fmt.Sprintf("%s is in %s mode, but DROOL's last applied policy (revision %d) is still on it and decides this: changes aren't applied",
-				ep.host.Name, cfg.Mode, st.AppliedRevision))
-			return hop
 		}
-		if cfg.Mode != ModeEnforce || hp == nil {
-			hop.Verdict = "accept"
-			hop.Reason = compile.Reason{Kind: compile.ReasonDefault, Text: fmt.Sprintf("DROOL doesn't filter %s (mode %s)", ep.host.Name, cfg.Mode)}
-			return hop
-		}
-		hop.Filtered = true
-		v := hp.Evaluate(dir, pkt)
-		hop.Verdict, hop.Reason = v.Verdict, v.Reason
-		if v.Rule != nil {
-			hop.Rule = compile.DescribeService(*v.Rule) + " " + map[string]string{"in": "from ", "out": "to "}[dir] + v.Rule.Peer.Label
-		}
-		if st.Enforced == 0 {
-			hop.Notes = append(hop.Notes, "this is the policy DROOL wants on "+ep.host.Name+"; it has not been applied yet")
-		} else {
-			rend := nftables.Render(hp)
+		// What DROOL's rules on the host do with it now, from what DROOL
+		// committed there and its drift: never assumed from the mode.
+		now := "accept" // nothing of DROOL's in force: its rules block nothing
+		switch enforcement(cfg.Mode, st) {
+		case EnforcementDrift:
+			now = "unknown"
+			hop.Notes = append(hop.Notes, "DROOL's rules on "+ep.host.Name+" were changed outside DROOL: what it does with this now isn't known")
+		case "enforced":
+			hop.Filtered = true
+			if ap, unreadable := appliedPolicy(st); unreadable {
+				now = "unknown"
+				hop.Notes = append(hop.Notes, "DROOL can't read back the policy it last applied to "+ep.host.Name+": what it does with this now isn't known")
+			} else {
+				now = ap.Evaluate(dir, pkt).Verdict
+			}
 			switch {
-			case rend.RulesHash != st.AppliedRulesHash:
-				hop.Notes = append(hop.Notes, "policy changes for "+ep.host.Name+" are not applied yet")
-			case rend.SetsHash != st.AppliedSetsHash:
-				hop.Notes = append(hop.Notes, fmt.Sprintf("address sets on %s are still at generation %d (propagation pending)", ep.host.Name, st.SetsGenerationApplied))
+			case cfg.Mode != ModeEnforce:
+				what := ""
+				if now != hop.Verdict && now != "unknown" {
+					what = " and " + verb[now] + " this"
+				}
+				hop.Notes = append(hop.Notes, fmt.Sprintf("%s is in %s mode, but DROOL's last applied policy (revision %d) is still on it%s: changes aren't applied",
+					ep.host.Name, cfg.Mode, st.AppliedRevision, what))
+			case hp != nil:
+				rend := nftables.Render(hp)
+				switch {
+				case now != hop.Verdict && now != "unknown":
+					hop.Notes = append(hop.Notes, fmt.Sprintf("%s still runs revision %d, which %s this: the answer above applies once the policy's changes are applied",
+						ep.host.Name, st.AppliedRevision, verb[now]))
+				case rend.RulesHash != st.AppliedRulesHash:
+					hop.Notes = append(hop.Notes, "policy changes for "+ep.host.Name+" are not applied yet")
+				case rend.SetsHash != st.AppliedSetsHash:
+					hop.Notes = append(hop.Notes, fmt.Sprintf("address sets on %s are still at generation %d (propagation pending)", ep.host.Name, st.SetsGenerationApplied))
+				}
 			}
-			switch st.Drift {
-			case "":
-			case DriftMissing:
-				hop.Notes = append(hop.Notes, "DROOL's rules are missing on "+ep.host.Name+" (changed outside DROOL): until they are applied again, it filters nothing")
+		default:
+			switch {
+			case cfg.Mode != ModeEnforce:
+			case st.Enforced != 0: // its rules missing from the host
+				hop.Notes = append(hop.Notes, "DROOL's rules are missing on "+ep.host.Name+" (changed outside DROOL): until they are applied again, they block nothing there")
 			default:
-				hop.Notes = append(hop.Notes, "DROOL's rules on "+ep.host.Name+" were changed outside DROOL")
+				hop.Notes = append(hop.Notes, "this is the policy DROOL wants on "+ep.host.Name+"; it has not been applied yet, so DROOL's rules block nothing there now")
 			}
+		}
+		if now != hop.Verdict {
+			hop.Current = now
 		}
 		return hop
 	}
@@ -214,7 +240,12 @@ func (s *Service) Simulate(ctx context.Context, req SimRequest) (*SimResult, err
 	}
 	var why []string
 	for _, h := range res.Hops {
-		why = append(why, fmt.Sprintf("%s %s: %s", h.Host, map[string]string{"accept": "allows", "drop": "blocks"}[h.Verdict], h.Reason.Text))
+		// Not what happens there now: what the policy would do.
+		w := verb[h.Verdict]
+		if h.Current != "" {
+			w = map[string]string{"accept": "would allow", "drop": "would block"}[h.Verdict]
+		}
+		why = append(why, fmt.Sprintf("%s %s: %s", h.Host, w, h.Reason.Text))
 	}
 	res.Summary = fmt.Sprintf("%s: %s → %s %s/%d. %s", res.Answer, from.label, to.label, strings.ToUpper(req.Protocol), req.Port, strings.Join(why, "; "))
 	if res.Answer == "PARTLY" {

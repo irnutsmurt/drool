@@ -6147,7 +6147,7 @@ components:
         groups: { type: array, items: { type: string } }
     NetCorrelation:
       type: object
-      description: The firewall compiler's view of a flow, against the desired policy and, on enforced hosts with unapplied changes, the applied one.
+      description: The firewall compiler's view of a flow, against the desired policy and, on enforced hosts with unapplied changes, the applied one. status and verdict are the desired policy's; enforcement says whether that is what the host does now (enforced), what DROOL's rules in force do instead (changes_pending, applied_verdict), that DROOL's rules were changed outside DROOL so it isn't known (drift), or that nothing of DROOL's is in force (the other values).
       required: [status, verdict, would_deny, reason_kind, reason, enforcement, notes]
       properties:
         status: { type: string, enum: [management, covered, unclassified, denied] }
@@ -6158,7 +6158,7 @@ components:
         policy_id: { type: string }
         policy_name: { type: string }
         rule: { type: string }
-        enforcement: { type: string, enum: [unmanaged, monitor, guided, enforce_pending, enforced] }
+        enforcement: { type: string, enum: [unmanaged, monitor, guided, enforce_pending, enforced, changes_pending, drift] }
         applied_verdict: { type: string }
         notes: { type: array, items: { type: string } }
     NetFlow:
@@ -6699,10 +6699,11 @@ components:
         host: { type: string }
         direction: { type: string, enum: [in, out] }
         mode: { type: string }
-        filtered: { type: boolean }
-        verdict: { type: string, enum: [accept, drop] }
+        filtered: { type: boolean, description: "DROOL's rules are in force on this host (committed, neither missing nor changed outside DROOL)." }
+        verdict: { type: string, enum: [accept, drop], description: What the policy simulated (stored or draft) decides on this host. }
         reason: { $ref: '#/components/schemas/FwReason' }
         rule: { type: string }
+        current: { type: string, enum: [accept, drop, unknown], description: "What DROOL's rules on the host do with it now, when that isn't verdict (unknown: changed outside DROOL). Absent: verdict is what happens now, as far as DROOL's rules go." }
         notes: { type: array, items: { type: string } }
     FwSimResult:
       type: object

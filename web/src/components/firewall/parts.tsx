@@ -47,6 +47,12 @@ export const statusLabels: Record<FwHostSummary["status"], { text: string; tone:
   conflicts: { text: "blocked: management path", tone: "danger" },
 };
 
+/** A simulated hop's verdict ("Can A reach B?"): worded as what happens
+ * now only where it is (no `current`); elsewhere it is what the policy would
+ * do, and the hop's notes say what the host does now. */
+export const hopVerdict = (h: { verdict: string; current?: string }) =>
+  h.current ? (h.verdict === "accept" ? "would be allowed" : "would be blocked") : (h.verdict === "accept" ? "allowed" : "blocked");
+
 export const modeInfo: Record<string, { label: string; text: string }> = {
   off: { label: "Off", text: "DROOL doesn't observe or change this host's firewall." },
   monitor: { label: "Monitor", text: "Observe connections and explain what a policy would do. Nothing is changed." },

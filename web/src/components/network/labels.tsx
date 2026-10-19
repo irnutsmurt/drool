@@ -7,6 +7,9 @@ import type { NetCollection, NetEnrichState, NetFlow } from "./queries";
 // decided anything depends on the host: where DROOL's rules aren't in force
 // (enforcement other than "enforced"), the verdict is only what the policy
 // would do, and an observed connection was never allowed or blocked by it.
+// changes_pending: DROOL's rules are in force but decide this differently
+// until the saved changes are applied; drift: they were changed outside
+// DROOL, so what the host does isn't known.
 
 export const policyText: Record<string, { label: string; icon: string; tone: "ok" | "warn" | "danger" | "accent" | "neutral"; help: string }> = {
   covered: { label: "Covered by policy", icon: "✓", tone: "ok", help: "The firewall policy allows connections like this one." },
@@ -20,8 +23,15 @@ export const enforcementText: Record<string, string> = {
   unmanaged: "DROOL does not filter this host (mode Off)",
   monitor: "Monitor mode: DROOL does not filter this host",
   guided: "Guided mode: DROOL does not filter this host",
-  enforce_pending: "Enforce mode, but the policy isn't applied yet: DROOL does not filter this host",
+  enforce_pending: "Enforce mode, but DROOL's policy isn't in force (not applied yet, or its rules are missing from the host): DROOL does not filter this host",
   enforced: "DROOL's policy is in force on this host",
+  changes_pending: "DROOL's policy is in force on this host, but its saved changes aren't applied yet, and they change what happens to this connection",
+  drift: "DROOL's rules on this host were changed outside DROOL: what it does with connections isn't known",
+};
+
+const wouldDeny: Record<string, string> = {
+  changes_pending: "The saved policy drops connections like this one once its changes are applied; the firewall on this host currently allows them.",
+  drift: "The policy would drop connections like this one, but DROOL's rules on this host were changed outside DROOL: whether this one was blocked isn't known.",
 };
 
 export const isEnforced = (p: Pick<NetFlow["policy"], "enforcement">) => p.enforcement === "enforced";
@@ -31,13 +41,15 @@ export function PolicyBadge({ flow }: { flow: Pick<NetFlow, "policy"> }) {
   const enforced = isEnforced(p);
   let t = policyText[p.status] ?? policyText.unclassified!;
   // Nothing was denied where the policy isn't in force.
-  if (p.status === "denied" && !enforced) t = { ...t, label: "Would be denied", help: "The policy would drop connections like this one, but it isn't in force on this host: nothing was blocked." };
+  if (p.status === "denied" && !enforced) t = { ...t, label: "Would be denied", help: wouldDeny[p.enforcement] ?? "The policy would drop connections like this one, but it isn't in force on this host: nothing was blocked." };
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
       <Badge tone={t.tone}><span aria-hidden className="mr-1">{t.icon}</span>{t.label}</Badge>
       {p.status !== "denied" && p.would_deny && <Badge tone="danger"><span aria-hidden className="mr-1">✕</span>would be denied</Badge>}
-      {!enforced && p.status !== "unclassified" && <Badge tone="neutral"><span aria-hidden className="mr-1">◌</span>not enforced</Badge>}
-      {p.applied_verdict && <Badge tone="warn"><span aria-hidden className="mr-1">↻</span>not applied yet</Badge>}
+      {p.enforcement === "drift"
+        ? <Badge tone="warn"><span aria-hidden className="mr-1">⚠</span>changed outside DROOL</Badge>
+        : !enforced && p.enforcement !== "changes_pending" && p.status !== "unclassified" && <Badge tone="neutral"><span aria-hidden className="mr-1">◌</span>not enforced</Badge>}
+      {(p.applied_verdict || p.enforcement === "changes_pending") && <Badge tone="warn"><span aria-hidden className="mr-1">↻</span>not applied yet</Badge>}
     </span>
   );
 }

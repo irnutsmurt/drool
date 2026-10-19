@@ -34,8 +34,9 @@ connections to media-02 come from 10.10.0.10 …*), a classification someone mad
 
 What the firewall policy says about this connection ([Policy Classification](Policy-Classification.md)),
 for example **? Not in policy** — *No firewall policy says anything about this connection* — and the
-state of the host's firewall (*DROOL does not manage this host's firewall*, *Monitor mode (not
-enforced)*, *Enforce mode, policy not applied yet*).
+state of the host's firewall: whether DROOL's policy is in force there (*DROOL's policy is in force on
+this host*, *Monitor mode: DROOL does not filter this host*), its saved changes aren't applied yet, or
+its rules were changed outside DROOL, so what it does isn't known.
 
 For a connection no policy covers, DROOL suggests a rule (*Suggested policy: Allow media-02 →
 198.51.100.77 tcp-8443*). **Create policy from observed connection…**, at the bottom of the panel,

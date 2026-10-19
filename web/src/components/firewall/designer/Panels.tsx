@@ -13,6 +13,7 @@ import { useNetFlow } from "@/components/network/queries";
 import { affectedHosts, entriesLabel, kindLabel, obsStatusLabel, parseRef, refLabel, serviceLabel, type Doc, type GEdge, type MgmtPath, type ServiceInfo } from "./model";
 import type { CheckResult } from "./useDesigner";
 import type { Selection } from "./Topology";
+import { hopVerdict } from "../parts";
 
 const hopText = (h: MgmtPath["hops"][number]) => `${h.from_name} → ${h.to_name} : ${h.protocol.toUpperCase()} ${h.port || "?"}`;
 
@@ -245,7 +246,7 @@ export function SimulateBox({ doc, hosts, from, to, service }: { doc: Doc; hosts
           </div>
           <ul className="text-xs">
             {result.hops.map((h, i) => (
-              <li key={i}><strong>{h.host}</strong> ({h.direction === "out" ? "leaving" : "arriving"}): <Badge tone={h.verdict === "accept" ? "ok" : "danger"}>{h.verdict === "accept" ? "allowed" : "blocked"}</Badge>{" "}
+              <li key={i}><strong>{h.host}</strong> ({h.direction === "out" ? "leaving" : "arriving"}): <Badge tone={h.verdict === "accept" ? "ok" : "danger"}>{hopVerdict(h)}</Badge>{" "}
                 {h.reason.text}{h.rule ? <span className="text-muted"> — {h.rule}</span> : null}{h.reason.kind === "management" && <> <Badge tone="accent">management-path exception</Badge></>}
                 {(h.notes ?? []).map((n) => <div key={n} className="text-muted">{n}</div>)}
               </li>
