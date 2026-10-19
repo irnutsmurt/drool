@@ -4354,3 +4354,27 @@ It never changes the mode or applies anything.
 - the action and its dialog at 1440, 1280, 1024 and 390 px in both themes.
 
 The end-to-end test fails if the check after the install is removed.
+
+**On a real host** (2026-10-19): a disposable Debian 12 genericcloud VM under QEMU TCG, which ships without nftables,
+added over SSH in Monitor mode. A temporary lab test, not committed, drove the UI: Check, then Install nftables…, then
+the confirmation.
+- **Check:** reported "Enforcement isn't available here yet. Monitor mode doesn't need it …" with the action beside it.
+- **The dry run (61 s):** included a refresh of the package lists, and showed apt installing libjansson4 2.14-2,
+  libnftables1 1.0.6-2+deb12u2 and nftables 1.0.6-2+deb12u2.
+- **The package run (27 s):** succeeded; the automatic check then reported "Enforcement is supported here", with
+  Debian's `flush ruleset` warning.
+- **DROOL's own state:** the mode was still Monitor; there were no firewall transactions, nothing enforced
+  (revision 0) and no `inet drool` table. The audit trail shows exactly: check (unsupported), simulate, the package
+  run, check (supported).
+
+**What the package did on the host** (checked over a separate SSH connection):
+- `nftables.service` is installed but disabled and inactive. It has no journal entries, so it never ran.
+- The live ruleset is empty, and there are still no iptables rules.
+- Running services, enabled units and listening sockets are unchanged.
+- `/etc/nftables.conf` is Debian's default: `flush ruleset` and an empty, accepting `inet filter` table. It is
+  installed but not loaded.
+- The only kernel change is the `nf_tables` module, which the first `nft` query loads on demand (DROOL's check, or the
+  test's own inspection). No table or rule was created.
+
+**One defect found and fixed:** the inline message said "The environment was checked again." even if that check
+failed. It now says the check didn't finish and to choose Check, and a stubbed browser test covers it.

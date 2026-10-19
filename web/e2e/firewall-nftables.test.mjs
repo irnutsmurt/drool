@@ -39,7 +39,7 @@ const simHost = (extra) => ({ host_id: id, host_name: "web-1", package_manager: 
 
 /** Stubs the host's firewall state and the run API on a page; records the
  * API calls it sees. */
-async function stub(page, { mode, sim = simHost() }) {
+async function stub(page, { mode, sim = simHost(), recheckFails = false }) {
   const s = { calls: [], bodies: {}, installed: false, polls: 0 };
   await page.setRequestInterception(true);
   page.on("request", async (r) => {
@@ -59,6 +59,9 @@ async function stub(page, { mode, sim = simHost() }) {
     if (m === "GET" && path === "/api/v1/jobs/job_nft_e2e") return json({ id: "job_nft_e2e", status: ++s.polls < 3 ? "running" : "succeeded" });
     if (m === "GET" && path === `/api/v1/jobs/job_nft_e2e/hosts/${id}`) return json({ host_id: id, state: "succeeded" });
     if (m === "POST" && path === `/api/v1/firewall/hosts/${id}/detect`) {
+      if (s.bodies.job && recheckFails) {
+        return json({ title: "Gateway Timeout", status: 502, detail: "the firewall check timed out", error_class: "TimeoutError", retryable: true }, 502);
+      }
       if (s.bodies.job) s.installed = true; // the check after the installation finds it
       return json({});
     }
@@ -117,6 +120,22 @@ test("nftables missing in Monitor: information, a read-only Check, and Install n
     // Nothing else: no mode change, no apply.
     assert.ok(!s.calls.some((c) => c.startsWith(`PUT /api/v1/firewall/hosts/${id}`) || c.includes("/apply")), s.calls.join(", "));
     assert.deepEqual(page.errors, []);
+  } finally {
+    await page.browserContext().close();
+  }
+});
+
+test("a check after the installation that doesn't finish isn't reported as done", async () => {
+  const page = await session(browser);
+  try {
+    await stub(page, { mode: "monitor", recheckFails: true });
+    await firewallPage(page);
+    await click(page, '[data-testid="nft-install"] button', "Install nftables…");
+    await waitFor(page, async () => /libnftables1/.test(await page.$eval('[data-testid="nft-install-dialog"]', (e) => e.innerText)), "the plan");
+    await click(page, '[data-testid="nft-install-dialog"] button', "Install nftables");
+    await waitFor(page, async () => /nftables is installed\. Checking the environment again didn't finish: choose Check\./.test(
+      await page.$eval('[data-testid="nft-install"]', (e) => e.innerText)), "the unfinished check said so", 20000);
+    assert.ok(!/The environment was checked again/.test(await page.$eval('[data-testid="nft-install"]', (e) => e.innerText)));
   } finally {
     await page.browserContext().close();
   }

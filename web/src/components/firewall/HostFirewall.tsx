@@ -159,7 +159,7 @@ function Environment({ p, hostName }: { p: FwPlan; hostName: string }) {
   const reasons = (el?.reasons ?? []).map((r) => <span key={r} className="block">• {r}</span>);
   const install = (nftMissing || nftJob) && (
     <InstallNftables hostId={p.host_id} hostName={hostName} mode={p.config.mode} jobId={nftJob} onStarted={setNftJob}
-      onInstalled={recheck} checking={detect.isPending} />
+      onInstalled={recheck} checking={detect.isPending} checkFailed={detect.isError} />
   );
   return (
     <div className="space-y-2 text-sm">

@@ -23,7 +23,7 @@ const activeJob = (s?: string) => s === "pending" || s === "running" || s === "p
  * is checked again after it succeeds (onInstalled). It never changes the
  * mode or enforces anything, and Check itself stays read-only. Where it
  * can't install, it says why instead of offering the action. */
-export function InstallNftables({ hostId, hostName, mode, jobId, onStarted, onInstalled, checking }: {
+export function InstallNftables({ hostId, hostName, mode, jobId, onStarted, onInstalled, checking, checkFailed }: {
   hostId: string; hostName: string; mode: string;
   /** The run started from here, kept by the caller so its outcome stays in
    * sight after the check no longer reports nftables missing. */
@@ -31,6 +31,8 @@ export function InstallNftables({ hostId, hostName, mode, jobId, onStarted, onIn
   onStarted: (jobId: string) => void;
   onInstalled: () => void;
   checking: boolean;
+  /** The check after the installation didn't finish (its error shows above). */
+  checkFailed: boolean;
 }) {
   const { can } = useAuth();
   const [open, setOpen] = useState(false);
@@ -63,7 +65,8 @@ export function InstallNftables({ hostId, hostName, mode, jobId, onStarted, onIn
     <div className="mt-2 space-y-1" data-testid="nft-install">
       {jobId && !done && <p role="status">Installing nftables on {hostName}… {run}</p>}
       {done && state === "succeeded" && (
-        <p role="status" className="text-ok">nftables is installed. {checking ? "Checking the firewall environment again…" : "The environment was checked again."} {run}</p>
+        <p role="status" className={checkFailed && !checking ? undefined : "text-ok"}>nftables is installed.{" "}
+          {checking ? "Checking the firewall environment again…" : checkFailed ? "Checking the environment again didn't finish: choose Check." : "The environment was checked again."} {run}</p>
       )}
       {done && state && state !== "succeeded" && (
         <Alert>{state === "failed" ? `Installing nftables failed: ${result.data?.error_message || "see the run"}` : `The installation ended as “${state}”.`}
