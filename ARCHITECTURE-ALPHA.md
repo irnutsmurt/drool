@@ -4378,3 +4378,189 @@ the confirmation.
 
 **One defect found and fixed:** the inline message said "The environment was checked again." even if that check
 failed. It now says the check didn't finish and to choose Check, and a stubbed browser test covers it.
+
+## 44. Firewall workflow correction (2026-10-19)
+
+Two corrections to existing workflows, found in real-world testing, not new features:
+- A host's **Observed connections** tab was a placeholder that sent people to Network Activity.
+- The Firewall Designer and a host's firewall page felt unrelated. People saved a rule, chose Enforce, and still
+  didn't know what would be enforced, or why a separate Apply was needed. The Designer's "Apply to N enforced
+  host(s)…" could never appear: it needed impacts of an unsaved draft on a saved one.
+
+Nothing new was added to the engine, the policy model or the editors. The host page shows the compiler's results, and
+the apply is the same transaction with one explicit, reviewed addition (§44.3).
+
+### 44.1 A host's firewall page
+
+The order follows the person's question: what does the policy mean here, then the details.
+
+- **Policy on this host** (`firewall/HostPolicy.tsx` `PolicyStatus`) comes first. It shows:
+  - the state, worded from server facts (`applied.enforced`, `drift`, `rules_changed`, `sets_pending`, the open
+    transaction, the mode, the environment): *Policy saved — not yet enforced.*, *No firewall rules for this host
+    yet*, *Saved changes not applied yet*, *In force: revision N*, *…addresses updating*, *DROOL's rules are missing
+    from this host*, *Changed outside DROOL: what this host enforces isn't known*, *A firewall change is in
+    progress*;
+  - three labelled rows: **Saved policy** (the rules for the host, by name), **Applied on the host** (the revision,
+    whether it matches, when DROOL last read the host's firewall state) and **Observed traffic** (counts, how the
+    host is observed, "What DROOL saw, not what the firewall allowed or blocked");
+  - one next action: **Review and apply policy…** / **…changes…** / **…again…**, or **Add/Fix the rule in the
+    Firewall Designer** where applying would be pointless or refused. **Apply again…** and **Remove DROOL policy…**
+    stay, as secondary actions.
+  - Where the server would refuse (no supported environment, a transaction in progress, no management path), it
+    says why and offers no apply.
+- **Policy preview / Applied policy** (`ResolvedPolicy`, `PolicyLines`) is the compiler's Explain for the host:
+  - inbound and outbound, each with its default in words, then each rule with its named services, ports, peers
+    (with Pack members) and the rule it comes from, and DROOL's protected management path. Base rules are on request.
+  - It is titled *Policy preview* (*Nothing of it is enforced now*) until the host runs the policy, then *Applied
+    policy*. With saved changes not applied, it switches between **Saved policy (not applied)** and **In force now
+    (revision N)**, marking the lines that differ (↻). After drift, *Applied policy (not verified)*.
+- **Mode and environment**: choosing Enforce explains that it changes nothing by itself and offers **Review and
+  apply policy…** (the switch is part of the review) and **Save mode only**. Choosing another mode while a revision is
+  in force says the rules stay.
+- **Observed connections** (now the first tab) is the host's real list: the same `FlowTable` and `FlowInspector` as
+  Network Activity, with the collection status, Take snapshot for SSH hosts, the policy-in-force line, the common
+  views and Guided mode's suggestions. **Create policy from observed connection…** opens the Designer draft in any
+  mode. Network Activity remains for more filters. `HostNetwork.tsx` shares its pieces (`CollectionActions`,
+  `CollectionDetail`, `HostConnections`) with the host's Network page, which is unchanged.
+- Read-only: a viewer sees the state and the policy, with no actions. Without `network.read`, the observations say
+  why they aren't shown.
+
+### 44.2 After saving the policy
+
+`PUT /firewall/document` compiles every host before and after the save (`fwsvc.CompiledHashes`) and returns the hosts
+whose compiled policy changed, each with its firewall status (`hosts`). The Designer shows them in place of
+"Saved. Nothing changes on hosts until you apply it (see Preview)" (`designer/Panels.tsx` `AfterSave`):
+- *✓ Saved. Nothing has changed on any host yet.*
+- per host, with its live status: *Policy saved — not yet enforced (mode Monitor: applying switches it to Enforce)*,
+  *↻ Not applied yet: the host runs revision N*, in force, or why DROOL can't apply there;
+- **Review and apply to <host>…** / **…to N hosts…** for the hosts it can apply to now.
+
+The dead "Apply to N enforced host(s)…" in the Preview panel is gone.
+
+### 44.3 Review and apply
+
+`firewall/ApplyDialog.tsx` replaces the old apply dialog, for one host or several. It shows, per host:
+- the mode (*Enforce (already set)* or *Monitor → Enforce*);
+- what changes: a first application with its rules, or the + / − lines since the committed revision;
+- what could affect connectivity: the inbound default, outbound restriction, new denies, warnings, and the
+  management path kept open;
+- the rules in force after applying.
+
+Before the confirming button, it says: *This is the review: nothing changes until you choose …*. Cancel has the
+focus. Hosts the server would refuse before their transaction are left out and say why. After confirming, the dialog
+keeps what was confirmed instead of re-reading state the run itself changes.
+
+Two request fields, both on `POST /firewall/apply` and `model.FirewallApplyOp`:
+- `set_enforce`: a host not in Enforce is switched to Enforce **only after every check before its transaction has
+  passed** (environment, host state, fresh management path, compile and conflicts, review hash, timeout, revision
+  reservation), just before the host is touched. It is audited as `firewall.host.update` with `via: apply`, the job
+  and the person who started it. A host refused before that keeps its mode. If the transaction rolls back, the host
+  stays in Enforce with its previous rules.
+- `expect_rules_hashes`: per host, the rules hash the review showed; a policy changed since is refused ("the policy
+  for <host> changed since it was reviewed").
+
+Unchanged safeguards: firewall.write for apply, firewall.override plus a reason and re-authentication for overrides,
+per-host compilation, management-path conflicts refused, the fresh-path measurement, automatic rollback, one host at a
+time stopping at the first failure, transactions, audit, drift detection, and saved versus applied state.
+
+### 44.4 Smaller server changes
+
+- Compiled rules carry the **named services** they come from (`compile.Rule.Services`, `Allowance.Services`): *esphome
+  · TCP 6053*. Display only: never rendered into nftables or hashed.
+- `GET /firewall/hosts/{id}` includes **`applied_explain`**: the Explain of what DROOL last committed (the stored
+  compile), next to `explain` (the saved policy).
+- A committed transaction sets the host's **`status_at`**: the commit read the host's firewall state over a new
+  connection. Before, *DROOL last read the host's firewall state* could show a days-old report right after a
+  verified commit.
+- Continuous observation is **`stale`** after 15 minutes without a report (Shepherds report at least every 5 minutes,
+  even when there is nothing new), and the page says so.
+
+### 44.5 Found while checking, fixed
+
+Found in the docs lab's real apply on web-01, an Ubuntu 24.04 VM:
+- **The mode form went stale.** After the review switched the host to Enforce, the form still showed Monitor and
+  offered to save it. It is now rebuilt when the saved settings change, and a browser test covers it.
+- **The observations lagged the apply.** After a commit, the observations kept their previous verdicts for up to their
+  30 s refresh. They are now asked for again when what the host runs changes.
+- **The last-read time was old.** "Last read" showed the last status report rather than the commit (§44.4).
+
+Found in the firewall lab:
+- **The dialog described the state the run produced.** After confirming, it showed "Enforce (already set)" under
+  "nothing changes until…". It now keeps what was confirmed.
+
+Found by the browser suite:
+- **Focus didn't come back to a rebuilt row** (`FlowTable`, also on Network Activity). When the window crossed the
+  phone width while a connection's details were open, the list switched to its phone layout and back, rebuilding the
+  rows. Closing then left the focus on the page instead of the row. Examples: a tablet turned, a window resized, and
+  the test's own full-page screenshots, which narrow the viewport for a moment. Closing now finds the row again by its
+  id when the focus would otherwise be lost.
+
+### 44.6 Tests and results
+
+New tests:
+- **API** (`internal/api/firewall_workflow_test.go` `TestFirewallSaveReviewApply`): real transactions with fake nft, on
+  an SSH host with the user's example rule, TCP 6053 from 192.168.3.132/32. It checks:
+  - saving lists the host, applies nothing (no transaction) and keeps the mode;
+  - the plan shows the rule with its named service, the defaults and the management path;
+  - an apply without `set_enforce` in Monitor is refused;
+  - a stale review hash and an environment that can't enforce (Docker) refuse before the switch, so the mode stays
+    Monitor;
+  - the reviewed apply switches to Enforce, audited as the user's, commits, sets `status_at` and shows
+    `applied_explain`;
+  - a further save leaves the host *changes not applied* (saved and committed differ), with nothing applied and the
+    mode kept;
+  - a save that doesn't touch the host names no host.
+
+  Two mutations fail it: switching the mode before the checks, and no `status_at` at the commit.
+- **Compiler** (`TestExplain`): service names per line, several services on one protocol, ICMP; the rendered policy
+  and its hash are unchanged by the names.
+- **Browser** (`web/e2e/firewall-workflow.test.mjs`, 5 tests in TestBrowser). The test containers can't enforce, so
+  where an enforceable host is needed, its state and the apply call are stubbed. It checks:
+  - observed connections on the host's Firewall page, judged by the saved policy and *not enforced*;
+  - the details from the keyboard, and the focus back on the row;
+  - every Explain line of the compiler in the summary, and the defaults;
+  - nothing presented as in force;
+  - on the containers, no apply offered, with the reason;
+  - in Monitor, a draft from an observed connection is saved with no apply and no mode change (API and request
+    log);
+  - from the post-save list to the review (*Monitor → Enforce*, Cancel focused, no request until confirmed), then
+    `set_enforce` and the reviewed hash in the request;
+  - choosing Enforce explains and changes nothing;
+  - the keyboard path to the review and back;
+  - the mode form following a mode changed underneath;
+  - saved versus in force with ↻ marks and the toggle, in sync, and drift;
+  - a viewer: read-only, and why there are no observations;
+  - 1440, 1280, 1024 and 390 px in both themes: no sideways scroll (the tab row may scroll on a phone, as
+    allowed), and contrast in both themes.
+- **Changed:** `designer.test.mjs` opens the override review from **Review and apply policy…** on a stubbed
+  enforceable host. The containers can't enforce, and the page no longer offers an apply that would be refused.
+
+Results on the final tree (main 443231b plus these changes):
+- `gofmt` clean; `go vet ./...` and with `-tags integration` clean.
+- `go test ./...`: 51 packages pass.
+- `go test -race ./...`: all pass except `agentmon` `TestEngineProducesPointsStateAndServiceEvents`, the known timing
+  flake under full parallel load (§32, §42.9). It passes alone, 3 of 3 with `-race`; the package is unchanged.
+- Web: `npm run typecheck`, `npm test` (131 tests) and `npm run build`.
+- **TestBrowser in full: 107 tests pass** (21 min), plus the enrichment phases. The two earlier full runs each failed
+  one new assertion and led to the focus fix in §44.5.
+- `TestFirewallContainers`, and `TestVMFirewall -vm debian-12`: all 16 real-nftables subtests over SSH and the
+  Shepherd, including rollback, reboots and drift (20 min).
+- **Docs lab, web-01 as an Ubuntu 24.04 VM.** One real end to end run through the UI: Monitor, *Policy saved — not
+  yet enforced*, the review (*Monitor → Enforce*), **Switch to Enforce and apply**, committed revision 9, *In
+  force*. Then a rule saved (*Not applied yet: the host runs revision 9*), reviewed and applied as revision 10. The
+  guide's screenshots come from this run.
+
+Not checked: other VM distributions, and an automated VM run of `set_enforce`. The switch's server path runs in the
+in-process test with the real drool-fw and fake nft, and once by hand on the Ubuntu VM.
+
+### 44.7 Limitations and what stays as it was
+
+- The post-save host list lasts until the next edit or leaving the Designer. After that, each host's page and
+  Firewall → Hosts show where it stands.
+- Firewall → Hosts still offers its checkboxes only for hosts in Enforce mode. Switching hosts to Enforce for a
+  multi-host apply is offered from the post-save list and from each host's page.
+- A transaction that rolls back after the reviewed switch leaves the host in Enforce with its previous rules. The
+  review and the guide say so; the mode isn't switched back by itself.
+- Observations are stale after a fixed 15 minutes without a Shepherd report.
+- The report's screenshots of PiZeroWopenwx come from an in-process lab with fake nftables. Its controller is
+  127.0.0.1, so the management path there reads 127.0.0.1.

@@ -8,18 +8,20 @@ policy DROOL committed.
 ## Where you see it
 
 - **Firewall → Hosts**: the host's status is **drift**.
-- The host's firewall page: *DROOL's rules were changed outside DROOL (drift)*, and in the
-  **Enforcement** card *Drift: … (for example by nft or a reload of nftables.service). Apply again and
-  choose to replace them.*
+- The host's firewall page, under **Policy on this host**: *Changed outside DROOL: what this host
+  enforces isn't known*, or *DROOL's rules are missing from this host* (… *for example by nft or a
+  reload of nftables.service*). DROOL doesn't guess what the host does meanwhile: its **Applied
+  policy** is marked *not verified*.
 
 ## What to do
 
 1. Find out who changed the rules and why. A manual change may have been an emergency fix that
    someone still needs, or it may be the cause of a problem.
 2. If the change should stay, put it into the [policy](Firewall-Policy.md) as a rule.
-3. **Apply again**. A normal apply **refuses** to overwrite drifted rules. An administrator with
-   **firewall.override** opens **Overrides (audited)** in the apply dialog, ticks **Replace DROOL
-   rules that were changed outside DROOL (drift)**, enters a **reason**, and applies.
+3. **Review and apply again…**. A normal apply **refuses** to overwrite drifted rules, and the review
+   leaves the host out until you choose otherwise. An administrator with **firewall.override** opens
+   **Overrides (audited)** in the review, ticks **Replace DROOL rules that were changed outside DROOL
+   (drift)**, enters a **reason**, and applies.
 
 The replacement is recorded in the [audit log](Audit-Log.md) with the reason, and protected by
 [automatic rollback](Automatic-Rollback-Protection.md) like every apply.

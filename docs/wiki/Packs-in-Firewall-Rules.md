@@ -22,8 +22,8 @@ Packs in the firewall are DROOL's ordinary Packs (written `group:` in [YAML](YAM
 DROOL turns Packs and hosts into nftables **sets** of addresses on each enforced host. When a host's
 address changes, DROOL updates just those set elements on every host that refers to it, in one atomic
 update per host, without a new transaction. Until every host is up to date, the Firewall page shows
-**Policy propagation incomplete**, and a host's **Enforcement** card shows *newer addresses are being
-propagated*.
+**Policy propagation incomplete**, and a host's firewall page shows *In force: revision 2, addresses
+updating* (*newer addresses are being propagated*). There is nothing to apply.
 
 ## A tip for big Packs
 

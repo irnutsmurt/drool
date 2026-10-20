@@ -30,10 +30,11 @@ to **Enforce**.
    "flush ruleset": reloading nftables.service removes DROOL's rules until the next boot or DROOL
    apply*. Avoid `systemctl reload nftables` on enforced hosts, or remove that line.
 4. **Watch first.** Put the host in **Monitor** (or **Guided**) mode for a while
-   ([Firewall Modes](Firewall-Modes.md)) and look at its **Observed connections**: what reaches it,
-   and from where. Every connection you need must be allowed by a rule.
-5. **Write the rules, then check them.** The host's **Effective policy** tab lists everything that
-   would be allowed and denied, and why. Ask [Can A reach B?](Can-A-Reach-B.md) for the connections
+   ([Firewall Modes](Firewall-Modes.md)) and look at its **Observed connections**, on its firewall
+   page: what reaches it, and from where. Every connection you need must be allowed by a rule:
+   **Create policy from observed connection…** in a connection's details starts one.
+5. **Write the rules, then check them.** The host's **Policy preview** lists everything that would be
+   allowed and denied, and why. Ask [Can A reach B?](Can-A-Reach-B.md) for the connections
    that matter (*can web-01 reach database-01 on TCP 5432?*).
 6. **Think about what isn't in the list.** Inbound traffic that no rule allows will be **denied**:
    backups pulled from another machine, monitoring agents, file shares, the web interface of something
@@ -49,7 +50,8 @@ You don't need rules for:
 - replies to connections that were allowed;
 - loopback traffic, ICMP errors (path MTU, unreachable), IPv6 neighbour discovery, and DHCP replies.
 
-Tick **Show base rules (replies, loopback, ICMP, DHCP)** on the **Effective policy** tab to see them.
+Tick **Show base rules (replies, loopback, ICMP, DHCP)** under the host's **Policy preview** (or
+**Applied policy**) to see them.
 Note that **ping** is not among them: allow the `ping` service if you want hosts to answer pings.
 
 ## Next

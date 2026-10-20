@@ -9,15 +9,17 @@ resort.
 DROOL kept its own access, but something you need is now blocked: Jellyfin from the TV, backups from
 the NAS, a monitoring system.
 
-1. Open the host's firewall page → **Effective policy**. Inbound traffic not listed as **allow** is
-   denied (*default for inbound traffic*).
+1. Open the host's firewall page → **Applied policy**: what the host runs now. Inbound traffic not
+   listed as **Allow** is dropped (*Default: Everything not allowed below is dropped.*).
 2. Ask [Can A reach B?](Can-A-Reach-B.md) with the exact source, protocol and port. The answer names
    the rule (or the default) that decides.
-3. Look at **Observed connections** (or [Network Activity](What-DROOL-Can-See.md)) for what's actually
-   arriving.
-4. Add the missing rule in **Firewall → Policy**, **Save policy**, then **Apply changes**.
+3. Look at the host's **Observed connections**, on the same page (or [Network Activity](What-DROOL-Can-See.md)),
+   for what's actually arriving. **Create policy from observed connection…** in a connection's details
+   drafts the missing rule.
+4. Add the missing rule in **Firewall → Policy**, **Save policy**, then **Review and apply to …** (or
+   **Review and apply changes…** on the host's page).
 
-**Quick way back:** click **Remove DROOL policy** in the host's **Enforcement** card. DROOL takes its
+**Quick way back:** click **Remove DROOL policy…** under **Policy on this host**. DROOL takes its
 rules off the host (a protected transaction too), and the host is unfiltered by DROOL again while you
 fix the policy. Switching the mode to Monitor or Off is **not** enough: the last committed policy
 stays in force until you remove it.
@@ -39,7 +41,8 @@ use the console steps below.
 
 If `nftables.service` was reloaded with a configuration that flushes the ruleset (Ubuntu's default
 `/etc/nftables.conf` does), DROOL's rules are gone until the next boot or apply, and the host shows
-**drift**. **Apply again** (choosing to replace drifted rules), see [Firewall Drift](Firewall-Drift.md).
+**drift** (*DROOL's rules are missing from this host*). **Review and apply again…**, choosing to
+replace drifted rules: see [Firewall Drift](Firewall-Drift.md).
 
 ## Locked out anyway?
 

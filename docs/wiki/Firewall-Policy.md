@@ -45,8 +45,12 @@ inbound TCP 5432 from group web-servers (policy web-to-database)*), hosts where 
 problems, and anything that would block applying, such as a
 [blocked management path](Management-Path-Protection.md).
 
-**Saving changes no host.** *Saved. Nothing changes on hosts until you apply it (see Preview).* To
-put the policy on enforced hosts, [apply it](Applying-the-Firewall-Policy.md).
+**Saving changes no host, and no host's mode.** *Saved. Nothing has changed on any host yet.* DROOL then
+lists the hosts the change affects, where each one stands (*Policy saved — not yet enforced*, *Not
+applied yet: the host runs revision 1*), and **Review and apply…** for those it can apply to now. See
+[Applying the Firewall Policy](Applying-the-Firewall-Policy.md#right-after-saving-the-policy). Each
+host's **Firewall** section shows the saved policy as it applies to that host, and whether it is in
+force.
 
 ## Before you start
 
@@ -59,7 +63,7 @@ put the policy on enforced hosts, [apply it](Applying-the-Firewall-Policy.md).
 
 ## Next
 
-**Check it, then apply it.** Look at the **Preview** panel, and ask [Can A Reach B?](Can-A-Reach-B.md) about the connections that matter (*can web-01 reach database-01 on TCP 5432?*). Then [apply the policy](Applying-the-Firewall-Policy.md), one host first.
+**Check it, then apply it.** Look at the **Preview** panel, and ask [Can A Reach B?](Can-A-Reach-B.md) about the connections that matter (*can web-01 reach database-01 on TCP 5432?*). Then save, and [review and apply the policy](Applying-the-Firewall-Policy.md), one host first.
 
 ## Related
 

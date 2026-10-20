@@ -24,8 +24,10 @@ outcome are recorded in the [audit log](Audit-Log.md).
 
 ## Steps
 
-1. Click **Apply policy** (or **Apply changes**) on the host's firewall page.
-2. Open **Overrides (audited)** in the dialog.
+1. Click **Review and apply policy…** (or **Review and apply changes…**) on the host's firewall page.
+   Where a rule would cut DROOL's management path, the page's first step is to fix the rule; the
+   review is still offered next to it.
+2. Open **Overrides (audited)** in the review.
 3. Tick **Emergency override: apply even if a deny removes a management path**. A red box explains the
    consequences.
 4. Type `OVERRIDE` in **Type OVERRIDE to confirm**.

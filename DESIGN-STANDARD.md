@@ -2,7 +2,7 @@
 
 The conventions of DROOL's web UI as built and verified for 1.0. They are rules for every change under `web/`. The
 reasons behind them are in [DESIGN.md](DESIGN.md) §2.5 and §2.7, and the as-built record is in
-[ARCHITECTURE-ALPHA.md](ARCHITECTURE-ALPHA.md) §41, §42 and §43.
+[ARCHITECTURE-ALPHA.md](ARCHITECTURE-ALPHA.md) §41 to §44.
 
 **Status: final for 1.0** (2026-10-19). It passed the independent UI, accessibility and source reviews of the readiness
 pass (ARCHITECTURE-ALPHA §43). What falls short of it at 1.0 is listed in §10, and nowhere else.
@@ -158,6 +158,7 @@ There are three interaction patterns. Choose by the task.
   - what will change;
   - on which hosts;
   - the warnings and conflicts known so far;
+  - any change of mode it brings with it (a host switched to Enforce), made only as part of the reviewed action;
   - that nothing has changed yet ("This is the plan: nothing changes until you choose Restore").
   - The executing button says what it does and to how many ("Start run on 3 hosts", "Restore 4 resources").
   - A run on several hosts defaults to the recommended rollout.
@@ -292,6 +293,11 @@ How to write UI text:
   host does now. Where DROOL's rules were changed outside DROOL, what the host does isn't known: *⚠ changed outside
   DROOL*, never a guess. The server decides these states (`enforcement` on a connection, `current` on a simulated
   step); the UI words them and doesn't work them out itself.
+- **Saved is not applied.** A host's Firewall page keeps three things apart, each labelled: *Saved policy* (the saved
+  rules for the host and what they would do there), *Applied on the host* (the committed revision, or nothing) and
+  *Observed traffic*. Its policy card is *Policy preview* until the host runs the policy. Saving the policy, or choosing
+  Enforce, changes no host; the page offers the next step (*Review and apply…*) where the person is, and the review
+  says when it switches a host to Enforce.
 - **Previews say they change nothing.** The button that executes names what it does (§5).
 - **Destructive actions** use danger styling, are confirmed, and come last in menus.
 - **The UI never weakens a server check.** It can explain a refusal (a busy host, a missing permission, a blocked

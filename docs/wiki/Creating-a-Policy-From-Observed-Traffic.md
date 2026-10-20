@@ -13,7 +13,14 @@ itself: you review the rule, save the policy, and apply it.
 
 ## From one connection
 
-1. In **Network Activity**, click the connection, for example `media-02` → `198.51.100.77`, TCP 8443
+You can start from a host's **Firewall** section (its **Observed connections** tab lists what DROOL saw
+on it, with what the saved policy says about each connection) or from **Network Activity**, which has
+every host and more filters. It works in every mode, Monitor included: drafting a rule enforces
+nothing.
+
+![web-01's Observed connections tab: what DROOL saw on the host, with what the saved policy says about each connection (Covered by policy, Not in policy), the views All, Inbound, Outbound, Internal, External, New external, Unknown traffic and Not in policy, and Take snapshot for this SSH host](images/firewall-host-observed.png)
+
+1. Click the connection, for example `media-02` → `198.51.100.77`, TCP 8443
    (after Alex learned it's a new plugin that syncs watch history). It opens in a panel beside the
    list.
 2. Under **Firewall**, DROOL shows its suggestion, for example *Suggested policy: Allow media-02 →
@@ -27,8 +34,10 @@ itself: you review the rule, save the policy, and apply it.
 4. Review the rule: click **Edit** to rename it (`media-02-watch-sync`), widen or narrow it (a Pack
    instead of one host, a network instead of one address), or turn the custom service into a named
    one.
-5. Check the **Preview**, then click **Save policy**, or **Discard changes**.
-6. [Apply](Applying-the-Firewall-Policy.md) it to the enforced hosts it affects.
+5. Check the **Preview**, then click **Save policy**, or **Discard changes**. Saving changes no host
+   and no mode: *Saved. Nothing has changed on any host yet.*, with the hosts it affects.
+6. Click **Review and apply to media-02…** when you're ready: the review says what changes, and
+   whether it switches the host to Enforce ([Applying the Firewall Policy](Applying-the-Firewall-Policy.md)).
 
 ![The firewall designer's Rules view after "Create policy from observed connection": a notice says draft rule media-02-198-51-100-77-tcp-8443 was added from an observed connection; the new rule 7 allows media-02 to reach 198.51.100.77/32 on tcp-8443 (TCP 8443) and is marked "new · from an observed connection"; a new service tcp-8443 is listed](images/network-create-policy.png)
 
