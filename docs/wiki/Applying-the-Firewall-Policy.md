@@ -73,7 +73,12 @@ difference.
    - **What changes**: a first application (*DROOL starts filtering this host's traffic with the saved
      policy's rules: …*), or the rules added (+) and removed (−) since the revision the host runs.
    - **Could affect connectivity**: inbound connections no rule allows are dropped, new denies,
-     warnings, and DROOL's management path, which stays open ahead of every rule.
+     warnings, and DROOL's management path, which stays open ahead of every rule. *Automatic rollback
+     protects only DROOL's own connection*: a change that blocks your own SSH or anything else but
+     leaves DROOL's connection working stays in force
+     ([What it doesn't protect](Automatic-Rollback-Protection.md#what-it-doesnt-protect)). On a Shepherd
+     host, DROOL's connection isn't SSH. Check **Observed connections** first: what is marked *would be
+     denied* is what the policy would drop.
    - **The rules in force after applying**, when you open it.
 
    *This is the review: nothing changes until you choose Switch to Enforce and apply.*

@@ -26,7 +26,7 @@ every machine is doing and change things on them, safely and with a record of wh
 - **Keep machines the way they should be**: services, packages and files, with drift detection and safe
   restore ([What Desired State Is](What-Desired-State-Is.md)).
 - **Manage firewalls from intent** ("web-servers may reach database-01 on PostgreSQL"), applied so that
-  a mistake can't lock you out ([What DROOL's Firewall Does](What-DROOLs-Firewall-Does.md)).
+  a mistake can't cut DROOL off ([What DROOL's Firewall Does](What-DROOLs-Firewall-Does.md)).
 - **See network activity**: what talks to what, and what your firewall says about it
   ([What DROOL Can See](What-DROOL-Can-See.md)).
 

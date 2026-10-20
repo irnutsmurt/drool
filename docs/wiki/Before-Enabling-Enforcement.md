@@ -38,7 +38,9 @@ to **Enforce**.
    that matter (*can web-01 reach database-01 on TCP 5432?*).
 6. **Think about what isn't in the list.** Inbound traffic that no rule allows will be **denied**:
    backups pulled from another machine, monitoring agents, file shares, the web interface of something
-   you rarely use.
+   you rarely use, and **your own SSH**. Automatic rollback won't bring those back: it protects DROOL's
+   connection only, and on a Shepherd host that isn't SSH
+   ([What it doesn't protect](Automatic-Rollback-Protection.md#what-it-doesnt-protect)).
 7. **Choose a quiet moment.** Enforce one host first, check its services, then the rest.
 
 ## What DROOL already allows

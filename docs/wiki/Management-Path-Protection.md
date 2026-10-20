@@ -26,7 +26,8 @@ firewall policy close it by accident.
 
 On the [topology](Topology-View.md), as dashed green lines from the **DROOL Controller** (*Protected
 DROOL management path*), and for Shepherds to the controller (*mTLS TCP 9443*). On a host's firewall
-page, **Enforcement → Management path** says which one DROOL used (*ssh* or *agent*).
+page, the **DROOL management** lines of its **Policy preview** (or **Applied policy**) show it, and
+**Applied on the host** says how DROOL manages the host (*managed over SSH* or *over the Shepherd*).
 
 **Check** on the host's firewall page measures the path DROOL actually uses, including the address the
 host sees it coming from. *Not measured yet: click Check on the host* means DROOL doesn't know it yet.
@@ -36,7 +37,9 @@ host sees it coming from. *Not measured yet: click Check on the host* means DROO
 - The path is allowed from the address the host saw at the **last transaction**. If the controller or
   the jump host changes address, apply again before relying on the new one.
 - Only DROOL's own path is protected. Your own SSH access from your laptop is an ordinary rule
-  (`admin-ssh-to-web` in the examples): DROOL can't know you need it.
+  (`admin-ssh-to-web` in the examples): DROOL can't know you need it. Automatic rollback doesn't cover
+  it either: on a Shepherd host, a policy that drops your SSH while the Shepherd stays connected commits
+  ([What it doesn't protect](Automatic-Rollback-Protection.md#what-it-doesnt-protect)).
 - If you really must apply such a policy (to recover from a mistake), an administrator can use the
   [emergency override](Emergency-Override.md). Automatic rollback protection still applies.
 

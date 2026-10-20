@@ -236,6 +236,8 @@ test("Monitor: a policy drafted from an observed connection, saved — nothing a
     assert.match(review, /Mode:\s*Monitor → Enforce\s*This apply switches the host to Enforce/);
     assert.match(review, /DROOL starts filtering this host's traffic with the saved policy's rules: ha-to-esphome/);
     assert.match(review, /DROOL's management path stays open/);
+    // Rollback is decided by DROOL's own connection, not by other access.
+    assert.match(review, /Automatic rollback protects only DROOL's own connection: while it keeps working, the change stays even where it blocks other access, such as your own SSH/);
     assert.equal(await page.evaluate(() => document.activeElement?.textContent), "Cancel", "Cancel has the focus");
     await shot(page, "fw-review-from-designer");
     assert.deepEqual(s.calls, [], "the review requested a change");

@@ -4564,3 +4564,29 @@ in-process test with the real drool-fw and fake nft, and once by hand on the Ubu
 - Observations are stale after a fixed 15 minutes without a Shepherd report.
 - The report's screenshots of PiZeroWopenwx come from an in-process lab with fake nftables. Its controller is
   127.0.0.1, so the management path there reads 127.0.0.1.
+
+### 44.8 What automatic rollback protects (after review)
+
+The review of §44 asked about the example host PiZeroWopenwx: a Shepherd host whose policy allows only TCP 6053, with
+inbound TCP 22 and TCP 8123 observed. Applied, the policy drops the administrator's SSH and port 8123. The
+Shepherd's connection keeps working, so the transaction commits and stays. Automatic rollback is decided by DROOL's
+own management connection only.
+
+What already said so:
+- the Policy preview: *Default: Everything not allowed below is dropped.*, with only the 6053 rule listed;
+- the Observed connections tab: those connections are *Not in policy · would be denied*;
+- the review: *Inbound connections no rule allows are dropped*.
+
+What was missing:
+- **The review didn't say that rollback doesn't cover other access.** Its rollback steps said "the policy cut the
+  path". They now say *DROOL's path*, and "Could affect connectivity" says: *Automatic rollback protects only DROOL's
+  own connection (here, the Shepherd's connection to the controller): while it keeps working, the change stays even
+  where it blocks other access, such as your own SSH or a web interface. Give those a rule first.*
+- **The guide overstated rollback.** Automatic-Rollback-Protection said a policy "can't leave a host locked out", and
+  the Home page "a mistake can't lock you out". Both now say DROOL, and Automatic-Rollback-Protection has a section
+  *What it doesn't protect* (the Shepherd example, what to check first, what to do afterwards).
+  Management-Path-Protection, What-DROOLs-Firewall-Does, Before-Enabling-Enforcement and
+  Applying-the-Firewall-Policy link to it. Management-Path-Protection still named the removed Enforcement card.
+
+Nothing is allowed automatically, and default deny is unchanged. The browser test checks the line in the review.
+The guide's review screenshot predates the line; the text describes it.

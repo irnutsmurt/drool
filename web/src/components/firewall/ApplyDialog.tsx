@@ -133,7 +133,7 @@ export function ApplyDialog({ hostIds, names, remove, onClose }: {
           <li>DROOL checks the host's firewall environment and measures a brand-new management connection.</li>
           <li>The host writes a durable journal and arms a rollback timer <em>before</em> its rules change, then applies the policy atomically.</li>
           <li>Only a <em>new</em> connection (a fresh agent connection, or a fresh SSH connection through every jump host) can commit it.</li>
-          <li>If that never happens — the policy cut the path, the controller vanished, the agent died, the host rebooted — the host restores its previous policy on its own.</li>
+          <li>If that never happens — the policy cut DROOL&apos;s path, the controller vanished, the agent died, the host rebooted — the host restores its previous policy on its own.</li>
         </ol>
         {can("firewall.override") && (
           <details className="rounded-ui border border-line p-3">
@@ -203,6 +203,8 @@ function HostReview({ p, name, refused, single }: { p: FwPlan; name: string; ref
         <span className="font-medium">Could affect connectivity:</span>
         <ul className="mt-1 list-disc space-y-0.5 pl-5">
           <li>Inbound connections no rule allows are dropped{rules.length === 0 && ": with no rules, that is every connection except DROOL's management"}. Check that what others use on this host is allowed.</li>
+          <li data-testid="review-rollback-scope">Automatic rollback protects only DROOL&apos;s own connection{p.transport === "agent" ? " (here, the Shepherd's connection to the controller)" : ""}: while
+            it keeps working, the change stays even where it blocks other access, such as your own SSH or a web interface. Give those a rule first.</li>
           {outRestricted && <li>Outbound traffic is restricted: only what the rules allow may leave.</li>}
           {denies.map((d) => <li key={d} className="text-danger">New deny: {d}</li>)}
           <li>DROOL&apos;s management path stays open ahead of every rule{mgmt.length > 0 && <>: {[...new Set(mgmt.map((m) => `${m.direction === "in" ? "inbound" : "outbound"} ${m.service} ${m.direction === "in" ? "from" : "to"} ${m.peer}`))].join("; ")}</>}.</li>

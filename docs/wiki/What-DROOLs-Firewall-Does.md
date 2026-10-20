@@ -29,6 +29,8 @@ In the examples, Alex's policy says:
   what would change where.
 - **Every apply can undo itself.** If DROOL can't confirm a change over a brand-new connection, the
   host restores its previous rules by itself ([Automatic Rollback Protection](Automatic-Rollback-Protection.md)).
+  That protects **DROOL's own access only**. Your own SSH and anything else you need must be allowed by
+  a rule: a policy that blocks them while DROOL still gets in stays in force.
 
 ## Where enforcement works
 

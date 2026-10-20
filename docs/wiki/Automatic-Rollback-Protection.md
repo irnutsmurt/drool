@@ -2,7 +2,10 @@
 
 Every time DROOL changes a host's firewall, the host is ready to **undo the change by itself**. If DROOL
 can't prove the host is still reachable after the change, the host restores its previous rules on its
-own. So even a policy that accidentally cuts DROOL off can't leave a host locked out.
+own. So even a policy that accidentally cuts DROOL off can't leave DROOL locked out of the host.
+
+It protects **DROOL's own connection**, not everything else: see
+[What it doesn't protect](#what-it-doesnt-protect).
 
 ## How an apply works
 
@@ -20,6 +23,30 @@ own. So even a policy that accidentally cuts DROOL off can't leave a host locked
 
 The transaction then shows **rolled back**, with the reason: *the host restored its previous policy:
 …*.
+
+## What it doesn't protect
+
+Whether a change stays is decided by **DROOL's own connection** alone. A policy that blocks other access
+but leaves DROOL's connection working **commits and stays**. That includes your own SSH from a laptop,
+a web interface, backups or monitoring. Nothing rolls it back.
+
+This matters most on hosts managed through a **Shepherd**. There, DROOL's connection is the Shepherd's
+connection to the controller, not SSH. For example, on `media-01` with only `lan-to-jellyfin`, the
+Shepherd keeps working while SSH from `admin-laptop` is dropped, so the apply commits. On an SSH host,
+DROOL's own SSH is allowed ahead of every rule, but only from the address DROOL connects from.
+
+Before applying:
+
+- Read the host's **Policy preview**: *Everything not allowed below is dropped.* Anything not listed,
+  your own SSH included, is dropped once the policy is in force.
+- Look at **Observed connections** on the same page. Connections marked *would be denied* are the ones
+  the policy would drop: allow what you need with a rule (*admin-ssh-to-media* in the examples).
+  DROOL never allows observed traffic by itself.
+- The review says so too: *Automatic rollback protects only DROOL's own connection*.
+
+If it happened anyway, DROOL still manages the host. Add the missing rule and **Review and apply
+changes…**, or **Remove DROOL policy…** on the host's firewall page
+([Recovering From a Firewall Problem](Recovering-From-a-Firewall-Problem.md)).
 
 ## Transaction states
 
