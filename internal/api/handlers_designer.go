@@ -1,9 +1,12 @@
 package api
 
 import (
+	"cmp"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
+	"slices"
 
 	"drool/internal/audit"
 	"drool/internal/auth"
@@ -61,8 +64,16 @@ func (s *Server) handleSaveFirewallDocument(w http.ResponseWriter, r *http.Reque
 	}
 	ctx := r.Context()
 	pr := principalFrom(ctx)
+	// Which hosts the save changes: each host's compiled policy before and
+	// after it. Saving applies nothing; the answer is where the next step
+	// (review and apply) is.
+	before, err := s.d.Firewall.CompiledHashes(ctx)
+	if err != nil {
+		writeProblem(w, r, s.firewallError(err))
+		return
+	}
 	var sum *fwsvc.SaveSummary
-	err := s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
+	err = s.inTxAudited(ctx, func(q *db.Queries) (audit.Event, error) {
 		var err error
 		sum, err = s.d.Firewall.SaveDocumentTx(ctx, q, in.DocInput, in.Revision, pr.UserID, pr.Can(auth.PermHostsWrite))
 		if err != nil {
@@ -82,7 +93,28 @@ func (s *Server) handleSaveFirewallDocument(w http.ResponseWriter, r *http.Reque
 		writeProblem(w, r, s.firewallError(err))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"document": v.Document, "yaml": v.YAML, "revision": v.Revision, "summary": sum})
+	writeJSON(w, http.StatusOK, map[string]any{"document": v.Document, "yaml": v.YAML, "revision": v.Revision, "summary": sum,
+		"hosts": s.changedHosts(ctx, before)})
+}
+
+// changedHosts are the hosts whose compiled policy differs from before,
+// each with its firewall status (by name).
+func (s *Server) changedHosts(ctx context.Context, before map[string]string) []fwHostSummary {
+	out := []fwHostSummary{}
+	after, err := s.d.Firewall.CompiledHashes(ctx)
+	if err != nil {
+		return out
+	}
+	for id, h := range after {
+		if before[id] == h {
+			continue
+		}
+		if p, err := s.d.Firewall.Plan(ctx, id, false); err == nil {
+			out = append(out, summarize(p))
+		}
+	}
+	slices.SortFunc(out, func(a, b fwHostSummary) int { return cmp.Compare(a.HostName, b.HostName) })
+	return out
 }
 
 type fwExplainRequest struct {

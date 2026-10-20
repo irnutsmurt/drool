@@ -121,6 +121,9 @@ type Allowance struct {
 	Members   []string `json:"members,omitempty"`
 	Family    int      `json:"family"`
 	Reason    Reason   `json:"reason"`
+	// Services: the named services behind Service ("esphome" for
+	// "TCP 6053"), for a policy's rules.
+	Services []string `json:"services,omitempty"`
 }
 
 // DescribeService renders a rule's protocol and ports.
@@ -151,7 +154,8 @@ func (hp *HostPolicy) Explain() []Allowance {
 			ch = hp.Output
 		}
 		for _, r := range ch.Rules {
-			a := Allowance{Direction: dir, Verdict: r.Verdict, Service: DescribeService(r), Peer: r.Peer.Label, Family: r.Family, Reason: r.Reason}
+			a := Allowance{Direction: dir, Verdict: r.Verdict, Service: DescribeService(r), Peer: r.Peer.Label, Family: r.Family, Reason: r.Reason,
+				Services: r.Services}
 			if r.Peer.Kind == PeerAny || a.Peer == "" {
 				a.Peer = "anywhere"
 			}

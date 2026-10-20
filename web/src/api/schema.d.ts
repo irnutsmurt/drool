@@ -6242,6 +6242,8 @@ export interface components {
             members?: string[];
             family: number;
             reason: components["schemas"]["FwReason"];
+            /** @description The named services behind `service` (a policy's rules only), e.g. esphome for TCP 6053. */
+            services?: string[];
         };
         FwConflict: {
             policy_id: string;
@@ -6342,7 +6344,10 @@ export interface components {
             pending_transaction?: components["schemas"]["FwTransaction"];
             transport: string;
             learning: string;
+            /** @description The saved policy as compiled for this host: what it allows and denies, and why. */
             explain: components["schemas"]["FwAllowance"][];
+            /** @description The same for what DROOL last committed on the host (present while a DROOL policy is enforced there). Whether the host still runs it is applied.drift's question. */
+            applied_explain?: components["schemas"]["FwAllowance"][];
             /** @description Allowances and denies the desired policy adds to what is committed. */
             changes_added: string[];
             changes_removed: string[];
@@ -6543,6 +6548,8 @@ export interface components {
             sample_seconds?: number;
             /** Format: date-time */
             reported_at?: string;
+            /** @description Collected continuously, but the Shepherd hasn't reported for over 15 minutes (it reports at least every 5): the observations may be out of date. */
+            stale: boolean;
             /** Format: date-time */
             snapshot_at?: string;
             events_lost: number;
@@ -6872,6 +6879,8 @@ export interface components {
             document: components["schemas"]["FwDocument"];
             yaml: string;
             revision: string;
+            /** @description The hosts whose compiled policy (rules or address sets) this save changed, by name, each with its firewall status right after the save. Nothing was applied to them: on an enforced host the change waits for an apply (rules) or is propagated by itself (address sets only); elsewhere it is what the policy would do. */
+            hosts: components["schemas"]["FwHostSummary"][];
             summary: {
                 /** @description "+name" added, "~name" changed, "-name" removed */
                 networks: string[];
@@ -13562,6 +13571,12 @@ export interface operations {
                     allow_drift?: boolean;
                     /** @description Refuse if the policy changed since this preview. */
                     expect_rules_hash?: string;
+                    /** @description Per host ID, the rules hash the review showed (applied.rules_hash of its plan); a host whose policy changed since is refused. */
+                    expect_rules_hashes?: {
+                        [key: string]: string;
+                    };
+                    /** @description Switch hosts that aren't in Enforce mode to Enforce as part of this apply (the reviewed "Review and apply policy…"). A host's mode changes only once every check before its transaction has passed (audited as firewall.host.update via apply); a host refused before that keeps its mode. Without it, such hosts are refused. */
+                    set_enforce?: boolean;
                     /** @description Required with any override; audited. */
                     reason?: string;
                 };

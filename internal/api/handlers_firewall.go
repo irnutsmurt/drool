@@ -557,7 +557,12 @@ type fwApplyRequest struct {
 	OverrideTimeout bool     `json:"override_timeout"`
 	AllowDrift      bool     `json:"allow_drift"`
 	ExpectRulesHash string   `json:"expect_rules_hash"`
-	Reason          string   `json:"reason"` // required with any override
+	// ExpectRulesHashes: per host, the rules hash the review showed.
+	ExpectRulesHashes map[string]string `json:"expect_rules_hashes"`
+	// SetEnforce switches hosts that aren't in Enforce mode to Enforce as
+	// part of the reviewed apply (model.FirewallApplyOp.SetEnforce).
+	SetEnforce bool   `json:"set_enforce"`
+	Reason     string `json:"reason"` // required with any override
 }
 
 // handleFirewallApply starts a job with one firewall transaction per host.
@@ -601,7 +606,8 @@ func (s *Server) handleFirewallApply(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	step := model.Operation{Type: model.OpFirewallApply, FirewallApply: &model.FirewallApplyOp{Remove: in.Remove, OverrideMgmt: in.OverrideMgmt,
-		OverrideTimeout: in.OverrideTimeout, AllowDrift: in.AllowDrift, ExpectRulesHash: in.ExpectRulesHash, TimeoutS: timeout}}
+		OverrideTimeout: in.OverrideTimeout, AllowDrift: in.AllowDrift, ExpectRulesHash: in.ExpectRulesHash, ExpectRulesHashes: in.ExpectRulesHashes,
+		SetEnforce: in.SetEnforce && !in.Remove, TimeoutS: timeout}}
 	name := "Apply firewall policy"
 	if in.Remove {
 		name = "Remove DROOL firewall policy"

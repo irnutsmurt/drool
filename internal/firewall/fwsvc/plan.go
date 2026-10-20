@@ -296,6 +296,11 @@ type Plan struct {
 	Transport    string                `json:"transport"`
 	Learning     string                `json:"learning"` // continuous | snapshot | off
 	Explain      []compile.Allowance   `json:"explain"`
+	// AppliedExplain is Explain for what DROOL last committed on the host
+	// (its compiled policy at that commit), when one is enforced: what the
+	// host runs, as opposed to the saved policy (Explain). Whether the host
+	// still runs it is Applied.Drift's question.
+	AppliedExplain []compile.Allowance `json:"applied_explain,omitempty"`
 	// Changes since the committed policy (empty when nothing is enforced).
 	ChangesAdded   []string            `json:"changes_added"`
 	ChangesRemoved []string            `json:"changes_removed"`
@@ -368,7 +373,9 @@ func (s *Service) Plan(ctx context.Context, hostID string, override bool) (*Plan
 		p.Applied.SetsPending = !p.Applied.RulesChanged && p.Rendered.SetsHash != st.AppliedSetsHash
 		if st.AppliedPolicyJson != "" {
 			p.AppliedHP = &compile.HostPolicy{}
-			json.Unmarshal([]byte(st.AppliedPolicyJson), p.AppliedHP)
+			if json.Unmarshal([]byte(st.AppliedPolicyJson), p.AppliedHP) == nil {
+				p.AppliedExplain = p.AppliedHP.Explain()
+			}
 		}
 	}
 	p.ChangesAdded, p.ChangesRemoved = p.AppliedChanges()
@@ -498,6 +505,26 @@ func (s *Service) PreviewPolicy(ctx context.Context, p PolicyRow, del bool) ([]P
 			}
 		}
 		out = append(out, im)
+	}
+	return out, nil
+}
+
+// CompiledHashes is every host's compiled desired policy, as the hash of
+// its rendered rules and address sets: comparing two calls says which
+// hosts a change of the policy (a save) affected.
+func (s *Service) CompiledHashes(ctx context.Context) (map[string]string, error) {
+	w, err := s.World(ctx)
+	if err != nil {
+		return nil, err
+	}
+	hosts, err := s.d.Store.R.ListHosts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(hosts))
+	for _, h := range hosts {
+		hp, _ := s.compileHost(ctx, w, h, false)
+		out[h.ID] = nftables.Render(hp).FullHash
 	}
 	return out, nil
 }

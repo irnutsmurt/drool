@@ -71,7 +71,7 @@ UPDATE fw_host_state SET status_json = ?, status_at = ?, drift = ?, updated_at =
 -- name: SetFwHostApplied :exec
 UPDATE fw_host_state SET enforced = ?, applied_revision = ?, applied_rules_hash = ?, applied_full_hash = ?,
   applied_sets_hash = ?, applied_policy_json = ?, override_mgmt = ?, sets_generation = ?, sets_generation_applied = ?,
-  sets_error = '', drift = '', updated_at = ? WHERE host_id = ?;
+  sets_error = '', drift = '', status_at = ?, updated_at = ? WHERE host_id = ?;
 
 -- name: SetFwHostSetsDesired :exec
 UPDATE fw_host_state SET sets_generation = ?, updated_at = ? WHERE host_id = ?;

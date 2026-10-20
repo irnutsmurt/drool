@@ -379,8 +379,9 @@ func (s *Service) Apply(ctx context.Context, hostID string, op *model.FirewallAp
 			"firewall transaction %s is still %s on this host", tx.ID, tx.State)
 	}
 	cfg := s.HostConfig(ctx, hostID)
-	if !op.Remove && cfg.Mode != ModeEnforce {
-		return nil, fail(model.ClassValidation, "Set the host's firewall mode to Enforce first.",
+	switchMode := !op.Remove && cfg.Mode != ModeEnforce && op.SetEnforce
+	if !op.Remove && cfg.Mode != ModeEnforce && !op.SetEnforce {
+		return nil, fail(model.ClassValidation, "Set the host's firewall mode to Enforce first, or review and apply the policy from the host's firewall page.",
 			"the host's firewall mode is %q: DROOL enforces policies only in Enforce mode", cfg.Mode)
 	}
 
@@ -486,6 +487,10 @@ func (s *Service) Apply(ctx context.Context, hostID string, op *model.FirewallAp
 			return tres(c), fail(model.ClassValidation, "Preview the policy again before applying it.",
 				"the policy changed since it was previewed")
 		}
+		if want := op.ExpectRulesHashes[hostID]; want != "" && want != rend.RulesHash {
+			return tres(c), fail(model.ClassValidation, "Review the policy again before applying it.",
+				"the policy for %s changed since it was reviewed", h.Name)
+		}
 		for _, cf := range hp.Overrode {
 			say("EMERGENCY OVERRIDE: %s", cf.Message)
 		}
@@ -503,6 +508,15 @@ func (s *Service) Apply(ctx context.Context, hostID string, op *model.FirewallAp
 	if err != nil {
 		return tres(c), &model.OpError{Class: model.ClassValidation, Message: err.Error(),
 			Hint: "Adopt the host's firewall state on the host page (reconciliation), then apply again."}
+	}
+	// Every check has passed: the reviewed switch to Enforce happens now,
+	// before the host is touched. If the transaction doesn't commit, the
+	// host restores its previous rules and stays in Enforce.
+	if switchMode {
+		if err := s.switchToEnforce(ctx, hostID, cfg); err != nil {
+			return tres(c), err
+		}
+		say("firewall mode switched from %s to Enforce, as reviewed: DROOL now enforces its policy on this host", cfg.Mode)
 	}
 	stRow, _ := s.state(ctx, hostID)
 	setsGen := max(stRow.SetsGeneration, stRow.SetsGenerationApplied) + 1
@@ -605,6 +619,32 @@ func (s *Service) Apply(ctx context.Context, hostID string, op *model.FirewallAp
 	t.step("not committed: %v", verr)
 	t.step("waiting for the host to restore its previous policy (deadline %s)", deadline.UTC().Format(time.RFC3339))
 	return s.awaitRollback(ctx, t, h, deadline, verr)
+}
+
+// switchToEnforce sets a host's mode to Enforce for a reviewed apply
+// (FirewallApplyOp.SetEnforce), audited like a change on the host page.
+func (s *Service) switchToEnforce(ctx context.Context, hostID string, cfg HostConfig) error {
+	next := HostConfig{Mode: ModeEnforce, Outbound: cfg.Outbound, TimeoutS: cfg.TimeoutS}
+	if err := s.d.Store.InTx(ctx, func(q *db.Queries) error { return s.SetHostConfigTx(ctx, q, hostID, next) }); err != nil {
+		return err
+	}
+	// The person who started the apply decided it, not the controller.
+	info := driver.StepInfoFrom(ctx)
+	e := audit.Event{Action: "firewall.host.update", TargetType: "host", TargetID: hostID, Result: audit.Success, Details: map[string]any{
+		"mode": ModeEnforce, "previous_mode": cfg.Mode, "outbound": next.Outbound, "rollback_timeout_s": next.TimeoutS, "via": "apply", "job_id": info.JobID}}
+	if info.UserID != "" {
+		e.Actor = &audit.Actor{Type: audit.ActorUser, ID: info.UserID}
+		if u, err := s.d.Store.R.GetUser(ctx, info.UserID); err == nil {
+			e.Actor.Name = u.Username
+		}
+	} else if audit.ActorFrom(ctx).Type == audit.ActorAnonymous {
+		e.Actor = &audit.System
+	}
+	if s.d.Audit != nil {
+		s.d.Audit.Record(context.WithoutCancel(ctx), e)
+	}
+	s.HostConfigChanged(ctx, hostID)
+	return nil
 }
 
 func b2i(b bool) int64 {
@@ -718,7 +758,9 @@ func (s *Service) committed(ctx context.Context, t *txRec, h db.Host, hp *compil
 	}
 	s.d.Store.W.SetFwHostApplied(ctx, db.SetFwHostAppliedParams{Enforced: enforced, AppliedRevision: t.row.Revision, AppliedRulesHash: rend.RulesHash,
 		AppliedFullHash: rend.FullHash, AppliedSetsHash: rend.SetsHash, AppliedPolicyJson: pj, OverrideMgmt: t.row.OverrideMgmt,
-		SetsGeneration: setsGen, SetsGenerationApplied: setsGen, UpdatedAt: s.now().UnixMilli(), HostID: h.ID})
+		SetsGeneration: setsGen, SetsGenerationApplied: setsGen,
+		// The commit read the host's firewall state over a new connection.
+		StatusAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}, UpdatedAt: s.now().UnixMilli(), HostID: h.ID})
 	s.markState(ctx, h.ID, "ok", s.epoch, t.row.Revision, "sha256:"+rend.FullHash)
 	t.finish(TxCommitted, fmt.Sprintf("revision %d committed over a new %s connection", t.row.Revision, t.row.Transport), "")
 	s.audit(ctx, "firewall.transaction.commit", h.ID, audit.Success, map[string]any{"transaction_id": t.row.ID, "revision": t.row.Revision,

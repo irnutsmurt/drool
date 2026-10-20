@@ -263,6 +263,37 @@ func TestExplain(t *testing.T) {
 		if a.Peer == "group web" && (len(a.Members) != 2 || a.Members[0] != "web01") {
 			t.Errorf("members: %+v", a)
 		}
+		// A policy's line names the services behind its ports; the
+		// management path and the defaults name none.
+		want := map[string]string{"policy web-database": "postgres", "policy management": "ssh"}[a.Reason.Text]
+		if got := strings.Join(a.Services, ","); got != want {
+			t.Errorf("services of %s %s (%s): %q, want %q", a.Service, a.Peer, a.Reason.Text, got, want)
+		}
+	}
+	// Several services on one protocol become one line naming them all.
+	w := world()
+	w.Policies = append(w.Policies, policy.Policy{ID: "p6", Name: "web-both", Enabled: true, Action: policy.Allow,
+		From: []policy.Selector{{Kind: policy.SelCIDR, CIDR: "192.168.3.132/32"}}, To: []policy.Selector{{Kind: policy.SelGroup, ID: "database"}},
+		Services: []string{"http", "https", "dns"}})
+	for _, a := range compile.Compile(compile.Input{World: w, HostID: "db01"}).Explain() {
+		if a.Reason.Text != "policy web-both" {
+			continue
+		}
+		got := a.Service + " = " + strings.Join(a.Services, ",")
+		if got != "TCP 53, 80, 443 = http,https,dns" && got != "UDP 53 = dns" {
+			t.Errorf("web-both: %s", got)
+		}
+	}
+	// Names are display only: the rendered rules (and their hash) don't
+	// change with them.
+	plain := compile.Compile(compile.Input{World: world(), HostID: "db01", Mgmt: []compile.MgmtFlow{sshMgmt}})
+	for _, ch := range []*compile.Chain{&plain.Input, &plain.Output} {
+		for i := range ch.Rules {
+			ch.Rules[i].Services = nil
+		}
+	}
+	if nftables.Render(plain).FullHash != nftables.Render(hp).FullHash {
+		t.Error("service names changed the rendered policy")
 	}
 	// Each IPv4/IPv6 pair is listed once.
 	if strings.Count(all, "TCP 5432 from group web") != 1 {

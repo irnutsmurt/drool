@@ -29,11 +29,20 @@ type Collection struct {
 	Enabled       bool   `json:"enabled"` // continuous collection is turned on for this host
 	SampleSeconds int    `json:"sample_seconds,omitempty"`
 	ReportedAt    string `json:"reported_at,omitempty"`
-	SnapshotAt    string `json:"snapshot_at,omitempty"`
-	EventsLost    int64  `json:"events_lost"`
-	Dropped       int64  `json:"dropped"`
-	Forwarded     int64  `json:"forwarded"`
+	// Stale: collected continuously, but the Shepherd hasn't reported for
+	// longer than StaleAfter (it reports at least every 5 minutes, even
+	// with nothing new): what is shown may be out of date.
+	Stale      bool   `json:"stale"`
+	SnapshotAt string `json:"snapshot_at,omitempty"`
+	EventsLost int64  `json:"events_lost"`
+	Dropped    int64  `json:"dropped"`
+	Forwarded  int64  `json:"forwarded"`
 }
+
+// StaleAfter is how long a continuously observed host may go without a
+// report before its observations are called stale: three of the
+// Shepherd's 5-minute heartbeats.
+const StaleAfter = 15 * time.Minute
 
 func (s *Service) collection(ctx context.Context, hostID string) Collection {
 	c := Collection{Mode: "none"}
@@ -60,6 +69,7 @@ func (s *Service) collection(ctx context.Context, hostID string) Collection {
 		c.Mode = "continuous"
 		if haveNC == nil && nc.ReportedAt.Valid && nc.Source != "" {
 			c.Source, c.Detail, c.SampleSeconds, c.ReportedAt = nc.Source, nc.Detail, int(nc.SampleSeconds), ts(nc.ReportedAt.Int64)
+			c.Stale = s.now().Sub(time.Unix(nc.ReportedAt.Int64, 0)) > StaleAfter
 		}
 		switch c.Source {
 		case observe.SourceConntrack:

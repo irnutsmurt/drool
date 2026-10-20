@@ -2645,6 +2645,16 @@ paths:
                 override_timeout: { type: boolean, description: Accept a rollback timeout shorter than 3x the measured connection time. }
                 allow_drift: { type: boolean, description: Replace DROOL rules changed outside DROOL. }
                 expect_rules_hash: { type: string, description: Refuse if the policy changed since this preview. }
+                expect_rules_hashes:
+                  type: object
+                  additionalProperties: { type: string }
+                  description: Per host ID, the rules hash the review showed (applied.rules_hash of its plan); a host whose policy changed since is refused.
+                set_enforce:
+                  type: boolean
+                  description: >-
+                    Switch hosts that aren't in Enforce mode to Enforce as part of this apply (the reviewed "Review and apply
+                    policy…"). A host's mode changes only once every check before its transaction has passed (audited as
+                    firewall.host.update via apply); a host refused before that keeps its mode. Without it, such hosts are refused.
                 reason: { type: string, description: Required with any override; audited. }
       responses:
         '201': { description: Job started., content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
@@ -5990,6 +6000,7 @@ components:
         members: { type: array, items: { type: string } }
         family: { type: integer }
         reason: { $ref: '#/components/schemas/FwReason' }
+        services: { type: array, items: { type: string }, description: 'The named services behind `service` (a policy''s rules only), e.g. esphome for TCP 6053.' }
     FwConflict:
       type: object
       required: [policy_id, policy_name, message]
@@ -6098,7 +6109,13 @@ components:
         pending_transaction: { $ref: '#/components/schemas/FwTransaction' }
         transport: { type: string }
         learning: { type: string }
-        explain: { type: array, items: { $ref: '#/components/schemas/FwAllowance' } }
+        explain: { type: array, items: { $ref: '#/components/schemas/FwAllowance' }, description: 'The saved policy as compiled for this host: what it allows and denies, and why.' }
+        applied_explain:
+          type: array
+          items: { $ref: '#/components/schemas/FwAllowance' }
+          description: >-
+            The same for what DROOL last committed on the host (present while a DROOL policy is enforced there). Whether the host
+            still runs it is applied.drift's question.
         changes_added: { type: array, items: { type: string }, description: Allowances and denies the desired policy adds to what is committed. }
         changes_removed: { type: array, items: { type: string } }
         summary: { $ref: '#/components/schemas/FwHostSummary' }
@@ -6268,7 +6285,7 @@ components:
         enrichment_state: { $ref: '#/components/schemas/NetEnrichState' }
     NetCollection:
       type: object
-      required: [mode, source, label, detail, agent, enabled, events_lost, dropped, forwarded]
+      required: [mode, source, label, detail, agent, enabled, stale, events_lost, dropped, forwarded]
       properties:
         mode: { type: string, enum: [continuous, snapshot, none] }
         source: { type: string }
@@ -6278,6 +6295,7 @@ components:
         enabled: { type: boolean }
         sample_seconds: { type: integer }
         reported_at: { type: string, format: date-time }
+        stale: { type: boolean, description: "Collected continuously, but the Shepherd hasn't reported for over 15 minutes (it reports at least every 5): the observations may be out of date." }
         snapshot_at: { type: string, format: date-time }
         events_lost: { type: integer }
         dropped: { type: integer }
@@ -6600,11 +6618,18 @@ components:
             revision: { type: string }
     FwDocumentSaved:
       type: object
-      required: [document, yaml, revision, summary]
+      required: [document, yaml, revision, summary, hosts]
       properties:
         document: { $ref: '#/components/schemas/FwDocument' }
         yaml: { type: string }
         revision: { type: string }
+        hosts:
+          type: array
+          description: >-
+            The hosts whose compiled policy (rules or address sets) this save changed, by name, each with its firewall status
+            right after the save. Nothing was applied to them: on an enforced host the change waits for an apply (rules) or is
+            propagated by itself (address sets only); elsewhere it is what the policy would do.
+          items: { $ref: '#/components/schemas/FwHostSummary' }
         summary:
           type: object
           required: [networks, groups, services, policies, notices]

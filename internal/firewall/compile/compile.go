@@ -130,6 +130,9 @@ type Rule struct {
 	Peer     Peer               `json:"peer"`
 	Verdict  string             `json:"verdict"` // accept | drop
 	Reason   Reason             `json:"reason"`
+	// Services are the named services the rule's protocol and ports come
+	// from (display only: never rendered, never hashed).
+	Services []string `json:"services,omitempty"`
 }
 
 // Chain is one direction's rules and default verdict.
@@ -350,12 +353,14 @@ type entry struct {
 	proto    string
 	ports    []policy.PortRange
 	icmpType string
+	services []string // the named services it comes from
 }
 
 func (c *compiler) entries(services []string) ([]entry, []string) {
 	var out []entry
 	var unknown []string
 	byProto := map[string][]policy.PortRange{}
+	names := map[string][]string{}
 	for _, n := range services {
 		svc, ok := c.w.Services[n]
 		if !ok {
@@ -368,15 +373,18 @@ func (c *compiler) entries(services []string) ([]entry, []string) {
 				prs, err := policy.ParsePorts(e.Ports)
 				if err == nil {
 					byProto[e.Protocol] = append(byProto[e.Protocol], prs...)
+					if !slices.Contains(names[e.Protocol], n) {
+						names[e.Protocol] = append(names[e.Protocol], n)
+					}
 				}
 			case policy.ICMP, policy.ICMPv6:
-				out = append(out, entry{proto: e.Protocol, icmpType: e.ICMPType})
+				out = append(out, entry{proto: e.Protocol, icmpType: e.ICMPType, services: []string{n}})
 			}
 		}
 	}
 	for _, p := range []string{policy.TCP, policy.UDP} {
 		if prs := byProto[p]; len(prs) > 0 {
-			out = append(out, entry{proto: p, ports: mergePorts(prs)})
+			out = append(out, entry{proto: p, ports: mergePorts(prs), services: names[p]})
 		}
 	}
 	return out, unknown
@@ -416,7 +424,7 @@ func (c *compiler) policyRules(p policy.Policy, peers []policy.Selector, verdict
 					fam = 6
 				}
 				out = append(out, Rule{Family: fam, Proto: e.proto, Ports: e.ports, ICMPType: e.icmpType, Peer: fp.peer,
-					Verdict: verdict, Reason: reason})
+					Verdict: verdict, Reason: reason, Services: e.services})
 			}
 		}
 	}
