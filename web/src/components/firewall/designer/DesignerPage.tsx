@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { cx } from "@/components/ui/cx";
 import { errorMessage } from "@/lib/format";
-import { ApplyDialog } from "../parts";
+import { ApplyDialog } from "../ApplyDialog";
 import { useFwServices } from "../queries";
 import { addRule, deleteRule, uniqueRuleName, upsertService, type MgmtPath, type Rule, type Service, type ServiceInfo, type TopologyMode } from "./model";
 import { useNetFlow } from "@/components/network/queries";
@@ -18,7 +18,7 @@ import { Topology, type Selection } from "./Topology";
 import { RulesView } from "./RulesView";
 import { YamlView } from "./YamlView";
 import { RuleDialog } from "./RuleDialog";
-import { Inspector, MgmtAlerts, PreviewPanel } from "./Panels";
+import { AfterSave, Inspector, MgmtAlerts, PreviewPanel } from "./Panels";
 import { TabPanel, Tabs } from "@/components/ui/Tabs";
 
 const views = [
@@ -166,11 +166,11 @@ export function DesignerPage() {
       {!canWrite && <Alert tone="warn">You can explore and simulate; only administrators can change the firewall policy.</Alert>}
       {d.staleBase && <Alert tone="warn">Someone else saved the firewall policy since you opened it. Saving will be refused: copy your changes from the YAML view, then discard and reapply them.</Alert>}
       {d.save.error && <Alert>{errorMessage(d.save.error)}</Alert>}
-      {d.save.isSuccess && !d.dirty && <Alert tone="ok">Saved. Nothing changes on hosts until you apply it (see Preview).</Alert>}
-      {suggested && (
+      {d.save.isSuccess && !d.dirty && d.save.data && <AfterSave hosts={d.save.data.hosts} canApply={canWrite} onReview={setApplyTo} />}
+      {suggested && !(d.save.isSuccess && !d.dirty) && (
         <Alert tone="warn">
           Draft rule <strong>{suggested}</strong> was added from an observed connection. It is only part of this draft: review it below, check the preview and
-          management paths, then save the policy and apply it — or discard it.
+          management paths, then save the policy — or discard it. Saving changes nothing on hosts: DROOL then lists the hosts it affects, to review and apply.
         </Alert>
       )}
       {suggestId && !canWrite && <Alert tone="warn">Only administrators can turn an observed connection into a policy.</Alert>}
@@ -206,7 +206,7 @@ export function DesignerPage() {
             tabs={[{ key: "preview", label: "Preview" }, { key: "details", label: "Details" }]} />
           <TabPanel id="designer-side" current={side}>
             {side === "preview" ? (
-              <PreviewPanel check={d.check} canApply={can("firewall.write")} onApply={(ids) => setApplyTo(ids)} />
+              <PreviewPanel check={d.check} />
             ) : (
               <Inspector selection={selection} doc={d.draft} services={services} hosts={hosts} management={d.management}
                 onEditRule={(index) => setRuleDialog({ index })} onClose={() => setSelection(null)} />

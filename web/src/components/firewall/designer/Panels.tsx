@@ -13,7 +13,9 @@ import { useNetFlow } from "@/components/network/queries";
 import { affectedHosts, entriesLabel, kindLabel, obsStatusLabel, parseRef, refLabel, serviceLabel, type Doc, type GEdge, type MgmtPath, type ServiceInfo } from "./model";
 import type { CheckResult } from "./useDesigner";
 import type { Selection } from "./Topology";
-import { hopVerdict } from "../parts";
+import { hopVerdict, modeInfo } from "../parts";
+import { useFwHosts } from "../queries";
+import { plainLink } from "@/components/ui/links";
 
 const hopText = (h: MgmtPath["hops"][number]) => `${h.from_name} → ${h.to_name} : ${h.protocol.toUpperCase()} ${h.port || "?"}`;
 
@@ -75,10 +77,10 @@ export function MgmtAlerts({ management, onShow }: { management: MgmtPath[]; onS
   );
 }
 
-/** Before saving/applying: what changes where, and what blocks it. */
-export function PreviewPanel({ check, onApply, canApply }: { check: CheckResult | null; onApply?: (hostIds: string[]) => void; canApply: boolean }) {
+/** Before saving: what the draft changes where, and what blocks it.
+ * Applying comes after saving (AfterSave). */
+export function PreviewPanel({ check }: { check: CheckResult | null }) {
   if (!check) return <p className="text-sm text-muted">Checking…</p>;
-  const enforcedTargets = check.impact.filter((i) => i.mode === "enforce" && i.supported !== false && i.conflicts.length === 0).map((i) => i.host_id);
   return (
     <div className="space-y-3 text-sm" data-testid="preview">
       {check.problems.length > 0 && (
@@ -122,11 +124,78 @@ export function PreviewPanel({ check, onApply, canApply }: { check: CheckResult 
           </ul>
         </div>
       ))}
-      {onApply && canApply && enforcedTargets.length > 0 && !check.changed && (
-        <Button variant="primary" onClick={() => onApply(enforcedTargets)}>Apply to {enforcedTargets.length} enforced host(s)…</Button>
-      )}
+      {check.changed && check.impact.length > 0 && <p className="text-xs text-muted">Saving changes nothing on these hosts: after saving, DROOL lists them to review and apply.</p>}
     </div>
   );
+}
+
+type HostSummary = Schemas["FwHostSummary"];
+
+/** What the saved policy means for each host whose firewall the save
+ * changed (the server's list, with each host's live status): saved here,
+ * nothing applied there yet. Hosts DROOL can apply to now have Review and
+ * apply…, which reviews each host (and says when it switches one to
+ * Enforce) before anything changes; the rest say why not. */
+export function AfterSave({ hosts, canApply, onReview }: { hosts: HostSummary[]; canApply: boolean; onReview: (hostIds: string[]) => void }) {
+  const live = useFwHosts();
+  const rows = hosts.map((h) => live.data?.items.find((x) => x.host_id === h.host_id) ?? h);
+  const eligible = rows.filter(applicable).map((h) => h.host_id);
+  return (
+    <section className="space-y-2 rounded-ui border border-line bg-surface p-3 text-sm" aria-labelledby="after-save-title" data-testid="after-save">
+      <h3 id="after-save-title" className="font-semibold"><span aria-hidden="true" className="text-ok">✓ </span>Saved. Nothing has changed on any host yet.</h3>
+      {hosts.length === 0 ? <p className="text-muted">No host&apos;s firewall changes with this save.</p> : (
+        <>
+          <p className="text-muted">This changes the policy of {hosts.length === 1 ? "one host" : `${hosts.length} hosts`}. A host&apos;s firewall changes only when its policy is applied:</p>
+          <ul className="divide-y divide-line">
+            {rows.map((h) => (
+              <li key={h.host_id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-1.5">
+                <span className="min-w-0">
+                  <Link className={plainLink} to={`/hosts/${h.host_id}/firewall`}>{h.host_name}</Link>{" "}
+                  <span data-testid="after-save-state">{savedState(h)}</span>
+                </span>
+                {canApply && applicable(h) && eligible.length > 1 && <Button size="sm" onClick={() => onReview([h.host_id])}>Review and apply…</Button>}
+              </li>
+            ))}
+          </ul>
+          {canApply && eligible.length > 0 && (
+            <Button variant="primary" onClick={() => onReview(eligible)}>
+              {eligible.length === 1 ? `Review and apply to ${rows.find((h) => h.host_id === eligible[0])!.host_name}…` : `Review and apply to ${eligible.length} hosts…`}
+            </Button>
+          )}
+          {!canApply && <p className="text-xs text-muted">Applying needs the firewall.write permission (administrators).</p>}
+        </>
+      )}
+    </section>
+  );
+}
+
+/** A host DROOL can review and apply to now: something to apply, and
+ * nothing the server would refuse before its transaction. */
+const applicable = (h: HostSummary) => (h.status === "not_enforced" || h.status === "changes_pending") && h.supported !== false && h.conflicts === 0
+  && h.transport !== "none" && h.transport !== "blocked";
+
+/** A host's state right after a save, in words: saved is never enforced. */
+function savedState(h: HostSummary): string {
+  const mode = modeInfo[h.mode]?.label ?? h.mode;
+  const why = h.supported === false ? ` DROOL can't enforce on this host${h.reason ? `: ${h.reason}` : ""}.`
+    : h.conflicts > 0 ? " ✕ Applying is refused: a rule would cut DROOL's management path."
+      : h.transport === "none" || h.transport === "blocked" ? " DROOL has no management path to this host right now." : "";
+  switch (h.status) {
+    case "pending_transaction":
+      return "◷ A firewall change is in progress there.";
+    case "drift":
+      return "⚠ DROOL's rules there were changed outside DROOL: review it on its firewall page.";
+    case "in_sync":
+      return `✓ In force: revision ${h.revision}.`;
+    case "sets_pending":
+      return `In force: revision ${h.revision}; its new addresses are sent to it automatically.`;
+    case "changes_pending":
+    case "conflicts":
+      return `↻ Not applied yet: the host runs revision ${h.revision}.${why}`;
+    default:
+      return (h.mode === "enforce" ? "Policy saved — not yet enforced (Enforce is set; nothing applied yet)."
+        : `Policy saved — not yet enforced (mode ${mode}: applying switches it to Enforce).`) + why;
+  }
 }
 
 /** Hosts whose changes are identical are shown once (large groups). The

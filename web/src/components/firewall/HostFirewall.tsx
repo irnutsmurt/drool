@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
@@ -11,40 +11,66 @@ import { Card } from "@/components/ui/Card";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { errorMessage, formatAgo } from "@/lib/format";
-import { ApplyDialog, ExplainTable, modeInfo, PolicyEditor, statusLabels, TxList } from "./parts";
+import { modeInfo, PolicyEditor, statusLabels, TxList } from "./parts";
+import { ApplyDialog } from "./ApplyDialog";
+import { applyBlocked, needsApply, PolicyStatus, ResolvedPolicy } from "./HostPolicy";
 import { InstallNftables } from "./InstallNftables";
+import { CollectionActions, CollectionDetail, HostConnections } from "@/components/network/HostNetwork";
+import { nk, useHostNetwork } from "@/components/network/queries";
+import { plainLink } from "@/components/ui/links";
+import { LoadError, Loading } from "@/components/ui/States";
 import { fk, useFwHost, useFwSuggestions, useFwTransactions, type FwPlan, type FwSuggestion } from "./queries";
 import { TabPanel, Tabs } from "@/components/ui/Tabs";
 
-/** A host's firewall (DESIGN §15–19), on its own page: mode,
- *  environment, what is enforced and why, observations, and transactions. */
+/** A host's firewall (DESIGN §15–19), on its own page: first what the
+ * policy means for this host — saved, applied and observed, each labelled,
+ * with the one next action (review and apply) — then the policy as
+ * resolved for it, its mode and environment, and observed connections,
+ * transactions and the generated rules. */
 export function HostFirewall({ host }: { host: Host }) {
   const plan = useFwHost(host.id);
   const p = plan.data;
-  const [tab, setTab] = useState<"explain" | "observed" | "history" | "advanced">("explain");
-  if (plan.error) return <Alert>{errorMessage(plan.error)}</Alert>;
-  if (!p) return <p className="text-sm text-muted">Loading…</p>;
+  const [tab, setTab] = useState<"observed" | "history" | "advanced">("observed");
+  const [dialog, setDialog] = useState<"apply" | "remove" | null>(null);
+  // When what the host runs (or its mode) changes, e.g. an apply committed,
+  // the observations are judged against it anew: ask for them again rather
+  // than show the old verdicts for up to their refresh interval.
+  const qc = useQueryClient();
+  const state = p ? [p.config.mode, p.applied.enforced, p.applied.revision, p.applied.drift ?? "", p.applied.rules_changed].join("|") : "";
+  const seen = useRef(state);
+  useEffect(() => {
+    if (seen.current && state && seen.current !== state) void qc.invalidateQueries({ queryKey: nk.all });
+    seen.current = state;
+  }, [state, qc]);
+  if (plan.error) return <LoadError what="this host's firewall" error={plan.error} />;
+  if (!p) return <Loading what="this host's firewall" />;
+  const showObserved = () => {
+    setTab("observed");
+    const t = document.getElementById("hostfw-tab-observed");
+    t?.scrollIntoView({ block: "start" });
+    t?.focus();
+  };
   return (
     <div className="grid gap-4">
+      <PolicyStatus p={p} onShowObserved={showObserved} onApply={() => setDialog("apply")} onRemove={() => setDialog("remove")} />
+      <ResolvedPolicy p={p} hostName={host.name} />
       <Card title="Mode and environment">
         <div className="grid gap-4 lg:grid-cols-2">
-          <ModeForm p={p} />
+          {/* A new form when the saved settings change underneath (an apply
+              switched the mode): never a stale choice offered for saving. */}
+          <ModeForm key={`${p.config.mode}|${p.config.outbound ?? ""}|${p.config.rollback_timeout_s ?? 0}`} p={p} onReview={() => setDialog("apply")} />
           <Environment p={p} hostName={host.name} />
         </div>
       </Card>
-      <Card title="Enforcement">
-        <Status p={p} host={host} />
-      </Card>
       <Card>
         <Tabs label="Firewall details" id="hostfw" className="-mt-1 overflow-x-auto" current={tab} onSelect={setTab}
-          tabs={[{ key: "explain", label: "Effective policy" }, { key: "observed", label: "Observed connections" }, { key: "history", label: "Transactions" }, { key: "advanced", label: "Generated nftables" }]} />
+          tabs={[{ key: "observed", label: "Observed connections" }, { key: "history", label: "Transactions" }, { key: "advanced", label: "Generated nftables" }]} />
         <TabPanel id="hostfw" current={tab} className="pt-3">
-          {tab === "explain" && <ExplainSection p={p} />}
           {tab === "observed" && <Observed p={p} />}
           {tab === "history" && <History hostId={host.id} />}
           {tab === "advanced" && (
             <div className="space-y-2 text-sm">
-              <p className="text-muted">Diagnostics only: this is what DROOL would load into its own table <span className="font-mono">inet drool</span>.
+              <p className="text-muted">Diagnostics only: this is what DROOL would load into its own table <span className="font-mono">inet drool</span> from the saved policy.
                 DROOL never touches other tables and never runs <span className="font-mono">nft flush ruleset</span>.</p>
               <CodeBlock text={p.rendered.full} />
               <p className="text-xs text-muted">rules {p.rendered.rules_hash.slice(0, 16)} · sets {p.rendered.sets_hash.slice(0, 16)}</p>
@@ -52,6 +78,7 @@ export function HostFirewall({ host }: { host: Host }) {
           )}
         </TabPanel>
       </Card>
+      {dialog && <ApplyDialog hostIds={[p.host_id]} names={[host.name]} remove={dialog === "remove"} onClose={() => setDialog(null)} />}
     </div>
   );
 }
@@ -83,7 +110,7 @@ export function HostFirewallSummary({ hostId }: { hostId: string }) {
   );
 }
 
-function ModeForm({ p }: { p: FwPlan }) {
+function ModeForm({ p, onReview }: { p: FwPlan; onReview: () => void }) {
   const { can } = useAuth();
   const qc = useQueryClient();
   const [mode, setMode] = useState(p.config.mode);
@@ -94,7 +121,12 @@ function ModeForm({ p }: { p: FwPlan }) {
       body: { mode, outbound: outbound as "allow" | "restrict", rollback_timeout_s: timeout ? Number(timeout) : 0 } })),
     onSuccess: () => void qc.invalidateQueries({ queryKey: fk.all }),
   });
-  const dirty = mode !== p.config.mode || outbound !== (p.config.outbound ?? "allow") || (timeout || "0") !== String(p.config.rollback_timeout_s || 0);
+  const onlyMode = outbound === (p.config.outbound ?? "allow") && (timeout || "0") === String(p.config.rollback_timeout_s || 0);
+  const dirty = mode !== p.config.mode || !onlyMode;
+  // Choosing Enforce changes nothing on the host: say what does, and offer
+  // it — the review switches the mode as part of applying (set_enforce).
+  const toEnforce = can("firewall.write") && dirty && mode === "enforce" && p.config.mode !== "enforce";
+  const reviewInstead = toEnforce && onlyMode && needsApply(p) && !applyBlocked(p);
   return (
     <div className="space-y-2 text-sm">
       <Field label="Mode" hint={modeInfo[mode]?.text}>
@@ -121,10 +153,26 @@ function ModeForm({ p }: { p: FwPlan }) {
       </details>
       <p className="text-xs text-muted">Learning: {p.learning === "continuous" ? "continuous (Shepherd)" : p.learning === "snapshot" ? "connection snapshots only (SSH host)" : "off"}</p>
       {save.error && <Alert>{errorMessage(save.error)}</Alert>}
-      {can("firewall.write") && dirty && mode === "enforce" && !p.applied.enforced && (
-        <p className="text-xs text-muted">Saving sets the mode only: nothing on the host changes until you apply the policy (Enforcement, below).</p>
+      {toEnforce && (
+        <p className="rounded-ui border border-line px-3 py-2" data-testid="fw-enforce-next">
+          <strong>Selecting Enforce doesn&apos;t change anything on the host by itself:</strong>{" "}
+          {p.applied.enforced ? "the saved changes take effect when the policy is applied." : "DROOL's rules take effect when the policy is applied."}{" "}
+          {reviewInstead ? "Review and apply policy… shows what changes, then switches this host to Enforce and applies the policy in one confirmed step."
+            : "Save the mode, then review and apply the policy (Policy on this host, above)."}
+        </p>
       )}
-      {can("firewall.write") && dirty && <Button size="sm" variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>Save</Button>}
+      {can("firewall.write") && dirty && mode !== "enforce" && p.applied.enforced && (
+        <p className="text-xs text-warn" data-testid="fw-mode-keeps">
+          <span aria-hidden="true">⚠ </span>Changing the mode doesn&apos;t remove DROOL&apos;s rules: revision {p.applied.revision} stays in force on the host until you remove it
+          (Remove DROOL policy…, above).
+        </p>
+      )}
+      {reviewInstead ? (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="primary" onClick={onReview}>Review and apply policy…</Button>
+          <Button size="sm" disabled={save.isPending} onClick={() => save.mutate()}>Save mode only</Button>
+        </div>
+      ) : can("firewall.write") && dirty && <Button size="sm" variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>Save</Button>}
     </div>
   );
 }
@@ -194,85 +242,32 @@ function Environment({ p, hostName }: { p: FwPlan; hostName: string }) {
   );
 }
 
-function Status({ p, host }: { p: FwPlan; host: Host }) {
-  const { can } = useAuth();
-  const [dialog, setDialog] = useState<"apply" | "remove" | null>(null);
-  const conflicts = p.policy.conflicts ?? [];
-  const canApply = can("firewall.write") && p.config.mode === "enforce" && !p.pending_transaction;
-  return (
-    <div className="space-y-2 text-sm">
-      <dl className="grid grid-cols-[7rem_1fr] sm:grid-cols-[11rem_1fr] gap-y-1">
-        <dt className="text-muted">Committed on the host</dt>
-        <dd>{p.applied.enforced ? `revision ${p.applied.revision}` : "no DROOL policy"}{p.applied.override_mgmt && <span className="ml-2"><Badge tone="danger">applied with emergency override</Badge></span>}</dd>
-        {p.applied.enforced && (<>
-          <dt className="text-muted">Address sets</dt>
-          <dd>generation {p.applied.sets_generation_applied}{p.applied.sets_pending && <span className="ml-2 text-accent">newer addresses are being propagated</span>}
-            {p.applied.sets_error && <span className="ml-2 text-danger">last update failed: {p.applied.sets_error}</span>}</dd>
-        </>)}
-        <dt className="text-muted">Management path</dt>
-        <dd>{p.transport === "agent" ? "agent (preferred)" : p.transport}</dd>
-      </dl>
-      {p.applied.drift && (
-        <Alert><strong>Drift:</strong> DROOL's rules on this host {p.applied.drift === "missing" ? "are missing" : "were changed"} outside DROOL
-          (for example by <span className="font-mono">nft</span> or a reload of nftables.service). Apply again and choose to replace them.</Alert>
-      )}
-      {p.pending_transaction && <Alert tone="warn">Transaction {p.pending_transaction.id} is {p.pending_transaction.state}. Reboots and network restarts wait for it.</Alert>}
-      {conflicts.length > 0 && (
-        <Alert><strong>Refused: a policy would cut DROOL off.</strong>{conflicts.map((c) => <span key={c.message} className="block">• {c.message}</span>)}</Alert>
-      )}
-      {(p.management_warnings ?? []).map((w) => <p key={w} className="text-xs text-muted">{w}</p>)}
-      {(p.policy.warnings ?? []).map((w) => <p key={w} className="text-xs text-warn">{w}</p>)}
-      {p.config.mode !== "enforce" && !p.applied.enforced && <p className="text-xs text-muted">Set the mode to Enforce to apply this policy. Until then, Effective policy shows what it would do.</p>}
-      {p.config.mode !== "enforce" && p.applied.enforced && (
-        <Alert tone="warn">DROOL's last committed policy (revision {p.applied.revision}) is still enforced on this host. Changing the mode doesn't remove it:
-          use <strong>Remove DROOL policy</strong> to stop filtering, or switch back to Enforce to update it.</Alert>
-      )}
-      <div className="flex flex-wrap gap-2">
-        {canApply && (p.applied.rules_changed || !p.applied.enforced || p.applied.drift) && (
-          <Button variant="primary" onClick={() => setDialog("apply")}>{p.applied.enforced ? "Apply changes" : "Apply policy"}</Button>
-        )}
-        {canApply && p.applied.enforced && !p.applied.rules_changed && !p.applied.drift && <Button onClick={() => setDialog("apply")}>Apply again</Button>}
-        {can("firewall.write") && p.applied.enforced && !p.pending_transaction && <Button variant="ghost" onClick={() => setDialog("remove")}>Remove DROOL policy</Button>}
-      </div>
-      {dialog && <ApplyDialog hostIds={[p.host_id]} names={[host.name]} remove={dialog === "remove"}
-        changes={p.applied.enforced ? { added: p.changes_added, removed: p.changes_removed } : undefined} onClose={() => setDialog(null)} />}
-    </div>
-  );
-}
-
-function ExplainSection({ p }: { p: FwPlan }) {
-  // What the host runs decides the wording, not the mode: leaving Enforce
-  // keeps the last committed revision on the host, rules missing from the
-  // host enforce nothing, and the list is always the saved policy.
-  const inForce = p.applied.enforced && p.applied.drift !== "missing";
-  return (
-    <div className="space-y-2 text-sm">
-      <p className="text-muted">
-        {!inForce
-          ? "What this host's policy would allow and deny once enforced, and why. DROOL doesn't filter this host right now."
-          : p.applied.rules_changed
-            ? `What the saved policy allows and denies, and why. It isn't applied yet: the host still runs revision ${p.applied.revision}.`
-            : "What DROOL allows and denies on this host, and why."}
-        {" "}Rules are evaluated top to bottom: replies to allowed connections, the management path, denies, then allows.
-      </p>
-      <ExplainTable rows={p.explain} />
-    </div>
-  );
-}
-
+/** Observed connections on this host, with how the saved policy treats
+ * each of them (FlowTable, the same list as the host's Network page), so
+ * a person can look at one and start a rule from it without leaving the
+ * firewall page. Observing is never proof of what the firewall did. */
 function Observed({ p }: { p: FwPlan }) {
   const { can } = useAuth();
+  const net = useHostNetwork(p.host_id, can("network.read"));
   const sug = useFwSuggestions(p.host_id, can("network.read") && (p.config.mode === "guided" || p.config.mode === "enforce"));
   const [approve, setApprove] = useState<FwSuggestion | null>(null);
+  if (!can("network.read")) {
+    return <p className="text-sm text-muted" data-testid="fw-observed-denied">Viewing observed connections needs the network.read permission (operators, auditors and administrators). The policy above doesn&apos;t depend on it.</p>;
+  }
+  const hn = net.data;
   return (
-    <div className="space-y-3 text-sm">
-      <p className="text-muted">
-        {p.learning === "continuous" ? "The Shepherd records connections continuously."
-          : p.learning === "snapshot" ? "SSH hosts are never observed continuously: take a snapshot of the current connections."
-            : "Continuous collection is off for this host (Network Activity → Collection and enrichment)."}{" "}
-        Observed connections, with how this policy classifies each of them, are on this host&apos;s{" "}
-        <Link className="text-accent underline" to={`/hosts/${p.host_id}/network`}>Network Activity</Link> page.
-      </p>
+    <div className="space-y-3 text-sm" data-testid="fw-observed-tab">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="min-w-0 flex-1 basis-72 text-muted">
+          What DROOL saw on this host, with what the saved policy says about each connection. Seeing a connection isn&apos;t proof that the firewall allowed it.
+          Select one for its details; <strong className="font-medium text-fg">Create policy from observed connection…</strong> there adds a draft rule in the Firewall Designer,
+          in any mode: nothing is saved or applied until you do.
+        </p>
+        {hn && <CollectionActions hostId={p.host_id} hn={hn} />}
+      </div>
+      {net.error && <LoadError what="this host's observed connections" error={net.error} />}
+      {!hn && !net.error && <Loading what="this host's observed connections" />}
+      {hn && <CollectionDetail hn={hn} />}
       {(sug.data?.items ?? []).length > 0 && (
         <div className="rounded-ui border border-line p-3">
           <div className="mb-1 font-medium">Suggested policies</div>
@@ -287,6 +282,10 @@ function Observed({ p }: { p: FwPlan }) {
         </div>
       )}
       {approve && <ApproveSuggestion s={approve} onClose={() => setApprove(null)} />}
+      {!net.error && <HostConnections hostId={p.host_id} hn={hn} firewallLink={false} />}
+      <p className="text-xs text-muted">
+        More filters, other hosts and the map are in <Link className={plainLink} to={`/network?host=${encodeURIComponent(p.host_id)}`}>Network Activity</Link>.
+      </p>
     </div>
   );
 }

@@ -262,10 +262,18 @@ test("inspector: edge rules, host explain and simulation on the draft", async ()
 });
 
 test("emergency override needs explicit confirmation", async () => {
-  await api(page, "PUT", "/firewall/hosts/" + page.ids["web-1"], { mode: "enforce" });
+  // The test containers can't enforce, and the review offers to apply only
+  // where DROOL can: web-1's firewall state says it can (plain nftables, in
+  // Enforce). This checks the review's overrides; nothing is applied.
+  const real = (await api(page, "GET", "/firewall/hosts/" + page.ids["web-1"])).body;
+  const plan = { ...real, config: { ...real.config, mode: "enforce" }, transport: "ssh", pending_transaction: undefined,
+    eligibility: { supported: true, reasons: [], detected: ["nftables v1.0.9"] } };
+  await page.setRequestInterception(true);
+  page.on("request", (r) => (r.method() === "GET" && new URL(r.url()).pathname === "/api/v1/firewall/hosts/" + page.ids["web-1"]
+    ? r.respond({ status: 200, contentType: "application/json", body: JSON.stringify(plan) }) : r.continue()));
   // A host's firewall has its own page now (the host overview summarizes it).
   await page.goto(`${base}/hosts/${page.ids["web-1"]}/firewall`, { waitUntil: "networkidle0" });
-  await click(page, "button", "Apply policy");
+  await click(page, "button", "Review and apply policy…");
   await waitText(page, "Overrides (audited)");
   await click(page, "summary", "Overrides");
   await click(page, "label", "Emergency override");
@@ -278,7 +286,7 @@ test("emergency override needs explicit confirmation", async () => {
   assert.equal(await apply(), false);
   await shot(page, "override-confirm");
   await page.keyboard.press("Escape");
-  await api(page, "PUT", "/firewall/hosts/" + page.ids["web-1"], { mode: "off" });
+  await page.setRequestInterception(false);
 });
 
 test("layout persists; moving boxes doesn't change the policy", async () => {

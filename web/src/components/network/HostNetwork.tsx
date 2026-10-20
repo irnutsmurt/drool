@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useMutationState, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
@@ -30,67 +30,108 @@ const views: { id: string; label: string; f: NetFilter }[] = [
  * firewall policy says. */
 export function HostNetworkPanel({ hostId }: { hostId: string }) {
   const q = useHostNetwork(hostId);
-  const { can } = useAuth();
-  const qc = useQueryClient();
-  const [view, setView] = useState("all");
-  const snap = useMutation({
-    mutationFn: () => unwrap(api.POST("/hosts/{id}/network/snapshot", { params: { path: { id: hostId } } })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: nk.all }),
-  });
   const hn = q.data;
-  const filter = { host: [hostId], ...views.find((v) => v.id === view)!.f };
   return (
     <div className="grid gap-4">
-      <Card title="How this host is observed" actions={
-        <span className="flex flex-wrap items-center gap-2">
-          {hn && <CollectionBadge c={hn.collection} />}
-          {hn && hn.collection.mode !== "continuous" && can("network.snapshot") && (
-            <Button size="sm" onClick={() => snap.mutate()} disabled={snap.isPending}>{snap.isPending ? "Taking snapshot…" : "Take snapshot"}</Button>
-          )}
-        </span>
-      }>
+      <Card title="How this host is observed" actions={hn && <CollectionActions hostId={hostId} hn={hn} />}>
         <div className="space-y-3">
           {q.error && <Alert>{errorMessage(q.error)}</Alert>}
           {!hn && !q.error && <p className="text-sm text-muted">Loading…</p>}
-          {snap.error && <Alert>{errorMessage(snap.error)}</Alert>}
-          {snap.isSuccess && <Alert tone="ok">Snapshot taken: {snap.data.flows} connection group(s) open right now.</Alert>}
-          {hn && (
-            <p className="text-xs text-muted" data-testid="collection-detail">
-              {hn.collection.detail}
-              {hn.collection.reported_at && <> · last report {formatAgo(hn.collection.reported_at)}</>}
-              {hn.collection.snapshot_at && <> · last snapshot {formatAgo(hn.collection.snapshot_at)}</>}
-              {hn.collection.events_lost > 0 && <> · <span className="text-warn">⚠ some new-connection events were lost (counts may be low)</span></>}
-              {hn.collection.forwarded > 0 && <> · {hn.collection.forwarded} routed connection(s) through this host not shown (containers, routing)</>}
-              {noLookup(hn.enrichment_state, "country") && noLookup(hn.enrichment_state, "asn")
-                ? <> · country and network owner: not looked up ({noLookup(hn.enrichment_state, "country")}, {noLookup(hn.enrichment_state, "asn")})</>
-                : (noLookup(hn.enrichment_state, "country") || noLookup(hn.enrichment_state, "asn")) && <> · {noLookup(hn.enrichment_state, "country") ?? noLookup(hn.enrichment_state, "asn")}</>}
-            </p>
-          )}
+          {hn && <CollectionDetail hn={hn} />}
           {hn && <Listening hn={hn} />}
         </div>
       </Card>
       <Card title="Connections">
-        {hn && <FirewallLine hostId={hostId} fw={hn.firewall} />}
-        <div className="mb-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Show connections">
-          {views.map((v) => (
-            <button key={v.id} type="button" aria-pressed={view === v.id} onClick={() => setView(v.id)}
-              className={cx("rounded-full border px-2.5 py-0.5 text-xs", view === v.id ? "border-accent bg-accent text-accent-fg" : "border-line bg-surface hover:bg-surface-2")}>
-              {v.label}
-            </button>
-          ))}
-          {hn && <span className="ml-auto text-xs text-muted">{hn.counts.flows} total · {hn.counts.unclassified} not in policy · {hn.counts.new_external_24h} new external (24 h)</span>}
-        </div>
-        <FlowTable filter={filter} showHost={false} pageSize={25}
-          empty={hn?.collection.mode === "snapshot" && !hn.collection.snapshot_at ? "No snapshot taken yet. SSH hosts are observed only when you take a snapshot." : "No connections observed."} />
+        <HostConnections hostId={hostId} hn={hn} />
       </Card>
     </div>
+  );
+}
+
+/** How the host is observed (a badge), with Take snapshot where only
+ * snapshots are possible (SSH hosts) and the role may take one. The
+ * outcome of a snapshot shows below it (CollectionDetail). */
+export function CollectionActions({ hostId, hn }: { hostId: string; hn: NetHost }) {
+  const { can } = useAuth();
+  const snap = useSnapshot(hostId);
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <CollectionBadge c={hn.collection} />
+      {hn.collection.mode !== "continuous" && can("network.snapshot") && (
+        <Button size="sm" onClick={() => snap.mutate()} disabled={snap.isPending}>{snap.isPending ? "Taking snapshot…" : "Take snapshot"}</Button>
+      )}
+    </span>
+  );
+}
+
+const useSnapshot = (hostId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: ["network", "snapshot", hostId],
+    mutationFn: () => unwrap(api.POST("/hosts/{id}/network/snapshot", { params: { path: { id: hostId } } })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: nk.all }),
+  });
+};
+
+/** The collection's details: when it last reported (and whether that is
+ * stale: the server says), lost events, a snapshot's outcome. */
+export function CollectionDetail({ hn }: { hn: NetHost }) {
+  const snaps = useMutationState({ filters: { mutationKey: ["network", "snapshot", hn.host.id] }, select: (m) => m.state });
+  const snap = snaps[snaps.length - 1];
+  return (
+    <>
+      {snap?.status === "error" && <Alert>{errorMessage(snap.error)}</Alert>}
+      {snap?.status === "success" && <Alert tone="ok">Snapshot taken: {(snap.data as { flows: number }).flows} connection group(s) open right now.</Alert>}
+      {hn.collection.stale && (
+        <Alert tone="warn">
+          <span aria-hidden="true">⚠ </span>No report from the Shepherd since {formatAgo(hn.collection.reported_at)}: these connections may be out of date.
+        </Alert>
+      )}
+      <p className="text-xs text-muted" data-testid="collection-detail">
+        {hn.collection.detail}
+        {hn.collection.reported_at && <> · last report {formatAgo(hn.collection.reported_at)}</>}
+        {hn.collection.snapshot_at && <> · last snapshot {formatAgo(hn.collection.snapshot_at)}</>}
+        {hn.collection.events_lost > 0 && <> · <span className="text-warn">⚠ some new-connection events were lost (counts may be low)</span></>}
+        {hn.collection.forwarded > 0 && <> · {hn.collection.forwarded} routed connection(s) through this host not shown (containers, routing)</>}
+        {noLookup(hn.enrichment_state, "country") && noLookup(hn.enrichment_state, "asn")
+          ? <> · country and network owner: not looked up ({noLookup(hn.enrichment_state, "country")}, {noLookup(hn.enrichment_state, "asn")})</>
+          : (noLookup(hn.enrichment_state, "country") || noLookup(hn.enrichment_state, "asn")) && <> · {noLookup(hn.enrichment_state, "country") ?? noLookup(hn.enrichment_state, "asn")}</>}
+      </p>
+    </>
+  );
+}
+
+/** A host's observed connections: whether the policy they are judged
+ * against is in force there, the common views, and the list (each row
+ * opens its inspector). Shared by the host's Network page and its
+ * Firewall page's Observed connections. */
+export function HostConnections({ hostId, hn, firewallLink = true }: { hostId: string; hn?: NetHost; firewallLink?: boolean }) {
+  const [view, setView] = useState("all");
+  const filter = { host: [hostId], ...views.find((v) => v.id === view)!.f };
+  return (
+    <>
+      {hn && <FirewallLine hostId={hostId} fw={hn.firewall} link={firewallLink} />}
+      <div className="mb-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Show connections">
+        {views.map((v) => (
+          <button key={v.id} type="button" aria-pressed={view === v.id} onClick={() => setView(v.id)}
+            className={cx("rounded-full border px-2.5 py-0.5 text-xs", view === v.id ? "border-accent bg-accent text-accent-fg" : "border-line bg-surface hover:bg-surface-2")}>
+            {v.label}
+          </button>
+        ))}
+        {hn && <span className="ml-auto text-xs text-muted">{hn.counts.flows} total · {hn.counts.unclassified} not in policy · {hn.counts.new_external_24h} new external (24 h)</span>}
+      </div>
+      <FlowTable filter={filter} showHost={false} pageSize={25}
+        empty={hn?.collection.mode === "snapshot" && !hn.collection.snapshot_at ? "No snapshot taken yet. SSH hosts are observed only when you take a snapshot."
+          : hn?.collection.mode === "none" || (hn && !hn.collection.enabled && hn.collection.agent && !hn.collection.snapshot_at)
+            ? "No connections observed: collection is off for this host (Network Activity → Collection and enrichment)." : "No connections observed."} />
+    </>
   );
 }
 
 /** Whether the policy the connections are judged against is in force on
  * this host: where it isn't, their policy status is what it would do with
  * them, not what happened to them. */
-function FirewallLine({ hostId, fw }: { hostId: string; fw: NetHost["firewall"] }) {
+function FirewallLine({ hostId, fw, link }: { hostId: string; fw: NetHost["firewall"]; link: boolean }) {
   const { can } = useAuth();
   const text = fw.enforcement !== "enforced"
     ? `${enforcementText[fw.enforcement] ?? fw.enforcement}. A connection's policy status is what DROOL's policy would do with it, not what happened to it.`
@@ -102,7 +143,7 @@ function FirewallLine({ hostId, fw }: { hostId: string; fw: NetHost["firewall"] 
   return (
     <p className="mb-2 text-xs text-muted" data-testid="network-firewall">
       Firewall: {text}{fw.drift && fw.enforcement !== "drift" && " DROOL's rules are missing from the host (changed outside DROOL)."}
-      {can("firewall.read") && <> <Link className="text-accent underline" to={`/hosts/${hostId}/firewall`}>This host&apos;s firewall</Link></>}
+      {link && can("firewall.read") && <> <Link className="text-accent underline" to={`/hosts/${hostId}/firewall`}>This host&apos;s firewall</Link></>}
     </p>
   );
 }

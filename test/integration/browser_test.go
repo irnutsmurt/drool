@@ -83,7 +83,7 @@ func TestBrowser(t *testing.T) {
 	if d := os.Getenv("DROOL_E2E_SHOTS"); d != "" {
 		shots = d
 	}
-	files := []string{"addhost", "designer", "network", "monitoring", "alerts", "health", "automation", "desired", "navigation", "workspace", "accessibility", "packs", "reauth-dialog", "security", "shepherd-endpoint", "shepherd-updates", "firewall-nftables", "theme", "contrast"}
+	files := []string{"addhost", "designer", "network", "monitoring", "alerts", "health", "automation", "desired", "navigation", "workspace", "accessibility", "packs", "reauth-dialog", "security", "shepherd-endpoint", "shepherd-updates", "firewall-nftables", "firewall-workflow", "theme", "contrast"}
 	if only := os.Getenv("DROOL_E2E_FILES"); only != "" {
 		files = strings.Split(only, ",") // e.g. "automation,contrast" while iterating
 	}
@@ -253,6 +253,9 @@ func writeTestFlows(t *testing.T, addrs map[string]string) {
 	add("server-b", "in", "tcp", addrs["server-a"], 5432, "postgres", 910, -9*86400, -30)
 	add("web-1", "in", "tcp", "192.168.1.25", 22, "sshd", 7, -5*86400, -7200)
 	add("web-1", "in", "tcp", "100.101.7.9", 443, "nginx", 35, -2*86400, -100)
+	// Home Assistant talking to an ESPHome device's API (the firewall
+	// workflow's example rule: TCP 6053 from 192.168.3.132).
+	add("web-1", "in", "tcp", "192.168.3.132", 6053, "esphome", 1840, -6*86400, -20)
 	b, _ := json.Marshal(out)
 	if err := os.WriteFile(netflowsFile, b, 0o644); err != nil {
 		t.Fatal(err)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -29,6 +29,19 @@ export function FlowTable({ filter, showHost = true, empty, pageSize = 50 }: {
   const [cursors, setCursors] = useState<string[]>([]); // cursors of the pages before the current one
   const [cursor, setCursor] = useState<string | undefined>();
   const [open, setOpen] = useState<number>();
+  const box = useRef<HTMLDivElement | null>(null);
+  // Closing the details returns the focus to the row, looked up afresh: the
+  // rows may have been rebuilt while they were open (the window crossed the
+  // phone width, a tablet turned, the table no longer fit).
+  const close = () => {
+    const id = open;
+    setOpen(undefined);
+    requestAnimationFrame(() => {
+      const at = document.activeElement;
+      if (at && at !== document.body && at.id !== "main") return;
+      box.current?.querySelector<HTMLElement>(`[data-flow-id="${id}"] button`)?.focus();
+    });
+  };
   const key = JSON.stringify(filter) + size;
   useEffect(() => {
     setCursors([]);
@@ -42,7 +55,7 @@ export function FlowTable({ filter, showHost = true, empty, pageSize = 50 }: {
 
   if (q.error) return <Alert>{errorMessage(q.error)}</Alert>;
   return (
-    <div ref={fit.outer} className="space-y-2" data-testid="flow-table">
+    <div ref={(el) => { fit.outer(el); box.current = el; }} className="space-y-2" data-testid="flow-table">
       {phone || !fit.fits ? (
         <ul className="divide-y divide-line" aria-label="Observed connections">
           {rows.length === 0 ? <li className="px-3 py-8 text-center text-sm text-muted">{none}</li>
@@ -91,7 +104,7 @@ export function FlowTable({ filter, showHost = true, empty, pageSize = 50 }: {
           }}>Next</Button>
         </span>
       </div>
-      {open !== undefined && <FlowInspector id={open} onClose={() => setOpen(undefined)} />}
+      {open !== undefined && <FlowInspector id={open} onClose={close} />}
     </div>
   );
 }
