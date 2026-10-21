@@ -33,7 +33,9 @@ components, styles and text under `web/`, and the browser tests in `web/e2e/`.
 
 - **Product design and its principles:** [DESIGN.md](DESIGN.md). The UI principles are §2.5 and §2.7.
 - **What was built, milestone by milestone:** [ARCHITECTURE-ALPHA.md](ARCHITECTURE-ALPHA.md).
-- **The user guide:** `docs/wiki/`, published to the GitHub wiki. It is the canonical user documentation.
+- **The user guide:** `docs/wiki/`, the canonical user documentation. Keep it up to date with the implementation.
+  Publishing it to the GitHub wiki is frozen until the 1.0 release (`.github/workflows/wiki.yml`): don't publish or
+  edit the wiki, and don't re-enable the workflow, until the maintainer authorizes it.
 - **Release process:** [RELEASING.md](RELEASING.md).
 
 ## Checks

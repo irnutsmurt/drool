@@ -5,8 +5,8 @@ published: the maintainer's side of a release. Everything else has its own place
 
 - [README](README.md): the project's front door. What DROOL is, its development and release status,
   a quick start, supported platforms, major limitations, and links.
-- [The user guide](docs/wiki/Home.md), published as the GitHub wiki: the operator's side. Installing,
-  checking a release's files, upgrading, everyday use and troubleshooting.
+- [The user guide](docs/wiki/Home.md), published as the GitHub wiki (frozen until 1.0): the operator's
+  side. Installing, checking a release's files, upgrading, everyday use and troubleshooting.
 - [`ARCHITECTURE-ALPHA.md`](ARCHITECTURE-ALPHA.md): the implementation record and its technical
   decisions (§34 for releases).
 
@@ -260,6 +260,9 @@ official Shepherd release (*Shepherds → Updates* says *signed by the DROOL pro
       the logo and *Current status*) and the user guide's `docs-version` notes at the top of
       `docs/wiki/Home.md` and `docs/wiki/_Sidebar.md` name the stable release (until the first one they
       say "pre-1.0" and "development version"), and the install pages' "no release yet" notes are gone.
+- [ ] Wiki publishing resumes, only once the maintainer authorizes it for 1.0: it is frozen until then. Restore the
+      `push` trigger in `.github/workflows/wiki.yml`, run `gh workflow enable wiki.yml`, and publish after the docs
+      describe the release.
 - [ ] The pre-1.0 items in `ARCHITECTURE-ALPHA.md` §35 are settled: the Compose data volume's name is
       decided (#5), and the `internal/recovery` TestHostDecisions race is fixed (#6), not skipped.
 - [ ] Tag `vX.Y.Z-rc.N`, `make release`, every qualification layer above green on those artifacts.

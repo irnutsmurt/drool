@@ -2,13 +2,20 @@
 # wiki. The wiki is generated: edits made there are overwritten by the next
 # sync. Links in docs/wiki are written as "Page.md" so they also work when
 # browsing the repository; the wiki wants "Page", so they are rewritten here.
+#
+# Frozen until DROOL 1.0 (maintainer's decision, 2026-10-21): DROOL isn't
+# released, so the wiki isn't published while the guide changes. The workflow
+# is also disabled on GitHub (gh workflow disable wiki.yml). docs/wiki stays
+# the guide's source and is kept up to date. Publishing resumes only when the
+# maintainer authorizes it for the 1.0 release: restore the push trigger below
+# and run gh workflow enable wiki.yml (RELEASING.md, release checklist).
 name: wiki
 on:
-  push:
-    branches: [main]
-    paths:
-      - docs/wiki/**
-      - .github/workflows/wiki.yml
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - docs/wiki/**
+  #     - .github/workflows/wiki.yml
   workflow_dispatch:
 
 # Only this job writes, and only to the wiki (a separate repository).
