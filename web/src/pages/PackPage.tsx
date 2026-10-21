@@ -17,6 +17,7 @@ import { plainLink } from "@/components/ui/links";
 import { errorMessage } from "@/lib/format";
 import { ExpectedServicesCard } from "@/components/monitoring/ExpectedServices";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { InstallUpdatesDialog } from "@/components/jobs/InstallUpdatesDialog";
 
 /** One pack: its hosts, added and removed here after the pack exists (it can
  * be empty), and what the pack is used for. */
@@ -29,6 +30,7 @@ export function PackPage() {
   const { remove } = usePackMembership();
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [installing, setInstalling] = useState(false);
 
   const crumbs = [{ label: "Packs", to: "/groups" }];
   if (pack.error) return <><PageHeader crumbs={crumbs} title="Pack" /><LoadError what="the pack" error={pack.error} /></>;
@@ -49,13 +51,14 @@ export function PackPage() {
         actions={(
           <div className="flex flex-wrap gap-2">
             {run && <Button onClick={() => navigate(`/jobs/new?groups=${g.id}`)}>Run on this pack</Button>}
-            {run && <Button onClick={() => navigate(`/jobs/new?groups=${g.id}&op=system_update`)}>Install updates</Button>}
+            {run && <Button onClick={() => setInstalling(true)}>Install updates…</Button>}
             {addButton}
             {can("monitoring.read") && <GroupHealthButton groupId={g.id} name={g.name} />}
             {write && <Button variant="danger" onClick={() => setDeleting(true)}>Delete pack</Button>}
           </div>
         )} />
       {remove.error && <div className="mb-4"><Alert>{errorMessage(remove.error)}</Alert></div>}
+      {installing && <InstallUpdatesDialog targets={{ groups: [g.id] }} label={`Pack ${g.name}`} onClose={() => setInstalling(false)} />}
 
       <Card className="mb-4" title={`Hosts (${g.host_ids.length})`}>
         {g.host_ids.length === 0 ? (

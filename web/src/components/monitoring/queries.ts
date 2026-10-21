@@ -62,13 +62,14 @@ export function useHistory(id: string, range: string, series: string[]) {
   });
 }
 
-export function useServices(id: string, filter: string, all: boolean) {
+export function useServices(id: string, filter: string, all: boolean, enabled = true) {
   return useQuery({
     queryKey: monKeys.services(id, filter, all),
     queryFn: () => unwrap(api.GET("/hosts/{id}/monitoring/services", {
       params: { path: { id }, query: { filter: filter as "all", all } },
     })),
     ...live,
+    enabled,
   });
 }
 

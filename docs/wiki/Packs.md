@@ -72,7 +72,7 @@ The Pack's page then lists its hosts:
 | **Desired State: … · priority 0 — Change priority** | Which baselines apply to the Pack, and its priority when two Packs disagree ([Conflicts](Conflicts.md)) |
 | **Alerts** | Alerts of this Pack's hosts |
 | **Run on this pack** (the Pack's page header and the Packs page) | A new run with the Pack as its target ([Running a Command](Running-a-Command.md)) |
-| **Install updates** (the Pack's page header) | A new run that updates the Pack's hosts, with the recommended rollout for two or more hosts; you review it before it starts ([System Updates](System-Updates.md)) |
+| **Install updates…** (the Pack's page header) | The review of updating the Pack's hosts (each one's dry run, the recommended rollout for two or more), then the run, followed in place ([System Updates](System-Updates.md#install-updates-where-you-see-them)) |
 | **Network Activity** | Connections of this Pack's hosts |
 | **Baselines** | Desired State baselines assigned to the Pack |
 

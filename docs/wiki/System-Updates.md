@@ -14,11 +14,33 @@ the host afterwards when the update requires it.
   shows, under **Health now**, **Updates** *0 pending · checked 12 min ago*. DROOL checks every 6
   hours.
 
-## Steps
+## Install updates where you see them
 
-1. **Runs → New run → System update**, or **Install updates** on a host's page or a Pack's page
-   (the host or the Pack is already chosen as the target).
-2. Choose the **Mode**:
+**Install updates…** is wherever pending updates show: a host's header (in **Actions** on a phone),
+**Updates** on the host's **Overview**, a security-updates line under **Needs attention**, the
+**Hosts** list after selecting hosts, the Overview's **Updates and reboots** card, and a Pack's page.
+It opens one review:
+
+1. DROOL asks each host's package manager what would change (a dry run: nothing changes) and lists
+   it per host (*web-01 · apt · 2 to upgrade, 1 new*), with **Show packages**.
+2. It says what follows: *No host reboots* (or which do), and, for two or more hosts, the recommended
+   rollout (*1 canary host first, then batches of 5, up to 5 at a time, pause after 2 failures*). If a
+   host would remove other packages, it says so, and the run stops there unless you tick **Allow these
+   removals**.
+3. **Options** has the [mode](#modes-and-options), **Refresh package metadata first** and **Reboot
+   afterwards**, set as DROOL recommends: *Upgrade, refresh first, no reboot*.
+4. **Install updates on web-01** (or *on 3 hosts*) starts the ordinary system update run. Its
+   progress and each host's outcome show in the same dialog. You can close it: the run continues,
+   and **View the run** opens its page with the full output.
+
+To change the rollout, schedule the update or save it as a workflow, choose **open it in the run
+composer** in the review: it opens **Runs → New run → System update** with the same hosts.
+
+## Modes and options
+
+**Runs → New run → System update** has every option:
+
+1. Choose the **Mode**:
 
    | Mode | What it does |
    |---|---|
@@ -26,17 +48,17 @@ the host afterwards when the update requires it.
    | **Full upgrade** | Also installs or removes packages when an upgrade needs it (`apt-get full-upgrade`; the same as Upgrade on DNF). If anything would be removed, the job stops unless you allow it. |
    | **Security updates only** | Only security updates (`dnf upgrade --security`). **RHEL family and Fedora only**: Debian and Ubuntu hosts fail with *security-only updates are not supported on Debian/Ubuntu in this version*. |
 
-3. **Refresh package metadata first** is ticked by default (`apt-get update` / `dnf makecache`).
+2. **Refresh package metadata first** is ticked by default (`apt-get update` / `dnf makecache`).
    Leave it on, or the hosts update only to what they already knew about.
-4. **Reboot afterwards:** **Never**, **Only if the update requires it**, or **Always**.
-5. Choose the **Targets**. For two or more hosts, the **Rollout** starts as DROOL's recommended one
+3. **Reboot afterwards:** **Never**, **Only if the update requires it**, or **Always**.
+4. Choose the **Targets**. For two or more hosts, the **Rollout** starts as DROOL's recommended one
    (one host first, then batches): updates are exactly the kind of change you want to try on one host
    first ([Canary Hosts](Canary-Hosts.md)). **Change rollout…** adjusts it.
-6. Click **Preview changes**: a dry run per host listing *N to upgrade, N new, N to remove*. Nothing
+5. Click **Preview changes**: a dry run per host listing *N to upgrade, N new, N to remove*. Nothing
    is changed. The preview uses each host's current package lists; the run refreshes them first, so a
    few more updates may appear then. New removals would still stop the run unless allowed.
-7. If a host would remove packages, decide about **Allow these removals**.
-8. Click **Review: run on …**. DROOL's review repeats the mode, what the preview found, how the run
+6. If a host would remove packages, decide about **Allow these removals**.
+7. Click **Review: run on …**. DROOL's review repeats the mode, what the preview found, how the run
    rolls out, and whether hosts will reboot. Click **Start run on …**.
 
 ## What DROOL does on each host

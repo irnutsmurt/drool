@@ -26,6 +26,7 @@ import { RemoveHostDialog } from "../RemoveHostDialog";
 import { ReachabilityBadge, osLabel } from "../health";
 import { statusHelp } from "../statusHelp";
 import { hostPath, sectionOf, visibleHostSections, type HostSection } from "./sections";
+import { InstallUpdatesDialog } from "@/components/jobs/InstallUpdatesDialog";
 
 export interface HostWorkspace {
   host: Host;
@@ -108,7 +109,7 @@ function HostHeader({ h, crumbs }: { h: Host; crumbs: Crumb[] }) {
   const { can } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [dialog, setDialog] = useState<"test" | "maintenance" | "remove" | null>(null);
+  const [dialog, setDialog] = useState<"test" | "maintenance" | "remove" | "updates" | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const sshHost = h.management.ssh_configured;
   const needsKey = sshHost && (h.status === "pending_hostkey" || h.status === "hostkey_mismatch");
@@ -132,7 +133,8 @@ function HostHeader({ h, crumbs }: { h: Host; crumbs: Crumb[] }) {
 
   const items: MenuItem[] = [];
   // Phones show only the primary action and this menu.
-  if (canRun && managed) items.push({ label: "Install updates", to: `/jobs/new?hosts=${h.id}&op=system_update`, narrowOnly: true });
+  // Install updates is reviewed and followed here (InstallUpdatesDialog).
+  if (canRun && managed) items.push({ label: "Install updates…", onSelect: () => setDialog("updates"), narrowOnly: true });
   if (canRun && managed) items.push({ label: "Reboot…", hint: "Opens the run with a preview first", to: `/jobs/new?hosts=${h.id}&op=reboot` });
   if (canRun && managed && h.pinned_key && sshHost) {
     items.push({ label: refresh.isPending ? "Refreshing…" : "Refresh inventory", hint: "Collect facts and status now", disabled: refresh.isPending, onSelect: () => refresh.mutate() });
@@ -158,13 +160,14 @@ function HostHeader({ h, crumbs }: { h: Host; crumbs: Crumb[] }) {
           {canRun && sshHost && !usable && (
             <Button variant="primary" onClick={() => setDialog("test")} disabled={needsKey} title={needsKey ? "Approve the host key first (Overview)" : undefined}>Test connection</Button>
           )}
-          {canRun && managed && <Button className="max-sm:hidden" onClick={() => navigate(`/jobs/new?hosts=${h.id}&op=system_update`)}>Install updates</Button>}
+          {canRun && managed && <Button className="max-sm:hidden" onClick={() => setDialog("updates")}>Install updates…</Button>}
           {items.length > 0 && <MenuButton label="Actions" items={items} testId="host-actions" />}
         </div>
       </div>
       {refresh.error && <div className="mt-2"><Alert>{errorMessage(refresh.error)}</Alert></div>}
       {dialog === "test" && <TestConnectionDialog host={h} onClose={() => setDialog(null)} />}
       {dialog === "maintenance" && <MaintenanceDialog hostIds={[h.id]} onClose={() => setDialog(null)} />}
+      {dialog === "updates" && <InstallUpdatesDialog targets={{ hosts: [h.id] }} label={h.name} onClose={() => setDialog(null)} />}
       {dialog === "remove" && (
         <RemoveHostDialog hostId={h.id} hostName={h.name} onClose={() => setDialog(null)}
           onRemoved={() => {
@@ -246,7 +249,11 @@ function HostFacts({ h }: { h: Host }) {
  * section — a smaller header never hides them; outside the Overview, in
  * one line with the way to the details. */
 function HostNotices({ h, section }: { h: Host; section: HostSection }) {
+  const { can } = useAuth();
   const help = statusHelp(h);
+  // Access denied is fixed in the host's sign-in settings: one link there.
+  const editSignIn = h.status === "auth_failed" && can("hosts.write") && (
+    <Link className="underline underline-offset-2" to={hostPath(h.id, "management", "edit=1")} data-testid="edit-sign-in">Edit sign-in settings</Link>);
   const onOverview = section.key === "overview";
   const detail = h.status_detail ? ` (${h.status_detail})` : "";
   const overview = <Link className="underline underline-offset-2" to={`/hosts/${h.id}`}>Overview</Link>;
@@ -264,7 +271,7 @@ function HostNotices({ h, section }: { h: Host; section: HostSection }) {
         line = <>Unreachable: the last attempt couldn&apos;t connect{detail}. DROOL keeps checking by itself.</>;
         break;
       case "auth_failed":
-        line = <>Access denied: DROOL reached the host but couldn&apos;t sign in or use sudo{detail}. See {management}.</>;
+        line = <>Access denied: DROOL reached the host but couldn&apos;t sign in or use sudo{detail}. {editSignIn || <>See {management}.</>}</>;
         break;
       case "untested":
         line = <>Not tested yet: use Test connection (Actions) before working on this host.</>;
@@ -276,7 +283,7 @@ function HostNotices({ h, section }: { h: Host; section: HostSection }) {
   return (
     <div className="space-y-2 empty:hidden [&:not(:empty)]:mb-3" data-testid="host-notices">
       <HostReconciliationNotice hostId={h.id} />
-      {help && onOverview && !(h.status === "pending_hostkey" || h.status === "hostkey_mismatch") && <Alert tone={help.tone}>{help.text}</Alert>}
+      {help && onOverview && !(h.status === "pending_hostkey" || h.status === "hostkey_mismatch") && <Alert tone={help.tone}>{help.text}{editSignIn && <> {editSignIn}</>}</Alert>}
       {line && <Alert tone={help!.tone}>{line}</Alert>}
     </div>
   );

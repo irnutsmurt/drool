@@ -17,6 +17,7 @@ import { useFleet } from "@/components/monitoring/queries";
 import { HealthBadge } from "@/components/monitoring/Status";
 import { errorMessage } from "@/lib/format";
 import { emptyText } from "@/components/ui/States";
+import { InstallUpdatesDialog } from "@/components/jobs/InstallUpdatesDialog";
 
 export function HostsPage() {
   const { can } = useAuth();
@@ -39,6 +40,7 @@ export function HostsPage() {
   const [status, setStatus] = useState("");
   const [group, setGroup] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [installing, setInstalling] = useState(false);
   const navigate = useNavigate();
   const togglePick = (id: string) => setPicked((p) => {
     const n = new Set(p);
@@ -95,8 +97,13 @@ export function HostsPage() {
           <Button size="sm" variant="primary" onClick={() => navigate(`/jobs/new?hosts=${[...picked].join(",")}`)}>
             Run command on selected
           </Button>
+          <Button size="sm" onClick={() => setInstalling(true)}>Install updates…</Button>
           <Button size="sm" variant="ghost" onClick={() => setPicked(new Set())}>Clear</Button>
         </div>
+      )}
+      {installing && picked.size > 0 && (
+        <InstallUpdatesDialog targets={{ hosts: [...picked] }} onClose={() => setInstalling(false)}
+          label={picked.size === 1 ? (hosts.data?.items ?? []).find((h) => picked.has(h.id))?.name ?? "1 host" : `${picked.size} hosts`} />
       )}
       <Card>
         <Table<Host>

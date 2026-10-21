@@ -68,8 +68,12 @@ test("create an empty pack, then manage its hosts", async () => {
 
   // Like a host's header: the common runs in sight, reviewed before they
   // start (Scenario C: update a Pack).
-  await click(page, "main button", "Install updates");
-  await waitFor(page, async () => page.url().endsWith(`/jobs/new?groups=${packID}&op=system_update`), "New run for the pack");
+  // Install updates is reviewed in place; the run composer is one link away.
+  await click(page, "main button", "Install updates…");
+  await page.waitForSelector('[data-testid="install-updates"]');
+  await waitText(page, `Install updates on Pack ${name}?`);
+  await click(page, '[data-testid="install-updates"] a', "open it in the run composer");
+  await waitFor(page, async () => page.url().endsWith(`/jobs/new?op=system_update&groups=${packID}`), "New run for the pack");
   await waitText(page, "Review: run on 1 host");
   assert.match(await text(page), /System update/);
 

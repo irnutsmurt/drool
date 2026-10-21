@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { useHosts, useJobs, type Host } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
@@ -19,6 +19,7 @@ import { useDesiredSummary } from "@/components/desired/queries";
 import { useFwHosts } from "@/components/firewall/queries";
 import { SecurityNote } from "@/components/layout/AppShell";
 import { useSecurityItems } from "@/components/layout/security";
+import { InstallUpdatesDialog } from "@/components/jobs/InstallUpdatesDialog";
 
 type Tone = "ok" | "warn" | "danger";
 
@@ -293,6 +294,7 @@ function RunsCard() {
 /** Updates and reboots waiting across the fleet, with the way to act. */
 function UpdatesCard({ managed }: { managed: Host[] }) {
   const { can } = useAuth();
+  const [installing, setInstalling] = useState(false);
   const updatable = managed.filter((h) => (h.health?.updates_available ?? 0) > 0);
   const updates = total(managed, (h) => h.health?.updates_available);
   const security = total(managed, (h) => h.health?.security_updates);
@@ -310,7 +312,9 @@ function UpdatesCard({ managed }: { managed: Host[] }) {
             <>
               <b>{updates}</b> pending update{updates === 1 ? "" : "s"} on {plural(updatable.length, "host")}
               {security ? <span className="text-warn">, {security} security</span> : security === 0 ? ", none security" : ""}
-              {can("jobs.execute") && <> · <Link className={plainLink} to={`/jobs/new?op=system_update&hosts=${updatable.map((h) => h.id).join(",")}`}>Install updates…</Link></>}
+              {can("jobs.execute") && <> · <button type="button" className={plainLink} onClick={() => setInstalling(true)}>Install updates…</button></>}
+              {installing && <InstallUpdatesDialog targets={{ hosts: updatable.map((h) => h.id) }}
+                label={updatable.length === 1 ? updatable[0]!.name : plural(updatable.length, "host")} onClose={() => setInstalling(false)} />}
             </>
           )}
         </li>

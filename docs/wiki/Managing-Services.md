@@ -40,6 +40,20 @@ over SSH or through the Shepherd. When it's done, the dialog shows what DROOL fo
 afterwards, for example *Stop: done. DROOL checked on media-01: jellyfin.service is now inactive
 (dead), enabled at boot.*, and the Services tab refreshes.
 
+## From a service alert
+
+An open alert about a service offers what fixes it, where you read it: **Start backup.service…** for
+a failed or stopped service (**Restart …** when it runs but is in trouble, **Stop …** when it runs
+although it's expected to be stopped).
+
+- In **Alerts**, it's the first choice in the alert's **Actions…** panel. The confirmation and the
+  outcome show in that panel; **Back** returns to the other choices.
+- On the alert's own page, it's the main button.
+
+It's the same action as from the Services tab: you confirm first, it runs as an ordinary run, and
+DROOL then says what it found on the host. The alert resolves by itself once monitoring sees the
+service recover.
+
 ### The expected state stays as it is
 
 Stopping, disabling or starting a service never changes whether DROOL [monitors](Service-Monitoring.md#monitor) it or what it

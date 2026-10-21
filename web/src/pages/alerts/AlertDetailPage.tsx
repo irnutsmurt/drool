@@ -13,6 +13,7 @@ import { fmtTime } from "@/components/monitoring/format";
 import { useAcknowledge, useAlert, type AlertDetail, type Delivery } from "@/components/alerts/queries";
 import { MaintenanceDialog } from "@/components/alerts/MaintenanceDialog";
 import { IgnoreDialog } from "@/components/alerts/AlertActions";
+import { ServiceActionsDialog, useServiceFix } from "@/components/monitoring/ServiceActions";
 import { AlertSeverity, AlertStateBadge, alertMonitoringLink, categoryLabel, checkLabel, clearedBy, fmtDuration, NotificationBadge, resolutionWord, untilText } from "@/components/alerts/ui";
 
 const deliveryWord: Record<string, string> = { opening: "Opening", escalation: "Escalation", reminder: "Reminder", recovery: "Recovery", cleared: "Cleared (not a recovery)" };
@@ -21,6 +22,8 @@ export function AlertDetailPage() {
   const { id = "" } = useParams();
   const q = useAlert(id);
   const d = q.data;
+  const [fixing, setFixing] = useState(false);
+  const fix = useServiceFix(d?.alert.host_id ?? "", d?.alert.category === "services" ? d.alert.subject : undefined, d?.alert.check ?? "", !!d && d.alert.state !== "resolved");
   if (q.error) return <Notice>{errorMessage(q.error)}</Notice>;
   if (!d) return <p className="text-sm text-muted">Loading…</p>;
   const a = d.alert;
@@ -32,11 +35,15 @@ export function AlertDetailPage() {
         description={<><Link className="font-medium text-fg underline" to={`/hosts/${a.host_id}`}>{a.host_name}</Link> · {checkLabel[a.check] ?? a.check}{a.subject ? ` · ${a.subject}` : ""}</>}
         actions={
           <>
-            <Link to={`/hosts/${a.host_id}`} className={secondaryLink}>View host</Link>
+            {/* What fixes a service alert, where it is read (at most two
+                visible actions: View host stays one click away in the title). */}
+            {fix && <Button variant="primary" onClick={() => setFixing(true)} data-testid="alert-service-fix">{fix.label}</Button>}
+            {!fix && <Link to={`/hosts/${a.host_id}`} className={secondaryLink}>View host</Link>}
             <Link to={alertMonitoringLink(a).to} className={secondaryLink}>{alertMonitoringLink(a).label}</Link>
           </>
         }
       />
+      {fixing && fix && <ServiceActionsDialog hostId={a.host_id} hostName={a.host_name} unit={fix.unit} initial={fix.action} onClose={() => setFixing(false)} />}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <AlertSeverity severity={a.severity} />
         {a.peak_severity !== a.severity && <Badge>peaked at {a.peak_severity}</Badge>}

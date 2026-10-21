@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
@@ -28,6 +28,7 @@ import { LoadError, Loading } from "@/components/ui/States";
 import { cx } from "@/components/ui/cx";
 import { plainLink } from "@/components/ui/links";
 import { errorMessage, formatAgo, formatDateTime, formatUptime } from "@/lib/format";
+import { InstallUpdatesDialog } from "@/components/jobs/InstallUpdatesDialog";
 
 /** "View monitoring" and friends: the way from a summary to the section
  * that has the details. */
@@ -115,6 +116,8 @@ export function HostOverviewPage() {
 /** Updates, reboot and the last status check in one line: the things a
  * person acts on (Install updates, Reboot) without opening anything. */
 function StatusLine({ h }: { h: Host }) {
+  const { can } = useAuth();
+  const [installing, setInstalling] = useState(false);
   const s = h.health;
   if (!s) return <p className="text-sm text-muted">Status not checked yet: it is collected automatically every few minutes.</p>;
   return (
@@ -123,7 +126,11 @@ function StatusLine({ h }: { h: Host }) {
         <dt className="text-muted">Updates</dt>
         <dd>{s.updates_available == null ? <span className="text-muted">unknown (package cache not available yet)</span> : (
           <>{s.updates_available} pending{s.security_updates ? <span className="text-warn">, {s.security_updates} security</span> : ""}
-            <span className="text-muted"> · checked {formatAgo(s.updates_checked_at)}</span></>
+            <span className="text-muted"> · checked {formatAgo(s.updates_checked_at)}</span>
+            {s.updates_available > 0 && can("jobs.execute") && !h.jump_only && (
+              <> · <button type="button" className={plainLink} onClick={() => setInstalling(true)} data-testid="overview-install-updates">Install updates…</button></>
+            )}
+            {installing && <InstallUpdatesDialog targets={{ hosts: [h.id] }} label={h.name} onClose={() => setInstalling(false)} />}</>
         )}</dd>
       </div>
       <div className="flex flex-wrap gap-x-2">

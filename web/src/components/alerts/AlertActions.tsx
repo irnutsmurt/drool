@@ -13,6 +13,7 @@ import { plainLink, touchLink } from "@/components/ui/links";
 import { errorMessage } from "@/lib/format";
 import { fmtSince, fmtTime } from "@/components/monitoring/format";
 import { MaintenanceForm } from "./MaintenanceDialog";
+import { ServiceActionsDialog, useServiceFix } from "@/components/monitoring/ServiceActions";
 import { AlertSeverity, AlertStateBadge, MaintenanceNote, NotificationBadge, alertMonitoringLink, categoryLabel } from "./ui";
 import { alertKeys, useAcknowledge, type Alert } from "./queries";
 
@@ -58,10 +59,14 @@ function Choice({ title, help, onClick, disabled, note }: { title: string; help:
  * view. */
 export function AlertInspector({ a, onClose }: { a: Alert; onClose: () => void }) {
   const c = useCanAct(a);
-  const [step, setStep] = useState<"menu" | "ack" | "snooze" | "ignore">("menu");
+  const [step, setStep] = useState<"menu" | "ack" | "snooze" | "ignore" | "service">("menu");
   const back = () => setStep("menu");
-  const title = step === "ack" ? `Acknowledge: ${a.title}` : step === "snooze" ? `Snooze: ${a.title}` : step === "ignore" ? `Ignore: ${a.title}` : a.title;
   const open = a.state !== "resolved";
+  // A service alert offers what fixes it (start, restart or stop the unit),
+  // reviewed and followed in this panel.
+  const fix = useServiceFix(a.host_id, a.category === "services" ? a.subject : undefined, a.check, open);
+  const title = step === "ack" ? `Acknowledge: ${a.title}` : step === "snooze" ? `Snooze: ${a.title}` : step === "ignore" ? `Ignore: ${a.title}`
+    : step === "service" && fix ? `${fix.label.replace(/…$/, "")} on ${a.host_name}` : a.title;
   return (
     <Inspector title={title} onClose={onClose} onBack={step === "menu" ? undefined : back} testId="alert-inspector"
       subtitle={<span className="inline-flex flex-wrap items-center gap-2"><AlertSeverity severity={a.severity} /><AlertStateBadge a={a} /><span>{a.host_name}</span></span>}>
@@ -69,6 +74,7 @@ export function AlertInspector({ a, onClose }: { a: Alert; onClose: () => void }
       {step === "ack" ? <AcknowledgeForm a={a} onBack={back} onClose={onClose} onDone={onClose} />
         : step === "snooze" ? <MaintenanceForm hostIds={[a.host_id]} defaultReason={`Snoozed: ${a.title}`} onClose={back} onDone={onClose} cancelLabel="Back" />
           : step === "ignore" ? <IgnoreForm a={a} onBack={back} onClose={onClose} />
+            : step === "service" && fix ? <ServiceActionsDialog hostId={a.host_id} hostName={a.host_name} unit={fix.unit} initial={fix.action} inline onClose={back} />
             : (
               <div className="space-y-5 text-sm">
                 <dl className="grid grid-cols-[minmax(6.5rem,8rem)_1fr] gap-y-1.5" data-testid="alert-summary">
@@ -84,6 +90,10 @@ export function AlertInspector({ a, onClose }: { a: Alert; onClose: () => void }
                   <section data-testid="alert-actions" aria-label="Deal with it">
                     <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Deal with it</h3>
                     <ul className="space-y-2" aria-label="Actions">
+                      {fix && (
+                        <Choice title={fix.label} onClick={() => setStep("service")}
+                          help={<>Fix it on {a.host_name}: you confirm first, then DROOL checks the unit again and says what it finds. The alert resolves when monitoring sees it recover.</>} />
+                      )}
                       {a.state === "active" && (
                         <Choice title="Acknowledge…" disabled={!c.ack} onClick={() => setStep("ack")}
                           help="You've seen it: no more reminders. It stays open until the condition recovers." />

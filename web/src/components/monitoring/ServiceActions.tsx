@@ -11,7 +11,7 @@ import { plainLink } from "@/components/ui/links";
 import { errorMessage } from "@/lib/format";
 import { useHostHealth } from "@/components/health/queries";
 import { SubjectHealthDialog } from "@/components/health/HostHealth";
-import { type MonService } from "./queries";
+import { useServices, type MonService } from "./queries";
 
 type Action = MonService["actions"][number];
 
@@ -33,15 +33,22 @@ const activeJob = (s?: string) => s === "pending" || s === "running" || s === "p
 const stops = (a: Action) => a === "stop" || a === "disable_stop";
 const starts = (a: Action) => a === "start" || a === "enable_start" || a === "restart";
 
-/** Running a service action from a host's Services view: the actions that
- * make sense for the unit as it is (the server says which), what each does,
- * a warning when it goes against the unit's expected state (which DROOL
- * never changes because a unit was stopped or started), the run itself, and
- * the state DROOL verified on the host afterwards. */
-export function ServiceActionsDialog({ hostId, hostName, unit, onClose }: { hostId: string; hostName: string; unit: MonService; onClose: () => void }) {
+/** Running a service action from a host's Services view, or from a service
+ * alert: the actions that make sense for the unit as it is (the server says
+ * which), what each does, a warning when it goes against the unit's
+ * expected state (which DROOL never changes because a unit was stopped or
+ * started), the run itself, and the state DROOL verified on the host
+ * afterwards. initial opens on that action's confirmation (Back shows the
+ * others); inline renders it as a step of an inspector instead of a dialog. */
+export function ServiceActionsDialog({ hostId, hostName, unit, initial, inline, onClose }: {
+  hostId: string; hostName: string; unit: MonService; initial?: Action; inline?: boolean; onClose: () => void;
+}) {
   const qc = useQueryClient();
   const { can } = useAuth();
-  const [picked, setPicked] = useState<Action | null>(null);
+  const [picked, setPicked] = useState<Action | null>(initial && unit.actions.includes(initial) ? initial : null);
+  const frame = (t: string, body: React.ReactNode) => (inline
+    ? <section aria-label={t} className="space-y-3"><h3 className="font-semibold">{t}</h3>{body}</section>
+    : <Dialog title={t} onClose={onClose}>{body}</Dialog>);
   const [jobId, setJobId] = useState<string>();
   const offered = order.filter((a) => unit.actions.includes(a));
   const run = useMutation({
@@ -107,8 +114,7 @@ export function ServiceActionsDialog({ hostId, hostName, unit, onClose }: { host
     const a = picked!;
     const leftOff = stops(a) && unit.expected === "running";
     const leftOn = starts(a) && unit.expected === "stopped";
-    return (
-      <Dialog title={title} onClose={onClose}>
+    return frame(title, (
         <div className="space-y-4 text-sm" data-testid="service-action">
           {!done || !d ? (
             <p>{actions[a].doing} {unit.name}, then checking on the host that it worked…</p>
@@ -137,15 +143,13 @@ export function ServiceActionsDialog({ hostId, hostName, unit, onClose }: { host
             <Button variant="primary" onClick={onClose} data-autofocus>{done ? "Done" : "Close"}</Button>
           </div>
         </div>
-      </Dialog>
-    );
+    ));
   }
 
   if (picked) {
     const x = actions[picked];
     const w = warning(picked);
-    return (
-      <Dialog title={`${x.label} ${title}?`} onClose={onClose}>
+    return frame(`${x.label} ${title}?`, (
         <div className="space-y-4 text-sm" data-testid="service-action">
           <p>{x.what} Afterwards DROOL asks the host again and reports what it finds, not what systemctl answered.</p>
           {w && <Alert tone="warn">{w}</Alert>}
@@ -157,12 +161,10 @@ export function ServiceActionsDialog({ hostId, hostName, unit, onClose }: { host
             </Button>
           </div>
         </div>
-      </Dialog>
-    );
+    ));
   }
 
-  return (
-    <Dialog title={title} onClose={onClose}>
+  return frame(title, (
       <div className="space-y-4 text-sm" data-testid="service-action">
         <dl className="grid grid-cols-[minmax(6rem,8rem)_1fr] gap-y-1">
           <dt className="text-muted">Now</dt><dd>{unit.active}{unit.sub ? ` (${unit.sub})` : ""}</dd>
@@ -182,10 +184,24 @@ export function ServiceActionsDialog({ hostId, hostName, unit, onClose }: { host
           </ul>
         )}
         {unit.action_note && <p className="text-xs text-muted" data-testid="action-note">{unit.action_note}</p>}
-        <div className="flex justify-end"><Button onClick={onClose}>Close</Button></div>
+        <div className="flex justify-end"><Button onClick={onClose}>{inline ? "Back" : "Close"}</Button></div>
       </div>
-    </Dialog>
-  );
+  ));
+}
+
+/** The action a service alert calls for, on its unit as it is now: stop a
+ * unit that runs unexpectedly, otherwise start one that isn't running, or
+ * restart one that runs but is in trouble (null: none applies, the unit
+ * isn't known, or the person may not run jobs). */
+export function useServiceFix(hostId: string, unitName: string | undefined, check: string, enabled = true) {
+  const { can } = useAuth();
+  const ok = enabled && !!unitName && can("jobs.execute");
+  const services = useServices(hostId, "all", true, ok);
+  const unit = ok ? (services.data?.units ?? []).find((u) => u.name === unitName) : undefined;
+  if (!unit) return null;
+  const action: Action | undefined = check === "service_unexpected" ? (unit.actions.includes("stop") ? "stop" : undefined)
+    : unit.actions.includes("start") ? "start" : unit.actions.includes("restart") ? "restart" : undefined;
+  return action ? { unit, action, label: `${actions[action].label} ${unit.name}…` } : null;
 }
 
 type Expected = "running" | "stopped" | "ignored";

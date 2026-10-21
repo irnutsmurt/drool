@@ -14,6 +14,7 @@ in a panel beside the list, with all three; the alert's page has them too (**Ack
 |---|---|
 | *I've seen it, I'm on it* | **Acknowledge…** (this page): no more reminders |
 | *Not now* (planned work, a reboot) | **Snooze…**: [maintenance](Maintenance-Mode.md) for the alert's host, until a time you choose. No notifications meanwhile; what's still wrong when it ends is notified then |
+| *Fix it* (a service) | **Start backup.service…** (or **Restart …**, **Stop …**): for an alert about a service, the action that fixes it, confirmed and followed in the same panel ([Managing Services](Managing-Services.md#from-a-service-alert)). The alert resolves once monitoring sees the service recover |
 | *This is on purpose* | **Ignore…**: change the setting behind it, for that host only. For a service: ignore it on the host, or expect the state it's in ([Service Monitoring](Service-Monitoring.md#customize-monitoring-the-expected-state)); for anything else: turn that check off for that disk, filesystem or sensor, or for the host ([Health Overrides](Health-Overrides.md)). DROOL says exactly what changes and where it's undone. The alert closes as *cleared by configuration*, not as a recovery, and nothing alerts later |
 
 ## Before you start

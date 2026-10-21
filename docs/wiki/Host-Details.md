@@ -28,13 +28,13 @@ The header is the same in every section of the host:
 
   All the words are explained in [Status Meanings](Status-Meanings.md#host-statuses). When something is
   wrong with the connection, a coloured note under the header says what it means and what to do.
-- **Buttons** (what you see depends on your role): **Run command**, **Install updates**, and
+- **Buttons** (what you see depends on your role): **Run command**, **Install updates…**, and
   **Actions**, a menu with the rest:
 
   | Button | What it does |
   |---|---|
   | **Run command** | Opens a new run with this host already selected ([Running a Command](Running-a-Command.md)). A host that doesn't work yet shows **Test connection** here instead |
-  | **Install updates** | A new run for a system update of this host ([System Updates](System-Updates.md)). On a phone it's under **Actions** |
+  | **Install updates…** | The review of a system update of this host (its dry run, what follows), then the run, followed in place ([System Updates](System-Updates.md#install-updates-where-you-see-them)). On a phone it's under **Actions** |
   | **Actions → Reboot…** | A new run that reboots this host and waits for it ([Rebooting Hosts](Rebooting-Hosts.md)) |
   | **Actions → Refresh inventory** | Collects inventory and status now instead of at the next scheduled check |
   | **Actions → Test connection** | The step-by-step connection test ([Testing a Connection](Testing-a-Connection.md)) |

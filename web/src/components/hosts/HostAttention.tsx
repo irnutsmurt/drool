@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { Host } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { cx } from "@/components/ui/cx";
 import { plainLink } from "@/components/ui/links";
 import { attentionReasons } from "./health";
+import { InstallUpdatesDialog } from "@/components/jobs/InstallUpdatesDialog";
 
 interface Attention {
   key: string;
@@ -17,6 +18,8 @@ interface Attention {
   text: ReactNode;
   to?: string;
   action?: string;
+  /** An action done here (a dialog) instead of a link. */
+  onAct?: () => void;
 }
 
 /** What needs a person on this host, across areas, most serious first —
@@ -27,13 +30,14 @@ export function HostAttention({ h, hideStatus }: { h: Host; hideStatus: boolean 
   const desired = useDesiredHost(h.id, can("desired.read"));
   const fw = useFwHost(h.id, can("firewall.read"));
   const agent = useHostAgent(h.id);
+  const [installing, setInstalling] = useState(false);
   const items: Attention[] = [];
   const status = new Set(["host key changed", "access denied", "needs host key approval", "offline"]);
 
   for (const r of attentionReasons(h)) {
     if (hideStatus && status.has(r)) continue;
     if (/security update/.test(r)) {
-      items.push({ key: r, tone: "warn", text: r, to: can("jobs.execute") ? `/jobs/new?hosts=${h.id}&op=system_update` : undefined, action: "Install updates" });
+      items.push({ key: r, tone: "warn", text: r, onAct: can("jobs.execute") ? () => setInstalling(true) : undefined, action: "Install updates…" });
     } else if (r === "reboot required") {
       items.push({ key: r, tone: "warn", text: "Reboot required", to: can("jobs.execute") ? `/jobs/new?hosts=${h.id}&op=reboot` : undefined, action: "Reboot" });
     } else if (/full$/.test(r)) {
@@ -89,9 +93,11 @@ export function HostAttention({ h, hideStatus }: { h: Host; hideStatus: boolean 
               <span aria-hidden="true">{x.tone === "danger" ? "✕ " : "⚠ "}</span>{x.text}
             </span>
             {x.to && <Link className={plainLink} to={x.to}>{x.action}</Link>}
+            {x.onAct && <button type="button" className={plainLink} onClick={x.onAct}>{x.action}</button>}
           </li>
         ))}
       </ul>
+      {installing && <InstallUpdatesDialog targets={{ hosts: [h.id] }} label={h.name} onClose={() => setInstalling(false)} />}
       {loading && <p className="mt-2 text-xs text-muted">Still checking some areas…</p>}
     </Card>
   );
