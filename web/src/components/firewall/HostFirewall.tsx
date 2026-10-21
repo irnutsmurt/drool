@@ -13,7 +13,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { errorMessage, formatAgo } from "@/lib/format";
 import { modeInfo, PolicyEditor, statusLabels, TxList } from "./parts";
 import { ApplyDialog } from "./ApplyDialog";
-import { applyBlocked, needsApply, PolicyStatus, ResolvedPolicy } from "./HostPolicy";
+import { applyBlocked, installsNftables, needsApply, PolicyStatus, ResolvedPolicy } from "./HostPolicy";
 import { InstallNftables } from "./InstallNftables";
 import { CollectionActions, CollectionDetail, HostConnections } from "@/components/network/HostNetwork";
 import { nk, useHostNetwork } from "@/components/network/queries";
@@ -131,7 +131,7 @@ function ModeForm({ p, onReview }: { p: FwPlan; onReview: () => void }) {
   // it — the review, with Enforce chosen, switches the mode as part of
   // applying (set_enforce_hosts).
   const toEnforce = can("firewall.write") && dirty && mode === "enforce" && p.config.mode !== "enforce";
-  const reviewInstead = toEnforce && onlyMode && needsApply(p) && !applyBlocked(p);
+  const reviewInstead = toEnforce && onlyMode && needsApply(p) && (!applyBlocked(p) || installsNftables(p));
   return (
     <div className="space-y-2 text-sm">
       <Field label="Mode" hint={modeInfo[mode]?.text}>

@@ -6210,6 +6210,8 @@ export interface components {
             checked: boolean;
             supported: boolean | null;
             reason?: string;
+            /** @description The only thing keeping DROOL from enforcing on this host is that nftables isn't installed, which DROOL can install with an ordinary package run (dry run first, confirmed). The review of an apply offers it. */
+            needs_nftables: boolean;
             enforced: boolean;
             revision: number;
             in_sync: boolean;

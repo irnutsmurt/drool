@@ -29,6 +29,8 @@ export function useDesigner() {
   const [yamlEditing, setYamlEditing] = useState(false); // the YAML text holds user edits
   const [yamlBroken, setYamlBroken] = useState(false); // the YAML text doesn't parse
   const [check, setCheck] = useState<CheckResult | null>(null);
+  // The draft the check describes: a save waits until it is the draft.
+  const [checkedFor, setCheckedFor] = useState<Doc | null>(null);
   const [checking, setChecking] = useState(false);
   const seq = useRef(0);
   const source = useRef<"model" | "yaml">("model");
@@ -72,6 +74,7 @@ export function useDesigner() {
         const res = await unwrap(api.POST("/firewall/document/check", { body: { document: draft as Schemas["FwDocument"] } }));
         if (n !== seq.current) return;
         setCheck(res);
+        setCheckedFor(draft);
         setYamlText(res.yaml);
         setYamlBroken(false);
       } finally {
@@ -97,10 +100,12 @@ export function useDesigner() {
         const parsed = res.yaml !== "";
         setYamlBroken(!parsed);
         if (parsed) {
+          const doc = res.document as Doc;
           setDraftState((cur) => {
             if (cur) setPast((p) => [...p.slice(-49), cur]);
-            return res.document as Doc;
+            return doc;
           });
+          setCheckedFor(doc);
         }
       } finally {
         if (n === seq.current) setChecking(false);
@@ -161,6 +166,8 @@ export function useDesigner() {
     edit, undo, canUndo: past.length > 0, discard,
     yamlText, editYAML, normalizeYAML, yamlEditing, yamlBroken,
     check, checking, dirty, staleBase, base, management,
+    /** The check describes the current draft (no edit is waiting for it). */
+    checkCurrent: !checking && !!draft && checkedFor === draft,
     save,
     layout: layout.data ?? {},
     saveLayout: saveLayout.mutate,

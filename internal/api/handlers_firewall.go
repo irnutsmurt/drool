@@ -366,22 +366,25 @@ func (s *Server) handleDeleteFirewallPolicy(w http.ResponseWriter, r *http.Reque
 // --- hosts ---
 
 type fwHostSummary struct {
-	HostID      string `json:"host_id"`
-	HostName    string `json:"host_name"`
-	Mode        string `json:"mode"`
-	Outbound    string `json:"outbound"`
-	Transport   string `json:"transport"`
-	Learning    string `json:"learning"`
-	Checked     bool   `json:"checked"`
-	Supported   *bool  `json:"supported"`
-	Reason      string `json:"reason,omitempty"`
-	Enforced    bool   `json:"enforced"`
-	Revision    int64  `json:"revision"`
-	InSync      bool   `json:"in_sync"`
-	Status      string `json:"status"` // not_enforced | in_sync | changes_pending | sets_pending | drift | pending_transaction | conflicts
-	Drift       string `json:"drift,omitempty"`
-	Conflicts   int    `json:"conflicts"`
-	PendingTxID string `json:"pending_transaction_id,omitempty"`
+	HostID    string `json:"host_id"`
+	HostName  string `json:"host_name"`
+	Mode      string `json:"mode"`
+	Outbound  string `json:"outbound"`
+	Transport string `json:"transport"`
+	Learning  string `json:"learning"`
+	Checked   bool   `json:"checked"`
+	Supported *bool  `json:"supported"`
+	Reason    string `json:"reason,omitempty"`
+	// NeedsNftables: the only thing keeping DROOL from enforcing here is
+	// that nftables isn't installed, which DROOL can install.
+	NeedsNftables bool   `json:"needs_nftables"`
+	Enforced      bool   `json:"enforced"`
+	Revision      int64  `json:"revision"`
+	InSync        bool   `json:"in_sync"`
+	Status        string `json:"status"` // not_enforced | in_sync | changes_pending | sets_pending | drift | pending_transaction | conflicts
+	Drift         string `json:"drift,omitempty"`
+	Conflicts     int    `json:"conflicts"`
+	PendingTxID   string `json:"pending_transaction_id,omitempty"`
 }
 
 func summarize(p *fwsvc.Plan) fwHostSummary {
@@ -394,6 +397,7 @@ func summarize(p *fwsvc.Plan) fwHostSummary {
 		if len(p.Eligibility.Reasons) > 0 {
 			out.Reason = p.Eligibility.Reasons[0]
 		}
+		out.NeedsNftables = !sup && p.Env != nil && p.Env.Nft == "" && len(p.Eligibility.Reasons) == 1
 	}
 	switch {
 	case p.Pending != nil:

@@ -40,9 +40,16 @@ export const needsApply = (p: FwPlan) => !p.applied.enforced || p.applied.rules_
  * use the audited emergency override. */
 export function applyBlocked(p: FwPlan): string | null {
   if (p.pending_transaction) return `a firewall transaction (${p.pending_transaction.id}) is still ${p.pending_transaction.state} on this host`;
+  if (p.summary.needs_nftables) return "nftables isn't installed on this host yet";
   if (p.eligibility && !p.eligibility.supported) return `DROOL can't enforce on this host: ${(p.eligibility.reasons ?? []).join("; ") || "the environment check refused it"}`;
   if (p.transport === "none" || p.transport === "blocked") return "DROOL has no management path to this host right now";
   return null;
+}
+
+/** The review can install nftables first: it is the only thing keeping
+ * DROOL from enforcing here, and nothing else refuses applying. */
+export function installsNftables(p: FwPlan): boolean {
+  return p.summary.needs_nftables && !p.pending_transaction && p.transport !== "none" && p.transport !== "blocked";
 }
 
 /** The host's policy state in one line: what is in force, and what the
@@ -100,7 +107,8 @@ export function PolicyStatus({ p, onShowObserved, onApply, onRemove }: {
   // One obvious next action: applying, when there is something to apply,
   // nothing refuses it and the policy has rules for this host; otherwise
   // what fixes it (the Designer), with the review a secondary step.
-  const review = write && !blocked && (needsApply(p) || a.enforced);
+  const installable = installsNftables(p);
+  const review = write && (!blocked || installable) && (needsApply(p) || a.enforced);
   const primary = review && needsApply(p) && conflicts.length === 0 && names.length > 0;
   const label = !needsApply(p) ? "Apply again…" : !a.enforced ? "Review and apply policy…" : a.drift ? "Review and apply again…" : "Review and apply changes…";
   return (
@@ -121,7 +129,11 @@ export function PolicyStatus({ p, onShowObserved, onApply, onRemove }: {
           <dt className="font-medium">Observed traffic</dt>
           <dd data-testid="fw-observed"><ObservedLine hostId={p.host_id} onShow={onShowObserved} /></dd>
         </dl>
-        {blocked && !(p.pending_transaction) && <Alert tone="warn">Applying isn&apos;t possible right now: {blocked}.{p.eligibility && !p.eligibility.supported && " See Mode and environment, below."}</Alert>}
+        {blocked && !installable && !(p.pending_transaction) && <Alert tone="warn">Applying isn&apos;t possible right now: {blocked}.{p.eligibility && !p.eligibility.supported && " See Mode and environment, below."}</Alert>}
+        {installable && (
+          <Alert tone="warn"><span data-testid="fw-needs-nftables">nftables isn&apos;t installed on this host, so DROOL can&apos;t enforce here yet.{" "}
+            {review ? <>{label} offers to install it first: you see what installing involves before anything changes.</> : "Install nftables… is under Mode and environment, below."}</span></Alert>
+        )}
         {conflicts.length > 0 && (
           <Alert><strong>Applying is refused: a rule would cut DROOL off from this host.</strong>
             {conflicts.map((c) => <span key={c.message} className="block">• {c.message}</span>)}

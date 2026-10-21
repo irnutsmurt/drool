@@ -86,6 +86,17 @@ async function drag(fromRef, toRef) {
   await page.mouse.up();
 }
 
+/** Chooses in one of the rule builder's pickers by typing and pressing
+ * Enter on the highlighted match. */
+async function pick(testId, query, label) {
+  const sel = `[data-testid="${testId}"]`;
+  await page.click(`${sel} input[role="combobox"]`);
+  await page.type(`${sel} input[role="combobox"]`, query);
+  await waitFor(page, () => page.$eval(`${sel} [role="option"][aria-selected="true"]`, (o, l) => o.innerText.includes(l), label).catch(() => false), `option ${label}`);
+  await page.keyboard.press("Enter");
+  await waitFor(page, () => page.$eval(`${sel} ul`, (u, l) => u.innerText.includes(l), label).catch(() => false), `chosen ${label}`);
+}
+
 /** Replaces the YAML text the way a paste would. */
 async function setYAML(s) {
   const ta = await page.$('textarea[aria-label="Firewall policy as YAML"]');
@@ -109,30 +120,27 @@ test("Topology → canonical model → Rules and YAML", async () => {
   const dlg = await page.$eval('[role="dialog"]', (d) => d.innerText);
   assert.match(dlg, /Source[\s\S]*server-a/);
   assert.match(dlg, /Destination[\s\S]*server-b/);
-  await page.select('select[aria-label="Service"]', "__custom");
-  await page.select('select[aria-label="Protocol"]', "tcp");
-  await page.type('input[aria-label="Port"]', "8812");
-  await page.type('input[aria-label="Custom service name"]', "app-8812");
-  await click(page, "button", "Add service");
-  await waitText(page, "TCP 8812");
+  // A port typed into the service search becomes a custom service.
+  await pick("rule-service", "8812", "TCP 8812");
+  await waitFor(page, async () => /Allows tcp-8812 \(TCP 8812\) from server-a to server-b\./.test(await page.$eval('[data-testid="rule-summary"]', (e) => e.innerText)), "the rule in words");
   await shot(page, "edge-editor");
-  await click(page, "button", "Add rule");
+  await click(page, "button", "Add to draft");
   await waitStatus("Unsaved changes");
-  await waitFor(page, async () => (await edgeLabels()).some((l) => l.includes("app-8812 (TCP 8812)")), "edge label (with the new custom service's port)");
+  await waitFor(page, async () => (await edgeLabels()).some((l) => l.includes("tcp-8812 (TCP 8812)")), "edge label (with the new custom service's port)");
   await shot(page, "topology-new-edge");
 
   await view("YAML");
   const y = await yamlValue();
-  assert.match(y, /app-8812:\n\s+protocol: tcp\n\s+port: 8812/);
-  assert.match(y, /- name: server-a-to-server-b\n\s+from: server-a\n\s+to: server-b\n\s+allow:\n\s+- app-8812/);
+  assert.match(y, /tcp-8812:\n\s+protocol: tcp\n\s+port: 8812/);
+  assert.match(y, /- name: allow-tcp-8812-server-a-to-server-b\n\s+from: server-a\n\s+to: server-b\n\s+allow:\n\s+- tcp-8812/);
   await view("Rules");
   const rules = await text(page);
-  assert.match(rules, /server-a-to-server-b[\s\S]*Allow[\s\S]*server-a[\s\S]*server-b[\s\S]*app-8812 \(TCP 8812\)/);
+  assert.match(rules, /allow-tcp-8812-server-a-to-server-b[\s\S]*Allow[\s\S]*server-a[\s\S]*server-b[\s\S]*tcp-8812 \(TCP 8812\)/);
 
   await click(page, "button", "Save policy");
   await waitStatus("Saved");
   const doc = (await api(page, "GET", "/firewall/document")).body.document;
-  assert.deepEqual(doc.policy.at(-1), { name: "server-a-to-server-b", description: "", enabled: true, action: "allow", from: ["host:server-a"], to: ["host:server-b"], services: ["app-8812"] });
+  assert.deepEqual(doc.policy.at(-1), { name: "allow-tcp-8812-server-a-to-server-b", description: "", enabled: true, action: "allow", from: ["host:server-a"], to: ["host:server-b"], services: ["tcp-8812"] });
   assert.deepEqual(page.errors, []);
 });
 
@@ -165,27 +173,43 @@ test("Rules (keyboard only) → canonical model → Topology", async () => {
   await openDesigner("rules");
   await tabTo(page, () => document.activeElement?.textContent === "New rule", "New rule button");
   await page.keyboard.press("Enter");
-  await waitText(page, "Destination — who receives it");
-  // The dialog focuses the name field.
-  await page.keyboard.type("kbd-https");
-  await tabTo(page, () => document.activeElement?.getAttribute("aria-label") === "Source kind", "source kind");
-  await page.keyboard.type("Host");
-  await tabTo(page, () => document.activeElement?.getAttribute("aria-label") === "Source host", "source host");
+  await waitText(page, "Destination — the host or hosts that receive it");
+  const inPicker = (testId) => page.evaluate((t) => document.activeElement?.getAttribute("role") === "combobox" && !!document.activeElement.closest(`[data-testid="${t}"]`), testId);
+  const active = (testId) => page.$eval(`[data-testid="${testId}"] [role="option"][aria-selected="true"]`, (o) => o.innerText).catch(() => "");
+  // The dialog focuses the source search: type, Enter chooses the match.
+  assert.ok(await inPicker("rule-source"), "the source search has the focus");
   await page.keyboard.type("web-1");
-  await tabTo(page, () => document.activeElement?.textContent === "Add source", "Add source");
+  await waitFor(page, async () => (await active("rule-source")).startsWith("web-1"), "web-1 highlighted");
   await page.keyboard.press("Enter");
-  await tabTo(page, () => document.activeElement?.getAttribute("aria-label") === "Destination kind", "destination kind");
-  await page.keyboard.type("Pack");
-  await tabTo(page, () => document.activeElement?.getAttribute("aria-label") === "Destination pack", "destination pack");
-  await page.keyboard.press("ArrowDown");
-  await tabTo(page, () => document.activeElement?.textContent === "Add destination", "Add destination");
+  await page.keyboard.press("Tab");
+  assert.ok(await inPicker("rule-destination"), "Tab moves on to the destination");
+  await page.keyboard.type("linux");
+  await waitFor(page, async () => (await active("rule-destination")).startsWith("linux-servers"), "the Pack highlighted");
   await page.keyboard.press("Enter");
-  await tabTo(page, () => document.activeElement?.getAttribute("aria-label") === "Service", "service");
+  await page.keyboard.press("Tab");
+  assert.ok(await inPicker("rule-service"), "then the service");
+  // Escape closes the list, not the dialog.
+  await page.keyboard.type("zz-nothing");
+  await waitText(page, "No service matches");
+  await page.keyboard.press("Escape");
+  await waitFor(page, async () => !(await page.$('[data-testid="rule-service"] [role="listbox"]')), "the list closes");
+  assert.ok(await page.$('[data-testid="rule-dialog"]'), "the dialog stays open");
+  for (let i = 0; i < "zz-nothing".length; i++) await page.keyboard.press("Backspace");
   await page.keyboard.type("https");
-  await tabTo(page, () => document.activeElement?.textContent === "Add service", "Add service");
+  await waitFor(page, async () => (await active("rule-service")).startsWith("https"), "https highlighted");
   await page.keyboard.press("Enter");
+  // The name follows the choices; a name typed in wins.
+  assert.match(await page.$eval('[data-testid="rule-summary"]', (e) => e.innerText), /Allows https \(TCP 443\) from web-1 to linux-servers\./);
+  await tabTo(page, () => document.activeElement?.tagName === "SUMMARY", "Name, description and status");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Tab");
+  assert.equal(await page.evaluate(() => document.activeElement?.value), "allow-https-web-1-to-linux-servers");
+  await page.keyboard.down("Control");
+  await page.keyboard.press("a");
+  await page.keyboard.up("Control");
+  await page.keyboard.type("kbd-https");
   await shot(page, "keyboard-rule");
-  await tabTo(page, () => document.activeElement?.textContent === "Add rule", "Add rule");
+  await tabTo(page, () => document.activeElement?.textContent === "Add to draft", "Add to draft");
   await page.keyboard.press("Enter");
   await waitStatus("Unsaved changes");
   assert.match(await text(page), /kbd-https[\s\S]*web-1[\s\S]*linux-servers[\s\S]*https \(TCP 443\)/);

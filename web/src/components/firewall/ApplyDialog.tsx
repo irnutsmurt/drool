@@ -11,7 +11,8 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { errorMessage } from "@/lib/format";
 import { actionLabel, decide, plan, type Decision, type Mode, type ModeChoice } from "./applyChoices";
-import { applyBlocked, PolicyLines, ruleNames } from "./HostPolicy";
+import { applyBlocked, installsNftables, PolicyLines, ruleNames } from "./HostPolicy";
+import { InstallNftables, useEnvironmentCheck } from "./InstallNftables";
 import { modeInfo } from "./parts";
 import { fk, type FwPlan } from "./queries";
 
@@ -47,6 +48,9 @@ export function ApplyDialog({ hostIds, names, remove, initialModes, onClose }: {
   const [reason, setReason] = useState("");
   const [confirmOverride, setConfirmOverride] = useState("");
   const [choices, setChoices] = useState<Record<string, ModeChoice>>(initialModes ?? {});
+  // nftables installed from the review (DESIGN-STANDARD §1, Workflow first):
+  // the run started for each host, kept so its outcome stays in sight.
+  const [nftJobs, setNftJobs] = useState<Record<string, string>>({});
   const anyOverride = overrideMgmt || overrideTimeout || allowDrift;
   const overrideConfirmed = !overrideMgmt || confirmOverride.trim().toUpperCase() === "OVERRIDE";
   const plans = useQueries({
@@ -162,7 +166,8 @@ export function ApplyDialog({ hostIds, names, remove, initialModes, onClose }: {
                 if (!q || !fresh(q)) return <p key={id} className="text-muted"><strong>{names[i]}</strong>: loading its review…</p>;
                 const at = shown.findIndex((pl) => pl.host_id === id);
                 return <HostReview key={id} p={q.data!} name={names[i]!} single={single} decision={decisions[at]!} refused={refusal(q.data!)}
-                  choice={choices[id] ?? "keep"} canChoose={can("firewall.write")} onChoose={(c) => setChoices((cur) => ({ ...cur, [id]: c }))} />;
+                  choice={choices[id] ?? "keep"} canChoose={can("firewall.write")} onChoose={(c) => setChoices((cur) => ({ ...cur, [id]: c }))}
+                  nft={<NftablesStep p={q.data!} name={names[i]!} jobId={nftJobs[id]} onStarted={(j) => setNftJobs((cur) => ({ ...cur, [id]: j }))} />} />;
               })}
             </div>
             {loaded && !single && run.untouched.length > 0 && (run.apply.length > 0 || run.modes.length > 0) && (
@@ -215,9 +220,11 @@ export function ApplyDialog({ hostIds, names, remove, initialModes, onClose }: {
 /** One host's review: its mode (and, when it isn't Enforce, the choice of
  * mode), then — where the policy is applied — what changes, what could
  * affect its connectivity, and the rules in force after applying. */
-function HostReview({ p, name, single, decision, refused, choice, canChoose, onChoose }: {
+function HostReview({ p, name, single, decision, refused, choice, canChoose, onChoose, nft }: {
   p: FwPlan; name: string; single: boolean; decision: Decision; refused: string | null;
   choice: ModeChoice; canChoose: boolean; onChoose: (c: ModeChoice) => void;
+  /** Installing nftables first, where that is all enforcing needs. */
+  nft?: React.ReactNode;
 }) {
   const a = p.applied;
   const current = p.config.mode;
@@ -241,6 +248,7 @@ function HostReview({ p, name, single, decision, refused, choice, canChoose, onC
       ) : (
         <ModeChoiceField p={p} name={name} choice={choice} refused={refused} canChoose={canChoose} onChoose={onChoose} decision={decision} />
       )}
+      {nft}
       {applying && (single ? body : (
         <details>
           <summary className="cursor-pointer font-medium">What applying changes on {name}</summary>
@@ -253,6 +261,26 @@ function HostReview({ p, name, single, decision, refused, choice, canChoose, onC
         </ul>
       )}
     </section>
+  );
+}
+
+/** nftables, offered in the review where it is the only thing keeping
+ * DROOL from enforcing: the ordinary package run (dry run, confirmation,
+ * audit), and the environment checked again afterwards. Installing changes
+ * no mode and enforces nothing: the mode is still chosen above. */
+function NftablesStep({ p, name, jobId, onStarted }: { p: FwPlan; name: string; jobId?: string; onStarted: (jobId: string) => void }) {
+  const env = useEnvironmentCheck(p.host_id);
+  const needed = installsNftables(p);
+  if (!needed && !jobId) return null;
+  return (
+    <div className="rounded-ui border border-line p-3" data-testid="review-needs-nftables">
+      {needed && (
+        <p><strong>nftables isn&apos;t installed on {name}</strong>, so DROOL can&apos;t enforce there yet. DROOL can install it with {name}&apos;s package
+          manager: you see what that involves first. Once it is installed, choose the mode above.</p>
+      )}
+      <InstallNftables hostId={p.host_id} hostName={name} mode={p.config.mode} jobId={jobId} onStarted={onStarted}
+        onInstalled={env.recheck} checking={env.checking} checkFailed={env.failed} />
+    </div>
   );
 }
 

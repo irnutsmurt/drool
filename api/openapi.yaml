@@ -5957,7 +5957,7 @@ components:
         rollback_timeout_s: { type: integer, description: '0 inherits the group or default timeout' }
     FwHostSummary:
       type: object
-      required: [host_id, host_name, mode, outbound, transport, learning, checked, supported, enforced, revision, in_sync, status, conflicts]
+      required: [host_id, host_name, mode, outbound, transport, learning, checked, supported, needs_nftables, enforced, revision, in_sync, status, conflicts]
       properties:
         host_id: { type: string }
         host_name: { type: string }
@@ -5968,6 +5968,11 @@ components:
         checked: { type: boolean }
         supported: { type: [boolean, 'null'] }
         reason: { type: string }
+        needs_nftables:
+          type: boolean
+          description: >-
+            The only thing keeping DROOL from enforcing on this host is that nftables isn't installed, which DROOL can
+            install with an ordinary package run (dry run first, confirmed). The review of an apply offers it.
         enforced: { type: boolean }
         revision: { type: integer }
         in_sync: { type: boolean }

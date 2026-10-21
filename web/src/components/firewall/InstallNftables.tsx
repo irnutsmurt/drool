@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { jk } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
@@ -11,6 +11,7 @@ import { plainLink } from "@/components/ui/links";
 import { errorMessage } from "@/lib/format";
 import { SimHostRow } from "@/pages/jobs/OperationForms";
 import { modeInfo } from "./parts";
+import { fk } from "./queries";
 
 const step = { type: "package" as const, action: "install" as const, names: ["nftables"] };
 const activeJob = (s?: string) => s === "pending" || s === "running" || s === "paused";
@@ -79,6 +80,19 @@ export function InstallNftables({ hostId, hostName, mode, jobId, onStarted, onIn
         onStarted={(id) => { setOpen(false); onStarted(id); }} />}
     </div>
   );
+}
+
+/** Checks a host's firewall environment again (read-only) and refreshes
+ * its plan: what InstallNftables needs after a successful installation. */
+export function useEnvironmentCheck(hostId: string) {
+  const qc = useQueryClient();
+  const detect = useMutation({
+    mutationFn: () => unwrap(api.POST("/firewall/hosts/{id}/detect", { params: { path: { id: hostId } } })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fk.all }),
+  });
+  const { mutate } = detect;
+  const recheck = useCallback(() => mutate(), [mutate]);
+  return { recheck, checking: detect.isPending, failed: detect.isError, error: detect.error };
 }
 
 /** What installing nftables involves on this host (the package manager's own

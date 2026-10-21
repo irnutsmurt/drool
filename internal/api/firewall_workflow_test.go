@@ -2,12 +2,15 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"net"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"drool/internal/store/db"
 )
 
 // From saving a rule to applying it (firewall workflow correction): the
@@ -223,5 +226,65 @@ policy:
     allow: [ssh]
 `); len(hosts) != 0 {
 		t.Fatalf("a save not affecting the host: %+v", hosts)
+	}
+}
+
+// A host whose only obstacle to enforcing is a missing nftables says so
+// (needs_nftables), so the review can offer to install it; any other
+// obstacle, or none, doesn't.
+func TestFirewallHostNeedsNftables(t *testing.T) {
+	e := newFwEnv(t)
+	ctx := context.Background()
+	hostID, _ := e.sshFwHost(t, "pizero")
+	type summary struct {
+		Supported     *bool `json:"supported"`
+		NeedsNftables bool  `json:"needs_nftables"`
+	}
+	get := func() summary {
+		t.Helper()
+		var p struct {
+			Summary summary `json:"summary"`
+		}
+		if r := e.c.do("GET", "/api/v1/firewall/hosts/"+hostID, nil); r.status != 200 {
+			t.Fatalf("plan: %d %s", r.status, r.body)
+		} else {
+			r.json(t, &p)
+		}
+		var list struct {
+			Items []struct {
+				HostID string `json:"host_id"`
+				summary
+			} `json:"items"`
+		}
+		e.c.do("GET", "/api/v1/firewall/hosts", nil).json(t, &list)
+		for _, h := range list.Items {
+			if h.HostID == hostID && h.NeedsNftables != p.Summary.NeedsNftables {
+				t.Fatalf("the host list and the plan disagree: %+v %+v", h.summary, p.Summary)
+			}
+		}
+		return p.Summary
+	}
+	if s := get(); s.NeedsNftables || s.Supported != nil {
+		t.Fatalf("never checked: %+v", s)
+	}
+	setEnv := func(env, el string) {
+		t.Helper()
+		if err := e.h.st.W.SetFwHostEnv(ctx, db.SetFwHostEnvParams{EnvJson: env, EligibilityJson: el,
+			EnvCheckedAt: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}, UpdatedAt: time.Now().UnixMilli(), HostID: hostID}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setEnv(`{"root":true,"systemd":true,"nft":""}`, `{"supported":false,"reasons":["nftables (nft) is not installed"]}`)
+	if s := get(); !s.NeedsNftables {
+		t.Fatalf("only nftables missing: %+v", s)
+	}
+	setEnv(`{"root":true,"systemd":true,"nft":"","services":{"firewalld":"active"}}`,
+		`{"supported":false,"reasons":["nftables (nft) is not installed","firewalld is active"]}`)
+	if s := get(); s.NeedsNftables {
+		t.Fatalf("installing nftables wouldn't be enough here: %+v", s)
+	}
+	setEnv(`{"root":true,"systemd":true,"nft":"/usr/sbin/nft"}`, `{"supported":true}`)
+	if s := get(); s.NeedsNftables || s.Supported == nil || !*s.Supported {
+		t.Fatalf("supported: %+v", s)
 	}
 }

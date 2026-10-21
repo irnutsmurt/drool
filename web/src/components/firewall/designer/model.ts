@@ -68,6 +68,91 @@ export const kindLabel: Record<RefKind, string> = {
   any: "Anywhere",
 };
 
+// --- the rule builder's choices ------------------------------------------
+
+/** One choice in the rule builder's pickers (ui/ComboPicker's PickOption). */
+export type RefChoice = { value: string; label: string; detail?: string; group: string; disabled?: string; search?: string };
+
+/** An address or range typed into a picker ("10.0.0.5", "192.168.1.0/24",
+ * "2001:db8::/32"), as a cidr reference; null when it isn't one. */
+export function cidrFromQuery(q: string): string | null {
+  const v = q.trim();
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\/(\d{1,2}))?$/.exec(v);
+  if (v4) {
+    if (v4.slice(1, 5).some((o) => Number(o) > 255) || (v4[5] !== undefined && Number(v4[5]) > 32)) return null;
+    return `cidr:${v4.slice(1, 5).join(".")}/${v4[5] ?? "32"}`;
+  }
+  const v6 = /^([0-9a-fA-F:]+)(?:\/(\d{1,3}))?$/.exec(v);
+  if (v6 && v6[1]!.includes(":") && /^[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){2,7}$/.test(v6[1]!) && (v6[2] === undefined || Number(v6[2]) <= 128)) {
+    return `cidr:${v6[1]!.toLowerCase()}/${v6[2] ?? "128"}`;
+  }
+  return null;
+}
+
+/** The choices for a rule's source or destination: every kind at once.
+ * For a destination, hosts and Packs come first: DROOL puts a rule on the
+ * hosts its destination names, so an address there (a network, Internal
+ * networks, the Internet) gives no host an inbound rule — it only limits
+ * what a host or Pack source may send (outbound). */
+export function refChoices(doc: Doc, hosts: { name: string }[], side: "source" | "destination"): RefChoice[] {
+  const packOf = new Map<string, string[]>();
+  for (const g of doc.groups) for (const m of g.members) packOf.set(m.toLowerCase(), [...(packOf.get(m.toLowerCase()) ?? []), g.name]);
+  const hostChoices = hosts.map((h) => ({ value: `host:${h.name}`, label: h.name, group: "Hosts", detail: (packOf.get(h.name.toLowerCase()) ?? []).join(", ") || undefined }));
+  const packChoices = doc.groups.map((g) => ({ value: `group:${g.name}`, label: g.name, group: "Packs", detail: `${g.members.length} host${g.members.length === 1 ? "" : "s"}` }));
+  const networkChoices = (group: string) => doc.networks.map((n) => ({ value: `network:${n.name}`, label: n.name, group, detail: n.cidrs.join(", ") }));
+  if (side === "source") {
+    return [
+      { value: "internal", label: "Internal networks", group: "Common", detail: "private address ranges (your LAN)", search: "lan local private" },
+      { value: "any", label: "Anywhere", group: "Common", detail: "any address", search: "all everyone" },
+      { value: "internet", label: "Internet", group: "Common", detail: "everything outside the internal ranges", search: "public external wan" },
+      ...hostChoices, ...packChoices, ...networkChoices("Networks"),
+    ];
+  }
+  const addr = "Addresses (outbound only)";
+  return [
+    ...hostChoices, ...packChoices,
+    { value: "any", label: "Anywhere", group: "Every host", detail: "every host DROOL manages", search: "all hosts" },
+    { value: "internal", label: "Internal networks", group: addr, detail: "limits what a host or Pack source sends", search: "lan local private" },
+    { value: "internet", label: "Internet", group: addr, detail: "limits what a host or Pack source sends", search: "public external wan" },
+    ...networkChoices(addr),
+  ];
+}
+
+/** An address typed into a picker, offered as a choice. */
+export function addressChoice(q: string, side: "source" | "destination"): RefChoice[] {
+  const c = cidrFromQuery(q);
+  if (!c) return [];
+  return [{ value: c, label: c.slice(5), group: side === "source" ? "Address" : "Addresses (outbound only)", detail: "an address or range" }];
+}
+
+/** A port typed into the service picker: "8812", "tcp 8812", "udp/53",
+ * "8000-8010", "80,443", "8812/udp". Without a protocol, both are offered
+ * (TCP first). */
+export function portChoices(q: string): { protocol: "tcp" | "udp"; ports: string }[] {
+  const v = q.trim().toLowerCase();
+  const m = /^(?:(tcp|udp)[\s/:]*)?([\d][\d,\s-]*?)(?:[\s/:]*(tcp|udp))?$/.exec(v);
+  if (!m) return [];
+  const ports = m[2]!.replace(/\s+/g, "");
+  if (!validPorts(ports)) return [];
+  const proto = (m[1] ?? m[3]) as "tcp" | "udp" | undefined;
+  return proto ? [{ protocol: proto, ports }] : [{ protocol: "tcp", ports }, { protocol: "udp", ports }];
+}
+
+/** A rule name from what the rule does ("allow-ssh-internal-to-pizero"),
+ * unique in the document and within the server's name rules (letters,
+ * digits, ".", "_", "-"; at most 63 characters). */
+export function suggestRuleName(doc: Doc, rule: Pick<Rule, "action" | "from" | "to" | "services">, ignore?: number): string {
+  const short = (r: string) => {
+    const p = parseRef(r);
+    return p.kind === "any" ? "anywhere" : p.kind === "cidr" ? p.name.replace(/[/:]/g, "-") : p.kind === "internet" || p.kind === "internal" ? p.kind : p.name;
+  };
+  const parts = [rule.action, rule.services[0] ?? "", rule.from[0] ? short(rule.from[0]) : "", "to", rule.to[0] ? short(rule.to[0]) : ""].filter(Boolean);
+  let base = parts.join("-").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^[^a-z0-9]+|-+$/g, "");
+  base = (base || "rule").slice(0, 56).replace(/-+$/, "");
+  const others: Doc = ignore === undefined ? doc : { ...doc, policy: doc.policy.filter((_, i) => i !== ignore) };
+  return uniqueRuleName(others, base);
+}
+
 // --- services -------------------------------------------------------------
 
 export type ServiceInfo = { name: string; description: string; builtin: boolean; entries: Entry[] };

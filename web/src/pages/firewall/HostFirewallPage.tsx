@@ -2,7 +2,7 @@ import { Link, useParams } from "react-router";
 import { useHost } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { HostFirewall } from "@/components/firewall/HostFirewall";
-import { secondaryLink } from "@/components/ui/Button";
+import { primaryLink, secondaryLink } from "@/components/ui/Button";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ReadOnlyNote } from "@/components/ui/ReadOnlyNote";
 import { LoadError, Loading } from "@/components/ui/States";
@@ -19,7 +19,13 @@ export function HostFirewallPage() {
         description="What may reach this host and what it may reach, applied with automatic rollback protection: if a fresh management connection can't verify a change, the host reverts it by itself."
         actions={
           <>
-            {can("network.read") && <Link to={`/hosts/${id}/network`} className={secondaryLink}>Observed traffic</Link>}
+            {/* A rule for this host starts here: the rule builder opens with
+                the host as its destination. Observed traffic is also this
+                page's Observed connections tab. */}
+            {can("firewall.write") && h
+              ? <Link to={`/firewall?tab=designer&view=rules&rule=new&to=${encodeURIComponent(`host:${h.name}`)}`} className={primaryLink}
+                data-testid="fw-new-rule-for-host">New rule…<span className="sr-only"> for {h.name}</span></Link>
+              : can("network.read") && <Link to={`/hosts/${id}/network`} className={secondaryLink}>Observed traffic</Link>}
             <Link to="/firewall?tab=designer" className={secondaryLink}>Firewall policy</Link>
           </>
         } />

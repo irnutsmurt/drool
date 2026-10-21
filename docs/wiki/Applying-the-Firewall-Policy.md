@@ -18,7 +18,8 @@ policy to `web-01`.
 - You need **firewall.write** (administrators).
 - The host's firewall environment must be **supported** ([Before Enabling Enforcement](Before-Enabling-Enforcement.md)).
   Where it isn't, the host's page says *Applying isn't possible right now: DROOL can't enforce on this
-  host: …* and offers nothing to apply.
+  host: …* and offers nothing to apply. The exception is a host that only lacks **nftables**: the
+  review offers to install it ([below](#when-nftables-isnt-installed)).
 - No other firewall transaction may be pending on the host.
 - The policy must not cut DROOL's management path ([Management Path Protection](Management-Path-Protection.md)).
 
@@ -44,11 +45,29 @@ Where each host stands, for example:
 - *↻ Not applied yet: the host runs revision 1.*
 - *Policy saved — not yet enforced (Monitor mode…). DROOL can't enforce on this host: …* (nothing to
   apply there; the reason says why).
+- *… nftables isn't installed there yet: the review offers to install it.*
 
 If a rule you saved is on no host's firewall, the summary says so too (*Rule ssh-internal applies to
 no host…*): see [What a rule's destination means](Firewall-Policy.md#the-destination-says-which-hosts-get-the-rule).
 
 ![Firewall → Policy right after Alex saved a rule letting the admin laptop ping four hosts: "Saved. Nothing has changed on any host yet." backup-01: Policy saved — not yet enforced (mode Monitor: the review asks whether to switch it to Enforce); gpu-01: firewall management is off on this host: the review asks how to configure it; nas-01: Enforce is set, nothing applied yet; web-01: Not applied yet, the host runs revision 10. Then "Would you like to review and apply these changes now?" with Review and apply to 4 hosts… and Not now](images/firewall-saved-hosts.png)
+
+## When nftables isn't installed
+
+When the only thing keeping DROOL from enforcing on a host is that **nftables** isn't installed, the
+host is still reviewed: after **Save and review…**, from the saved panel, or from the host's
+**Review and apply policy…**. Its review says *nftables isn't installed on web-01, so DROOL can't
+enforce there yet*, and **Enforce** is marked *(not possible now)*.
+
+1. **Install nftables…** shows what the host's package manager would do (a dry run), and asks.
+2. **Install nftables** starts the ordinary package run, with the same locks, checks and audit as
+   any install. Its progress shows in the review.
+3. When it's done, DROOL checks the host's firewall environment again. **Enforce** can then be
+   chosen. Installing changes no mode and enforces nothing: you still choose the mode, and then
+   confirm the apply.
+
+Where DROOL can't install it (permissions, an unsupported package manager, or an install that would
+remove other packages), it says why. See [Before Enabling Enforcement](Before-Enabling-Enforcement.md).
 
 ## On the host's firewall page
 

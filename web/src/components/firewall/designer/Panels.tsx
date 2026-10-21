@@ -196,13 +196,14 @@ export function AfterSave({ hosts, noHost, canApply, onReview, onDismiss }: {
 
 /** A host DROOL can review and apply to now: something to apply, and
  * nothing the server would refuse before its transaction. */
-export const applicable = (h: HostSummary) => (h.status === "not_enforced" || h.status === "changes_pending") && h.supported !== false && h.conflicts === 0
-  && h.transport !== "none" && h.transport !== "blocked";
+export const applicable = (h: HostSummary) => (h.status === "not_enforced" || h.status === "changes_pending") && (h.supported !== false || h.needs_nftables)
+  && h.conflicts === 0 && h.transport !== "none" && h.transport !== "blocked";
 
 /** A host's state right after a save, in words: saved is never enforced. */
 function savedState(h: HostSummary): string {
   const mode = modeInfo[h.mode]?.label ?? h.mode;
-  const why = h.supported === false ? ` DROOL can't enforce on this host${h.reason ? `: ${h.reason}` : ""}.`
+  const why = h.needs_nftables ? " nftables isn't installed there yet: the review offers to install it."
+    : h.supported === false ? ` DROOL can't enforce on this host${h.reason ? `: ${h.reason}` : ""}.`
     : h.conflicts > 0 ? " ✕ Applying is refused: a rule would cut DROOL's management path."
       : h.transport === "none" || h.transport === "blocked" ? " DROOL has no management path to this host right now." : "";
   switch (h.status) {

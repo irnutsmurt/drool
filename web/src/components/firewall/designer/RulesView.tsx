@@ -19,6 +19,10 @@ type Props = {
   fresh?: string[];
   /** Rules that apply to no host (the server's check says why). */
   noHost?: string[];
+  /** The draft has unsaved changes. */
+  draftChanged?: boolean;
+  /** The rule dialog's Save and review…. */
+  onSaveAndReview?: (d: Doc) => void;
 };
 
 /** The conventional editor: everything the topology can do, with normal,
@@ -46,7 +50,7 @@ function RefList({ refs }: { refs: string[] }) {
   );
 }
 
-function PoliciesCard({ doc, edit, services, hosts, canWrite, highlight = [], fresh = [], noHost = [] }: Props) {
+function PoliciesCard({ doc, edit, services, hosts, canWrite, highlight = [], fresh = [], noHost = [], draftChanged, onSaveAndReview }: Props) {
   const [dialog, setDialog] = useState<{ index?: number } | null>(null);
   const all = [...services.filter((s) => s.builtin), ...doc.services.map((s) => ({ ...s, builtin: false }))];
   return (
@@ -101,6 +105,7 @@ function PoliciesCard({ doc, edit, services, hosts, canWrite, highlight = [], fr
       )}
       {dialog && (
         <RuleDialog doc={doc} services={services} hosts={hosts} index={dialog.index}
+          draftChanged={draftChanged} onSaveAndReview={onSaveAndReview && ((d) => { setDialog(null); onSaveAndReview(d); })}
           onSave={(d) => { edit(d); setDialog(null); }}
           onDelete={dialog.index !== undefined ? () => { edit(deleteRule(doc, dialog.index!)); setDialog(null); } : undefined}
           onClose={() => setDialog(null)} />

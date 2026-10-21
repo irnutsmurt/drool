@@ -70,7 +70,8 @@ after(async () => {
 
 const firewallPage = async (page) => {
   await page.goto(`${base}/hosts/${id}/firewall`, { waitUntil: "networkidle0" });
-  await waitFor(page, async () => !!(await page.$('[data-testid="fw-policy-status"]')), "the policy status");
+  await waitFor(page, async () => !!(await page.$('[data-testid="fw-policy-status"]')), "the policy status")
+    .catch((e) => { throw new Error(`${e.message}; page errors: ${JSON.stringify(page.errors ?? [])}`); });
   await sleep(300);
 };
 const inner = (page, sel) => page.$eval(sel, (e) => e.innerText).catch(() => "");
@@ -466,6 +467,73 @@ test("Save and review application…: hosts in different modes, each one's mode 
     const done = await inner(page, '[data-testid="apply-started"]');
     assert.match(done, /Mode changed: web-1: Off → Monitor\. Nothing was applied to that host/);
     assert.match(done, /Started: applying the saved policy to server-a, server-b, one host at a time\. server-a switches to Enforce when its checks have passed/);
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await putDoc(admin, doc).catch(() => {});
+    await page.browserContext().close();
+  }
+});
+
+/** Chooses in one of the rule builder's pickers: type, Enter on the match. */
+async function pick(page, testId, query, label) {
+  const sel = `[data-testid="${testId}"]`;
+  await page.click(`${sel} input[role="combobox"]`);
+  await page.type(`${sel} input[role="combobox"]`, query);
+  await waitFor(page, () => page.$eval(`${sel} [role="option"][aria-selected="true"]`, (o, l) => o.innerText.includes(l), label).catch(() => false), `option ${label}`);
+  await page.keyboard.press("Enter");
+  await waitFor(page, () => page.$eval(`${sel} ul`, (u, l) => u.innerText.includes(l), label).catch(() => false), `chosen ${label}`);
+}
+const nftReason = "nftables (nft) is not installed: DROOL can install it (Install nftables…, under Firewall environment)";
+/** web-1 as a host whose only obstacle to enforcing is a missing nftables. */
+const needsNft = (p) => ({
+  ...p, transport: "ssh", pending_transaction: undefined,
+  environment: { ...(p.environment ?? {}), nft: "", nft_version: "" },
+  eligibility: { supported: false, reasons: [nftReason], detected: [] }, environment_checked_at: new Date().toISOString(),
+  summary: { ...p.summary, supported: false, needs_nftables: true, reason: nftReason, transport: "ssh" },
+});
+
+test("a rule from the host's page: one search per field, Save and review…, and the review offers nftables", async () => {
+  const page = await session(browser);
+  try {
+    await putDoc(page, doc);
+    const changed = record(page);
+    const before = (await api(page, "GET", `/firewall/hosts/${id}`)).body;
+    const list = (await api(page, "GET", "/firewall/hosts")).body;
+    await firewallPage(page);
+    // New rule… opens the builder with this host as the destination.
+    await click(page, '[data-testid="fw-new-rule-for-host"]', "New rule…");
+    await waitFor(page, async () => !!(await page.$('[data-testid="rule-dialog"]')), "the rule builder", 20000);
+    assert.match(new URL(page.url()).search, /tab=designer/);
+    assert.match(await inner(page, '[data-testid="rule-destination"]'), /Host\s*web-1/);
+    // Source and service: one search each, no kind, value and Add button.
+    await pick(page, "rule-source", "internal", "Internal networks");
+    await pick(page, "rule-service", "ssh", "ssh");
+    const summary = await inner(page, '[data-testid="rule-summary"]');
+    assert.match(summary, /Allows ssh \(TCP 22\) from Internal networks to web-1\./);
+    assert.match(summary, /Changes the firewall of web-1\./);
+    assert.ok(!(await page.$('[data-testid="rule-no-host"]')), "a rule on a host warned as on no host");
+    await shot(page, "fw-rule-builder");
+    // From here web-1 is stubbed as needing only nftables (the containers
+    // have no systemd either); the save itself is real.
+    await stub(page, { plan: () => needsNft(before),
+      list: () => ({ ...list, items: list.items.map((h) => (h.host_id === id ? { ...h, supported: false, needs_nftables: true, reason: nftReason, transport: "ssh" } : h)) }) });
+    await click(page, '[data-testid="rule-dialog"] button', "Save and review…");
+    await waitFor(page, async () => !!(await page.$('[data-testid="review-needs-nftables"]')), "the review, with nftables offered", 20000);
+    const saved = (await api(admin, "GET", "/firewall/document")).body.document.policy;
+    assert.deepEqual(saved.at(-1), { name: "allow-ssh-internal-to-web-1", description: "", enabled: true, action: "allow", from: ["internal"], to: ["host:web-1"], services: ["ssh"] });
+    const step = await inner(page, '[data-testid="review-needs-nftables"]');
+    assert.match(step, /nftables isn't installed on web-1, so DROOL can't enforce there yet\. DROOL can install it with web-1's package manager/);
+    assert.ok(await page.$('[data-testid="review-needs-nftables"] button'), "Install nftables… in the review");
+    // Enforce waits for it; nothing is chosen for the person.
+    assert.equal(await page.$eval('[data-testid="review-mode-choice"]', (x) => x.value), "keep");
+    assert.deepEqual((await options(page, "web-1")).find(([t]) => t.startsWith("Enforce")), ["Enforce — Apply firewall rules with rollback protection. (not possible now)", true]);
+    assert.match(await inner(page, '[data-testid="fw-apply-dialog"]'), /Enforce isn't possible now: nftables isn't installed on this host yet\./);
+    await shot(page, "fw-review-needs-nftables");
+    await click(page, '[data-testid="fw-apply-dialog"] button', "Cancel");
+    // The panel after saving says the same, and offers the review again.
+    await waitFor(page, async () => /nftables isn't installed there yet: the review offers to install it\./.test(await inner(page, '[data-testid="after-save"]')), "the saved panel");
+    assert.match(await inner(page, '[data-testid="after-save"]'), /Review and apply to web-1…/);
+    assert.deepEqual(changed(), [], "a mode change or an apply was requested");
     assert.deepEqual(page.errors, []);
   } finally {
     await putDoc(admin, doc).catch(() => {});

@@ -15,7 +15,8 @@ to **Enforce**.
    under **Firewall environment**. **Check** only looks at the host; it never installs or changes
    anything. You want *Enforcement is supported here: plain nftables, no other firewall manager.*
    Otherwise, read why:
-   - *nftables (nft) is not installed*: choose **Install nftables…** beside the result. DROOL asks the
+   - *nftables (nft) is not installed*: choose **Install nftables…** beside the result (the review of an
+     apply offers it too: [When nftables isn't installed](Applying-the-Firewall-Policy.md#when-nftables-isnt-installed)). DROOL asks the
      host's package manager what that involves (a dry run) and shows you, then installs it as a normal
      package run once you confirm, shows its progress, and checks again by itself. It doesn't change the
      mode or enforce anything. In **Monitor** or **Guided** mode this is only information: monitoring,

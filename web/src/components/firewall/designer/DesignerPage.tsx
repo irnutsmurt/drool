@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useHosts } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
@@ -11,7 +11,7 @@ import { errorMessage } from "@/lib/format";
 import { ApplyDialog } from "../ApplyDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { fwHostsQuery, useFwServices } from "../queries";
-import { addRule, deleteRule, uniqueRuleName, upsertService, type MgmtPath, type Rule, type Service, type ServiceInfo, type TopologyMode } from "./model";
+import { addRule, deleteRule, uniqueRuleName, upsertService, type Doc, type MgmtPath, type Rule, type Service, type ServiceInfo, type TopologyMode } from "./model";
 import { useNetFlow } from "@/components/network/queries";
 import { useDesigner } from "./useDesigner";
 import { narrowQuery, useMediaQuery } from "@/hooks/useMediaQuery";
@@ -50,6 +50,11 @@ export function DesignerPage() {
   };
   const [selection, setSelection] = useState<Selection>(null);
   const [ruleDialog, setRuleDialog] = useState<{ index?: number; from?: string; to?: string } | null>(null);
+  // "Save and review…" in the rule dialog: the save waits for the server's
+  // check of the edited draft (validation, management paths), then goes
+  // the way the Save and review button does.
+  const [saveWhenChecked, setSaveWhenChecked] = useState(false);
+  const [notSaved, setNotSaved] = useState(false);
   const [focus, setFocus] = useState<string[]>();
   const [side, setSide] = useState<"details" | "preview">("preview");
   // On the Topology view the side panel gives way to the canvas while there
@@ -93,6 +98,32 @@ export function DesignerPage() {
     setParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestId, d.loading, suggestion.data]);
+
+  // "New rule for this host" (a host's firewall page): the rule dialog
+  // opens with its destination (or source) chosen.
+  useEffect(() => {
+    if (d.loading || params.get("rule") !== "new") return;
+    const next = new URLSearchParams(params);
+    const to = params.get("to") ?? undefined;
+    const from = params.get("from") ?? undefined;
+    next.delete("rule");
+    next.delete("to");
+    next.delete("from");
+    next.set("view", "rules");
+    setParams(next, { replace: true });
+    if (canWrite) setRuleDialog({ to, from });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.loading, params]);
+
+  const saveRef = useRef<(review: boolean) => void>(() => {});
+  const { checkCurrent, check, dirty, yamlBroken } = d;
+  useEffect(() => {
+    if (!saveWhenChecked || !checkCurrent || !check) return;
+    setSaveWhenChecked(false);
+    if (!dirty) return;
+    if (!check.valid || yamlBroken) setNotSaved(true);
+    else saveRef.current(true);
+  }, [saveWhenChecked, checkCurrent, check, dirty, yamlBroken]);
 
   const hosts = useMemo(() => (hostsQ.data?.items ?? []).map((h) => ({ id: h.id, name: h.name })), [hostsQ.data]);
   const services = useMemo(() => (svcQ.data?.items ?? []).map((s) => ({ name: s.name, description: s.description, builtin: s.builtin, entries: s.entries })) as ServiceInfo[], [svcQ.data]);
@@ -147,6 +178,13 @@ export function DesignerPage() {
     });
   };
   const save = (review: boolean) => (blocked > 0 ? setConfirmSave({ review }) : doSave(review));
+  saveRef.current = save;
+  const saveAndReview = (doc: Doc) => {
+    d.edit(doc);
+    setRuleDialog(null);
+    setNotSaved(false);
+    setSaveWhenChecked(true);
+  };
   // Offered when the draft changes some host's firewall.
   const affectsHosts = (d.check?.impact.length ?? 0) > 0;
   const saveDisabled = !d.dirty || d.yamlBroken || !d.check?.valid || d.save.isPending || d.checking;
@@ -195,6 +233,11 @@ export function DesignerPage() {
       {!canWrite && <Alert tone="warn">You can explore and simulate; only administrators can change the firewall policy.</Alert>}
       {d.staleBase && <Alert tone="warn">Someone else saved the firewall policy since you opened it. Saving will be refused: copy your changes from the YAML view, then discard and reapply them.</Alert>}
       {d.save.error && <Alert>{errorMessage(d.save.error)}</Alert>}
+      {saveWhenChecked && <p className="text-sm text-muted" role="status">Checking the policy, then saving…</p>}
+      {notSaved && d.dirty && (
+        <Alert tone="warn">The rule is in the draft, but the policy wasn&apos;t saved: it has {d.check?.problems.length ?? 0} problem(s), listed in the Preview panel.
+          Fix them, then choose Save and review application….</Alert>
+      )}
       {d.save.isSuccess && !d.dirty && d.save.data && !afterSaveDismissed && (
         <AfterSave hosts={d.save.data.hosts} noHost={d.save.data.no_host_rules ?? []} canApply={canWrite} onReview={setApplyTo}
           onDismiss={() => setAfterSaveDismissed(true)} />
@@ -225,6 +268,7 @@ export function DesignerPage() {
           )}
           {view === "rules" && (
             <RulesView doc={d.draft} edit={d.edit} services={services} hosts={hosts} storedGroups={d.storedGroups} canWrite={canWrite}
+              draftChanged={d.dirty} onSaveAndReview={saveAndReview}
               highlight={highlight.policies} fresh={suggested ? [suggested] : []} noHost={(d.check?.no_host_rules ?? []).map((r) => r.rule)} />
           )}
           {view === "yaml" && (
@@ -249,7 +293,8 @@ export function DesignerPage() {
 
       {ruleDialog && (
         <RuleDialog doc={d.draft} services={services} hosts={hosts} index={ruleDialog.index}
-          initial={ruleDialog.from ? { from: [ruleDialog.from], to: [ruleDialog.to!] } : undefined}
+          initial={ruleDialog.from || ruleDialog.to ? { from: ruleDialog.from ? [ruleDialog.from] : [], to: ruleDialog.to ? [ruleDialog.to] : [] } : undefined}
+          draftChanged={d.dirty} onSaveAndReview={saveAndReview}
           onSave={(doc) => { d.edit(doc); setRuleDialog(null); }}
           onDelete={ruleDialog.index !== undefined ? () => { d.edit(deleteRule(d.draft, ruleDialog.index!)); setRuleDialog(null); setSelection(null); } : undefined}
           onClose={() => setRuleDialog(null)} />

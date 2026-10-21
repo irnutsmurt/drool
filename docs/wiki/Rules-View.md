@@ -10,8 +10,22 @@ does everything the topology does, and works with the keyboard and on a phone.
 *Each rule lets a source reach a destination on services (allow), or stops it (deny). Denies always
 win over allows; DROOL's own management path is always kept open ahead of every rule.*
 
-- **New rule** opens the rule dialog: **Name**, **Action** (*Allow*, or *Deny (wins over allows)*),
-  **Source**, **Destination**, **Service**, and an optional **Description**.
+- **New rule** opens the rule builder. Choose **Allow** or **Deny** (*Blocks the connection, even
+  where another rule allows it*), then the **Source**, **Destination** and **Service**: each is one
+  search. Type a few letters of a host, a Pack, a network, *Internal networks*, *Anywhere* or
+  *Internet* and press Enter (or click the choice), or type an address (*192.168.1.0/24*) or a port
+  (*8812*, *udp 53*, *8000-8010*). Add more than one if you need to; **×** removes one.
+  - For the destination, hosts and Packs come first: DROOL puts a rule on the hosts its destination
+    names. Addresses are listed as *outbound only*.
+  - The builder says the rule in words (*Allows ssh (TCP 22) from Internal networks to web-01.*) and
+    whose firewall it changes. When no host would get it, it says so, and its buttons read **Add to
+    draft anyway** and **Save anyway**.
+  - The name follows from your choices (*allow-ssh-internal-to-web-01*). Change it, add a
+    description, or switch the rule off under **Name, description and status**.
+  - **Save and review…** saves the policy and opens the [review](Applying-the-Firewall-Policy.md#review-and-apply)
+    of the hosts it affects. **Add to draft** keeps the rule with your other unsaved changes.
+- A host's **Firewall** section has **New rule…** too: the builder opens with that host as the
+  destination.
 - **Edit** and **Delete** on each row; **↑** and **↓** reorder rules (the order is for you to read;
   it doesn't change what's allowed).
 - A rule marked **⚠ applies to no host** is on no host's firewall: its destination is addresses

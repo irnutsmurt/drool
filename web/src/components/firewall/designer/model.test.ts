@@ -2,8 +2,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  addRule, affectedHosts, allServices, connect, deleteRule, emptyDoc, ensureCustomService, moveRule, rulesUsing, rulesUsingService,
-  toGraph, upsertGroup, upsertNetwork, upsertService, validPorts, type Doc, type ObsEdge, type Observed, type ServiceInfo, type TopologyOptions,
+  addressChoice, addRule, affectedHosts, allServices, cidrFromQuery, connect, deleteRule, emptyDoc, ensureCustomService, moveRule, portChoices, refChoices,
+  rulesUsing, rulesUsingService, suggestRuleName, toGraph, upsertGroup, upsertNetwork, upsertService, validPorts,
+  type Doc, type ObsEdge, type Observed, type ServiceInfo, type TopologyOptions,
 } from "./model";
 
 // The cross-view golden test (with internal/firewall/document TestGolden):
@@ -245,5 +246,61 @@ describe("observed topology", () => {
     expect(g.nodes).toEqual([]);
     expect(g.edges).toEqual([]);
     expect(toGraph(emptyDoc(), builtin, opts({ mode: "both" }), [], undefined).edges).toEqual([]);
+  });
+});
+
+// The rule builder (one search per field instead of kind, value and Add).
+describe("rule builder choices", () => {
+  const doc = upsertNetwork(upsertGroup(emptyDoc(), { name: "web", description: "", members: ["server-a", "server-b"] }),
+    { name: "home-lan", description: "", cidrs: ["192.168.1.0/24"] });
+
+  it("offers every kind of source at once, Internal networks first", () => {
+    const c = refChoices(doc, hosts, "source");
+    expect(c[0]).toMatchObject({ value: "internal", label: "Internal networks" });
+    expect(c.map((x) => x.value)).toEqual(expect.arrayContaining(["any", "internet", "host:server-a", "group:web", "network:home-lan"]));
+    expect(c.find((x) => x.value === "host:server-a")?.detail).toBe("web");
+  });
+
+  it("puts hosts and Packs first for a destination, and marks addresses outbound only", () => {
+    const c = refChoices(doc, hosts, "destination");
+    expect(c[0]!.group).toBe("Hosts");
+    const addr = c.filter((x) => x.group === "Addresses (outbound only)").map((x) => x.value);
+    expect(addr).toEqual(["internal", "internet", "network:home-lan"]);
+    expect(c.find((x) => x.value === "any")?.detail).toBe("every host DROOL manages");
+  });
+
+  it("reads an address or range typed in", () => {
+    expect(cidrFromQuery("10.0.0.5")).toBe("cidr:10.0.0.5/32");
+    expect(cidrFromQuery(" 192.168.1.0/24 ")).toBe("cidr:192.168.1.0/24");
+    expect(cidrFromQuery("2001:DB8::/32")).toBe("cidr:2001:db8::/32");
+    expect(cidrFromQuery("fe80::1")).toBe("cidr:fe80::1/128");
+    for (const bad of ["10.0.0.256", "10.0.0.0/33", "web", "22", "1.2.3", "2001:db8::/129"]) expect(cidrFromQuery(bad)).toBeNull();
+    expect(addressChoice("10.1.2.0/24", "destination")).toEqual([
+      { value: "cidr:10.1.2.0/24", label: "10.1.2.0/24", group: "Addresses (outbound only)", detail: "an address or range" }]);
+    expect(addressChoice("web", "source")).toEqual([]);
+  });
+
+  it("reads a port typed in, with or without a protocol", () => {
+    expect(portChoices("8812")).toEqual([{ protocol: "tcp", ports: "8812" }, { protocol: "udp", ports: "8812" }]);
+    expect(portChoices("udp 53")).toEqual([{ protocol: "udp", ports: "53" }]);
+    expect(portChoices("tcp/8000-8010")).toEqual([{ protocol: "tcp", ports: "8000-8010" }]);
+    expect(portChoices("8812/udp")).toEqual([{ protocol: "udp", ports: "8812" }]);
+    expect(portChoices("80, 443")).toEqual([{ protocol: "tcp", ports: "80,443" }, { protocol: "udp", ports: "80,443" }]);
+    for (const bad of ["ssh", "0", "70000", "tcp", "10-5", ""]) expect(portChoices(bad)).toEqual([]);
+  });
+
+  it("names a rule after what it does, uniquely and within the server's rules", () => {
+    const r = { action: "allow" as const, from: ["internal"], to: ["host:PiZeroWopenwx"], services: ["ssh"] };
+    expect(suggestRuleName(doc, r)).toBe("allow-ssh-internal-to-pizerowopenwx");
+    const taken = addRule(doc, { ...r, name: "allow-ssh-internal-to-pizerowopenwx", description: "", enabled: true });
+    expect(suggestRuleName(taken, r)).toBe("allow-ssh-internal-to-pizerowopenwx-2");
+    // Editing rule 0 keeps its own name available.
+    expect(suggestRuleName(taken, r, 0)).toBe("allow-ssh-internal-to-pizerowopenwx");
+    expect(suggestRuleName(doc, { action: "deny", from: ["cidr:2001:db8::/32"], to: ["any"], services: ["tcp-8812"] }))
+      .toBe("deny-tcp-8812-2001-db8-32-to-anywhere");
+    const long = suggestRuleName(doc, { action: "allow", from: ["host:" + "a".repeat(80)], to: ["group:web"], services: ["https"] });
+    expect(long.length).toBeLessThanOrEqual(63);
+    expect(long).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/);
+    expect(suggestRuleName(doc, { action: "allow", from: [], to: [], services: [] })).toBe("allow-to");
   });
 });

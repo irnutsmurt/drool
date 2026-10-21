@@ -106,6 +106,7 @@ another path is shown.
 | A link in text | `plainLink`, or `text-accent` on cards | Links inside a sentence are underlined (a global rule in `index.css`). |
 | A form field | `Field` with `Input` or `Select`; `Checkbox` | Every field has a visible label, or `aria-label` when its context labels it visually. |
 | Less frequent actions | `MenuButton` (Actions ▾, the ⋯ row menu) | Danger items go last, separated from the rest. |
+| Choosing one or more of many (hosts, Packs, networks, services) | `ComboPicker` | One search over every kind of choice, in labelled groups; a typed value (an address, a port) is offered as a choice; chosen values are chips with a remove button. Prefer it to separate kind, value and Add controls. |
 | A list of records | `Table` (cards on a phone and wherever it doesn't fit) | A page's own table uses `class="rtable"` with `data-label`, `data-primary` and an empty `data-label` for actions (`lib/tableFit.ts` decides when it becomes cards). Dense data can show a compact list instead (`hooks/useTableFits.ts`). |
 | A state | `StatusBadge` or `StatusIcon` (`components/monitoring/Status.tsx`) | An icon and a word, never colour alone. See the table below. |
 | Nothing, loading, failed | `EmptyState`, `Loading`, `LoadError`, and `emptyText()` for a list's empty row (`States.tsx`) | Never show "none" or "0" while loading or after an error. |

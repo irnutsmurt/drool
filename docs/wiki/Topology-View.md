@@ -30,10 +30,11 @@ hosts, Packs, networks and the internet, and lines for what may talk to what.
   destination filled in.
 - Or click **New rule…**, or use **Place on canvas…** to add a host, Pack or network box first.
 
-In the rule dialog, choose the **Action**, adjust the **Source** and **Destination** (a **Host**,
-**Pack**, **Network**, **Address range (CIDR)**, **Internet**, **Internal networks** or **Anywhere**),
-add **Services** (a built-in one, or **Custom (protocol and port)…**), and click **Add rule** (or
-**Update rule**). *Changes stay in the draft until you save. Nothing reaches a host until you apply.*
+In the rule builder, choose **Allow** or **Deny**, adjust the **Source** and **Destination**, and add a
+**Service**: each is one search over hosts, Packs, networks, *Internal networks*, *Anywhere* and the
+*Internet*, or an address or port you type ([Rules view](Rules-View.md#rules)). **Add to draft** (or
+**Update draft**) keeps it with your other changes; **Save and review…** saves the policy and opens
+the review. Nothing reaches a host until you apply.
 
 ## Details
 

@@ -33,6 +33,9 @@ const plan = (mode, installed) => ({
   environment: { ...(real.environment ?? {}), nft: installed ? "/usr/sbin/nft" : "", nft_version: installed ? "nftables v1.0.9" : "" },
   eligibility: installed ? { supported: true, reasons: [], detected: ["nftables v1.0.9"] } : { supported: false, reasons: [reason], detected: [] },
   environment_checked_at: new Date().toISOString(),
+  transport: "ssh", pending_transaction: undefined,
+  summary: { ...real.summary, mode, transport: "ssh", supported: installed, needs_nftables: !installed, reason: installed ? undefined : reason,
+    enforced: false, status: "not_enforced", pending_transaction_id: undefined },
 });
 const simHost = (extra) => ({ host_id: id, host_name: "web-1", package_manager: "apt", extra_removals: [],
   plan: { install: [{ name: "nftables", to: "1.0.9-1" }, { name: "libnftables1", to: "1.0.9-1" }], upgrade: [], remove: [], downgrade: [] }, ...extra });
@@ -119,6 +122,40 @@ test("nftables missing in Monitor: information, a read-only Check, and Install n
     assert.match(await page.$eval('[data-testid="nft-install"]', (e) => e.innerText), /nftables is installed\. The environment was checked again\. View the run/);
     // Nothing else: no mode change, no apply.
     assert.ok(!s.calls.some((c) => c.startsWith(`PUT /api/v1/firewall/hosts/${id}`) || c.includes("/apply")), s.calls.join(", "));
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await page.browserContext().close();
+  }
+});
+
+test("from the policy card: the review installs nftables first, then the mode is chosen there", async () => {
+  const page = await session(browser);
+  try {
+    const s = await stub(page, { mode: "monitor" });
+    await firewallPage(page);
+    // The policy card says what's missing and that the review offers it.
+    await page.waitForSelector('[data-testid="fw-needs-nftables"]');
+    assert.match(await page.$eval('[data-testid="fw-needs-nftables"]', (e) => e.innerText),
+      /nftables isn't installed on this host, so DROOL can't enforce here yet\. Review and apply policy… offers to install it first/);
+    await click(page, '[data-testid="fw-policy-status"] button', "Review and apply policy…");
+    await page.waitForSelector('[data-testid="review-needs-nftables"]');
+    const enforce = () => page.$eval('[data-testid="review-mode-choice"] option[value="enforce"]', (o) => [o.textContent, o.disabled]);
+    assert.deepEqual(await enforce(), ["Enforce — Apply firewall rules with rollback protection. (not possible now)", true]);
+    // Install nftables…: its dry run and confirmation open over the review.
+    await click(page, '[data-testid="review-needs-nftables"] button', "Install nftables…");
+    await waitFor(page, async () => /libnftables1/.test(await page.$eval('[data-testid="nft-install-dialog"]', (e) => e.innerText).catch(() => "")), "the dry run's plan");
+    assert.ok(!s.calls.includes("POST /api/v1/jobs"), "nothing started before the confirmation");
+    await click(page, '[data-testid="nft-install-dialog"] button', "Install nftables");
+    await waitFor(page, async () => !(await page.$('[data-testid="nft-install-dialog"]')), "back in the review");
+    assert.ok(await page.$('[data-testid="fw-apply-dialog"]'), "the review stayed open");
+    await waitFor(page, async () => /nftables is installed\. The environment was checked again\./.test(await page.$eval('[data-testid="review-needs-nftables"]', (e) => e.innerText)), "installed", 20000);
+    // Now Enforce can be chosen — still only by the person.
+    await waitFor(page, async () => !(await enforce())[1], "Enforce possible", 20000);
+    assert.equal(await page.$eval('[data-testid="review-mode-choice"]', (x) => x.value), "keep", "the mode wasn't chosen for them");
+    await page.select('[data-testid="review-mode-choice"]', "enforce");
+    await waitText(page, "Switch to Enforce and apply");
+    assert.ok(!s.calls.some((c) => c.startsWith(`PUT /api/v1/firewall/hosts/${id}`) || c.includes("/apply")), s.calls.join(", "));
+    await shot(page, "fw-review-nftables-installed");
     assert.deepEqual(page.errors, []);
   } finally {
     await page.browserContext().close();
