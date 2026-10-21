@@ -9,7 +9,8 @@ import { Dialog } from "@/components/ui/Dialog";
 import { cx } from "@/components/ui/cx";
 import { errorMessage } from "@/lib/format";
 import { ApplyDialog } from "../ApplyDialog";
-import { useFwServices } from "../queries";
+import { useQueryClient } from "@tanstack/react-query";
+import { fwHostsQuery, useFwServices } from "../queries";
 import { addRule, deleteRule, uniqueRuleName, upsertService, type MgmtPath, type Rule, type Service, type ServiceInfo, type TopologyMode } from "./model";
 import { useNetFlow } from "@/components/network/queries";
 import { useDesigner } from "./useDesigner";
@@ -18,7 +19,7 @@ import { Topology, type Selection } from "./Topology";
 import { RulesView } from "./RulesView";
 import { YamlView } from "./YamlView";
 import { RuleDialog } from "./RuleDialog";
-import { AfterSave, Inspector, MgmtAlerts, PreviewPanel } from "./Panels";
+import { AfterSave, applicable, Inspector, MgmtAlerts, PreviewPanel } from "./Panels";
 import { TabPanel, Tabs } from "@/components/ui/Tabs";
 
 const views = [
@@ -31,6 +32,7 @@ type View = (typeof views)[number]["id"];
 /** The Firewall Designer: Topology, Rules and YAML over one draft. */
 export function DesignerPage() {
   const d = useDesigner();
+  const qc = useQueryClient();
   const { can } = useAuth();
   const canWrite = can("firewall.write");
   const hostsQ = useHosts();
@@ -55,8 +57,11 @@ export function DesignerPage() {
   // gets the full width, so the policy stays legible. Selecting something or
   // changing the draft brings it back; the toggle opens or hides it by hand.
   const [panelChoice, setPanelChoice] = useState<boolean | null>(null);
-  const [confirmSave, setConfirmSave] = useState(false);
+  // The save confirmation (a draft blocking a management path); review:
+  // the save was "Save and review application…".
+  const [confirmSave, setConfirmSave] = useState<{ review: boolean } | null>(null);
   const [applyTo, setApplyTo] = useState<string[] | null>(null);
+  const [afterSaveDismissed, setAfterSaveDismissed] = useState(false);
   const topoMode = (params.get("topo") as TopologyMode | null) ?? "configured";
   const setTopoMode = (m: TopologyMode) => {
     const next = new URLSearchParams(params);
@@ -125,7 +130,26 @@ export function DesignerPage() {
   if (d.loadError) return <Alert>{errorMessage(d.loadError)}</Alert>;
 
   const blocked = d.management.filter((p) => p.blocked).length;
-  const save = () => (blocked > 0 ? setConfirmSave(true) : d.save.mutate());
+  // Saving changes no host. "Save and review application…" then opens the
+  // review for the hosts the save affected that DROOL can apply to now (the
+  // review asks how each host not in Enforce mode should handle it); when
+  // there is none, the after-save summary says why.
+  const doSave = (review: boolean) => {
+    setAfterSaveDismissed(false);
+    d.save.mutate(undefined, {
+      onSuccess: async (res) => {
+        if (!review || !canWrite || res.hosts.length === 0) return;
+        // Each host's status now, as the after-save summary shows it.
+        const live = await qc.fetchQuery(fwHostsQuery).catch(() => null);
+        const ids = res.hosts.map((h) => live?.items.find((x) => x.host_id === h.host_id) ?? h).filter(applicable).map((h) => h.host_id);
+        if (ids.length > 0) setApplyTo(ids);
+      },
+    });
+  };
+  const save = (review: boolean) => (blocked > 0 ? setConfirmSave({ review }) : doSave(review));
+  // Offered when the draft changes some host's firewall.
+  const affectsHosts = (d.check?.impact.length ?? 0) > 0;
+  const saveDisabled = !d.dirty || d.yamlBroken || !d.check?.valid || d.save.isPending || d.checking;
   const showPanel = view !== "topology" || (panelChoice ?? (selection != null || d.dirty));
 
   return (
@@ -157,8 +181,13 @@ export function DesignerPage() {
           {canWrite && <Button size="sm" variant="ghost" disabled={!d.canUndo} onClick={d.undo}>Undo</Button>}
           {canWrite && <Button size="sm" variant="ghost" disabled={!d.dirty} onClick={d.discard}>Discard changes</Button>}
           {canWrite && (
-            <Button size="sm" variant="primary" disabled={!d.dirty || d.yamlBroken || !d.check?.valid || d.save.isPending || d.checking} onClick={save}>
+            <Button size="sm" variant={affectsHosts ? "secondary" : "primary"} disabled={saveDisabled} onClick={() => save(false)}>
               Save policy
+            </Button>
+          )}
+          {canWrite && affectsHosts && (
+            <Button size="sm" variant="primary" disabled={saveDisabled} onClick={() => save(true)}>
+              Save and review application…
             </Button>
           )}
         </div>
@@ -166,7 +195,10 @@ export function DesignerPage() {
       {!canWrite && <Alert tone="warn">You can explore and simulate; only administrators can change the firewall policy.</Alert>}
       {d.staleBase && <Alert tone="warn">Someone else saved the firewall policy since you opened it. Saving will be refused: copy your changes from the YAML view, then discard and reapply them.</Alert>}
       {d.save.error && <Alert>{errorMessage(d.save.error)}</Alert>}
-      {d.save.isSuccess && !d.dirty && d.save.data && <AfterSave hosts={d.save.data.hosts} canApply={canWrite} onReview={setApplyTo} />}
+      {d.save.isSuccess && !d.dirty && d.save.data && !afterSaveDismissed && (
+        <AfterSave hosts={d.save.data.hosts} noHost={d.save.data.no_host_rules ?? []} canApply={canWrite} onReview={setApplyTo}
+          onDismiss={() => setAfterSaveDismissed(true)} />
+      )}
       {suggested && !(d.save.isSuccess && !d.dirty) && (
         <Alert tone="warn">
           Draft rule <strong>{suggested}</strong> was added from an observed connection. It is only part of this draft: review it below, check the preview and
@@ -193,7 +225,7 @@ export function DesignerPage() {
           )}
           {view === "rules" && (
             <RulesView doc={d.draft} edit={d.edit} services={services} hosts={hosts} storedGroups={d.storedGroups} canWrite={canWrite}
-              highlight={highlight.policies} fresh={suggested ? [suggested] : []} />
+              highlight={highlight.policies} fresh={suggested ? [suggested] : []} noHost={(d.check?.no_host_rules ?? []).map((r) => r.rule)} />
           )}
           {view === "yaml" && (
             <div className="h-[38rem] p-3">
@@ -223,13 +255,13 @@ export function DesignerPage() {
           onClose={() => setRuleDialog(null)} />
       )}
       {confirmSave && (
-        <Dialog title="Save a policy that blocks DROOL's management path?" onClose={() => setConfirmSave(false)}>
+        <Dialog title="Save a policy that blocks DROOL's management path?" onClose={() => setConfirmSave(null)}>
           <div className="space-y-3 text-sm">
             <Alert>This policy would cut DROOL off from {d.management.filter((p) => p.blocked).map((p) => p.host).join(", ")}.</Alert>
             <p>You can save it as a draft of the policy, but <strong>applying it to those hosts will be refused</strong> until the conflict is fixed, or an administrator uses the audited emergency override (which still rolls back on its own if DROOL loses the host).</p>
             <div className="flex justify-end gap-2">
-              <Button onClick={() => setConfirmSave(false)}>Keep editing</Button>
-              <Button variant="danger" onClick={() => { setConfirmSave(false); d.save.mutate(); }}>Save anyway</Button>
+              <Button onClick={() => setConfirmSave(null)}>Keep editing</Button>
+              <Button variant="danger" onClick={() => { const review = confirmSave.review; setConfirmSave(null); doSave(review); }}>Save anyway</Button>
             </div>
           </div>
         </Dialog>

@@ -8,26 +8,36 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Dialog } from "@/components/ui/Dialog";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Select } from "@/components/ui/Field";
 import { errorMessage } from "@/lib/format";
+import { actionLabel, decide, plan, type Decision, type Mode, type ModeChoice } from "./applyChoices";
 import { applyBlocked, PolicyLines, ruleNames } from "./HostPolicy";
 import { modeInfo } from "./parts";
 import { fk, type FwPlan } from "./queries";
 
+const modeLabel = (m: string) => modeInfo[m]?.label ?? m;
+
 /** Review and apply (DESIGN-STANDARD §5, review before execution): per
- * host, whether its mode switches to Enforce, what changes, which rules
- * are then in force, and what could affect its connectivity — then one
- * confirmed run, one host at a time, stopping at the first failure. A host
- * the server would refuse before its transaction (no environment, a
- * transaction in progress, a rule cutting the management path, drift) is
- * left out and says why. The mode switch is part of the request
- * (set_enforce): the server makes it only once that host's checks have
- * passed. What was reviewed is what is applied: each host's rules hash goes
- * with the request, and a policy changed meanwhile is refused. Nothing
- * changes until the confirming button. */
-export function ApplyDialog({ hostIds, names, remove, onClose }: {
+ * host, its mode, what changes, which rules are then in force, and what
+ * could affect its connectivity — then one confirmed run, one host at a
+ * time, stopping at the first failure. A host the server would refuse
+ * before its transaction (no environment, a transaction in progress, a rule
+ * cutting the management path, drift) is left out and says why.
+ *
+ * A host that isn't in Enforce mode is applied to only if Enforce is chosen
+ * for it here: the review asks, offering DROOL's modes with "Keep current
+ * mode" first and chosen. Choosing Off, Monitor or Guided changes only the
+ * mode. The switch to Enforce is part of the request (set_enforce_hosts):
+ * the server makes it only once that host's checks have passed. What was
+ * reviewed is what is applied: each host's rules hash goes with the
+ * request, and a policy changed meanwhile is refused. Nothing changes until
+ * the confirming button. */
+export function ApplyDialog({ hostIds, names, remove, initialModes, onClose }: {
   /** names[i] is hostIds[i]'s name. */
-  hostIds: string[]; names: string[]; remove?: boolean; onClose: () => void;
+  hostIds: string[]; names: string[]; remove?: boolean;
+  /** Modes already chosen for hosts (Enforce, chosen on the host's page). */
+  initialModes?: Record<string, ModeChoice>;
+  onClose: () => void;
 }) {
   const { can } = useAuth();
   const qc = useQueryClient();
@@ -36,6 +46,7 @@ export function ApplyDialog({ hostIds, names, remove, onClose }: {
   const [allowDrift, setAllowDrift] = useState(false);
   const [reason, setReason] = useState("");
   const [confirmOverride, setConfirmOverride] = useState("");
+  const [choices, setChoices] = useState<Record<string, ModeChoice>>(initialModes ?? {});
   const anyOverride = overrideMgmt || overrideTimeout || allowDrift;
   const overrideConfirmed = !overrideMgmt || confirmOverride.trim().toUpperCase() === "OVERRIDE";
   const plans = useQueries({
@@ -56,58 +67,83 @@ export function ApplyDialog({ hostIds, names, remove, onClose }: {
     }
     return null;
   };
-  const loaded = remove || plans.every((q) => !!q.data);
-  const ready = plans.flatMap((q) => (q.data && !refusal(q.data) ? [q.data] : []));
-  const targets = remove ? hostIds : ready.map((pl) => pl.host_id);
-  const switching = ready.filter((pl) => pl.config.mode !== "enforce");
+  // Reviewed on what the server says now, not on what a page cached
+  // earlier: a review is shown once its plan was fetched for this dialog.
+  const fresh = (q: (typeof plans)[number]) => !!q.data && q.isFetchedAfterMount;
+  const loaded = remove || plans.every(fresh);
+  const shown = plans.flatMap((q) => (fresh(q) ? [q.data!] : []));
+  const decisions = shown.map((pl) => decide(pl, choices[pl.host_id], refusal(pl)));
+  const run = plan(shown, decisions);
+  const targets = remove ? hostIds : run.apply.map((pl) => pl.host_id);
   const single = hostIds.length === 1;
   // What was confirmed, kept as it was: the review below refreshes and
   // would otherwise describe the state the run itself produces.
-  const [started, setStarted] = useState<{ hosts: string[]; switching: string[] } | null>(null);
+  const [started, setStarted] = useState<{ hosts: string[]; switching: string[]; modes: string[] } | null>(null);
   const apply = useMutation({
-    mutationFn: () => unwrap(api.POST("/firewall/apply", {
-      body: {
-        host_ids: targets, remove, override_mgmt: overrideMgmt, override_timeout: overrideTimeout, allow_drift: allowDrift,
-        reason: anyOverride ? reason : undefined,
-        set_enforce: switching.length > 0 ? true : undefined,
-        expect_rules_hashes: remove ? undefined : Object.fromEntries(ready.map((pl) => [pl.host_id, pl.rendered.rules_hash])),
-      },
-    })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: fk.all }),
+    mutationFn: async () => {
+      // Mode-only changes first (each one audited), then the run. A failure
+      // stops before anything is applied, and says what changed.
+      const done: string[] = [];
+      for (const { p, to } of remove ? [] : run.modes) {
+        try {
+          await unwrap(api.PUT("/firewall/hosts/{id}", { params: { path: { id: p.host_id } },
+            body: { mode: to, outbound: p.config.outbound ?? "allow", rollback_timeout_s: p.config.rollback_timeout_s ?? 0 } }));
+          done.push(`${p.host_name} is now in ${modeLabel(to)} mode`);
+        } catch (e) {
+          throw new Error(`${done.length ? done.join("; ") + ". " : ""}Couldn't change ${p.host_name}'s mode: ${errorMessage(e)}. Nothing was applied.`);
+        }
+      }
+      const job = targets.length === 0 ? null : await unwrap(api.POST("/firewall/apply", {
+        body: {
+          host_ids: targets, remove, override_mgmt: overrideMgmt, override_timeout: overrideTimeout, allow_drift: allowDrift,
+          reason: anyOverride ? reason : undefined,
+          set_enforce_hosts: remove || run.switching.length === 0 ? undefined : run.switching.map((pl) => pl.host_id),
+          expect_rules_hashes: remove ? undefined : Object.fromEntries(run.apply.map((pl) => [pl.host_id, pl.rendered.rules_hash])),
+        },
+      }));
+      return { job, modes: done };
+    },
+    onSettled: () => void qc.invalidateQueries({ queryKey: fk.all }),
   });
   const confirm = () => {
-    setStarted({ hosts: remove ? names : ready.map((pl) => pl.host_name), switching: switching.map((pl) => pl.host_name) });
+    setStarted({ hosts: remove ? names : run.apply.map((pl) => pl.host_name), switching: run.switching.map((pl) => pl.host_name),
+      modes: run.modes.map(({ p, to }) => `${p.host_name}: ${modeLabel(p.config.mode)} → ${modeLabel(to)}`) });
     apply.mutate();
   };
-  const n = targets.length;
-  const action = remove ? "Remove policy"
-    : overrideMgmt ? "Apply with emergency override"
-      : switching.length > 0 ? (single ? "Switch to Enforce and apply" : `Switch to Enforce and apply to ${n} host${n === 1 ? "" : "s"}`)
-        : single ? "Apply policy" : `Apply to ${n} host${n === 1 ? "" : "s"}`;
+  const nothing = !remove && run.apply.length === 0 && run.modes.length === 0;
+  const action = remove ? "Remove policy" : overrideMgmt && run.apply.length > 0 ? "Apply with emergency override" : actionLabel(run, modeLabel);
   const title = remove ? `Remove DROOL's firewall policy from ${names.join(", ")}?`
     : single ? `Review and apply the firewall policy to ${names[0]}` : `Review and apply the firewall policy to ${hostIds.length} hosts`;
+  const r = apply.data;
   return (
     <Dialog title={title} onClose={onClose} wide testId="fw-apply-dialog"
       footer={
         <>
-          <Button data-autofocus onClick={onClose}>{apply.data ? "Close" : "Cancel"}</Button>
-          {!apply.data && (
-            <Button variant={remove || overrideMgmt ? "danger" : "primary"}
-              disabled={!loaded || n === 0 || apply.isPending || (anyOverride && reason.trim().length < 5) || !overrideConfirmed}
-              title={!loaded ? "Loading each host's review…" : n === 0 ? "No host can be applied now: see why above." : undefined}
+          <Button data-autofocus onClick={onClose}>{r ? "Close" : "Cancel"}</Button>
+          {!r && (
+            <Button variant={remove || (overrideMgmt && run.apply.length > 0) ? "danger" : "primary"}
+              disabled={!loaded || nothing || apply.isPending || (anyOverride && reason.trim().length < 5) || !overrideConfirmed}
+              title={!loaded ? "Loading each host's review…" : nothing ? "Nothing to do yet: choose a mode above, or see why each host is left out." : undefined}
               onClick={confirm}>
               {action}
             </Button>
           )}
         </>
       }>
-      {apply.data && started ? (
+      {r && started ? (
         <div className="space-y-3 text-sm" data-testid="apply-started">
-          <Alert tone="ok">Started: {remove ? "removing DROOL's policy from" : "applying the saved policy to"} {started.hosts.join(", ")}, one host at a time.
-            {started.switching.length > 0 && ` ${started.switching.join(", ")} switch${started.switching.length === 1 ? "es" : ""} to Enforce when ${started.switching.length === 1 ? "its" : "their"} checks have passed, just before the rules change.`}
-          </Alert>
-          <p>Follow it on its <Link className="underline" to={`/jobs/${apply.data.id}`}>run page</Link>. Each host&apos;s transaction timeline is on its firewall page (Transactions):
-            a change that can&apos;t be verified over a fresh management connection is rolled back by the host itself.</p>
+          {r.modes.length > 0 && (
+            <Alert tone="ok">Mode changed: {started.modes.join("; ")}. Nothing was applied to {r.modes.length === 1 ? "that host" : "those hosts"}: Off, Monitor and Guided don&apos;t enforce.</Alert>
+          )}
+          {r.job && (
+            <>
+              <Alert tone="ok">Started: {remove ? "removing DROOL's policy from" : "applying the saved policy to"} {started.hosts.join(", ")}, one host at a time.
+                {started.switching.length > 0 && ` ${started.switching.join(", ")} switch${started.switching.length === 1 ? "es" : ""} to Enforce when ${started.switching.length === 1 ? "its" : "their"} checks have passed, just before the rules change.`}
+              </Alert>
+              <p>Follow it on its <Link className="underline" to={`/jobs/${r.job.id}`}>run page</Link>. Each host&apos;s transaction timeline is on its firewall page (Transactions):
+                a change that can&apos;t be verified over a fresh management connection is rolled back by the host itself.</p>
+            </>
+          )}
         </div>
       ) : (
       <div className="space-y-3 text-sm">
@@ -116,25 +152,35 @@ export function ApplyDialog({ hostIds, names, remove, onClose }: {
             {single ? " this host" : " these hosts"}: every connection its own firewall allows gets through. This is a transaction too, with automatic rollback protection.</p>
         ) : (
           <>
-            <p><strong>This is the review: nothing changes until you choose {action}.</strong> Then DROOL applies the saved policy one host at a time, stopping at the first failure.</p>
+            <p><strong>This is the review: nothing changes until you choose {action}.</strong> {run.apply.length > 0 || !loaded
+              ? "Then DROOL applies the saved policy one host at a time, stopping at the first failure."
+              : "The saved policy is applied only to hosts in Enforce mode, or where you choose Enforce below."}</p>
             <div className="space-y-2" data-testid="apply-review">
               {hostIds.map((id, i) => {
                 const q = plans[i];
                 if (q?.error) return <p key={id} className="text-danger"><strong>{names[i]}</strong>: couldn&apos;t load its review: {errorMessage(q.error)}</p>;
-                if (!q?.data) return <p key={id} className="text-muted"><strong>{names[i]}</strong>: loading its review…</p>;
-                return <HostReview key={id} p={q.data} name={names[i]!} refused={refusal(q.data)} single={single} />;
+                if (!q || !fresh(q)) return <p key={id} className="text-muted"><strong>{names[i]}</strong>: loading its review…</p>;
+                const at = shown.findIndex((pl) => pl.host_id === id);
+                return <HostReview key={id} p={q.data!} name={names[i]!} single={single} decision={decisions[at]!} refused={refusal(q.data!)}
+                  choice={choices[id] ?? "keep"} canChoose={can("firewall.write")} onChoose={(c) => setChoices((cur) => ({ ...cur, [id]: c }))} />;
               })}
             </div>
-            {loaded && n < hostIds.length && n > 0 && <p className="text-warn">{hostIds.length - n} of {hostIds.length} hosts are left out (see why above). The run applies to the other {n}.</p>}
+            {loaded && !single && run.untouched.length > 0 && (run.apply.length > 0 || run.modes.length > 0) && (
+              <p className="text-muted">{run.untouched.length} of {hostIds.length} hosts stay as they are (see why above).</p>
+            )}
           </>
         )}
-        <p className="font-medium">Automatic rollback protection</p>
-        <ol className="list-decimal space-y-1 pl-5 text-muted">
-          <li>DROOL checks the host's firewall environment and measures a brand-new management connection.</li>
-          <li>The host writes a durable journal and arms a rollback timer <em>before</em> its rules change, then applies the policy atomically.</li>
-          <li>Only a <em>new</em> connection (a fresh agent connection, or a fresh SSH connection through every jump host) can commit it.</li>
-          <li>If that never happens — the policy cut DROOL&apos;s path, the controller vanished, the agent died, the host rebooted — the host restores its previous policy on its own.</li>
-        </ol>
+        {(remove || run.apply.length > 0) && (
+          <>
+            <p className="font-medium">Automatic rollback protection</p>
+            <ol className="list-decimal space-y-1 pl-5 text-muted">
+              <li>DROOL checks the host&apos;s firewall environment and measures a brand-new management connection.</li>
+              <li>The host writes a durable journal and arms a rollback timer <em>before</em> its rules change, then applies the policy atomically.</li>
+              <li>Only a <em>new</em> connection (a fresh agent connection, or a fresh SSH connection through every jump host) can commit it.</li>
+              <li>If that never happens — the policy cut DROOL&apos;s path, the controller vanished, the agent died, the host rebooted — the host restores its previous policy on its own.</li>
+            </ol>
+          </>
+        )}
         {can("firewall.override") && (
           <details className="rounded-ui border border-line p-3">
             <summary className="cursor-pointer font-medium">Overrides (audited)</summary>
@@ -166,30 +212,100 @@ export function ApplyDialog({ hostIds, names, remove, onClose }: {
   );
 }
 
-/** One host's review: the mode, what changes, the rules then in force,
- * and what could affect its connectivity. */
-function HostReview({ p, name, refused, single }: { p: FwPlan; name: string; refused: string | null; single: boolean }) {
+/** One host's review: its mode (and, when it isn't Enforce, the choice of
+ * mode), then — where the policy is applied — what changes, what could
+ * affect its connectivity, and the rules in force after applying. */
+function HostReview({ p, name, single, decision, refused, choice, canChoose, onChoose }: {
+  p: FwPlan; name: string; single: boolean; decision: Decision; refused: string | null;
+  choice: ModeChoice; canChoose: boolean; onChoose: (c: ModeChoice) => void;
+}) {
   const a = p.applied;
-  const switches = p.config.mode !== "enforce";
-  const mode = modeInfo[p.config.mode]?.label ?? p.config.mode;
+  const current = p.config.mode;
+  const rules = ruleNames(p.explain);
+  const first = !a.enforced || a.drift === "missing";
+  const applying = decision.kind === "apply";
+  const summary = decision.kind === "mode" ? `mode changes to ${modeLabel(decision.to)}, nothing applied`
+    : decision.kind === "none" ? (current === "enforce" ? `left out: ${decision.why}` : `stays ${modeLabel(current)}, not applied`)
+      : [decision.switch ? `switches from ${modeLabel(current)} to Enforce` : "Enforce", first ? `${rules.length} rule${rules.length === 1 ? "" : "s"}, applied for the first time`
+        : p.changes_added.length + p.changes_removed.length === 0 ? "no changes (applying again re-verifies it)"
+          : `+${p.changes_added.length} −${p.changes_removed.length}`].join(" · ");
+  const body = <ApplyBody p={p} name={name} />;
+  return (
+    <section className="space-y-2 rounded-ui border border-line p-3" aria-label={`${name}: review`} data-testid="host-review">
+      <h3 className="font-semibold">{name}{!single && <>: <span className={summaryTone(decision, current)} data-testid="host-review-summary">{summary}</span></>}</h3>
+      {current === "enforce" ? (
+        <>
+          {refused && <p className="text-danger">Left out: {refused}.</p>}
+          {!refused && <p data-testid="review-mode"><span className="font-medium">Mode: </span>Enforce (already set).</p>}
+        </>
+      ) : (
+        <ModeChoiceField p={p} name={name} choice={choice} refused={refused} canChoose={canChoose} onChoose={onChoose} decision={decision} />
+      )}
+      {applying && (single ? body : (
+        <details>
+          <summary className="cursor-pointer font-medium">What applying changes on {name}</summary>
+          {body}
+        </details>
+      ))}
+      {(p.address_only_rules ?? []).length > 0 && (
+        <ul className="space-y-0.5 text-xs text-warn" data-testid="review-address-only">
+          {p.address_only_rules.map((n) => <li key={n.rule}><span aria-hidden="true">⚠ </span>{n.message}</li>)}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+const summaryTone = (d: Decision, current: string) => (d.kind === "none" && current === "enforce" ? "text-danger" : d.kind === "apply" ? "" : "text-muted");
+
+/** The mode prompt for a host that isn't in Enforce mode: its mode now,
+ * DROOL's modes with "Keep current mode" first, what the choice does. */
+function ModeChoiceField({ p, name, choice, refused, canChoose, onChoose, decision }: {
+  p: FwPlan; name: string; choice: ModeChoice; refused: string | null; canChoose: boolean; onChoose: (c: ModeChoice) => void; decision: Decision;
+}) {
+  const current = p.config.mode;
+  const a = p.applied;
+  return (
+    <div className="space-y-2" data-testid="review-mode">
+      <p>
+        <span className="font-medium">Mode: </span><Badge tone="neutral">{modeLabel(current)}</Badge>{" "}
+        {current === "off" ? "Firewall management isn't enabled on this host. Would you like to configure it?"
+          : "DROOL observes this host but doesn't enforce the policy on it. Would you like to configure it?"}
+      </p>
+      <div className="max-w-md">
+        <Field label={`Mode for ${name}`} hint={choice === "keep" ? `${modeLabel(current)}: ${modeInfo[current]?.short ?? ""}` : modeInfo[choice]?.text}>
+          <Select value={choice} disabled={!canChoose} onChange={(e) => onChoose(e.target.value as ModeChoice)} data-testid="review-mode-choice">
+            <option value="keep">Keep current mode ({modeLabel(current)})</option>
+            {(["off", "monitor", "guided", "enforce"] as Mode[]).filter((m) => m !== current).map((m) => (
+              <option key={m} value={m} disabled={m === "enforce" && !!refused}>
+                {modeLabel(m)} — {modeInfo[m]!.short}{m === "enforce" && refused ? " (not possible now)" : ""}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+      <p className={decision.kind === "apply" ? "" : "text-muted"} data-testid="review-mode-outcome">
+        {decision.kind === "apply" ? <><Badge tone="warn">{modeLabel(current)} → Enforce</Badge> This apply switches the host to Enforce: from then on DROOL&apos;s rules decide which connections it accepts.
+          The switch happens only once DROOL&apos;s checks pass, just before the rules change; a host refused before that keeps {modeLabel(current)}.</>
+          : decision.kind === "mode" ? <>When you confirm, {name}&apos;s mode changes to {modeLabel(decision.to)}. Nothing is applied or enforced{decision.to === "off" ? ", and DROOL stops observing it" : ""}.</>
+            : <>Nothing changes on {name}: the saved policy isn&apos;t applied while it is in {modeLabel(current)} mode.{refused && <> Enforce isn&apos;t possible now: {refused}.</>}</>}
+        {decision.kind !== "apply" && a.enforced && <> DROOL&apos;s revision {a.revision} stays in force on it: a mode doesn&apos;t remove DROOL&apos;s rules.</>}
+      </p>
+    </div>
+  );
+}
+
+/** What applying does to one host: what changes, what could affect its
+ * connectivity, and the rules in force afterwards. */
+function ApplyBody({ p, name }: { p: FwPlan; name: string }) {
+  const a = p.applied;
   const rules = ruleNames(p.explain);
   const mgmt = p.explain.filter((r) => r.reason.kind === "management");
   const first = !a.enforced || a.drift === "missing";
   const denies = p.changes_added.filter((l) => l.startsWith("deny "));
   const outRestricted = p.explain.some((r) => r.direction === "out" && r.reason.kind === "default" && r.verdict === "drop");
-  const summary = refused ? `left out: ${refused}`
-    : [switches ? `switches from ${mode} to Enforce` : "Enforce", first ? `${rules.length} rule${rules.length === 1 ? "" : "s"}, applied for the first time`
-      : p.changes_added.length + p.changes_removed.length === 0 ? "no changes (applying again re-verifies it)"
-        : `+${p.changes_added.length} −${p.changes_removed.length}`].join(" · ");
-  const body = (
-    <div className="mt-2 space-y-2">
-      <p data-testid="review-mode">
-        <span className="font-medium">Mode: </span>
-        {switches
-          ? <><Badge tone="warn">{mode} → Enforce</Badge> This apply switches the host to Enforce: from then on DROOL&apos;s rules decide which connections it accepts.
-            The switch happens only once DROOL&apos;s checks pass, just before the rules change; a host refused before that keeps {mode}.</>
-          : "Enforce (already set)."}
-      </p>
+  return (
+    <div className="mt-2 space-y-2" data-testid="review-apply">
       <div>
         <span className="font-medium">What changes: </span>
         {first ? <>DROOL starts filtering this host&apos;s traffic with {rules.length === 0 ? "no rules of the saved policy" : <>the saved policy&apos;s rules: {rules.join(", ")}</>}.</>
@@ -219,21 +335,5 @@ function HostReview({ p, name, refused, single }: { p: FwPlan; name: string; ref
         <div className="mt-2"><PolicyLines rows={p.explain} hostName={name} compact /></div>
       </details>
     </div>
-  );
-  return (
-    <section className="rounded-ui border border-line p-3" aria-label={`${name}: review`} data-testid="host-review">
-      {single ? (
-        <>
-          <h3 className="font-semibold">{name}</h3>
-          {refused && <p className="mt-1 text-danger">Left out: {refused}.</p>}
-          {body}
-        </>
-      ) : (
-        <details>
-          <summary className="cursor-pointer"><strong>{name}</strong>: <span className={refused ? "text-danger" : ""}>{summary}</span></summary>
-          {body}
-        </details>
-      )}
-    </section>
   );
 }

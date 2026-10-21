@@ -31,7 +31,10 @@ export function HostFirewall({ host }: { host: Host }) {
   const plan = useFwHost(host.id);
   const p = plan.data;
   const [tab, setTab] = useState<"observed" | "history" | "advanced">("observed");
-  const [dialog, setDialog] = useState<"apply" | "remove" | null>(null);
+  // "enforce": the review opens with Enforce chosen (it was chosen under
+  // Mode and environment); otherwise a host not in Enforce keeps its mode
+  // unless Enforce is chosen in the review.
+  const [dialog, setDialog] = useState<"apply" | "enforce" | "remove" | null>(null);
   // When what the host runs (or its mode) changes, e.g. an apply committed,
   // the observations are judged against it anew: ask for them again rather
   // than show the old verdicts for up to their refresh interval.
@@ -58,7 +61,7 @@ export function HostFirewall({ host }: { host: Host }) {
         <div className="grid gap-4 lg:grid-cols-2">
           {/* A new form when the saved settings change underneath (an apply
               switched the mode): never a stale choice offered for saving. */}
-          <ModeForm key={`${p.config.mode}|${p.config.outbound ?? ""}|${p.config.rollback_timeout_s ?? 0}`} p={p} onReview={() => setDialog("apply")} />
+          <ModeForm key={`${p.config.mode}|${p.config.outbound ?? ""}|${p.config.rollback_timeout_s ?? 0}`} p={p} onReview={() => setDialog("enforce")} />
           <Environment p={p} hostName={host.name} />
         </div>
       </Card>
@@ -78,7 +81,8 @@ export function HostFirewall({ host }: { host: Host }) {
           )}
         </TabPanel>
       </Card>
-      {dialog && <ApplyDialog hostIds={[p.host_id]} names={[host.name]} remove={dialog === "remove"} onClose={() => setDialog(null)} />}
+      {dialog && <ApplyDialog hostIds={[p.host_id]} names={[host.name]} remove={dialog === "remove"}
+        initialModes={dialog === "enforce" ? { [p.host_id]: "enforce" } : undefined} onClose={() => setDialog(null)} />}
     </div>
   );
 }
@@ -124,7 +128,8 @@ function ModeForm({ p, onReview }: { p: FwPlan; onReview: () => void }) {
   const onlyMode = outbound === (p.config.outbound ?? "allow") && (timeout || "0") === String(p.config.rollback_timeout_s || 0);
   const dirty = mode !== p.config.mode || !onlyMode;
   // Choosing Enforce changes nothing on the host: say what does, and offer
-  // it — the review switches the mode as part of applying (set_enforce).
+  // it — the review, with Enforce chosen, switches the mode as part of
+  // applying (set_enforce_hosts).
   const toEnforce = can("firewall.write") && dirty && mode === "enforce" && p.config.mode !== "enforce";
   const reviewInstead = toEnforce && onlyMode && needsApply(p) && !applyBlocked(p);
   return (

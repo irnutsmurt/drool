@@ -142,6 +142,12 @@ export function RuleDialog({ doc, services, hosts, index, initial, onSave, onDel
   };
 
   const affected = affectedHosts(work, rule, hosts);
+  // DROOL puts a rule on the hosts its destination names (a host, a pack,
+  // Anywhere); addresses as destination (Internal networks, a network, a
+  // CIDR) name none, even a host whose address they contain.
+  const namesHost = (r: string) => ["host", "group", "any"].includes(parseRef(r).kind);
+  const addressDest = rule.to.length > 0 && !rule.to.some(namesHost);
+  const destText = rule.to.map(refLabel).join(", ");
   return (
     <Dialog title={editing ? `Edit rule ${editing.name}` : "New rule"} onClose={onClose} wide>
       <div className="space-y-4 text-sm">
@@ -227,6 +233,17 @@ export function RuleDialog({ doc, services, hosts, index, initial, onSave, onDel
             {rule.action === "deny" && rule.from.some((f) => ["any", "internal"].includes(f) || f.startsWith("group:")) && " A deny also stops these sources from sending it (it applies on both ends)."}
           </p>
         )}
+        {addressDest && (rule.from.some(namesHost) ? (
+          <p className="text-xs text-muted" data-testid="rule-outbound-note">
+            For {rule.from.filter(namesHost).map(refLabel).join(", ")}, this rule {rule.action === "deny" ? "denies" : "allows (where outbound traffic is restricted)"} outbound
+            connections to {destText}. To control connections <em>to</em> a host, make that host the destination.
+          </p>
+        ) : (
+          <Alert tone="warn">
+            <span data-testid="rule-no-host">No host gets this rule: its destination, {destText}, is addresses, not a DROOL host, and DROOL puts a rule on the hosts
+              its destination names. To {rule.action === "deny" ? "deny" : "allow"} these connections to a host, choose the host (or a pack, or Anywhere) as the destination.</span>
+          </Alert>
+        ))}
         {error && <Alert>{error}</Alert>}
         <div className="flex flex-wrap justify-between gap-2">
           <div>{onDelete && <Button variant="danger" onClick={onDelete}>Delete rule</Button>}</div>

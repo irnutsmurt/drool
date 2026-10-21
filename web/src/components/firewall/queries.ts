@@ -26,8 +26,8 @@ export const fk = {
   suggestions: (id: string) => ["firewall", "suggestions", id] as const,
 };
 
-export const useFwHosts = (enabled = true) =>
-  useQuery({ queryKey: fk.hosts, queryFn: () => unwrap(api.GET("/firewall/hosts")), refetchInterval: 5000, enabled });
+export const fwHostsQuery = { queryKey: fk.hosts, queryFn: () => unwrap(api.GET("/firewall/hosts")) };
+export const useFwHosts = (enabled = true) => useQuery({ ...fwHostsQuery, refetchInterval: 5000, enabled });
 export const useFwHost = (id: string, enabled = true) =>
   useQuery({
     queryKey: fk.host(id),

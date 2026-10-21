@@ -243,6 +243,9 @@ export function ResolvedPolicy({ p, hostName }: { p: FwPlan; hostName: string })
         <PolicyLines rows={rows} hostName={hostName} mark={other ? (r) => !other.has(rowKey(r)) : undefined}
           markLabel={showApplied ? "changes when applied" : "not applied yet"} />
         {!showApplied && (p.policy.warnings ?? []).map((w) => <p key={w} className="text-xs text-warn"><span aria-hidden="true">⚠ </span>{w}</p>)}
+        {!showApplied && (p.address_only_rules ?? []).map((n) => (
+          <p key={n.rule} className="text-xs text-warn" data-testid="fw-address-only"><span aria-hidden="true">⚠ </span>{n.message}</p>
+        ))}
         {(p.management_warnings ?? []).map((w) => <p key={w} className="text-xs text-muted">{w}</p>)}
       </div>
     </Card>

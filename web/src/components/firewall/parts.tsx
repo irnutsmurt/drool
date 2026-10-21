@@ -52,11 +52,13 @@ export const statusLabels: Record<FwHostSummary["status"], { text: string; tone:
 export const hopVerdict = (h: { verdict: string; current?: string }) =>
   h.current ? (h.verdict === "accept" ? "would be allowed" : "would be blocked") : (h.verdict === "accept" ? "allowed" : "blocked");
 
-export const modeInfo: Record<string, { label: string; text: string }> = {
-  off: { label: "Off", text: "DROOL doesn't observe or change this host's firewall." },
-  monitor: { label: "Monitor", text: "Observe connections and explain what a policy would do. Nothing is changed." },
-  guided: { label: "Guided", text: "Observe, and suggest policies from what is observed for you to approve. Nothing is changed." },
-  enforce: { label: "Enforce", text: "Apply the policy with automatic rollback protection — the host reverts a change by itself unless a fresh management connection verifies it — and watch for drift." },
+/** The firewall modes: label, a one-line summary (for choosing among
+ * them), and what each does. */
+export const modeInfo: Record<string, { label: string; short: string; text: string }> = {
+  off: { label: "Off", short: "No firewall monitoring or enforcement.", text: "DROOL doesn't observe or change this host's firewall." },
+  monitor: { label: "Monitor", short: "Observe traffic without enforcing rules.", text: "Observe connections and explain what a policy would do. Nothing is changed." },
+  guided: { label: "Guided", short: "Observe traffic and provide policy guidance.", text: "Observe, and suggest policies from what is observed for you to approve. Nothing is changed." },
+  enforce: { label: "Enforce", short: "Apply firewall rules with rollback protection.", text: "Apply the policy with automatic rollback protection — the host reverts a change by itself unless a fresh management connection verifies it — and watch for drift." },
 };
 
 export function TxStateBadge({ state }: { state: string }) {

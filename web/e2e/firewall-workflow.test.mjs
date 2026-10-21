@@ -1,10 +1,15 @@
-// Firewall workflow (correction 2026-10-19): a host's Firewall page shows
-// the saved policy as the compiler resolves it for that host, says whether
-// it is in force, lists the host's observed connections (with "Create policy
-// from observed connection…"), and offers one next action — Review and
-// apply…, which says when it switches the host to Enforce and changes
-// nothing until confirmed. Saving in the Designer applies nothing and
-// changes no mode; it lists the hosts it affected, with Review and apply….
+// Firewall workflow (corrections 2026-10-19 and 2026-10-21): a host's
+// Firewall page shows the saved policy as the compiler resolves it for that
+// host, says whether it is in force, lists the host's observed connections
+// (with "Create policy from observed connection…"), and offers one next
+// action — Review and apply…, which changes nothing until confirmed. For a
+// host not in Enforce mode the review asks which mode it should have, with
+// "Keep current mode" chosen: only Enforce, chosen, applies the policy (and
+// switches the host); Off, Monitor or Guided change only the mode. Saving in
+// the Designer applies nothing and changes no mode; it lists the hosts it
+// affected and asks whether to review and apply now — or "Save and review
+// application…" goes straight to the review. A rule that lands on no host
+// (its destination names addresses, not hosts) says so.
 //
 // Needs test/integration TestBrowser's environment (web-1 and its
 // observations, including TCP 6053 from 192.168.3.132). Its containers
@@ -79,27 +84,39 @@ function record(page) {
   return () => calls.filter((c) => /^PUT \/api\/v1\/firewall\/hosts\/|^POST \/api\/v1\/firewall\/apply/.test(c));
 }
 
-/** Serves web-1's firewall state from plan() (and the hosts list from
- * list(), when given), and answers an apply without starting one. */
-async function stub(page, { plan, list }) {
-  const s = { calls: [] };
+/** Serves web-1's firewall state from plan() (other hosts' from plans[id],
+ * and the hosts list from list(), when given), and answers an apply without
+ * starting one. A host's mode change is refused unless puts is set: then it
+ * is recorded (s.puts) and answered from the host's stubbed state. */
+async function stub(page, { plan, plans = {}, list, puts = false }) {
+  const s = { calls: [], puts: [] };
+  const planOf = (path) => {
+    const hid = path.slice("/api/v1/firewall/hosts/".length);
+    return hid === id && plan ? plan() : plans[hid]?.();
+  };
   await page.setRequestInterception(true);
   page.on("request", async (r) => {
     const path = new URL(r.url()).pathname;
     const m = r.method();
     const json = (body, status = 200) => r.respond({ status, contentType: "application/json", body: JSON.stringify(body) });
     if (path.startsWith("/api/v1/") && m !== "GET") s.calls.push(`${m} ${path}`);
-    if (m === "GET" && plan && path === `/api/v1/firewall/hosts/${id}`) return json(plan());
+    if (m === "GET" && path.startsWith("/api/v1/firewall/hosts/") && planOf(path)) return json(planOf(path));
     if (m === "GET" && list && path === "/api/v1/firewall/hosts") return json(list());
     if (m === "POST" && path === "/api/v1/firewall/apply") {
       s.apply = JSON.parse(r.postData() ?? (await r.fetchPostData()));
       return json({ id: "job_fw_e2e", name: "Apply firewall policy", status: "pending" }, 201);
     }
-    if (m === "PUT" && path.startsWith("/api/v1/firewall/hosts/")) return json({ title: "not in this test", status: 409 }, 409);
+    if (m === "PUT" && path.startsWith("/api/v1/firewall/hosts/")) {
+      if (!puts || !planOf(path)) return json({ title: "not in this test", status: 409 }, 409);
+      const body = JSON.parse(r.postData() ?? (await r.fetchPostData()));
+      s.puts.push({ host: path.slice("/api/v1/firewall/hosts/".length), ...body });
+      return json({ ...planOf(path), config: { ...planOf(path).config, ...body } });
+    }
     return r.continue();
   });
   return s;
 }
+const choose = (page, host, mode) => page.select(`section[aria-label="${host}: review"] [data-testid="review-mode-choice"]`, mode);
 /** web-1 as an enforceable host (plain nftables) in the given state. */
 const enforceable = (p, extra = {}) => ({
   ...p, transport: "ssh", pending_transaction: undefined,
@@ -207,7 +224,7 @@ test("Monitor: a policy drafted from an observed connection, saved — nothing a
     await waitFor(page, async () => !!(await page.$('[data-testid="after-save"]')), "the saved panel", 20000);
     const panel = await inner(page, '[data-testid="after-save"]');
     assert.match(panel, /Saved\. Nothing has changed on any host yet\./);
-    assert.match(panel, /web-1\s*Policy saved — not yet enforced \(mode Monitor: applying switches it to Enforce\)\./);
+    assert.match(panel, /web-1\s*Policy saved — not yet enforced \(mode Monitor: the review asks whether to switch it to Enforce\)\./);
     await shot(page, "fw-designer-saved");
     // Saving applied nothing and changed no mode.
     const after = (await api(page, "GET", `/firewall/hosts/${id}`)).body;
@@ -228,23 +245,37 @@ test("Monitor: a policy drafted from an observed connection, saved — nothing a
       list: () => ({ ...list, items: list.items.map((h) => (h.host_id === id ? { ...h, supported: true, reason: "", transport: "ssh" } : h)) }),
     });
     await waitFor(page, async () => (await inner(page, '[data-testid="after-save"]')).includes("Review and apply to web-1…"), "Review and apply", 15000);
+    assert.match(await inner(page, '[data-testid="after-save-ask"]'), /Would you like to review and apply these changes now\?/);
     await click(page, '[data-testid="after-save"] button', "Review and apply to web-1…");
-    await waitFor(page, async () => (await inner(page, '[data-testid="fw-apply-dialog"]')).includes("Could affect connectivity"), "the review");
-    const review = await inner(page, '[data-testid="fw-apply-dialog"]');
+    // The mode is asked, Keep current mode chosen: nothing would happen yet.
+    await waitFor(page, async () => !!(await page.$('[data-testid="review-mode-choice"]')), "the review");
+    let review = await inner(page, '[data-testid="fw-apply-dialog"]');
     assert.match(review, /Review and apply the firewall policy to web-1/);
+    assert.match(review, /Mode:\s*Monitor\s*DROOL observes this host but doesn't enforce the policy on it\. Would you like to configure it\?/);
+    assert.equal(await page.$eval('[data-testid="review-mode-choice"]', (x) => x.value), "keep", "Keep current mode is chosen");
+    assert.deepEqual(await page.$$eval('[data-testid="review-mode-choice"] option', (os) => os.map((o) => o.textContent)), [
+      "Keep current mode (Monitor)", "Off — No firewall monitoring or enforcement.", "Guided — Observe traffic and provide policy guidance.",
+      "Enforce — Apply firewall rules with rollback protection."]);
+    assert.match(review, /Nothing changes on web-1: the saved policy isn't applied while it is in Monitor mode\./);
+    assert.ok(!review.includes("Could affect connectivity"), "a review of an apply that wouldn't happen");
+    assert.equal(await page.$eval('[data-testid="fw-apply-dialog"] footer button.bg-accent, [data-testid="fw-apply-dialog"] button.bg-accent', (b) => b.disabled), true, "nothing to confirm yet");
+    await shot(page, "fw-review-mode-prompt");
+    // Enforce, chosen: the switch is part of the review.
+    await choose(page, "web-1", "enforce");
+    await waitFor(page, async () => (await inner(page, '[data-testid="fw-apply-dialog"]')).includes("Could affect connectivity"), "the review of the apply");
+    review = await inner(page, '[data-testid="fw-apply-dialog"]');
     assert.match(review, /This is the review: nothing changes until you choose Switch to Enforce and apply\./);
-    assert.match(review, /Mode:\s*Monitor → Enforce\s*This apply switches the host to Enforce/);
+    assert.match(review, /Monitor → Enforce\s*This apply switches the host to Enforce/);
     assert.match(review, /DROOL starts filtering this host's traffic with the saved policy's rules: ha-to-esphome/);
     assert.match(review, /DROOL's management path stays open/);
     // Rollback is decided by DROOL's own connection, not by other access.
     assert.match(review, /Automatic rollback protects only DROOL's own connection: while it keeps working, the change stays even where it blocks other access, such as your own SSH/);
-    assert.equal(await page.evaluate(() => document.activeElement?.textContent), "Cancel", "Cancel has the focus");
     await shot(page, "fw-review-from-designer");
     assert.deepEqual(s.calls, [], "the review requested a change");
     await click(page, '[data-testid="fw-apply-dialog"] button', "Switch to Enforce and apply");
     await waitFor(page, async () => !!(await page.$('[data-testid="apply-started"]')), "started");
     assert.deepEqual(s.apply.host_ids, [id]);
-    assert.equal(s.apply.set_enforce, true, "the switch to Enforce is part of the request");
+    assert.deepEqual(s.apply.set_enforce_hosts, [id], "the switch to Enforce is part of the request, for this host");
     assert.deepEqual(s.apply.expect_rules_hashes, { [id]: after.rendered.rules_hash }, "what was reviewed is what is applied");
     assert.match(await inner(page, '[data-testid="apply-started"]'), /web-1 switches to Enforce when its checks have passed/);
     assert.ok(!s.calls.some((c) => c.startsWith("PUT /api/v1/firewall/hosts")), "the mode was set separately");
@@ -283,14 +314,30 @@ test("an enforceable host: one next action, Enforce explained, applied and saved
     await tabTo(page, () => document.activeElement?.tagName === "BUTTON" && document.activeElement.textContent === "Review and apply policy…"
       && !!document.activeElement.closest('[data-testid="fw-policy-status"]'), "Review and apply policy…");
     await page.keyboard.press("Enter");
-    await waitFor(page, async () => (await inner(page, '[data-testid="fw-apply-dialog"]')).includes("Monitor → Enforce"), "the review");
+    await waitFor(page, async () => (await inner(page, '[data-testid="fw-apply-dialog"]')).includes("Would you like to configure it?"), "the review");
     assert.equal(await page.evaluate(() => document.activeElement?.textContent), "Cancel");
+    assert.equal(await page.$eval('[data-testid="review-mode-choice"]', (x) => x.value), "keep", "Keep current mode is chosen, not Enforce");
+    // The mode choice, from the keyboard (the dialog keeps the focus).
+    await tabTo(page, () => document.activeElement?.getAttribute("data-testid") === "review-mode-choice", "the mode choice");
+    assert.match(await page.evaluate(() => document.activeElement?.labels?.[0]?.textContent ?? ""), /^Mode for web-1/, "its name starts with the visible label");
+    await choose(page, "web-1", "enforce");
+    await waitFor(page, async () => (await inner(page, '[data-testid="fw-apply-dialog"]')).includes("Monitor → Enforce"), "the switch reviewed");
     const low = await page.evaluate(lowContrast);
     assert.deepEqual(low, [], "contrast in the review");
     await shot(page, "fw-host-review");
     await page.keyboard.press("Escape");
     await waitFor(page, async () => (await page.$('[data-testid="fw-apply-dialog"]')) === null, "closed");
     assert.equal(await page.evaluate(() => document.activeElement?.textContent), "Review and apply policy…", "focus back on the button");
+    assert.deepEqual(s.calls, [], "cancelled: nothing requested");
+    // Enforce chosen under Mode and environment: its review opens with
+    // Enforce chosen, the switch reviewed.
+    await page.select('main select:has(option[value="guided"])', "enforce");
+    await click(page, '[data-testid="fw-enforce-next"] ~ div button', "Review and apply policy…");
+    await waitFor(page, async () => (await inner(page, '[data-testid="fw-apply-dialog"]')).includes("Monitor → Enforce"), "the review with Enforce chosen");
+    assert.equal(await page.$eval('[data-testid="review-mode-choice"]', (x) => x.value), "enforce");
+    await page.keyboard.press("Escape");
+    await waitFor(page, async () => (await page.$('[data-testid="fw-apply-dialog"]')) === null, "closed");
+    await page.select('main select:has(option[value="guided"])', "monitor");
     assert.deepEqual(s.calls, [], "cancelled: nothing requested");
     // The mode changes underneath (an apply switched it): the form follows,
     // and never offers the old mode for saving.
@@ -347,6 +394,170 @@ test("an enforceable host: one next action, Enforce explained, applied and saved
   }
 });
 
+async function setYAML(page, y) {
+  const ta = await page.$('textarea[aria-label="Firewall policy as YAML"]');
+  await ta.focus();
+  await page.keyboard.down("Control");
+  await page.keyboard.press("a");
+  await page.keyboard.up("Control");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.sendCharacter(y);
+}
+const designerStatus = (page, want) => waitFor(page, async () => (await inner(page, '[data-testid="designer-status"]')).includes(want), `the designer: ${want}`, 20000);
+const options = (page, host) => page.$$eval(`section[aria-label="${host}: review"] [data-testid="review-mode-choice"] option`,
+  (os) => os.map((o) => [o.textContent, o.disabled]));
+
+test("Save and review application…: hosts in different modes, each one's mode chosen in the review, only Enforce applied", async () => {
+  const page = await session(browser);
+  try {
+    const all = (await api(page, "GET", "/hosts")).body.items;
+    const [a, b] = ["server-a", "server-b"].map((n) => all.find((h) => h.name === n).id);
+    const doc2 = doc + `  - name: https-in
+    from: internal
+    to: [web-1, server-a, server-b]
+    allow: [https]
+`;
+    // The plans the save produces, for enforceable hosts in three modes:
+    // web-1 Off, server-a Monitor, server-b Enforce.
+    await putDoc(page, doc2);
+    const modes = { [id]: "off", [a]: "monitor", [b]: "enforce" };
+    const plans = {};
+    for (const h of [id, a, b]) {
+      const real = (await api(page, "GET", `/firewall/hosts/${h}`)).body;
+      const st = enforceable(real, { config: { ...real.config, mode: modes[h] } });
+      plans[h] = () => st;
+    }
+    await putDoc(page, doc);
+    const list = (await api(page, "GET", "/firewall/hosts")).body;
+    const s = await stub(page, { plans, puts: true,
+      list: () => ({ ...list, items: list.items.map((h) => (plans[h.host_id] ? { ...h, mode: modes[h.host_id], supported: true, reason: "", transport: "ssh" } : h)) }) });
+    await page.goto(`${base}/firewall?tab=designer&view=yaml`, { waitUntil: "networkidle0" });
+    await designerStatus(page, "Saved");
+    await setYAML(page, doc2);
+    await designerStatus(page, "Unsaved changes");
+    await click(page, "button", "Save and review application…");
+    await waitFor(page, async () => (await page.$$('[data-testid="host-review"]')).length === 3, "the review of the three hosts", 20000);
+    const sec = (n) => inner(page, `section[aria-label="${n}: review"]`);
+    const review = await inner(page, '[data-testid="fw-apply-dialog"]');
+    assert.match(review, /Review and apply the firewall policy to 3 hosts/);
+    assert.match(await sec("web-1"), /Mode:\s*Off\s*Firewall management isn't enabled on this host\. Would you like to configure it\?/);
+    assert.match(await sec("server-a"), /Mode:\s*Monitor\s*DROOL observes this host but doesn't enforce the policy on it\. Would you like to configure it\?/);
+    assert.match(await sec("server-b"), /Mode: Enforce \(already set\)\./);
+    assert.equal(await page.$(`section[aria-label="server-b: review"] [data-testid="review-mode-choice"]`), null, "a mode asked of a host in Enforce");
+    assert.deepEqual(await options(page, "web-1"), [["Keep current mode (Off)", false], ["Monitor — Observe traffic without enforcing rules.", false],
+      ["Guided — Observe traffic and provide policy guidance.", false], ["Enforce — Apply firewall rules with rollback protection.", false]]);
+    // Kept modes by default: only server-b, already in Enforce, is applied.
+    for (const n of ["web-1", "server-a"]) assert.equal(await page.$eval(`section[aria-label="${n}: review"] [data-testid="review-mode-choice"]`, (x) => x.value), "keep");
+    assert.match(review, /nothing changes until you choose Apply policy\./);
+    assert.match(await sec("server-a"), /server-a: stays Monitor, not applied/);
+    await shot(page, "fw-review-mixed-modes");
+    await choose(page, "web-1", "monitor");
+    await choose(page, "server-a", "enforce");
+    await waitText(page, "Switch to Enforce and apply to 2 hosts and change web-1's mode to Monitor");
+    assert.match(await sec("web-1"), /When you confirm, web-1's mode changes to Monitor\. Nothing is applied or enforced\./);
+    assert.match(await sec("server-a"), /server-a: switches from Monitor to Enforce/);
+    assert.deepEqual([s.puts, s.apply], [[], undefined], "the review requested a change");
+    await click(page, '[data-testid="fw-apply-dialog"] button', "Switch to Enforce and apply to 2 hosts and change web-1's mode to Monitor");
+    await waitFor(page, async () => !!(await page.$('[data-testid="apply-started"]')), "started");
+    assert.deepEqual(s.puts.map((x) => [x.host, x.mode]), [[id, "monitor"]], "mode changes");
+    assert.deepEqual(s.apply.host_ids, [a, b], "applied to");
+    assert.deepEqual(s.apply.set_enforce_hosts, [a], "switched to Enforce");
+    assert.deepEqual(Object.keys(s.apply.expect_rules_hashes).sort(), [a, b].sort());
+    const done = await inner(page, '[data-testid="apply-started"]');
+    assert.match(done, /Mode changed: web-1: Off → Monitor\. Nothing was applied to that host/);
+    assert.match(done, /Started: applying the saved policy to server-a, server-b, one host at a time\. server-a switches to Enforce when its checks have passed/);
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await putDoc(admin, doc).catch(() => {});
+    await page.browserContext().close();
+  }
+});
+
+test("Off: the review offers to configure the host — Guided changes only the mode; Enforce isn't offered where it would be refused", async () => {
+  const page = await session(browser);
+  try {
+    await putDoc(page, doc);
+    const real = (await api(page, "GET", `/firewall/hosts/${id}`)).body;
+    let state = enforceable(real, { config: { ...real.config, mode: "off" } });
+    const s = await stub(page, { plan: () => state, puts: true });
+    await firewallPage(page);
+    await click(page, '[data-testid="fw-policy-status"] button', "Review and apply policy…");
+    await waitFor(page, async () => !!(await page.$('[data-testid="review-mode-choice"]')), "the review");
+    assert.match(await inner(page, '[data-testid="fw-apply-dialog"]'), /Mode:\s*Off\s*Firewall management isn't enabled on this host\. Would you like to configure it\?/);
+    await choose(page, "web-1", "guided");
+    await waitText(page, "Change web-1's mode to Guided");
+    const review = await inner(page, '[data-testid="fw-apply-dialog"]');
+    assert.match(review, /When you confirm, web-1's mode changes to Guided\. Nothing is applied or enforced\./);
+    assert.ok(!/Automatic rollback protection|Could affect connectivity/.test(review), "an apply described that won't happen");
+    await click(page, '[data-testid="fw-apply-dialog"] button', "Change web-1's mode to Guided");
+    await waitFor(page, async () => !!(await page.$('[data-testid="apply-started"]')), "done");
+    assert.deepEqual(s.puts, [{ host: id, mode: "guided", outbound: real.config.outbound ?? "allow", rollback_timeout_s: real.config.rollback_timeout_s ?? 0 }]);
+    assert.equal(s.apply, undefined, "Guided applied the policy");
+    assert.match(await inner(page, '[data-testid="apply-started"]'), /Mode changed: web-1: Off → Guided\. Nothing was applied to that host: Off, Monitor and Guided don't enforce\./);
+    await page.keyboard.press("Escape");
+    // A rule that would cut DROOL's management path: Enforce can't be
+    // chosen (nor applied without the audited override).
+    state = { ...state, policy: { ...state.policy, conflicts: [{ message: "policy \"lock\" would remove the management path: SSH management", policy_id: "p", policy_name: "lock", flow: {} }] } };
+    await firewallPage(page);
+    await click(page, '[data-testid="fw-policy-status"] button', "Review and apply policy…");
+    await waitFor(page, async () => !!(await page.$('[data-testid="review-mode-choice"]')), "the review");
+    const enforce = (await options(page, "web-1")).find(([t]) => t.startsWith("Enforce"));
+    assert.deepEqual(enforce, ["Enforce — Apply firewall rules with rollback protection. (not possible now)", true]);
+    assert.match(await inner(page, '[data-testid="review-mode-outcome"]'), /Enforce isn't possible now: a rule would cut DROOL's management path/);
+    await page.keyboard.press("Escape");
+    assert.deepEqual(s.calls, [`PUT /api/v1/firewall/hosts/${id}`], "requests");
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await page.browserContext().close();
+  }
+});
+
+test("a rule whose destination is addresses, not a host, is on no host — said where it is written, saved and reviewed", async () => {
+  const page = await session(browser);
+  try {
+    await putDoc(page, doc);
+    const noHost = doc + `  - name: ssh-internal
+    from: internal
+    to: internal
+    allow: [ssh]
+`;
+    await page.goto(`${base}/firewall?tab=designer&view=yaml`, { waitUntil: "networkidle0" });
+    await designerStatus(page, "Saved");
+    await setYAML(page, noHost);
+    await designerStatus(page, "Unsaved changes");
+    await waitFor(page, async () => (await inner(page, '[data-testid="no-host-rules"]')).includes("Rule ssh-internal applies to no host"), "the preview's warning");
+    const w = await inner(page, '[data-testid="no-host-rules"]');
+    assert.match(w, /Its destination, Internal networks, is a set of addresses, not a DROOL host: DROOL puts a rule on the hosts its destination names/);
+    assert.match(w, /web-1[\s\S]*in Internal networks: to allow ssh to (it|them), make (it|them) the destination/);
+    assert.ok(!(await text(page)).includes("Save and review application"), "offered a review of a draft that changes no host");
+    await click(page, "button[aria-pressed]", "Rules");
+    await waitText(page, "applies to no host");
+    await click(page, "button", "Edit ssh-internal");
+    await waitFor(page, async () => !!(await page.$('[data-testid="rule-no-host"]')), "the rule's note");
+    assert.match(await inner(page, '[data-testid="rule-no-host"]'), /No host gets this rule: its destination, Internal networks, is addresses, not a DROOL host/);
+    await shot(page, "fw-rule-no-host");
+    await click(page, "button", "Cancel");
+    await click(page, "button", "Save policy");
+    await waitFor(page, async () => !!(await page.$('[data-testid="after-save"]')), "the saved panel", 20000);
+    const panel = await inner(page, '[data-testid="after-save"]');
+    assert.match(panel, /No host's firewall changes with this save\./);
+    assert.match(panel, /Rule ssh-internal applies to no host/);
+    // The host whose address it contains says why the rule isn't there.
+    await firewallPage(page);
+    const why = await inner(page, '[data-testid="fw-address-only"]');
+    assert.match(why, /Rule ssh-internal isn't part of this host's policy: its destination, Internal networks, contains this host's address/);
+    assert.match(why, /To allow ssh to web-1, make web-1 the destination\./);
+    // Corrected — web-1 as destination — it is a change for web-1.
+    const fixed = (await api(page, "POST", "/firewall/document/check", { yaml: doc + "  - name: ssh-internal\n    from: internal\n    to: web-1\n    allow: [ssh]\n" })).body;
+    assert.deepEqual(fixed.no_host_rules, []);
+    assert.ok(fixed.impact.some((im) => im.host_name === "web-1" && im.added.includes("allow inbound TCP 22 from internal networks (policy ssh-internal)")), JSON.stringify(fixed.impact));
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await putDoc(admin, doc).catch(() => {});
+    await page.browserContext().close();
+  }
+});
+
 test("a viewer: the policy and its state, no actions, and why observed connections aren't shown", async () => {
   const page = await session(browser, { as: viewer });
   try {
@@ -371,12 +582,14 @@ test("layout: desktop and phone, both themes, no sideways scroll, readable", asy
     config: { ...real.config, mode: "enforce" }, applied_explain: real.explain.filter((r) => r !== esp), changes_added: [], changes_removed: [],
     applied: { ...real.applied, enforced: true, revision: 3, rules_changed: true, sets_pending: false, drift: "", status_at: new Date().toISOString() },
   });
+  const monitor = enforceable(real, { config: { ...real.config, mode: "monitor" } });
   for (const [w, h, mobile] of [[1440, 1000, false], [1280, 900, false], [1024, 800, false], [390, 844, true]]) {
     for (const theme of ["light", "dark"]) {
       const page = await session(browser, { width: w, height: h, mobile });
+      let cur = state;
       try {
         await page.evaluate((t) => localStorage.setItem("drool.theme", t), theme);
-        await stub(page, { plan: () => state });
+        await stub(page, { plan: () => cur });
         await firewallPage(page);
         await waitFor(page, async () => (await page.$$('[data-testid="fw-observed-tab"] [data-flow-id]')).length > 0, "observed connections");
         // Only the tab row may scroll sideways on a phone (DESIGN-STANDARD §6).
@@ -386,6 +599,20 @@ test("layout: desktop and phone, both themes, no sideways scroll, readable", asy
         const low = await page.evaluate(lowContrast);
         assert.deepEqual(low, [], `${w} ${theme}: contrast`);
         if (w === 1440 || w === 390) await shot(page, `fw-host-${w}-${theme}`);
+        // The review, with a mode to choose and Enforce chosen, fits too
+        // (visually hidden captions and stacked tables' headers aside).
+        cur = monitor;
+        await firewallPage(page);
+        await click(page, '[data-testid="fw-policy-status"] button', "Review and apply policy…");
+        await waitFor(page, async () => !!(await page.$('[data-testid="review-mode-choice"]')), "the review");
+        await choose(page, "web-1", "enforce");
+        await waitFor(page, async () => (await inner(page, '[data-testid="fw-apply-dialog"]')).includes("Could affect connectivity"), "the review of the apply");
+        const dlg = await page.evaluate(() => [document.documentElement.scrollWidth - innerWidth,
+          [...document.querySelectorAll('[data-testid="fw-apply-dialog"], [data-testid="fw-apply-dialog"] *')].filter((e) => e.scrollWidth > e.clientWidth + 2 && getComputedStyle(e).overflowX !== "visible" && e.clientWidth > 1)
+            .map((e) => `${e.tagName}.${e.className} ${e.scrollWidth}/${e.clientWidth} ${(e.innerText || "").slice(0, 40)}`)]);
+        assert.deepEqual(dlg, [0, []], `${w} ${theme}: the review scrolls sideways`);
+        assert.deepEqual(await page.evaluate(lowContrast), [], `${w} ${theme}: contrast in the review`);
+        if (w === 1440 || w === 390) await shot(page, `fw-review-${w}-${theme}`);
         assert.deepEqual(page.errors, []);
       } finally {
         await page.browserContext().close();

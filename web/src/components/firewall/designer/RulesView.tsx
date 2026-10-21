@@ -17,6 +17,8 @@ type Props = {
   storedGroups: Set<string>; canWrite: boolean; highlight?: string[]; onExplainRule?: (index: number) => void;
   /** Rules just added from an observed connection (M10): marked, not alarmed. */
   fresh?: string[];
+  /** Rules that apply to no host (the server's check says why). */
+  noHost?: string[];
 };
 
 /** The conventional editor: everything the topology can do, with normal,
@@ -44,7 +46,7 @@ function RefList({ refs }: { refs: string[] }) {
   );
 }
 
-function PoliciesCard({ doc, edit, services, hosts, canWrite, highlight = [], fresh = [] }: Props) {
+function PoliciesCard({ doc, edit, services, hosts, canWrite, highlight = [], fresh = [], noHost = [] }: Props) {
   const [dialog, setDialog] = useState<{ index?: number } | null>(null);
   const all = [...services.filter((s) => s.builtin), ...doc.services.map((s) => ({ ...s, builtin: false }))];
   return (
@@ -75,6 +77,7 @@ function PoliciesCard({ doc, edit, services, hosts, canWrite, highlight = [], fr
                     {!r.enabled && <Badge>disabled</Badge>}
                     {highlight.includes(r.name) && <Badge tone="danger">blocks the management path</Badge>}
                     {fresh.includes(r.name) && <Badge tone="accent">new · from an observed connection</Badge>}
+                    {r.enabled && noHost.includes(r.name) && <Badge tone="warn"><span aria-hidden="true">⚠ </span>applies to no host</Badge>}
                   </td>
                   <td data-label="Action" className="py-2 pr-2"><Badge tone={r.action === "deny" ? "danger" : "ok"}>{r.action === "deny" ? "Deny" : "Allow"}</Badge></td>
                   <td data-label="Source" className="py-2 pr-2"><RefList refs={r.from} /></td>

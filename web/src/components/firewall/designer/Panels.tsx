@@ -97,6 +97,7 @@ export function PreviewPanel({ check }: { check: CheckResult | null }) {
           <ul className="mt-1 list-disc pl-5 text-xs">{check.blockers.map((b) => <li key={b}>{b}</li>)}</ul>
         </div>
       )}
+      <NoHostRules rules={check.no_host_rules ?? []} />
       {check.notices.map((n) => <p key={n} className="text-xs text-muted">{n}</p>)}
       {check.valid && check.impact.length === 0 && <p className="text-muted">{check.changed ? "No host's firewall changes." : "No changes."}</p>}
       {groupImpacts(check.impact).map(({ im, names }) => (
@@ -130,19 +131,36 @@ export function PreviewPanel({ check }: { check: CheckResult | null }) {
 }
 
 type HostSummary = Schemas["FwHostSummary"];
+type RuleNotice = Schemas["FwRuleNotice"];
+
+/** Rules that apply to no host: valid, saved or not, and on no host's
+ * firewall — said where the policy is written, with why and what was
+ * probably meant (the server words it). */
+export function NoHostRules({ rules }: { rules: RuleNotice[] }) {
+  if (rules.length === 0) return null;
+  return (
+    <div className="rounded-ui border border-warn bg-warn-bg p-2 text-fg" data-testid="no-host-rules">
+      <div className="font-medium text-warn"><span aria-hidden="true">⚠ </span>{rules.length === 1 ? "A rule applies to no host" : `${rules.length} rules apply to no host`}</div>
+      <ul className="mt-1 list-disc space-y-1 pl-5 text-xs">{rules.map((r) => <li key={r.rule}>{r.message}</li>)}</ul>
+    </div>
+  );
+}
 
 /** What the saved policy means for each host whose firewall the save
  * changed (the server's list, with each host's live status): saved here,
- * nothing applied there yet. Hosts DROOL can apply to now have Review and
- * apply…, which reviews each host (and says when it switches one to
- * Enforce) before anything changes; the rest say why not. */
-export function AfterSave({ hosts, canApply, onReview }: { hosts: HostSummary[]; canApply: boolean; onReview: (hostIds: string[]) => void }) {
+ * nothing applied there yet. DROOL then asks whether to review and apply
+ * now; the review asks, for each host not in Enforce mode, which mode it
+ * should have, before anything changes. Hosts it can't apply to say why. */
+export function AfterSave({ hosts, noHost, canApply, onReview, onDismiss }: {
+  hosts: HostSummary[]; noHost: RuleNotice[]; canApply: boolean; onReview: (hostIds: string[]) => void; onDismiss: () => void;
+}) {
   const live = useFwHosts();
   const rows = hosts.map((h) => live.data?.items.find((x) => x.host_id === h.host_id) ?? h);
   const eligible = rows.filter(applicable).map((h) => h.host_id);
   return (
     <section className="space-y-2 rounded-ui border border-line bg-surface p-3 text-sm" aria-labelledby="after-save-title" data-testid="after-save">
       <h3 id="after-save-title" className="font-semibold"><span aria-hidden="true" className="text-ok">✓ </span>Saved. Nothing has changed on any host yet.</h3>
+      <NoHostRules rules={noHost} />
       {hosts.length === 0 ? <p className="text-muted">No host&apos;s firewall changes with this save.</p> : (
         <>
           <p className="text-muted">This changes the policy of {hosts.length === 1 ? "one host" : `${hosts.length} hosts`}. A host&apos;s firewall changes only when its policy is applied:</p>
@@ -158,9 +176,16 @@ export function AfterSave({ hosts, canApply, onReview }: { hosts: HostSummary[];
             ))}
           </ul>
           {canApply && eligible.length > 0 && (
-            <Button variant="primary" onClick={() => onReview(eligible)}>
-              {eligible.length === 1 ? `Review and apply to ${rows.find((h) => h.host_id === eligible[0])!.host_name}…` : `Review and apply to ${eligible.length} hosts…`}
-            </Button>
+            <div className="space-y-2 border-t border-line pt-2" data-testid="after-save-ask">
+              <p className="font-medium">Would you like to review and apply these changes now?</p>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="primary" onClick={() => onReview(eligible)}>
+                  {eligible.length === 1 ? `Review and apply to ${rows.find((h) => h.host_id === eligible[0])!.host_name}…` : `Review and apply to ${eligible.length} hosts…`}
+                </Button>
+                <Button onClick={onDismiss}>Not now</Button>
+              </div>
+              <p className="text-xs text-muted">The review shows each host&apos;s changes and asks for confirmation; for a host not in Enforce mode it asks which mode it should have. Later: each host&apos;s firewall page, or Firewall → Hosts.</p>
+            </div>
           )}
           {!canApply && <p className="text-xs text-muted">Applying needs the firewall.write permission (administrators).</p>}
         </>
@@ -171,7 +196,7 @@ export function AfterSave({ hosts, canApply, onReview }: { hosts: HostSummary[];
 
 /** A host DROOL can review and apply to now: something to apply, and
  * nothing the server would refuse before its transaction. */
-const applicable = (h: HostSummary) => (h.status === "not_enforced" || h.status === "changes_pending") && h.supported !== false && h.conflicts === 0
+export const applicable = (h: HostSummary) => (h.status === "not_enforced" || h.status === "changes_pending") && h.supported !== false && h.conflicts === 0
   && h.transport !== "none" && h.transport !== "blocked";
 
 /** A host's state right after a save, in words: saved is never enforced. */
@@ -194,7 +219,8 @@ function savedState(h: HostSummary): string {
       return `↻ Not applied yet: the host runs revision ${h.revision}.${why}`;
     default:
       return (h.mode === "enforce" ? "Policy saved — not yet enforced (Enforce is set; nothing applied yet)."
-        : `Policy saved — not yet enforced (mode ${mode}: applying switches it to Enforce).`) + why;
+        : h.mode === "off" ? "Policy saved — not yet enforced (firewall management is off on this host: the review asks how to configure it)."
+          : `Policy saved — not yet enforced (mode ${mode}: the review asks whether to switch it to Enforce).`) + why;
   }
 }
 
