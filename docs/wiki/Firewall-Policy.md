@@ -28,6 +28,28 @@ A rule `web-servers → database-01: postgres` means: hosts in `web-servers` may
 `database-01` on TCP 5432. DROOL turns that into an **inbound** allow on `database-01` and, if
 `web-01`'s outbound traffic is restricted, an **outbound** allow on `web-01`.
 
+## The destination says which hosts get the rule
+
+DROOL puts a rule on the hosts its **destination** names: a host, a Pack, or **Anywhere** (every host
+DROOL manages). A destination written as addresses (**Internal networks**, **Internet**, a named
+network, an address or range) names no host, **even one whose address is inside it**. As a destination,
+addresses only limit what the *source* hosts may connect to (outbound).
+
+So *Source Internal networks → Destination Internal networks: ssh* is on no host's firewall, and
+neither is *Destination 192.168.3.50* for the host at that address. DROOL says so wherever such a rule
+shows up:
+
+- the **Preview**, and the summary after saving: *Rule ssh-internal applies to no host. Its
+  destination, Internal networks, is a set of addresses, not a DROOL host… PiZeroWopenwx's address is in
+  Internal networks: to allow ssh to it, make it the destination.*;
+- the **Rules** view marks the rule *⚠ applies to no host*, and the rule's editor says *No host gets
+  this rule…*;
+- the firewall page of a host whose address the destination contains: *Rule ssh-internal isn't part
+  of this host's policy…*.
+
+To let your LAN reach SSH on a host, make the **host** the destination (*Internal networks →
+PiZeroWopenwx: ssh*); on every host, use **Anywhere** or a Pack.
+
 ## How a host's rules are evaluated
 
 From top to bottom: replies to allowed connections, DROOL's management path, your **denies**, then
@@ -47,7 +69,9 @@ problems, and anything that would block applying, such as a
 
 **Saving changes no host, and no host's mode.** *Saved. Nothing has changed on any host yet.* DROOL then
 lists the hosts the change affects, where each one stands (*Policy saved — not yet enforced*, *Not
-applied yet: the host runs revision 1*), and **Review and apply…** for those it can apply to now. See
+applied yet: the host runs revision 1*), and asks *Would you like to review and apply these changes
+now?* for those it can apply to now. **Save and review application…** saves and goes straight to that
+review, which asks, for each host not in Enforce mode, which mode it should have. See
 [Applying the Firewall Policy](Applying-the-Firewall-Policy.md#right-after-saving-the-policy). Each
 host's **Firewall** section shows the saved policy as it applies to that host, and whether it is in
 force.

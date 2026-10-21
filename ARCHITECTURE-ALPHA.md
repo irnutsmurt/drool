@@ -4590,3 +4590,116 @@ What was missing:
 
 Nothing is allowed automatically, and default deny is unchanged. The browser test checks the line in the review.
 The guide's review screenshot predates the line; the text describes it.
+
+## 45. Firewall policy correctness and the save-and-apply flow (2026-10-21)
+
+Real-world testing on PiZeroWopenwx: the Firewall Designer showed *Allow SSH TCP 22 from Internal networks* and
+*Allow TCP 6053 from 192.168.3.132/32*, yet review and apply said *Nothing compared with revision 2* and listed only
+DROOL's protected SSH management path and TCP 6053. Second, saving and applying still felt like two places, and a host
+not in Enforce was switched to Enforce by the review without being asked.
+
+### 45.1 Root cause of the missing SSH rule
+
+Established before changing anything, with the real API on a Pi-like host (a reproduction test, then
+`TestFirewallRuleDestinationNamesAddresses`). The save, the stored document, the compiler, the hashes, change
+detection, the generated nftables and the frontend cache were all correct:
+- with the Pi as the rule's **destination** (or *Anywhere*), the save lists the Pi (*changes_pending*), the plan has
+  *allow inbound TCP 22 from internal networks*, `rules_changed` is set, the rendered rules have
+  `ip saddr @internal_4 tcp dport { 22 } accept`, and `internal_4` holds the configured internal ranges;
+- the Designer's save invalidates every firewall query (`fk.all`), and the review's plans are fetched again.
+
+The compiler puts a rule on the hosts its destination **names** (`compile.hostsOf`: host, group, any), inbound, and on
+the hosts its source names for denies and restricted outbound traffic. A destination written as **addresses**
+(Internal networks, the internet, a named network, a CIDR) names no host, even one whose address it contains. Every
+one of these forms of the SSH rule reproduces the report exactly:
+- `from: internal, to: internal`;
+- `to:` a network containing the Pi (`192.168.3.0/24`);
+- `to: 192.168.3.50` (the Pi's own address);
+- `from: PiZeroWopenwx, to: internal` (the Pi as the source: an outbound allow, and the Pi's outbound traffic isn't
+  restricted).
+
+Each is valid, compiles onto no host, changes no hash, and was reported nowhere: the check had no problem and no
+impact, the save listed no host, the review showed revision 2 unchanged. Which of these forms the real document used
+couldn't be read from here (the controller isn't reachable from the development machine); all four now say so, and
+the Pi's page names the rule.
+
+Policy semantics are unchanged (no engine or model change): an address destination still means addresses. What
+changed is that DROOL says so wherever such a rule is written, saved or reviewed.
+
+### 45.2 Rules that apply to no host
+
+`fwsvc/placement.go`, from the compiled policies (never a second evaluator):
+- **`no_host_rules`** on `POST /firewall/document/check` and on the save response: each enabled rule the compiler put
+  on no host, with why and what was probably meant: *Rule ssh-internal applies to no host. Its destination, Internal
+  networks, is a set of addresses, not a DROOL host: DROOL puts a rule on the hosts its destination names (a host, a
+  pack, or Anywhere). PiZeroWopenwx's address is in Internal networks: to allow ssh to it, make it the destination.*
+  For a host as the source: *For PiZeroWopenwx (its source) it would allow outbound connections, which aren't
+  restricted there anyway.* Disabled rules aren't listed (they say so already).
+- **`address_only_rules`** on a host's plan: enabled rules whose destination contains the host's address but which
+  aren't on its inbound chain (*Rule ssh-internal isn't part of this host's policy: its destination, Internal networks,
+  contains this host's address (192.168.3.50) but doesn't name the host… To allow ssh to PiZeroWopenwx, make
+  PiZeroWopenwx the destination.*).
+
+Shown in the Designer's Preview and after saving (`NoHostRules`), as *⚠ applies to no host* in the Rules view, in the
+rule editor while it is written (*No host gets this rule…*, or for a host as the source, what it does outbound), in
+the host's Policy preview, and in the review.
+
+### 45.3 Save, then review and apply, in one place
+
+- The Designer has **Save and review application…** (primary) beside **Save policy** when the draft changes some
+  host's firewall. It saves, then opens the review for the affected hosts DROOL can apply to now, judged on their live
+  status as the after-save summary is. When there is none, the summary says why.
+- After **Save policy**, the summary asks *Would you like to review and apply these changes now?* with **Review and
+  apply to …** and **Not now**.
+- The review shows a plan only once it was fetched for that dialog (`isFetchedAfterMount`), never a cached one.
+
+### 45.4 The mode, asked in the review
+
+`firewall/applyChoices.ts` (pure, unit-tested) decides each host; `ApplyDialog` words it:
+- A host in Enforce is applied (or left out, saying why), and isn't asked.
+- A host in Off, Monitor or Guided is asked: *Firewall management isn't enabled on this host. Would you like to
+  configure it?* (Off) or *DROOL observes this host but doesn't enforce the policy on it…*, with its mode and
+  **Mode for <host>**: *Keep current mode (Monitor)* (chosen), then DROOL's modes with their summaries (`modeInfo.short`:
+  *Off — No firewall monitoring or enforcement.*, *Monitor — Observe traffic without enforcing rules.*, *Guided —
+  Observe traffic and provide policy guidance.*, *Enforce — Apply firewall rules with rollback protection.*).
+- Keep: nothing happens there. Off, Monitor, Guided: only the mode changes (`PUT /firewall/hosts/{id}`, audited), nothing
+  is applied. Enforce: the full review appears (*Monitor → Enforce*, what changes, connectivity, the rules), and the
+  host is in the run with its switch. Enforce can't be chosen where applying would be refused (*(not possible now)*).
+- Each host has its own choice; the confirming button names exactly what it starts (*Switch to Enforce and apply to
+  2 hosts and change gpu-01's mode to Monitor*). Mode changes are made first; a failure stops before anything is
+  applied and says what changed. The started view says what was done.
+- Choosing Enforce under **Mode and environment** opens the review with Enforce chosen; the host page's own **Review
+  and apply policy…** opens it with the mode kept.
+
+The apply request's `set_enforce` (all non-Enforce targets) is replaced by **`set_enforce_hosts`**: only the hosts
+whose review chose Enforce are switched, after every check, as in §44.3. Any other target not in Enforce is refused,
+so a mode changed between review and run is never switched silently. (`set_enforce` was never in a release.)
+
+Unchanged safeguards: per-host compilation and validation, explicit confirmation, the fresh management-path
+measurement, automatic rollback, drift, permissions (firewall.write; overrides need firewall.override, a reason and
+re-authentication), audit, saved versus applied state. Nothing is applied by saving or by choosing a mode.
+
+### 45.5 Tests
+
+- Go: `TestFirewallRuleDestinationNamesAddresses` (the PiZeroWopenwx case on a Shepherd host at revision 2: the four
+  forms, the check, the save, the plan; the correction compiled, hashed, reviewed, rendered and committed as revision 3,
+  on the host's ruleset); `TestFirewallApplyMixedModes` (Enforce, Monitor chosen Enforce, Off kept: only the chosen
+  host switches; Off → Guided is a mode change only; an apply without its switch is refused);
+  `TestFirewallSaveReviewApply` now also refuses another host's switch. Mutation-checked: a blanket switch, and
+  dropping either notice, fail them.
+- Web unit (`applyChoices.test.ts`): keep by default, Enforce only when chosen and not refused, mode-only changes,
+  mixed hosts, the button's words.
+- Browser (`firewall-workflow`): the mode prompt after saving; Enforce chosen from the keyboard; Enforce carried from
+  Mode and environment; Save and review application… with web-1 Off, server-a Monitor and server-b Enforce (one mode
+  change, two applied, one switched — the requests checked); Off → Guided applies nothing; Enforce disabled where
+  refused; a no-host rule in the Preview, Rules view, editor, after saving and on the host; the review's layout and
+  contrast at 1440, 1280, 1024 and 390 px in both themes.
+
+### 45.6 Limitations
+
+- The Designer's warning says what a rule does; it doesn't rewrite the rule. Choosing the host as destination is the
+  person's edit.
+- A rule naming both hosts and addresses as destination (*to: [PiZeroWopenwx, internal]*) is placed on the named hosts;
+  the address part is said on each other host whose address it contains (its Policy preview), not in the Designer.
+- Firewall → Hosts still offers its checkboxes only for hosts in Enforce mode.
+- On a phone, the mode select shows its option shortened by the browser; the chosen mode's full description is below it.

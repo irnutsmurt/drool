@@ -158,7 +158,8 @@ There are three interaction patterns. Choose by the task.
   - what will change;
   - on which hosts;
   - the warnings and conflicts known so far;
-  - any change of mode it brings with it (a host switched to Enforce), made only as part of the reviewed action;
+  - any change of mode it brings with it, chosen there for each host (the current mode is the default, never Enforce)
+    and made only as part of the reviewed action;
   - that nothing has changed yet ("This is the plan: nothing changes until you choose Restore").
   - The executing button says what it does and to how many ("Start run on 3 hosts", "Restore 4 resources").
   - A run on several hosts defaults to the recommended rollout.
@@ -296,8 +297,10 @@ How to write UI text:
 - **Saved is not applied.** A host's Firewall page keeps three things apart, each labelled: *Saved policy* (the saved
   rules for the host and what they would do there), *Applied on the host* (the committed revision, or nothing) and
   *Observed traffic*. Its policy card is *Policy preview* until the host runs the policy. Saving the policy, or choosing
-  Enforce, changes no host; the page offers the next step (*Review and apply…*) where the person is, and the review
-  says when it switches a host to Enforce.
+  Enforce, changes no host; the page offers the next step (*Review and apply…*) where the person is. For a host not in
+  Enforce mode the review asks which mode it should have, starting at *Keep current mode*: only Enforce, chosen there,
+  applies the policy and switches the host. A saved rule the compiler puts on no host says so where it is written,
+  saved and reviewed: valid isn't the same as in effect.
 - **Previews say they change nothing.** The button that executes names what it does (§5).
 - **Destructive actions** use danger styling, are confirmed, and come last in menus.
 - **The UI never weakens a server check.** It can explain a refusal (a busy host, a missing permission, a blocked

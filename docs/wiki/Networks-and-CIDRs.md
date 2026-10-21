@@ -59,6 +59,10 @@ that isn't in the list counts as **the internet**.
   important hosts, and for anything you name in rules (like `admin-laptop`).
 - DROOL hosts are best referred to by name (or Pack), not by address: when a host's address changes,
   DROOL updates the rules on every host that refers to it ([Packs in Firewall Rules](Packs-in-Firewall-Rules.md#when-addresses-change)).
+- As a **destination**, a network, a range, **Internal networks** or **Internet** means those
+  addresses, not the DROOL hosts in them: a rule *to Internal networks* is on no host's firewall, and
+  DROOL marks it *applies to no host*. To allow connections to your hosts, make the hosts (or a Pack,
+  or **Anywhere**) the destination ([Firewall Policy](Firewall-Policy.md#the-destination-says-which-hosts-get-the-rule)).
 
 ## Related
 

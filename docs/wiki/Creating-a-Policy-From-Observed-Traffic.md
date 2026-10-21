@@ -34,10 +34,11 @@ nothing.
 4. Review the rule: click **Edit** to rename it (`media-02-watch-sync`), widen or narrow it (a Pack
    instead of one host, a network instead of one address), or turn the custom service into a named
    one.
-5. Check the **Preview**, then click **Save policy**, or **Discard changes**. Saving changes no host
-   and no mode: *Saved. Nothing has changed on any host yet.*, with the hosts it affects.
-6. Click **Review and apply to media-02…** when you're ready: the review says what changes, and
-   whether it switches the host to Enforce ([Applying the Firewall Policy](Applying-the-Firewall-Policy.md)).
+5. Check the **Preview**, then click **Save and review application…**, **Save policy**, or **Discard
+   changes**. Saving changes no host and no mode: *Saved. Nothing has changed on any host yet.*, with
+   the hosts it affects, and *Would you like to review and apply these changes now?*
+6. In the review, choose the host's mode if it isn't in Enforce mode (*Keep current mode* applies
+   nothing), check what changes, then confirm ([Applying the Firewall Policy](Applying-the-Firewall-Policy.md)).
 
 ![The firewall designer's Rules view after "Create policy from observed connection": a notice says draft rule media-02-198-51-100-77-tcp-8443 was added from an observed connection; the new rule 7 allows media-02 to reach 198.51.100.77/32 on tcp-8443 (TCP 8443) and is marked "new · from an observed connection"; a new service tcp-8443 is listed](images/network-create-policy.png)
 

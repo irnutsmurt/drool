@@ -14,6 +14,9 @@ win over allows; DROOL's own management path is always kept open ahead of every 
   **Source**, **Destination**, **Service**, and an optional **Description**.
 - **Edit** and **Delete** on each row; **↑** and **↓** reorder rules (the order is for you to read;
   it doesn't change what's allowed).
+- A rule marked **⚠ applies to no host** is on no host's firewall: its destination is addresses
+  (*Internal networks*, a network, a range), not a host. The Preview says why, and what was probably
+  meant ([The destination says which hosts get the rule](Firewall-Policy.md#the-destination-says-which-hosts-get-the-rule)).
 
 ## Networks, Packs and Services
 
@@ -25,7 +28,8 @@ win over allows; DROOL's own management path is always kept open ahead of every 
 - **Services**: *Named protocol/port combinations.* **New service**, **Edit**, **Delete**, and **Show
   built-in services**. See [Services and Ports](Services-and-Ports.md).
 
-As in every view, changes are a draft until **Save policy**, and the **Preview** shows what they'd do.
+As in every view, changes are a draft until **Save policy** (or **Save and review application…**),
+and the **Preview** shows what they'd do.
 
 ## Related
 

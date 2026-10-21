@@ -16,6 +16,11 @@ changes, then switches the host to Enforce and applies the policy in one confirm
 only** sets the mode and leaves applying for later ([Applying the Firewall Policy](Applying-the-Firewall-Policy.md)).
 **Policy on this host**, at the top of the page, always says what is in force there, whatever the mode.
 
+You can also choose the mode in **review and apply**, for example right after saving the policy: for a
+host that isn't in Enforce mode, the review asks which mode it should have, starting at **Keep current
+mode**. Only **Enforce**, chosen there, applies the policy; **Off**, **Monitor** and **Guided** change
+only the mode ([A host that isn't in Enforce mode](Applying-the-Firewall-Policy.md#a-host-that-isnt-in-enforce-mode)).
+
 ## Before you start
 
 You need **firewall.write** (administrators). Read [Before Enabling Enforcement](Before-Enabling-Enforcement.md)
