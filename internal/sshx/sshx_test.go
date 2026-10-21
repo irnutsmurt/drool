@@ -389,6 +389,59 @@ func TestRunReturnsWhenConnectionGoesSilent(t *testing.T) {
 	}
 }
 
+// A session request made just as its connection ends is never answered:
+// x/crypto adds the new channel after it dropped the others, so even closing
+// the connection doesn't end the request. Run must give up at its deadline
+// anyway, not wait for that request forever. TestRunReturnsWhenConnectionGoesSilent
+// hit this now and then under load; here the request never returns at all.
+func TestRunGivesUpOnASessionRequestThatNeverReturns(t *testing.T) {
+	never, returned := make(chan struct{}), make(chan struct{})
+	defer func(g time.Duration, o func(*ssh.Client) (*ssh.Session, error)) {
+		close(never)
+		select { // the request has returned before openSession is restored
+		case <-returned:
+		case <-time.After(5 * time.Second):
+		}
+		unresponsiveGrace, openSession = g, o
+	}(unresponsiveGrace, openSession)
+	unresponsiveGrace = 300 * time.Millisecond
+	openSession = func(*ssh.Client) (*ssh.Session, error) {
+		<-never
+		close(returned)
+		return nil, errors.New("ssh: connection closed")
+	}
+	hostKey := sshtest.NewEd25519Signer(t)
+	srv := sshtest.Start(t, hostKey)
+	client := sshtest.NewEd25519Signer(t)
+	srv.Authorize(client.PublicKey())
+	c, err := (&Dialer{}).Dial(context.Background(), target(t, srv, "h", client, hostKey.PublicKey()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := c.Run(ctx, "true", RunOptions{}); done <- err }()
+	select {
+	case err := <-done:
+		if model.ClassOf(err) != model.ClassTimeout {
+			t.Fatalf("got %v, want a timeout", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run waited forever for a session request that never returns")
+	}
+	// The silent connection was closed.
+	waited := make(chan struct{})
+	go func() { c.Client.Wait(); close(waited) }()
+	select {
+	case <-waited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the silent connection was left open")
+	}
+}
+
 // Cancelling a command must not close a healthy (shared) connection.
 func TestCancelKeepsHealthyConnection(t *testing.T) {
 	hostKey := sshtest.NewEd25519Signer(t)

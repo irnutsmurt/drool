@@ -453,6 +453,10 @@ type RunOptions = hostexec.RunOptions
 // closed session after a timeout before it is treated as dead.
 var unresponsiveGrace = 5 * time.Second
 
+// openSession opens an SSH session; a variable so tests can make it never
+// answer.
+var openSession = (*ssh.Client).NewSession
+
 // newSession opens a session, giving up when ctx ends. A host that vanished
 // without closing TCP (power loss, a VM's network gone) never answers, and
 // fresh connections have no keepalive to notice; closing the connection is
@@ -463,7 +467,7 @@ func (c *Client) newSession(ctx context.Context) (*ssh.Session, error) {
 		err error
 	}
 	ch := make(chan res, 1)
-	go func() { s, err := c.NewSession(); ch <- res{s, err} }()
+	go func() { s, err := openSession(c.Client); ch <- res{s, err} }()
 	select {
 	case r := <-ch:
 		return r.s, r.err
@@ -477,9 +481,15 @@ func (c *Client) newSession(ctx context.Context) (*ssh.Session, error) {
 			}
 		case <-time.After(unresponsiveGrace):
 			c.Close()
-			if r := <-ch; r.s != nil {
-				r.s.Close()
-			}
+			// Closing normally ends the request, but x/crypto never answers
+			// one made just as the connection ended (its channel is added
+			// after the others were dropped): don't wait for it. A session
+			// that still arrives is closed.
+			go func() {
+				if r := <-ch; r.s != nil {
+					r.s.Close()
+				}
+			}()
 		}
 		return nil, ctx.Err()
 	}
