@@ -42,7 +42,24 @@ type Runner interface {
 	// ctx stops waiting and tears the command down.
 	Run(ctx context.Context, cmd string, opt RunOptions) (*RunResult, error)
 	// Start runs cmd, streaming its output, and returns once it started.
-	Start(cmd string, stdin []byte, stdout, stderr io.Writer, pty bool) (Process, error)
+	// ctx bounds only the start: once Start returns, the caller ends the
+	// command with Close. A start that may have reached the host before it
+	// failed is a MaybeStartedError.
+	Start(ctx context.Context, cmd string, stdin []byte, stdout, stderr io.Writer, pty bool) (Process, error)
+}
+
+// MaybeStartedError is a start that failed after the command may have
+// reached the host (the request was sent, the answer never came): it may be
+// running, so it must not be retried as if it never started.
+type MaybeStartedError struct{ Err error }
+
+func (e *MaybeStartedError) Error() string { return e.Err.Error() }
+func (e *MaybeStartedError) Unwrap() error { return e.Err }
+
+// MaybeStarted reports whether err is a start that may have reached the host.
+func MaybeStarted(err error) bool {
+	var ms *MaybeStartedError
+	return errors.As(err, &ms)
 }
 
 // Local runs commands on this machine with /bin/sh. It is what the agent
@@ -162,7 +179,10 @@ func (p *localProc) Close() {
 }
 
 // Start implements Runner. pty is ignored: the agent never needs sudo.
-func (l Local) Start(cmd string, stdin []byte, stdout, stderr io.Writer, _ bool) (Process, error) {
+func (l Local) Start(ctx context.Context, cmd string, stdin []byte, stdout, stderr io.Writer, _ bool) (Process, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	c := l.command(cmd, stdin)
 	c.Stdout, c.Stderr = stdout, stderr
 	if err := c.Start(); err != nil {

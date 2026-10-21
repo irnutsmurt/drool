@@ -46,7 +46,7 @@ func (u *unitHost) Run(_ context.Context, cmd string, _ hostexec.RunOptions) (*h
 	return &hostexec.RunResult{Stdout: []byte(out)}, nil
 }
 
-func (u *unitHost) Start(string, []byte, io.Writer, io.Writer, bool) (hostexec.Process, error) {
+func (u *unitHost) Start(context.Context, string, []byte, io.Writer, io.Writer, bool) (hostexec.Process, error) {
 	return nil, errors.New("not used")
 }
 

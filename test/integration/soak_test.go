@@ -56,7 +56,7 @@ func (p stubProcess) Done() <-chan struct{}  { return p.done }
 func (p stubProcess) ExitCode() (int, error) { return 0, nil }
 func (p stubProcess) Close()                 {}
 
-func (stubRunner) Start(cmd string, stdin []byte, stdout, stderr io.Writer, pty bool) (hostexec.Process, error) {
+func (stubRunner) Start(ctx context.Context, cmd string, stdin []byte, stdout, stderr io.Writer, pty bool) (hostexec.Process, error) {
 	io.WriteString(stdout, "ok\n")
 	d := make(chan struct{})
 	close(d)

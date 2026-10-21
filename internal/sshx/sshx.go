@@ -576,30 +576,69 @@ type Running struct {
 
 // Start runs cmd in a new session, streaming output to stdout and stderr.
 // It returns once the command has started. With pty, both streams arrive on
-// stdout.
-func (c *Client) Start(cmd string, stdin []byte, stdout, stderr io.Writer, pty bool) (*Running, error) {
-	sess, err := c.NewSession()
+// stdout. ctx bounds only the start, as in Run: a connection that goes
+// silent while the session opens or the command starts is closed after the
+// grace period. Once the command was asked to start, a failure is a
+// hostexec.MaybeStartedError: it may be running.
+func (c *Client) Start(ctx context.Context, cmd string, stdin []byte, stdout, stderr io.Writer, pty bool) (*Running, error) {
+	sess, err := c.newSession(ctx)
+	if ctx.Err() != nil {
+		return nil, &model.OpError{Class: model.ClassTimeout, Retryable: true, Err: ctx.Err(), Message: "starting the command timed out or was cancelled"}
+	}
 	if err != nil {
 		return nil, &model.OpError{Class: model.ClassConnection, Retryable: true, Err: err, Message: "open session: " + err.Error()}
 	}
 	sess.Stdout, sess.Stderr = stdout, stderr
 	sess.Stdin = bytes.NewReader(stdin) // empty stdin still sends EOF
-	if pty {
-		if err := sess.RequestPty("xterm", 40, 200, ssh.TerminalModes{ssh.ECHO: 0}); err != nil {
+	type res struct {
+		err  error
+		exec bool // the exec request was sent
+	}
+	ch := make(chan res, 1)
+	go func() {
+		if pty {
+			if err := sess.RequestPty("xterm", 40, 200, ssh.TerminalModes{ssh.ECHO: 0}); err != nil {
+				ch <- res{err: err}
+				return
+			}
+		}
+		ch <- res{err: sess.Start(cmd), exec: true}
+	}()
+	var r res
+	select {
+	case r = <-ch:
+	case <-ctx.Done():
+		select {
+		case r = <-ch: // a healthy connection answers; a started command is the caller's to end
+		case <-time.After(unresponsiveGrace):
+			// The host doesn't answer: the connection is dead. Closing it
+			// ends the requests (the session's channel already exists).
+			c.Close()
+			<-ch
 			sess.Close()
-			return nil, &model.OpError{Class: model.ClassConnection, Err: err, Message: "request pty: " + err.Error()}
+			return nil, &hostexec.MaybeStartedError{Err: ErrLostDuringCommand(ctx.Err())}
 		}
 	}
-	if err := sess.Start(cmd); err != nil {
+	switch {
+	case r.err == nil:
+	case !r.exec:
 		sess.Close()
-		return nil, &model.OpError{Class: model.ClassConnection, Retryable: true, Err: err, Message: "start command: " + err.Error()}
+		return nil, &model.OpError{Class: model.ClassConnection, Err: r.err, Message: "request pty: " + r.err.Error()}
+	case strings.HasPrefix(r.err.Error(), "ssh: command ") && strings.HasSuffix(r.err.Error(), " failed"):
+		// The host refused the request: nothing ran.
+		sess.Close()
+		return nil, &model.OpError{Class: model.ClassConnection, Retryable: true, Err: r.err, Message: "start command: " + r.err.Error()}
+	default:
+		// The connection failed after the request was sent.
+		sess.Close()
+		return nil, &hostexec.MaybeStartedError{Err: ErrLostDuringCommand(r.err)}
 	}
-	r := &Running{sess: sess, done: make(chan struct{})}
+	run := &Running{sess: sess, done: make(chan struct{})}
 	go func() {
-		r.err = sess.Wait()
-		close(r.done)
+		run.err = sess.Wait()
+		close(run.done)
 	}()
-	return r, nil
+	return run, nil
 }
 
 // Done is closed when the command finishes.

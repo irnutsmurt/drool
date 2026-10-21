@@ -1,8 +1,14 @@
 package hostops
 
 import (
+	"context"
+	"errors"
+	"io"
 	"strings"
 	"testing"
+
+	"drool/internal/driver"
+	"drool/internal/hostexec"
 )
 
 // Remote scripts run under dash on Debian/Ubuntu. dash's kill builtin rejects
@@ -32,5 +38,30 @@ func TestRunDirPattern(t *testing.T) {
 func TestShQuote(t *testing.T) {
 	if got := ShQuote(`a'b`); got != `'a'\''b'` {
 		t.Fatalf("ShQuote: %s", got)
+	}
+}
+
+// startFails prepares a run directory, then fails to start the command.
+type startFails struct{ err error }
+
+func (s startFails) Run(_ context.Context, cmd string, _ hostexec.RunOptions) (*hostexec.RunResult, error) {
+	return &hostexec.RunResult{Stdout: []byte("/tmp/drool.AbCdEf1234\n")}, nil
+}
+
+func (s startFails) Start(context.Context, string, []byte, io.Writer, io.Writer, bool) (hostexec.Process, error) {
+	return nil, s.err
+}
+
+// A start that failed before the command reached the host may be retried or
+// sent the other way; one that may have reached it must not (the command may
+// be running).
+func TestRunStreamedKeepsAStartThatMayHaveReachedTheHost(t *testing.T) {
+	_, err := RunStreamed(context.Background(), startFails{errors.New("open session: EOF")}, Become{}, "sh", "true", discard{}, nil)
+	if !driver.IsNotStarted(err) {
+		t.Fatalf("a failed session open: %v, want not started", err)
+	}
+	_, err = RunStreamed(context.Background(), startFails{&hostexec.MaybeStartedError{Err: errors.New("lost")}}, Become{}, "sh", "true", discard{}, nil)
+	if driver.IsNotStarted(err) || !hostexec.MaybeStarted(err) {
+		t.Fatalf("an unanswered start: %v, want possibly started", err)
 	}
 }

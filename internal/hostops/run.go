@@ -51,7 +51,8 @@ type StreamResult struct {
 }
 
 // runStreamed runs body under the D5 run-directory protocol, streaming
-// output to out. Failures before the command starts are NotStartedErrors;
+// output to out. Failures before the command starts are NotStartedErrors,
+// except a start that may have reached the host (hostexec.MaybeStartedError);
 // cancellation and timeouts terminate the remote process group.
 func RunStreamed(ctx context.Context, c hostexec.Runner, b Become, interp, body string, out driver.OutputSink, started func()) (*StreamResult, error) {
 	dir, err := prepare(ctx, c, body)
@@ -68,7 +69,10 @@ func RunStreamed(ctx context.Context, c hostexec.Runner, b Become, interp, body 
 	cmd, stdin := b.Wrap(run)
 	head := &headCapture{max: 4096}
 	tail := &tailCapture{max: 16 << 10}
-	r, err := c.Start(cmd, stdin, io.MultiWriter(out.Stdout(), tail), io.MultiWriter(out.Stderr(), head, tail), b.PTY)
+	r, err := c.Start(ctx, cmd, stdin, io.MultiWriter(out.Stdout(), tail), io.MultiWriter(out.Stderr(), head, tail), b.PTY)
+	if hostexec.MaybeStarted(err) {
+		return nil, err // it may be running: never re-run as if it hadn't started
+	}
 	if err != nil {
 		return nil, &driver.NotStartedError{Err: err}
 	}

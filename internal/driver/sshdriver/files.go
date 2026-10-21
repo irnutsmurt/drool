@@ -456,7 +456,7 @@ func (f *FileSystem) Open(ctx context.Context, p string) (io.ReadCloser, files.I
 	pr, pw := io.Pipe()
 	var stderr bytes.Buffer
 	cmd, stdin := f.become.Wrap("cat -- " + shQuote(p))
-	running, err := f.c.Start(cmd, stdin, pw, &stderr, false)
+	running, err := f.c.Start(ctx, cmd, stdin, pw, &stderr, false)
 	if err != nil {
 		return nil, info, err
 	}

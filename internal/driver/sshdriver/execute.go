@@ -110,8 +110,8 @@ func (r sshRunner) Run(ctx context.Context, cmd string, opt hostexec.RunOptions)
 	return r.c.Run(ctx, cmd, opt)
 }
 
-func (r sshRunner) Start(cmd string, stdin []byte, stdout, stderr io.Writer, pty bool) (hostexec.Process, error) {
-	p, err := r.c.Start(cmd, stdin, stdout, stderr, pty)
+func (r sshRunner) Start(ctx context.Context, cmd string, stdin []byte, stdout, stderr io.Writer, pty bool) (hostexec.Process, error) {
+	p, err := r.c.Start(ctx, cmd, stdin, stdout, stderr, pty)
 	if err != nil {
 		return nil, err
 	}

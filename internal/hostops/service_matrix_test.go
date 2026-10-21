@@ -58,7 +58,7 @@ func (h *systemdHost) Run(_ context.Context, cmd string, _ hostexec.RunOptions) 
 	return &hostexec.RunResult{}, nil
 }
 
-func (h *systemdHost) Start(string, []byte, io.Writer, io.Writer, bool) (hostexec.Process, error) {
+func (h *systemdHost) Start(context.Context, string, []byte, io.Writer, io.Writer, bool) (hostexec.Process, error) {
 	return nil, errors.New("not used")
 }
 

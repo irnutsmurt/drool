@@ -1,10 +1,12 @@
 package sshx
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"io"
 	"net"
 	"strconv"
 	"sync"
@@ -13,6 +15,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"drool/internal/hostexec"
 	"drool/internal/model"
 	"drool/internal/sshx/sshtest"
 )
@@ -439,6 +442,145 @@ func TestRunGivesUpOnASessionRequestThatNeverReturns(t *testing.T) {
 	case <-waited:
 	case <-time.After(5 * time.Second):
 		t.Fatal("the silent connection was left open")
+	}
+}
+
+// Start (streamed commands, elevated file reads) is bounded by its context
+// like Run: a connection that went silent made it wait for the session
+// forever, whatever the job's timeout. Nothing reached the host, so the
+// failure is an ordinary timeout.
+func TestStartReturnsWhenConnectionGoesSilent(t *testing.T) {
+	defer func(g time.Duration) { unresponsiveGrace = g }(unresponsiveGrace)
+	unresponsiveGrace = 300 * time.Millisecond
+	hostKey := sshtest.NewEd25519Signer(t)
+	srv := sshtest.Start(t, hostKey)
+	client := sshtest.NewEd25519Signer(t)
+	srv.Authorize(client.PublicKey())
+	srv.SetExec(func(string, []byte) (string, string, int) { return "ok", "", 0 })
+	stop := make(chan struct{})
+	h, p := srv.Host()
+	ph, pp := blackhole(t, net.JoinHostPort(h, strconv.Itoa(p)), stop)
+	tg := target(t, srv, "h", client, hostKey.PublicKey())
+	tg.Address, tg.Port = ph, pp
+	c, err := (&Dialer{}).Dial(context.Background(), tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	// While the host answers, Start streams as before.
+	var out bytes.Buffer
+	r, err := c.Start(context.Background(), "cat", nil, &out, io.Discard, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, err := r.ExitCode(); err != nil || code != 0 || out.String() != "ok" {
+		t.Fatalf("healthy start: exit %d, %v, %q", code, err, out.String())
+	}
+
+	close(stop) // the host vanishes
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := c.Start(ctx, "cat", nil, io.Discard, io.Discard, false); done <- err }()
+	select {
+	case err := <-done:
+		if model.ClassOf(err) != model.ClassTimeout || hostexec.MaybeStarted(err) {
+			t.Fatalf("got %v, want a timeout before anything started", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start hung on a silent connection")
+	}
+}
+
+// A connection that goes silent after the session opened leaves the command
+// request unanswered: it may have reached the host, so Start says so instead
+// of letting the engine re-run it as though nothing had started.
+func TestStartOnAnUnansweredCommandMayHaveStarted(t *testing.T) {
+	defer func(g time.Duration, o func(*ssh.Client) (*ssh.Session, error)) {
+		unresponsiveGrace, openSession = g, o
+	}(unresponsiveGrace, openSession)
+	unresponsiveGrace = 300 * time.Millisecond
+	hostKey := sshtest.NewEd25519Signer(t)
+	srv := sshtest.Start(t, hostKey)
+	client := sshtest.NewEd25519Signer(t)
+	srv.Authorize(client.PublicKey())
+	stop := make(chan struct{})
+	h, p := srv.Host()
+	ph, pp := blackhole(t, net.JoinHostPort(h, strconv.Itoa(p)), stop)
+	tg := target(t, srv, "h", client, hostKey.PublicKey())
+	tg.Address, tg.Port = ph, pp
+	c, err := (&Dialer{}).Dial(context.Background(), tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	openSession = func(cl *ssh.Client) (*ssh.Session, error) {
+		s, err := cl.NewSession()
+		close(stop) // the host vanishes once the session is open
+		return s, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := c.Start(ctx, "cat", nil, io.Discard, io.Discard, false); done <- err }()
+	select {
+	case err := <-done:
+		if !hostexec.MaybeStarted(err) || model.ClassOf(err) != model.ClassConnection {
+			t.Fatalf("got %v, want a connection lost with an unknown outcome", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start hung on an unanswered command request")
+	}
+	waited := make(chan struct{})
+	go func() { c.Client.Wait(); close(waited) }()
+	select {
+	case <-waited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the silent connection was left open")
+	}
+}
+
+// The x/crypto request that is never answered (see
+// TestRunGivesUpOnASessionRequestThatNeverReturns) must not hold Start either.
+func TestStartGivesUpOnASessionRequestThatNeverReturns(t *testing.T) {
+	never, returned := make(chan struct{}), make(chan struct{})
+	defer func(g time.Duration, o func(*ssh.Client) (*ssh.Session, error)) {
+		close(never)
+		select { // the request has returned before openSession is restored
+		case <-returned:
+		case <-time.After(5 * time.Second):
+		}
+		unresponsiveGrace, openSession = g, o
+	}(unresponsiveGrace, openSession)
+	unresponsiveGrace = 300 * time.Millisecond
+	openSession = func(*ssh.Client) (*ssh.Session, error) {
+		<-never
+		close(returned)
+		return nil, errors.New("ssh: connection closed")
+	}
+	hostKey := sshtest.NewEd25519Signer(t)
+	srv := sshtest.Start(t, hostKey)
+	client := sshtest.NewEd25519Signer(t)
+	srv.Authorize(client.PublicKey())
+	c, err := (&Dialer{}).Dial(context.Background(), target(t, srv, "h", client, hostKey.PublicKey()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := c.Start(ctx, "cat", nil, io.Discard, io.Discard, false); done <- err }()
+	select {
+	case err := <-done:
+		if model.ClassOf(err) != model.ClassTimeout || hostexec.MaybeStarted(err) {
+			t.Fatalf("got %v, want a timeout before anything started", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start waited forever for a session request that never returns")
 	}
 }
 

@@ -26,7 +26,7 @@ func (s *scripted) Run(_ context.Context, cmd string, _ hostexec.RunOptions) (*h
 	return &hostexec.RunResult{ExitCode: 1}, nil
 }
 
-func (s *scripted) Start(string, []byte, io.Writer, io.Writer, bool) (hostexec.Process, error) {
+func (s *scripted) Start(context.Context, string, []byte, io.Writer, io.Writer, bool) (hostexec.Process, error) {
 	return nil, errors.New("not here")
 }
 
