@@ -4703,3 +4703,157 @@ re-authentication), audit, saved versus applied state. Nothing is applied by sav
   the address part is said on each other host whose address it contains (its Policy preview), not in the Designer.
 - Firewall → Hosts still offers its checkboxes only for hosts in Enforce mode.
 - On a phone, the mode select shows its option shortened by the browser; the chosen mode's full description is below it.
+
+## 46. 1.0 usability refinement, Phase 1: everyday operations (2026-10-21)
+
+The first phase of the application-wide usability refinement before 1.0 (*Simple by default. Powerful by choice.*),
+from the screenshot and workflow evidence package of 2026-10-21 and its independent reviews. Each change removes steps
+or decisions DROOL can take itself, keeps every advanced control, and weakens no safeguard. Phase 2 (organisation and
+clarity across the application) starts once this phase is reviewed.
+
+Before it, two correctness fixes, committed separately: c22b841 (`Run` gives up at its deadline even when the session
+request never returns) and its sequel for `Start` (§46.5).
+
+### 46.1 Firewall: a rule in one step per field
+
+**Rule builder** (`designer/RuleDialog.tsx`, `ui/ComboPicker.tsx`):
+- **Action** (Allow / Deny, a deny "blocks the connection, even where another rule allows it"), then **Source**,
+  **Destination** and **Service**. Each is one search (`ComboPicker`, a WAI-ARIA combobox over grouped choices) instead
+  of a kind, a value and an Add button.
+- Source choices: Internal networks, Anywhere, the Internet, every host (with its Packs), every Pack, every named
+  network, and an address or range typed in (`cidrFromQuery`).
+- Destination choices: hosts and Packs first, then Anywhere (every host), then the addresses, grouped as *outbound
+  only*. DROOL puts a rule on the hosts its destination names (§45.1); the order and the group name steer away from
+  rules on no host.
+- Service choices: named services, and a port typed in (`portChoices`: *8812*, *udp 53*, *8000-8010*, *80,443*),
+  which becomes a custom service (an existing one with exactly that definition is reused).
+- Matching ranks a label that starts with the text first, then a label that contains it, then the detail. A group
+  with a better match comes first: typing *linux* finds the Pack linux-servers before the hosts in it.
+- The rule in words (*Allows ssh (TCP 22) from Internal networks to web-01.*) and whose firewall it changes, as
+  before. When no host would get it, the existing warning shows, and the buttons say **Add to draft anyway** and
+  **Save anyway**.
+- The name follows from the choices (`suggestRuleName`: *allow-ssh-internal-to-web-01*, unique, within the server's
+  name rule) until someone types one. Name, description and Enabled are under **Name, description and status**.
+- **Save and review…** in the dialog: the edit goes into the draft, the save waits for the server's check of exactly
+  that draft (`useDesigner.checkCurrent`), then goes the way **Save and review application…** does. Validation
+  problems leave the rule in the draft and say so; a blocked management path still asks first. **Add to draft** keeps
+  the batching of several edits.
+- A host's Firewall section has **New rule…** (`?rule=new&to=host:NAME`): the builder opens with that host as the
+  destination.
+
+**nftables in the review.** `FwHostSummary.needs_nftables` (server): the host's only obstacle to enforcing is a
+missing nftables (`env.nft == ""` and it is the only eligibility reason). Such a host:
+- is reviewable from the save, the saved panel (*nftables isn't installed there yet: the review offers to install it*)
+  and the host's policy card;
+- its review shows **Install nftables…** (the existing `InstallNftables`: the package manager's dry run, a
+  confirmation, the ordinary package run, progress) and keeps Enforce *(not possible now)*;
+- after the installation the environment is checked again (`useEnvironmentCheck`), the plan refreshes, and Enforce
+  can be chosen, still only by the person, in the same review. Installing changes no mode and enforces nothing.
+
+Unchanged: the policy model and compiler, the Topology, Rules and YAML views, rule order, networks, Packs and services,
+the review's per-host mode choice, management-path protection, rollback, fresh-connection verification, overrides,
+audit.
+
+### 46.2 Everyday operations where they are seen
+
+**Install updates** (`jobs/InstallUpdatesDialog.tsx`) is one dialog that is the run's review:
+- each host's dry run (`POST /jobs/simulate`, started at once), with **Show packages**, busy or failing hosts said;
+- the removal guard (**Allow these removals**);
+- what follows (reboots), and for two or more hosts the recommended rollout (one canary, batches of five, pause after
+  two failures);
+- **Options**: mode, metadata refresh and reboot, with DROOL's defaults (*Upgrade, refresh first, no reboot*);
+- **Install updates on web-01** (or *on 3 hosts*) starts the ordinary system update run (`POST /jobs`). Its progress
+  and each host's outcome then show in the dialog (`hooks/useJobProgress.ts`), with **View the run**;
+- **open it in the run composer** keeps every other option (rollout, schedule, workflow) one link away.
+
+It opens from the host's header (and its phone menu), **Updates** on the host's Overview, a security-updates line
+under **Needs attention**, the Hosts list's selection bar (**Install updates…** beside **Run command on selected**),
+the Overview's **Updates and reboots** card, and a Pack's header. W04a went from six interactions on four pages to
+three on one; W04b from nine on three pages to five on one, the rollout recommended as before.
+
+**A service alert offers its fix** (`useServiceFix`): *Start backup.service…* for a failed or stopped unit,
+*Restart …* when it runs but is in trouble, *Stop …* when it runs although it's expected stopped — chosen from the
+actions the server offers for the unit as it is now.
+- In the alert's inspector it is the first choice, and the action runs as a step inside the panel
+  (`ServiceActionsDialog inline`), never a dialog on top.
+- On the alert's page it is the primary action.
+- Either way it opens on that action's confirmation, with **Back** to the others; the run and DROOL's check of the
+  unit afterwards are those of the Services tab.
+
+**Access denied** says where it is fixed: **Edit sign-in settings** (the host's Management section, editing) on the
+Overview notice and the other sections' line, for those who may edit hosts.
+
+### 46.3 Shepherd update states
+
+`agentsvc.UpdateStatus` judges each Shepherd once (`shepherds`: state, target, reason, retry version). The Updates
+page, the Shepherds list (`identity.update`) and a host's card (`identity.update`, `update_available`) all show it.
+
+| State | When | Words |
+|---|---|---|
+| current | at least the version DROOL keeps Shepherds on | *Up to date* when `verified`, else *On DROOL's version* |
+| available | a trusted, compatible release is newer, the host doesn't refuse it | *Update available: v1.5.0* |
+| updating, waiting | in a running rollout (waiting: offline) | *Updating to …*, *Updates to … when online* |
+| attention | the update failed or rolled back here | *Update failed* (Try again…) |
+| blocked | the host refuses it (its policy, trust, protocol, minimum version) | *Can't update* |
+| unavailable | behind, and no release DROOL can install is newer | *No update available* |
+| unknown | behind, and DROOL hasn't been able to check (pending, unreachable) | *Not checked* |
+
+- **`verified`**: the release check completed (official verified, or not published yet), or the policy's own
+  release is the target. Otherwise all-current reads *Runs DROOL's version*, not *Up to date*.
+- **A missing release is never a failure.** No key, a development build, checks off, a release not published, a
+  release that failed verification (its own problem entry stays), the wrong channel, or no release for a platform
+  make a behind Shepherd *unavailable* (or *unknown*), not *blocked*. The reason is said once, in the summary (*1
+  Shepherd is older than this DROOL (v…), and no release DROOL can install is newer: official Shepherd releases can't
+  be used by this DROOL.*). `blocked[]` and **Needs attention** list only failures and host refusals.
+- **Easy to find.** The host card's update is no longer `newestRelease` (any newer stored release, ignoring channel,
+  cap, trust and refusals): it is the judgement's target, so it is offered only when it can be installed. The card
+  shows one state badge (no second *update available*). **Update Shepherd to v1.5.0…** is primary, and **Try the
+  update to … again…** appears after a failure. The Shepherds list has **Update…** in the row of a Shepherd with an
+  update. Both confirm first and start the same one-host rollout. The compatibility badge no longer says *update
+  available* (that is the update state's).
+- Rollout settings, channels, exact versions, custom releases, trust, compatibility, the health check and automatic
+  rollback are unchanged.
+
+**Deferred (recorded, not in Phase 1):** Pack-based Shepherd maintenance windows (updates only in a Pack's window), and
+a forced reinstall of a Shepherd from its host's page.
+
+### 46.4 Tests and checks
+
+- Go: `TestFirewallHostNeedsNftables` (nftables missing alone, missing with another obstacle, supported; the host list
+  and the plan agree); `TestShepherdUpdateStates` (a development build: on DROOL's version, an older one with no update
+  available and nothing in `blocked`; no release check: *run this DROOL's version*, not up to date; an unreachable
+  source: *unknown*; verified: up to date and an update the host's page offers; the status, the Shepherds list and the
+  host's page agree); the release-candidate test now expects *unavailable* with the channel said once.
+- Web unit: the rule builder's choices, addresses and ports typed in, the generated name (unique, within the
+  server's rule, a rule's own name kept when editing); the picker's matching and group order.
+- Browser: `designer` (a port typed into the service search becomes a custom service; the keyboard path through the
+  builder, Escape closing the list and not the dialog, a typed name winning over the generated one);
+  `firewall-workflow` (New rule… from the host's page, one search per field, Save and review… opening the review,
+  nftables offered there, Enforce not possible until it is installed, nothing chosen for the person);
+  `firewall-nftables` (from the policy card: install in the review, the review stays open, Enforce then possible);
+  `operations` (new: Install updates from the header with options and progress in place, focus back on the button;
+  several hosts with the rollout and the removal guard; a service alert's fix in the inspector and on its page; the
+  review's layout at 1440, 1024 and 390 px in both themes); `shepherd-update-states` (new: the words on the Updates
+  page, the Shepherds list and the host card; Update… confirmed before anything starts); `packs` (the Pack's Install
+  updates… and the composer link).
+- Found while testing, fixed: a run ended while its host row still said *running* (the host list wasn't fetched
+  again at the end); the picker highlighted a host that mentioned a Pack ahead of the Pack itself.
+- On the final tree: gofmt and `go vet ./...` (also with the integration tag) clean; `go test ./...` passes except
+  `TestShepherdUpdateDefaults`, which fails only with an uncommitted release-key test edit and passes with the
+  committed file; `-race` on agentsvc, firewall and the changed api tests; web typecheck and 147 unit tests;
+  `TestOfficialShepherdUpdates` (integration, as CI's release job runs it); TestBrowser 117 of 118. The one failure,
+  alerts' *a failing destination is visible* (the Alerts list never shows *Delivery failed* for old-vm), fails the
+  same way on 4adbf37, before Phase 1: pre-existing, not investigated in this phase.
+
+### 46.5 SSH: starting a command gives up at its deadline (correctness)
+
+Confirmed before the change: `Client.Start` (every streamed job command, and elevated file reads) opened its session
+with no deadline. On a connection that went silent it was still waiting after 20 s, and the job's timeout couldn't end
+it. `hostexec.Runner.Start` now takes a context bounding the start (session, pty, exec), as `Run` does. A start whose
+exec request was sent but never answered is a `MaybeStartedError`: never retried or sent the other way as if nothing
+ran. Committed separately (`sshx: starting a streamed command or file read gives up at its deadline too`).
+
+### 46.6 Still open
+
+- **PiZeroWopenwx**: the saved SSH rule and its compiled policy on the real host are still not verified (§45.1). The
+  lab reproduces the cause; the real document hasn't been seen.
