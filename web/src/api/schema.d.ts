@@ -4424,6 +4424,24 @@ export interface components {
             compatibility: components["schemas"]["AgentCompatibility"];
             /** @description Which signatures the Shepherd accepts for its updates, as it last said; null for Shepherds built before 1.0, which don't say. */
             release_trust: components["schemas"]["ReleaseTrust"] | null;
+            /** @description Its update state, as Shepherds → Updates judges it; null when the Shepherd isn't active. */
+            update?: components["schemas"]["ShepherdUpdate"] | null;
+        };
+        ShepherdUpdate: {
+            host_id: string;
+            host_name: string;
+            version: string;
+            /**
+             * @description current: runs the version DROOL keeps Shepherds on (up to date when the status is verified); available: target can be installed now; updating; waiting: in a running update while offline; attention: the update to retry_version failed or rolled back here; blocked: this host refuses the update (reason); unavailable: no release DROOL can install is newer (reason; a missing release is never a failure); unknown: DROOL hasn't been able to check for a release (reason).
+             * @enum {string}
+             */
+            state: "current" | "available" | "updating" | "waiting" | "attention" | "blocked" | "unavailable" | "unknown";
+            target?: string;
+            reason?: string;
+            retry_version?: string;
+            online: boolean;
+            /** @description As the status's verified; current means up to date only when it is set. */
+            verified: boolean;
         };
         ReleaseTrust: {
             /** @description Every release key the Shepherd trusts. */
@@ -4462,6 +4480,7 @@ export interface components {
             requested_caps: components["schemas"]["AgentCaps"] | null;
             /** @description SSH fallback with root access exists; it is not limited by the agent's ceiling. */
             ssh_bypasses_ceiling: boolean;
+            /** @description The release this Shepherd can be updated to now (trusted */
             update_available?: string;
         };
         AgentUpdatePolicy: {
@@ -4543,8 +4562,10 @@ export interface components {
             /** @description The channels the policy can choose. */
             channels: string[];
             /** @enum {string} */
-            state: "none" | "current" | "available" | "updating" | "attention" | "blocked";
+            state: "none" | "current" | "available" | "updating" | "attention" | "blocked" | "unknown" | "unavailable";
             summary: string;
+            /** @description Up to date rests on a release check that completed, or on the policy's own release. Otherwise Shepherds on DROOL's version are said to run it, not to be up to date. */
+            verified: boolean;
             /** @description The version automatic updates keep Shepherds on; empty when none is available. */
             target: string;
             target_official: boolean;
@@ -4592,10 +4613,15 @@ export interface components {
                 updating: number;
                 /** @description In a running update but offline; they update when they reconnect. */
                 waiting: number;
-                /** @description Behind and can't be updated now. */
+                /** @description The update failed there */
                 blocked: number;
+                /** @description Behind */
+                unavailable: number;
+                /** @description Behind */
+                unknown: number;
                 offline: number;
             };
+            shepherds: components["schemas"]["ShepherdUpdate"][];
             blocked: {
                 host_id: string;
                 host_name: string;

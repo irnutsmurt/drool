@@ -65,14 +65,20 @@ export function UpdatesTab() {
   );
 }
 
+// The fleet's state in a word (the server decides it). A missing release
+// is information, never a failure; "up to date" only after a release check
+// that completed (st.verified) — otherwise Shepherds run DROOL's version.
 const stateLook: Record<UpdateStatus["state"], { status: Status; word: string }> = {
   current: { status: "ok", word: "Up to date" },
   updating: { status: "info", word: "Updating" },
   available: { status: "info", word: "Update available" },
   attention: { status: "critical", word: "Needs attention" },
   blocked: { status: "warning", word: "Can't update" },
+  unknown: { status: "unknown", word: "Not checked" },
+  unavailable: { status: "info", word: "No update available" },
   none: { status: "unknown", word: "No Shepherds yet" },
 };
+const lookOf = (st: UpdateStatus) => (st.state === "current" && !st.verified ? { status: "info" as Status, word: "Runs DROOL's version" } : stateLook[st.state]);
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
@@ -140,7 +146,7 @@ function Overview({ st, manage }: { st: UpdateStatus; manage: boolean }) {
   // disabled under the keyboard focus loses it to the top of the document.
   // Until the saved policy is back, they show the choice being saved.
   const p = save.isPending && save.variables ? save.variables : st.policy;
-  const look = stateLook[st.state];
+  const look = lookOf(st);
   const notice = officialNotice(st);
   const automatic = p.policy === "automatic";
   const channels = st.channels.includes(p.channel) ? st.channels : [...st.channels, p.channel];
@@ -218,11 +224,13 @@ function Overview({ st, manage }: { st: UpdateStatus; manage: boolean }) {
           <dd data-testid="updates-counts">
             {c.total === 0 ? <span className="text-muted">None yet.{automatic && officialWorks(st) ? " Shepherds you install are kept up to date automatically." : ""}</span> : (
               <span>
-                {plural(c.current, "Shepherd")} up to date
+                {plural(c.current, "Shepherd")} {st.verified ? "up to date" : "on this DROOL's version"}
                 {c.updating > 0 && <> · {c.updating} updating</>}
                 {c.waiting > 0 && <> · {c.waiting} waiting to reconnect</>}
                 {c.behind > 0 && <> · {c.behind} to update</>}
                 {c.blocked > 0 && <> · {c.blocked} can&apos;t update</>}
+                {c.unavailable > 0 && <> · {c.unavailable} older, no update available</>}
+                {c.unknown > 0 && <> · {c.unknown} older, not checked</>}
                 {c.offline - c.waiting > 0 && <> · {c.offline - c.waiting} offline</>}
                 {" · "}<Link className={plainLink} to="/agents">View Shepherds</Link>
               </span>

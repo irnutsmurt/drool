@@ -4085,6 +4085,30 @@ components:
         release_trust:
           description: Which signatures the Shepherd accepts for its updates, as it last said; null for Shepherds built before 1.0, which don't say.
           oneOf: [{ $ref: '#/components/schemas/ReleaseTrust' }, { type: 'null' }]
+        update:
+          description: Its update state, as Shepherds → Updates judges it; null when the Shepherd isn't active.
+          oneOf: [{ $ref: '#/components/schemas/ShepherdUpdate' }, { type: 'null' }]
+    ShepherdUpdate:
+      type: object
+      required: [host_id, host_name, version, state, online, verified]
+      properties:
+        host_id: { type: string }
+        host_name: { type: string }
+        version: { type: string }
+        state:
+          type: string
+          enum: [current, available, updating, waiting, attention, blocked, unavailable, unknown]
+          description: >-
+            current: runs the version DROOL keeps Shepherds on (up to date when the status is verified); available: target
+            can be installed now; updating; waiting: in a running update while offline; attention: the update to
+            retry_version failed or rolled back here; blocked: this host refuses the update (reason); unavailable: no
+            release DROOL can install is newer (reason; a missing release is never a failure); unknown: DROOL hasn't been
+            able to check for a release (reason).
+        target: { type: string }
+        reason: { type: string }
+        retry_version: { type: string }
+        online: { type: boolean }
+        verified: { type: boolean, description: As the status's verified; current means up to date only when it is set. }
     ReleaseTrust:
       type: object
       required: [key_ids, official, official_denied, updates_denied]
@@ -4123,7 +4147,7 @@ components:
         state_versions: { type: array, items: { $ref: '#/components/schemas/StateVersion' } }
         requested_caps: { oneOf: [{ $ref: '#/components/schemas/AgentCaps' }, { type: 'null' }] }
         ssh_bypasses_ceiling: { type: boolean, description: SSH fallback with root access exists; it is not limited by the agent's ceiling. }
-        update_available: { type: string }
+        update_available: { type: string, description: The release this Shepherd can be updated to now (trusted, compatible, not refused or failed here); absent when there is none. }
     AgentUpdatePolicy:
       type: object
       required: [policy, channel, version, canary, batch_size, max_failures, health_window_s]
@@ -4195,13 +4219,18 @@ components:
               updated_at: { type: string, format: date-time }
     AgentUpdateStatus:
       type: object
-      required: [policy, policy_saved, channels, state, summary, target, target_official, controller, official, check, counts, blocked, problems, active, history]
+      required: [policy, policy_saved, channels, state, summary, verified, target, target_official, controller, official, check, counts, shepherds, blocked, problems, active, history]
       properties:
         policy: { $ref: '#/components/schemas/AgentUpdatePolicy' }
         policy_saved: { type: boolean, description: Someone saved the policy; otherwise it is the default. }
         channels: { type: array, items: { type: string }, description: The channels the policy can choose. }
-        state: { type: string, enum: [none, current, available, updating, attention, blocked] }
+        state: { type: string, enum: [none, current, available, updating, attention, blocked, unknown, unavailable] }
         summary: { type: string }
+        verified:
+          type: boolean
+          description: >-
+            Up to date rests on a release check that completed, or on the policy's own release. Otherwise Shepherds on
+            DROOL's version are said to run it, not to be up to date.
         target: { type: string, description: The version automatic updates keep Shepherds on; empty when none is available. }
         target_official: { type: boolean }
         controller:
@@ -4243,15 +4272,18 @@ components:
           description: Why automatic updates leave the target alone (a person paused or cancelled its rollout); absent when they don't.
         counts:
           type: object
-          required: [total, current, behind, updating, waiting, blocked, offline]
+          required: [total, current, behind, updating, waiting, blocked, unavailable, unknown, offline]
           properties:
             total: { type: integer }
             current: { type: integer }
             behind: { type: integer, description: Behind and can be updated. }
             updating: { type: integer }
             waiting: { type: integer, description: In a running update but offline; they update when they reconnect. }
-            blocked: { type: integer, description: Behind and can't be updated now. }
+            blocked: { type: integer, description: The update failed there, or the host refuses it. }
+            unavailable: { type: integer, description: Behind, and no release DROOL can install is newer. }
+            unknown: { type: integer, description: Behind, and DROOL hasn't been able to check for a release. }
             offline: { type: integer }
+        shepherds: { type: array, items: { $ref: '#/components/schemas/ShepherdUpdate' } }
         blocked:
           type: array
           items:

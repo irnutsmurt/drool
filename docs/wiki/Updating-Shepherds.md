@@ -23,11 +23,14 @@ At the top is how updates stand, in a word and a sentence:
 
 | Status | Means |
 |---|---|
-| **Up to date** | Every Shepherd runs DROOL's version (or the newest one in your channel) |
+| **Up to date** | Every Shepherd runs DROOL's version (or the newest one in your channel), and DROOL's release check confirmed it |
+| **Runs DROOL's version** | Every Shepherd runs DROOL's version, but DROOL couldn't check for releases (the box under the status says why), so it doesn't call them up to date |
 | **Updating** | An update is running; the card **Updating now** shows how far. Offline Shepherds update when they connect again |
 | **Update available** | Shepherds can be updated, and automatic updates are off (or someone cancelled the update to that version): **Update N Shepherds to …** starts it |
 | **Needs attention** | An update was paused, failed or rolled back, or a release failed its check. See [below](#when-something-needs-attention) |
-| **Can't update** | Some Shepherds run an older version, and nothing can update them now; the reason is next to each one |
+| **Can't update** | A host refuses the update (its own settings or trust; the reason is next to each one) |
+| **No update available** | Some Shepherds run an older version than DROOL, and there's no release DROOL can install for them. This isn't a failure: the sentence says why, once (for example, *official Shepherd releases can't be used by this DROOL*) |
+| **Not checked** | Some Shepherds run an older version, and DROOL hasn't been able to check for a release yet (it tries again) |
 | **No Shepherds yet** | None installed. Shepherds you install get DROOL's own version |
 
 Below it:
@@ -39,7 +42,9 @@ Below it:
 - **Last checked**: when DROOL last asked its release page about updates, and **Check now**. DROOL
   checks shortly after it starts and then every six hours (hourly while its own update isn't published
   yet).
-- **Shepherds**: how many are up to date, updating, waiting or can't update.
+- **Shepherds**: how many are up to date (or *on this DROOL's version*, when that couldn't be
+  checked), updating, waiting, to update, can't update, older with no update available, or older and
+  not checked.
 - **DROOL x.y.z is available**, when a newer stable DROOL is out: update DROOL, and its Shepherds
   follow (with automatic updates on; otherwise update them here afterwards).
 - **Recent updates**: each update, how many Shepherds it updated, and whether DROOL started it
@@ -105,7 +110,14 @@ If official updates can't work at all, the page says so in a box under the statu
 
 Clear **Update Shepherds automatically**. DROOL then tells you when an update is available, and
 **Update N Shepherds to …** starts one, with the same care (one first, then batches, pausing on a
-failure). For a single host, its **Management** section has **Update Shepherd to …**.
+failure). For a single host, **Update…** is next to its update state in the **Shepherds** list, and
+its **Management** section has **Update Shepherd to …**: both confirm first.
+
+The **Shepherds** list and each host's Shepherd card show each Shepherd's update state in the same
+words as this page: *Up to date* (or *On DROOL's version*), *Update available: v1.5.0*, *Updating to
+v1.5.0*, *Update failed*, *Can't update*, *No update available* or *Not checked*. Hover a state, or read
+the host's card, for the reason. Only a release the Shepherd can take now is offered: trusted,
+compatible, and not one that failed there (**Try the update to … again…** asks for that explicitly).
 
 A choice you saved is kept when you update DROOL. An installation from before automatic updates that
 had already rolled out releases of its own keeps updating by hand.

@@ -49,7 +49,8 @@ See [Fleet Monitoring](Fleet-Monitoring.md) and [Host Monitoring](Host-Monitorin
 | Status | Page |
 |---|---|
 | **connected**, **offline**, **identity conflict** | [Shepherd Offline](Shepherd-Offline.md) · [Shepherd PKI](Shepherd-PKI.md) |
-| **compatible**, **update available**, **reduced capabilities**, **update required**, **incompatible** | [Shepherd Incompatible](Shepherd-Incompatible.md) |
+| **compatible**, **reduced capabilities**, **update required**, **incompatible** | [Shepherd Incompatible](Shepherd-Incompatible.md) |
+| **Up to date**, **On DROOL's version**, **Update available: …**, **Updating to …**, **Update failed**, **Can't update**, **No update available**, **Not checked** (a Shepherd's update) | [Updating Shepherds](Updating-Shepherds.md) |
 
 ## Monitoring and alerts
 

@@ -435,29 +435,43 @@ type identityJSON struct {
 	// ReleaseTrust: which signatures the Shepherd accepts for its updates,
 	// as it last said (null: built before 1.0, it doesn't say).
 	ReleaseTrust *agentsvc.ReleaseTrust `json:"release_trust"`
+	// Update: its update state, as Shepherds → Updates judges it (null for
+	// a Shepherd that isn't active).
+	Update *agentsvc.ShepherdUpdate `json:"update"`
 }
 
-// newestRelease is the newest stored agent release for an identity's
-// platform that is newer than what it runs ("" when none). A version that
-// already failed or rolled back there isn't offered again.
-func newestRelease(rels []db.AgentRelease, id db.AgentIdentity) string {
-	failed := id.UpdateState == "rolled_back" || id.UpdateState == "failed" || id.UpdateState == "refused"
-	best := ""
-	for _, rel := range rels {
-		if failed && rel.Version == id.UpdateVersion {
-			continue
-		}
-		if rel.Os == id.Os && rel.Arch == id.Arch && release.CompareVersions(rel.Version, id.AgentVersion) > 0 &&
-			(best == "" || release.CompareVersions(rel.Version, best) > 0) {
-			best = rel.Version
-		}
+// shepherdUpdates is each Shepherd's update state (nil without the agent
+// service): one judgement for the Updates page, the Shepherds list and a
+// host's page.
+func (s *Server) shepherdUpdates(ctx context.Context) *agentsvc.UpdateStatus {
+	if s.d.Agents == nil {
+		return nil
 	}
-	return best
+	st, err := s.d.Agents.UpdateStatus(ctx)
+	if err != nil {
+		return nil
+	}
+	return st
+}
+
+// installable is the release a Shepherd can be updated to now ("": none):
+// a trusted, compatible release newer than what it runs, which the host
+// doesn't refuse and which hasn't failed there.
+func installable(st *agentsvc.UpdateStatus, hostID string) (string, *agentsvc.ShepherdUpdate) {
+	if st == nil {
+		return "", nil
+	}
+	su := st.For(hostID)
+	if su == nil || su.State != "available" {
+		return "", su
+	}
+	return su.Target, su
 }
 
 // compatibility judges an identity with what its host's configuration
-// needs from it (M16, ARCHITECTURE-ALPHA §33.8).
-func (s *Server) compatibility(ctx context.Context, id db.AgentIdentity, rels []db.AgentRelease) agentsvc.Compatibility {
+// needs from it (M16, ARCHITECTURE-ALPHA §33.8). update is the release it
+// can be updated to ("": none).
+func (s *Server) compatibility(ctx context.Context, id db.AgentIdentity, update string) agentsvc.Compatibility {
 	needed := map[string]string{}
 	if s.d.Firewall != nil && s.d.Firewall.HostConfig(ctx, id.HostID).Mode != "off" {
 		needed["firewall-1"] = "its firewall is managed"
@@ -467,7 +481,7 @@ func (s *Server) compatibility(ctx context.Context, id db.AgentIdentity, rels []
 			needed["epoch-1"] = "this controller was restored and the host isn't reconciled yet"
 		}
 	}
-	return agentsvc.Judge(id, agentsvc.IdentityFeatures(id), needed, newestRelease(rels, id), s.d.Config.Agent.RecoveryGrace, time.Now())
+	return agentsvc.Judge(id, agentsvc.IdentityFeatures(id), needed, update, s.d.Config.Agent.RecoveryGrace, time.Now())
 }
 
 func (s *Server) toIdentityJSON(id db.AgentIdentity) identityJSON {
@@ -551,17 +565,18 @@ func (s *Server) handleHostAgent(w http.ResponseWriter, r *http.Request) {
 	ids, _ := s.d.Store.R.ListIdentitiesForHost(ctx, h.ID)
 	if len(ids) > 0 {
 		j := s.toIdentityJSON(ids[0])
-		rels, _ := s.d.Store.R.ListReleases(ctx)
-		j.Compatibility = s.compatibility(ctx, ids[0], rels)
+		update, su := installable(s.shepherdUpdates(ctx), h.ID)
+		j.Compatibility = s.compatibility(ctx, ids[0], update)
+		j.Update = su
 		out.Identity = &j
 		if s.d.Agents != nil {
 			for _, se := range s.d.Agents.HostSessions(h.ID) {
 				out.Sessions = append(out.Sessions, sessionJSON{Address: se.Address, ConnectedAt: se.ConnectedAt.UTC().Format(time.RFC3339),
 					LastSeen: se.LastSeen.UTC().Format(time.RFC3339), Protocol: se.Protocol, Version: se.AgentVersion, Quarantined: se.Quarantined})
 			}
-			// A version that already failed or rolled back here isn't
-			// offered again from the host page (a rollout still can).
-			out.UpdateAvailable = newestRelease(rels, ids[0])
+			// Offered only when the Updates overview says this Shepherd can
+			// take it: trusted, compatible, not refused or failed here.
+			out.UpdateAvailable = update
 		}
 	}
 	svs, _ := s.d.Store.R.ListStateVersions(ctx, h.ID)
@@ -578,11 +593,13 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, errInternal)
 		return
 	}
-	rels, _ := s.d.Store.R.ListReleases(r.Context())
+	st := s.shepherdUpdates(r.Context())
 	out := make([]identityJSON, 0, len(rows))
 	for _, id := range rows {
 		j := s.toIdentityJSON(id)
-		j.Compatibility = s.compatibility(r.Context(), id, rels)
+		update, su := installable(st, id.HostID)
+		j.Compatibility = s.compatibility(r.Context(), id, update)
+		j.Update = su
 		out = append(out, j)
 	}
 	writeJSON(w, http.StatusOK, listResponse[identityJSON]{Items: out})

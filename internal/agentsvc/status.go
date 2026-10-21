@@ -24,9 +24,17 @@ type UpdateStatus struct {
 	Channels []string `json:"channels"`
 	// State: none (no Shepherds), current, available, updating, attention
 	// (a paused rollout, a failed or rolled-back update, a release that
-	// failed verification) or blocked (behind and nothing can update them).
+	// failed verification), blocked (a host refuses the update), unknown
+	// (Shepherds are behind and DROOL hasn't been able to check for a
+	// release) or unavailable (Shepherds are behind and no release DROOL can
+	// install is newer). Missing releases are never failures.
 	State   string `json:"state"`
 	Summary string `json:"summary"`
+	// Verified: "up to date" rests on a release check that completed (or on
+	// the policy's own release). Otherwise Shepherds on DROOL's version are
+	// said to run it, not to be up to date: whether a newer release exists
+	// wasn't checked.
+	Verified bool `json:"verified"`
 	// Target is the version automatic updates keep Shepherds on ("": none
 	// is available), and whether it is an official release.
 	Target         string         `json:"target"`
@@ -40,8 +48,14 @@ type UpdateStatus struct {
 	// Stopped: why automatic updates leave the target alone — a person
 	// paused or cancelled its rollout ("" when they don't). Shepherds behind
 	// it are then updated only when someone starts it.
-	Stopped  string            `json:"stopped,omitempty"`
-	Counts   UpdateCounts      `json:"counts"`
+	Stopped string       `json:"stopped,omitempty"`
+	Counts  UpdateCounts `json:"counts"`
+	// Shepherds: each one's state, as the Shepherds list and its host's
+	// page show it.
+	Shepherds []ShepherdUpdate `json:"shepherds"`
+	// Blocked: Shepherds that need a person — the update failed there, or
+	// the host refuses it. A missing release isn't listed here: the summary
+	// and the official notice say why, once.
 	Blocked  []BlockedShepherd `json:"blocked"`
 	Problems []UpdateProblem   `json:"problems"`
 	Active   []RolloutSummary  `json:"active"`
@@ -92,7 +106,41 @@ type UpdateCounts struct {
 	// Waiting: in a running update, offline; they update when they reconnect.
 	Waiting int `json:"waiting"`
 	Blocked int `json:"blocked"`
+	// Unavailable: behind, and no release DROOL can install is newer.
+	Unavailable int `json:"unavailable"`
+	// Unknown: behind, and DROOL hasn't been able to check for a release.
+	Unknown int `json:"unknown"`
 	Offline int `json:"offline"`
+}
+
+// ShepherdUpdate is one Shepherd's update state.
+type ShepherdUpdate struct {
+	HostID   string `json:"host_id"`
+	HostName string `json:"host_name"`
+	Version  string `json:"version"`
+	// State: current, available (Target can be installed), updating,
+	// waiting (in a running update while offline), attention (the update
+	// to RetryVersion failed or rolled back here), blocked (this host
+	// refuses it: Reason), unavailable (no release DROOL can install is
+	// newer: Reason) or unknown (DROOL hasn't been able to check: Reason).
+	State        string `json:"state"`
+	Target       string `json:"target,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+	RetryVersion string `json:"retry_version,omitempty"`
+	Online       bool   `json:"online"`
+	// Verified: as UpdateStatus.Verified (current is "up to date" only
+	// when it is set).
+	Verified bool `json:"verified"`
+}
+
+// For returns host's Shepherd state (nil: no active Shepherd there).
+func (u *UpdateStatus) For(hostID string) *ShepherdUpdate {
+	for i := range u.Shepherds {
+		if u.Shepherds[i].HostID == hostID {
+			return &u.Shepherds[i]
+		}
+	}
+	return nil
 }
 
 // BlockedShepherd is a Shepherd behind the target (or DROOL) that can't be
@@ -150,7 +198,7 @@ func timeString(t time.Time) *string {
 func (s *Service) UpdateStatus(ctx context.Context) (*UpdateStatus, error) {
 	p := s.GetUpdatePolicy(ctx)
 	out := &UpdateStatus{Policy: p, Channels: Channels, Blocked: []BlockedShepherd{}, Problems: []UpdateProblem{},
-		Active: []RolloutSummary{}, History: []RolloutSummary{}}
+		Active: []RolloutSummary{}, History: []RolloutSummary{}, Shepherds: []ShepherdUpdate{}}
 	if _, err := s.st.R.GetSetting(ctx, "agent_updates"); err == nil {
 		out.PolicySaved = true
 	}
@@ -201,6 +249,18 @@ func (s *Service) UpdateStatus(ctx context.Context) (*UpdateStatus, error) {
 	if out.Target != "" && release.CompareVersions(out.Target, reference) > 0 {
 		reference = out.Target
 	}
+	// Whether "up to date" was checked: the release check completed (it
+	// found this DROOL's release, or that none is published yet), or the
+	// policy keeps Shepherds on a release of its own.
+	out.Verified = out.Official.State == OfficialVerified || out.Official.State == OfficialNotPublished || (out.Target != "" && !out.TargetOfficial)
+	// Why no release is newer, when that is the controller's doing (one
+	// reason for every Shepherd), and whether it is known at all.
+	noRelease := noReleaseReason(out.Official)
+	if out.Official.State == OfficialVerified && !ChannelIncludes(p.Channel, b.Channel) {
+		noRelease = fmt.Sprintf("this DROOL (%s) is a %s build, and Shepherds update from the %s channel: choose %s to update them to it",
+			b.Version, channelWord(b.Channel), p.Channel, channelChoice(b.Channel))
+	}
+	unchecked := out.Official.State == "" || out.Official.State == OfficialPending || out.Official.State == OfficialUnreachable
 
 	// Rollouts.
 	names := s.hostNames(ctx)
@@ -262,6 +322,7 @@ func (s *Service) UpdateStatus(ctx context.Context) (*UpdateStatus, error) {
 		return nil, err
 	}
 	behindVersions := map[string]int{}
+	unavailReason := ""
 	for _, id := range idents {
 		if id.Status != "active" {
 			continue
@@ -271,16 +332,25 @@ func (s *Service) UpdateStatus(ctx context.Context) (*UpdateStatus, error) {
 		if !live {
 			out.Counts.Offline++
 		}
+		su := ShepherdUpdate{HostID: id.HostID, HostName: names[id.HostID], Version: id.AgentVersion, Online: live, Verified: out.Verified}
+		out.Shepherds = append(out.Shepherds, su)
+		set := func(state, target, reason string) {
+			last := &out.Shepherds[len(out.Shepherds)-1]
+			last.State, last.Target, last.Reason = state, target, reason
+		}
 		if inFlight[id.HostID] {
 			if live {
 				out.Counts.Updating++
+				set("updating", activeVersion(out.Active, out.Target), "")
 			} else {
 				out.Counts.Waiting++
+				set("waiting", activeVersion(out.Active, out.Target), "")
 			}
 			continue
 		}
 		if release.CompareVersions(id.AgentVersion, reference) >= 0 {
 			out.Counts.Current++
+			set("current", "", "")
 			continue
 		}
 		behindVersions[id.AgentVersion]++
@@ -298,31 +368,53 @@ func (s *Service) UpdateStatus(ctx context.Context) (*UpdateStatus, error) {
 				RolloutID: res.rollout, At: msString(max(res.at, id.UpdateAt.Int64)),
 				Title:  fmt.Sprintf("The update of %s to %s %s", names[id.HostID], out.Target, verb),
 				Detail: detail})
+			reason := fmt.Sprintf("the update to %s %s here: %s", out.Target, verb, detail)
 			out.Counts.Blocked++
 			out.Blocked = append(out.Blocked, BlockedShepherd{HostID: id.HostID, HostName: names[id.HostID], Version: id.AgentVersion,
-				Reason: fmt.Sprintf("the update to %s %s here: %s", out.Target, verb, detail), RetryVersion: out.Target})
+				Reason: reason, RetryVersion: out.Target})
+			set("attention", out.Target, reason)
+			out.Shepherds[len(out.Shepherds)-1].RetryVersion = out.Target
+			continue
+		}
+		switch {
+		case out.Target == "" || release.CompareVersions(id.AgentVersion, out.Target) >= 0:
+			// No release DROOL can install is newer: the controller's
+			// doing, the same for every Shepherd — not this host's fault.
+			if unchecked {
+				out.Counts.Unknown++
+				set("unknown", "", noRelease)
+			} else {
+				out.Counts.Unavailable++
+				set("unavailable", "", noRelease)
+				unavailReason = noRelease
+			}
+			continue
+		case rels[id.Os+"/"+id.Arch] == nil:
+			// A missing release isn't a failure either.
+			reason := fmt.Sprintf("there is no %s release for %s/%s", out.Target, id.Os, id.Arch)
+			out.Counts.Unavailable++
+			set("unavailable", "", reason)
+			if unavailReason == "" {
+				unavailReason = reason
+			}
 			continue
 		}
 		reason := ""
-		switch {
-		case out.Target == "" || release.CompareVersions(id.AgentVersion, out.Target) >= 0:
-			reason = "no release newer than this Shepherd is available to DROOL: " + noReleaseReason(out.Official)
-			if out.Official.State == OfficialVerified && !ChannelIncludes(p.Channel, b.Channel) {
-				reason = fmt.Sprintf("this DROOL (%s) is a %s build, and Shepherds update from the %s channel: choose %s to update them to it",
-					b.Version, channelWord(b.Channel), p.Channel, channelChoice(b.Channel))
-			}
-		case tried && res.state == "skipped":
+		if tried && res.state == "skipped" {
 			reason = res.detail
-		default:
+		} else {
 			reason = Blocker(id, IdentityTrust(id), out.Target, rels[id.Os+"/"+id.Arch], false)
 		}
 		if reason != "" {
 			out.Counts.Blocked++
 			out.Blocked = append(out.Blocked, BlockedShepherd{HostID: id.HostID, HostName: names[id.HostID], Version: id.AgentVersion, Reason: reason})
+			set("blocked", out.Target, reason)
 			continue
 		}
 		out.Counts.Behind++
+		set("available", out.Target, "")
 	}
+	sort.Slice(out.Shepherds, func(i, j int) bool { return out.Shepherds[i].HostName < out.Shepherds[j].HostName })
 	sort.Slice(out.Blocked, func(i, j int) bool { return out.Blocked[i].HostName < out.Blocked[j].HostName })
 
 	// The state and its one-line summary.
@@ -348,10 +440,25 @@ func (s *Service) UpdateStatus(ctx context.Context) (*UpdateStatus, error) {
 		out.State, out.Summary = "available", fmt.Sprintf("An update to %s is available for %s.", out.Target, plural(out.Counts.Behind, "Shepherd"))
 	case out.Counts.Blocked > 0:
 		out.State, out.Summary = "blocked", fmt.Sprintf("%s can't be updated: %s.", plural(out.Counts.Blocked, "Shepherd"), firstReason(out.Blocked))
+	case out.Counts.Unknown > 0:
+		out.State, out.Summary = "unknown", fmt.Sprintf("%s older than this DROOL (%s), and DROOL hasn't been able to check for a release to update %s to.",
+			isAre(out.Counts.Unknown, "Shepherd"), b.Version, itThem(out.Counts.Unknown))
+	case out.Counts.Unavailable > 0:
+		out.State, out.Summary = "unavailable", fmt.Sprintf("%s older than this DROOL (%s), and no release DROOL can install is newer: %s.",
+			isAre(out.Counts.Unavailable, "Shepherd"), b.Version, strings.TrimSuffix(unavailReason, "."))
 	default:
 		out.State = "current"
 		if out.Counts.Total == out.Counts.Current && len(behindVersions) == 0 {
-			out.Summary = fmt.Sprintf("All %s are up to date (%s).", plural(out.Counts.Total, "Shepherd"), reference)
+			switch {
+			case out.Verified && out.Counts.Total == 1:
+				out.Summary = fmt.Sprintf("The Shepherd is up to date (%s).", reference)
+			case out.Verified:
+				out.Summary = fmt.Sprintf("All %s are up to date (%s).", plural(out.Counts.Total, "Shepherd"), reference)
+			case out.Counts.Total == 1:
+				out.Summary = fmt.Sprintf("The Shepherd runs this DROOL's version (%s).", reference)
+			default:
+				out.Summary = fmt.Sprintf("All %s run this DROOL's version (%s).", plural(out.Counts.Total, "Shepherd"), reference)
+			}
 		}
 	}
 	return out, nil
@@ -391,6 +498,21 @@ func attentionSummary(ps []UpdateProblem) string {
 		return fmt.Sprintf("The update to %s failed on %s.", v, strings.Join(hs, ", "))
 	}
 	return ps[0].Title + "."
+}
+
+// isAre: "1 Shepherd is", "3 Shepherds are".
+func isAre(n int, word string) string {
+	if n == 1 {
+		return "1 " + word + " is"
+	}
+	return plural(n, word) + " are"
+}
+
+func itThem(n int) string {
+	if n == 1 {
+		return "it"
+	}
+	return "them"
 }
 
 func reconnects(n int) string {

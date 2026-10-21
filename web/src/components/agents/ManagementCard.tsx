@@ -20,10 +20,29 @@ import { ManagementBadge, stateLabels } from "./ManagementBadge";
 import { PresetPicker } from "./PresetPicker";
 import { ak, useHostAgent, usePKI, type AgentCaps } from "./queries";
 
-const updateLabels: Record<string, string> = {
-  offered: "update offered", staged: "update staged", updating: "updating", healthy: "updated (healthy)",
-  rolled_back: "rolled back", failed: "update failed", refused: "update refused by the host",
-};
+type ShepherdUpdate = Schemas["ShepherdUpdate"];
+
+/** A Shepherd's update state in a word, as Shepherds → Updates judges it
+ * (the server decides; DESIGN-STANDARD §8): "Up to date" only after a
+ * release check that completed, and a missing release is never a failure.
+ * The reason is the badge's title and the screen reader's. */
+export function ShepherdUpdateBadge({ u }: { u: ShepherdUpdate | null | undefined }) {
+  if (!u) return <span className="text-muted">—</span>;
+  const [word, tone]: [string, "ok" | "warn" | "danger" | "neutral" | "accent"] =
+    u.state === "current" ? (u.verified ? ["Up to date", "ok"] : ["On DROOL's version", "neutral"])
+      : u.state === "available" ? [`Update available: ${u.target}`, "accent"]
+        : u.state === "updating" ? [`Updating to ${u.target}`, "accent"]
+          : u.state === "waiting" ? [`Updates to ${u.target} when online`, "neutral"]
+            : u.state === "attention" ? ["Update failed", "danger"]
+              : u.state === "blocked" ? ["Can't update", "warn"]
+                : u.state === "unavailable" ? ["No update available", "neutral"]
+                  : ["Not checked", "neutral"];
+  return (
+    <span title={u.reason || undefined} data-testid="shepherd-update-state" data-state={u.state}>
+      <Badge tone={tone}>{word}</Badge>{u.reason && <span className="sr-only">: {u.reason}</span>}
+    </span>
+  );
+}
 
 /** The host's management state and the changes to it, shared by its
  * Connection and Shepherd cards. */
@@ -135,7 +154,7 @@ export function ConnectionCard({ host, children }: { host: Host; children?: Reac
 export function ShepherdCard({ host }: { host: Host }) {
   const { can } = useAuth();
   const { a, m, id, live, invalidate } = useHostManagement(host);
-  const [dialog, setDialog] = useState<"install" | "revoke" | "caps" | "manual" | "uninstall" | "update" | null>(null);
+  const [dialog, setDialog] = useState<"install" | "revoke" | "caps" | "manual" | "uninstall" | "update" | "retry" | null>(null);
   const adopt = useMutation({
     mutationFn: (domain: string) => unwrap(api.POST("/hosts/{id}/state/{domain}/adopt", { params: { path: { id: host.id, domain } } })),
     onSuccess: () => {
@@ -160,10 +179,13 @@ export function ShepherdCard({ host }: { host: Host }) {
           <>
             <dl className="grid grid-cols-[minmax(7rem,9rem)_1fr] gap-y-1.5 text-sm">
               <dt className="text-muted">Version</dt>
-              <dd>{id.agent_version || "—"} <span title={id.compatibility.summary}><CompatibilityBadge c={id.compatibility} /></span>
-                {a?.update_available && <span className="ml-2"><Badge tone="accent">update available: {a.update_available}</Badge></span>}
-                {id.update_state && <span className="ml-2"><Badge tone={id.update_state === "healthy" ? "ok" : id.update_state === "rolled_back" || id.update_state === "failed" ? "danger" : id.update_state === "refused" ? "neutral" : "warn"}>{updateLabels[id.update_state] ?? id.update_state}</Badge></span>}
+              <dd className="flex flex-wrap items-center gap-x-2 gap-y-1">{id.agent_version || "—"}
+                {id.compatibility.status !== "compatible" && id.compatibility.status !== "update_recommended" && <span title={id.compatibility.summary}><CompatibilityBadge c={id.compatibility} /></span>}
+                <ShepherdUpdateBadge u={id.update} />
               </dd>
+              {id.update && ["blocked", "unavailable", "unknown"].includes(id.update.state) && id.update.reason && (
+                <><dt className="text-muted">Update</dt><dd className="text-xs text-muted" data-testid="shepherd-update-reason">{id.update.reason}</dd></>
+              )}
               <dt className="text-muted">State</dt><dd>{stateLabels[m.agent_state] ?? m.agent_state}{id.connected ? "" : <span className="text-muted"> · last seen {formatAgo(id.last_seen_at)}</span>}</dd>
               <dt className="text-muted">Certificate</dt><dd>valid until {formatDateTime(id.cert_not_after)}</dd>
             </dl>
@@ -232,7 +254,10 @@ export function ShepherdCard({ host }: { host: Host }) {
           {!live && m.ssh_configured && can("agents.enroll") && <Button variant="primary" onClick={() => setDialog("install")}>Install Shepherd (DROOL agent)</Button>}
           {!live && can("agents.enroll") && <Button onClick={() => setDialog("manual")}>Manual install…</Button>}
           {live && a?.update_available && can("agents.manage") && (
-            <Button onClick={() => setDialog("update")}>Update Shepherd to {a.update_available}</Button>
+            <Button variant="primary" onClick={() => setDialog("update")}>Update Shepherd to {a.update_available}…</Button>
+          )}
+          {live && id?.update?.state === "attention" && id.update.retry_version && can("agents.manage") && (
+            <Button onClick={() => setDialog("retry")}>Try the update to {id.update.retry_version} again…</Button>
           )}
           {id && can("agents.manage") && can("hosts.write") && (
             <Button size="sm" variant="danger" onClick={() => setDialog("uninstall")}>{live ? "Uninstall Shepherd…" : "Remove Shepherd leftovers…"}</Button>
@@ -248,7 +273,8 @@ export function ShepherdCard({ host }: { host: Host }) {
       {dialog === "uninstall" && <UninstallDialog host={host} onClose={() => { setDialog(null); invalidate(); }} />}
       {dialog === "revoke" && id && <RevokeDialog identityId={id.id} hostName={host.name} onClose={() => { setDialog(null); invalidate(); }} />}
       {dialog === "caps" && id && capsReported(id.ceiling) && <CapsDialog hostId={host.id} ceiling={id.ceiling} requested={a?.requested_caps ?? null} onClose={() => { setDialog(null); invalidate(); }} />}
-      {dialog === "update" && a?.update_available && <UpdateDialog host={host} version={a.update_available} onClose={() => { setDialog(null); invalidate(); }} />}
+      {dialog === "update" && a?.update_available && <UpdateDialog hostId={host.id} hostName={host.name} version={a.update_available} onClose={() => { setDialog(null); invalidate(); }} />}
+      {dialog === "retry" && id?.update?.retry_version && <UpdateDialog hostId={host.id} hostName={host.name} version={id.update.retry_version} retry onClose={() => { setDialog(null); invalidate(); }} />}
       {adopting && (
         <ConfirmDialog title={`Adopt the host's ${adopting.domain} state?`} confirmLabel="Adopt host state" busy={adopt.isPending}
           error={adopt.error} onConfirm={() => adopt.mutate(adopting.domain)} onClose={() => setAdopting(null)}>
@@ -261,17 +287,26 @@ export function ShepherdCard({ host }: { host: Host }) {
 }
 
 /** Updating one host's Shepherd: a rollout of one, with the same health
- * check and automatic rollback as fleet rollouts. */
-function UpdateDialog({ host, version, onClose }: { host: Host; version: string; onClose: () => void }) {
+ * check and automatic rollback as fleet rollouts. retry: the update failed
+ * there before (the server asks for it explicitly). */
+export function UpdateDialog({ hostId, hostName, version, retry, onClose }: { hostId: string; hostName: string; version: string; retry?: boolean; onClose: () => void }) {
+  const qc = useQueryClient();
   const update = useMutation({
-    mutationFn: () => unwrap(api.POST("/agents/rollouts", { body: { version, host_ids: [host.id] } })),
-    onSuccess: onClose,
+    mutationFn: () => unwrap(api.POST("/agents/rollouts", { body: { version, host_ids: [hostId], retry: retry || undefined } })),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["agents"] });
+      void qc.invalidateQueries({ queryKey: ak.hostAgent(hostId) });
+      onClose();
+    },
   });
   return (
-    <ConfirmDialog title={`Update the Shepherd on ${host.name}?`} confirmLabel={`Update to ${version}`} busy={update.isPending}
+    <ConfirmDialog title={retry ? `Try the update of ${hostName} to ${version} again?` : `Update the Shepherd on ${hostName}?`}
+      confirmLabel={retry ? "Try again" : `Update to ${version}`} busy={update.isPending}
       error={update.error} onConfirm={() => update.mutate()} onClose={onClose}>
-      <p>The Shepherd (DROOL agent) on {host.name} updates to <strong>{version}</strong>. If it doesn&apos;t become healthy after the update, it
-        rolls back to the version it had by itself.</p>
+      {retry ? <p>The update failed on {hostName} before. Try again once its cause is fixed: if the new version isn&apos;t healthy, the Shepherd goes back to
+        its current version by itself again.</p>
+        : <p>The Shepherd (DROOL agent) on {hostName} updates to <strong>{version}</strong>. If it doesn&apos;t become healthy after the update, it
+          rolls back to the version it had by itself.</p>}
       <p className="text-muted">The update is a rollout of this one host: follow it under Shepherds → Updates.</p>
     </ConfirmDialog>
   );
@@ -396,7 +431,9 @@ export function ManualInstallDialog({ host, onClose, groupId }: { host?: Host; o
 
 const compatLabels: Record<Schemas["AgentCompatibility"]["status"], [string, "ok" | "warn" | "danger" | "neutral" | "accent"]> = {
   compatible: ["compatible", "ok"],
-  update_recommended: ["update available", "accent"],
+  // The update itself is the update badge's (ShepherdUpdateBadge): here the
+  // Shepherd simply works with this controller.
+  update_recommended: ["compatible", "ok"],
   reduced: ["reduced capabilities", "warn"],
   update_required: ["update required", "danger"],
   incompatible: ["incompatible", "danger"],

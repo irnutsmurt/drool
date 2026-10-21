@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { useHosts } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
-import { CompatibilityBadge, ManualInstallDialog } from "@/components/agents/ManagementCard";
+import { CompatibilityBadge, ManualInstallDialog, ShepherdUpdateBadge, UpdateDialog } from "@/components/agents/ManagementCard";
 import { capsReported, isRootEquivalent } from "@/components/agents/CapsList";
 import { ak, useAgents, useEndpointMigrations, useEnrollmentTokens, usePKI, useRollouts } from "@/components/agents/queries";
 import { RolloutHosts, UpdatesTab } from "@/components/agents/Updates";
@@ -55,13 +55,12 @@ export function AgentsPage() {
   );
 }
 
-const updateTone = (s: string) => (s === "healthy" ? "ok" : s === "rolled_back" || s === "failed" ? "danger" : s ? "warn" : "neutral");
-
 function AgentsTab() {
   const agents = useAgents();
   const hosts = useHosts();
   const { can } = useAuth();
   const [adding, setAdding] = useState(false);
+  const [updating, setUpdating] = useState<{ hostId: string; version: string } | null>(null);
   const name = (id: string) => (hosts.data?.items ?? []).find((h) => h.id === id)?.name ?? id;
   return (
     <>
@@ -77,13 +76,24 @@ function AgentsTab() {
           { header: "State", cell: (a) => a.status === "quarantined" ? <Badge tone="danger">identity conflict</Badge> : !a.compatible ? <Badge tone="danger">incompatible</Badge> : a.connected ? <Badge tone="ok">connected</Badge> : <Badge tone="warn">offline {formatAgo(a.last_seen_at)}</Badge> },
           { header: "Compatibility", cell: (a) => <span title={a.compatibility.summary}><CompatibilityBadge c={a.compatibility} /></span> },
           { header: "Version", cell: (a) => <span>{a.agent_version} <span className="text-xs text-muted">proto {a.protocol || `${a.protocol_min}–${a.protocol_max}`}</span></span> },
-          { header: "Update", cell: (a) => a.update_state ? <Badge tone={updateTone(a.update_state)}>{a.update_state.replace("_", " ")} {a.update_version}</Badge> : <span className="text-muted">current</span> },
+          // As Shepherds → Updates judges it; an update that can be
+          // installed now is one step from here.
+          { header: "Update", cell: (a) => (
+            <span className="flex flex-wrap items-center gap-2">
+              <ShepherdUpdateBadge u={a.update} />
+              {a.update?.state === "available" && a.update.target && can("agents.manage") && (
+                <Button size="sm" onClick={() => setUpdating({ hostId: a.host_id, version: a.update!.target! })}>
+                  Update…<span className="sr-only"> the Shepherd on {name(a.host_id)} to {a.update.target}</span></Button>
+              )}
+            </span>
+          ) },
           { header: "Certificate", cell: (a) => <span className="text-xs text-muted">until {formatDateTime(a.cert_not_after)}</span> },
           { header: "Capabilities", cell: (a) => !capsReported(a.effective) ? <span className="text-xs text-muted">not reported yet</span>
             : isRootEquivalent(a.effective) ? <Badge tone="danger">root-equivalent</Badge> : <Badge>limited</Badge> },
         ]}
       />
       {adding && <ManualInstallDialog onClose={() => setAdding(false)} />}
+      {updating && <UpdateDialog hostId={updating.hostId} hostName={name(updating.hostId)} version={updating.version} onClose={() => setUpdating(null)} />}
     </Card>
     <Installs />
     <UnknownAgents />

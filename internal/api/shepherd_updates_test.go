@@ -956,10 +956,12 @@ func TestOfficialShepherdUpdateReleaseCandidate(t *testing.T) {
 	a := e.shepherd(t, "v1.3.0", "")
 	e.check(t)
 	e.h.agents.RunUpdatePass(context.Background())
+	// No release DROOL can install on the stable channel: said once, with
+	// what to do — not a Shepherd that can't update.
 	st := e.updStatus(t)
-	if st.Official.State != agentsvc.OfficialVerified || st.Target != "" || len(st.Blocked) != 1 ||
-		!strings.Contains(st.Blocked[0].Reason, "choose the Release candidates channel") || a.upd.count() != 0 {
-		t.Fatalf("a release candidate on the stable channel: %+v %q %+v", st.Official, st.Target, st.Blocked)
+	if st.Official.State != agentsvc.OfficialVerified || st.Target != "" || len(st.Blocked) != 0 || st.State != "unavailable" ||
+		!strings.Contains(st.Summary, "choose the Release candidates channel") || a.upd.count() != 0 {
+		t.Fatalf("a release candidate on the stable channel: %+v %q %q %+v", st.Official, st.Target, st.Summary, st.Blocked)
 	}
 	p := agentsvc.DefaultUpdatePolicy()
 	p.Channel = "prerelease"
