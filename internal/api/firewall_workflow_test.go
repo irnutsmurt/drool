@@ -141,12 +141,16 @@ policy:
 	}
 
 	// Applying without the switch is refused, as before: Monitor stays.
+	// So is a switch the review chose for another host only.
 	if jh, _ := e.apply(t, hostID, nil); jh.State != "failed" || !strings.Contains(jh.ErrorMessage, "Enforce mode") {
 		t.Fatalf("apply in Monitor: %+v", jh)
 	}
+	if jh, _ := e.apply(t, hostID, map[string]any{"set_enforce_hosts": []string{"host_other"}}); jh.State != "failed" || !strings.Contains(jh.ErrorMessage, "Enforce mode") {
+		t.Fatalf("apply with another host's switch: %+v", jh)
+	}
 	// A check that refuses before the transaction leaves the mode alone:
 	// the policy changed since the review...
-	jh, _ := e.apply(t, hostID, map[string]any{"set_enforce": true, "expect_rules_hashes": map[string]string{hostID: "0000"}})
+	jh, _ := e.apply(t, hostID, map[string]any{"set_enforce_hosts": []string{hostID}, "expect_rules_hashes": map[string]string{hostID: "0000"}})
 	if jh.State != "failed" || !strings.Contains(jh.ErrorMessage, "changed since it was reviewed") {
 		t.Fatalf("stale review: %+v", jh)
 	}
@@ -157,7 +161,7 @@ policy:
 		t.Fatal(err)
 	}
 	t.Setenv("DROOL_FW_DOCKER_SOCK", sock)
-	if jh, _ := e.apply(t, hostID, map[string]any{"set_enforce": true}); jh.State != "failed" || !strings.Contains(jh.ErrorMessage, "Docker is running") {
+	if jh, _ := e.apply(t, hostID, map[string]any{"set_enforce_hosts": []string{hostID}}); jh.State != "failed" || !strings.Contains(jh.ErrorMessage, "Docker is running") {
 		t.Fatalf("refused environment: %+v", jh)
 	}
 	ln.Close()
@@ -168,7 +172,7 @@ policy:
 
 	// The reviewed apply: Enforce, then the transaction.
 	p = getPlan()
-	jh, tx := e.apply(t, hostID, map[string]any{"set_enforce": true, "expect_rules_hashes": map[string]string{hostID: p.Rendered.RulesHash}})
+	jh, tx := e.apply(t, hostID, map[string]any{"set_enforce_hosts": []string{hostID}, "expect_rules_hashes": map[string]string{hostID: p.Rendered.RulesHash}})
 	if jh.State != "succeeded" || tx.State != "committed" {
 		t.Fatalf("review and apply: %+v %+v\n%s", jh, tx, tx.timeline())
 	}

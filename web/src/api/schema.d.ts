@@ -6351,7 +6351,16 @@ export interface components {
             /** @description Allowances and denies the desired policy adds to what is committed. */
             changes_added: string[];
             changes_removed: string[];
+            /** @description Saved rules whose destination contains this host's address but doesn't name the host (Internal networks, a network, a CIDR): they aren't part of its policy. */
+            address_only_rules: components["schemas"]["FwRuleNotice"][];
             summary: components["schemas"]["FwHostSummary"];
+        };
+        /** @description A rule that isn't where its wording suggests, with why and what was probably meant. */
+        FwRuleNotice: {
+            rule: string;
+            message: string;
+            /** @description Managed hosts whose addresses the rule's destination contains. */
+            hosts: string[];
         };
         FwTransaction: {
             id: string;
@@ -6879,6 +6888,8 @@ export interface components {
             document: components["schemas"]["FwDocument"];
             yaml: string;
             revision: string;
+            /** @description Enabled rules of the saved policy that apply to no host (their destination names addresses, not hosts). */
+            no_host_rules: components["schemas"]["FwRuleNotice"][];
             /** @description The hosts whose compiled policy (rules or address sets) this save changed, by name, each with its firewall status right after the save. Nothing was applied to them: on an enforced host the change waits for an apply (rules) or is propagated by itself (address sets only); elsewhere it is what the policy would do. */
             hosts: components["schemas"]["FwHostSummary"][];
             summary: {
@@ -6945,6 +6956,8 @@ export interface components {
             management: components["schemas"]["FwMgmtPath"][];
             /** @description Why applying would be refused (management path conflicts). */
             blockers: string[];
+            /** @description Enabled rules of the draft that apply to no host (their destination names addresses, not hosts). */
+            no_host_rules: components["schemas"]["FwRuleNotice"][];
         };
         FwDraftExplainRequest: components["schemas"]["FwDocumentInput"] & {
             host_id: string;
@@ -13575,8 +13588,8 @@ export interface operations {
                     expect_rules_hashes?: {
                         [key: string]: string;
                     };
-                    /** @description Switch hosts that aren't in Enforce mode to Enforce as part of this apply (the reviewed "Review and apply policy…"). A host's mode changes only once every check before its transaction has passed (audited as firewall.host.update via apply); a host refused before that keeps its mode. Without it, such hosts are refused. */
-                    set_enforce?: boolean;
+                    /** @description The hosts to switch to Enforce mode as part of this apply, where the review showed the switch and Enforce was chosen for them. A host's mode changes only once every check before its transaction has passed (audited as firewall.host.update via apply); a host refused before that keeps its mode. Any other host that isn't in Enforce mode is refused. */
+                    set_enforce_hosts?: string[];
                     /** @description Required with any override; audited. */
                     reason?: string;
                 };

@@ -35,13 +35,15 @@ type FirewallApplyOp struct {
 	// ExpectRulesHashes is ExpectRulesHash per host (host ID → rules hash),
 	// for several hosts reviewed together.
 	ExpectRulesHashes map[string]string `json:"expect_rules_hashes,omitempty"`
-	// SetEnforce switches a host that isn't in Enforce mode to Enforce as
-	// part of this apply ("Review and apply policy…", where the review says
-	// so). The mode changes only once every check before the transaction
-	// has passed, and is audited; a host refused before that keeps its mode.
-	SetEnforce bool  `json:"set_enforce,omitempty"`
-	TimeoutS   int   `json:"timeout_s"`
-	When       *When `json:"when,omitempty"`
+	// SetEnforceHosts are the hosts this apply switches to Enforce mode
+	// when they aren't in it: those whose review showed the switch and where
+	// the person chose Enforce. The mode changes only once every check
+	// before the transaction has passed, and is audited; a host refused
+	// before that keeps its mode. Any other host not in Enforce mode is
+	// refused.
+	SetEnforceHosts []string `json:"set_enforce_hosts,omitempty"`
+	TimeoutS        int      `json:"timeout_s"`
+	When            *When    `json:"when,omitempty"`
 }
 
 // FirewallOp is one action of the on-host firewall tooling (drool-fw).

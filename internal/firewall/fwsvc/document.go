@@ -307,6 +307,8 @@ type CheckResult struct {
 	// Blockers are why applying this draft would be refused (management
 	// path conflicts); saving is still possible.
 	Blockers []string `json:"blockers"`
+	// NoHostRules are enabled rules the draft puts on no host (placement.go).
+	NoHostRules []RuleNotice `json:"no_host_rules"`
 }
 
 func (s *Service) resolveDraft(ctx context.Context, in DocInput) (document.Document, *document.Resolved, []document.Problem, error) {
@@ -344,7 +346,7 @@ func (s *Service) CheckDocument(ctx context.Context, in DocInput) (*CheckResult,
 		return nil, err
 	}
 	out := &CheckResult{Document: d, Problems: nonNilProblems(probs), Notices: []string{}, Revision: Revision(stored),
-		Impact: []HostImpact{}, Management: []MgmtPath{}, Blockers: []string{}}
+		Impact: []HostImpact{}, Management: []MgmtPath{}, Blockers: []string{}, NoHostRules: []RuleNotice{}}
 	if in.YAML != nil && d.Policy == nil {
 		// The YAML didn't parse: there is no document to show.
 		out.Document = document.Normalize(document.Document{})
@@ -407,6 +409,7 @@ func (s *Service) CheckDocument(ctx context.Context, in DocInput) (*CheckResult,
 			out.Impact = append(out.Impact, im)
 		}
 	}
+	out.NoHostRules = noHostRules(draft, compiled)
 	out.Management, err = s.managementPaths(ctx, hosts, compiled)
 	if err != nil {
 		return nil, err

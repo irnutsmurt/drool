@@ -2649,12 +2649,14 @@ paths:
                   type: object
                   additionalProperties: { type: string }
                   description: Per host ID, the rules hash the review showed (applied.rules_hash of its plan); a host whose policy changed since is refused.
-                set_enforce:
-                  type: boolean
+                set_enforce_hosts:
+                  type: array
+                  items: { type: string }
                   description: >-
-                    Switch hosts that aren't in Enforce mode to Enforce as part of this apply (the reviewed "Review and apply
-                    policy…"). A host's mode changes only once every check before its transaction has passed (audited as
-                    firewall.host.update via apply); a host refused before that keeps its mode. Without it, such hosts are refused.
+                    The hosts to switch to Enforce mode as part of this apply, where the review showed the switch and Enforce was
+                    chosen for them. A host's mode changes only once every check before its transaction has passed (audited as
+                    firewall.host.update via apply); a host refused before that keeps its mode. Any other host that isn't in
+                    Enforce mode is refused.
                 reason: { type: string, description: Required with any override; audited. }
       responses:
         '201': { description: Job started., content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
@@ -6084,7 +6086,7 @@ components:
         sets_pending: { type: boolean }
     FwPlan:
       type: object
-      required: [host_id, host_name, config, rollback_timeout_s, rollback_timeout_from, policy, rendered, applied, transport, learning, explain, changes_added, changes_removed, summary]
+      required: [host_id, host_name, config, rollback_timeout_s, rollback_timeout_from, policy, rendered, applied, transport, learning, explain, changes_added, changes_removed, address_only_rules, summary]
       properties:
         host_id: { type: string }
         host_name: { type: string }
@@ -6118,7 +6120,21 @@ components:
             still runs it is applied.drift's question.
         changes_added: { type: array, items: { type: string }, description: Allowances and denies the desired policy adds to what is committed. }
         changes_removed: { type: array, items: { type: string } }
+        address_only_rules:
+          type: array
+          items: { $ref: '#/components/schemas/FwRuleNotice' }
+          description: >-
+            Saved rules whose destination contains this host's address but doesn't name the host (Internal networks, a
+            network, a CIDR): they aren't part of its policy.
         summary: { $ref: '#/components/schemas/FwHostSummary' }
+    FwRuleNotice:
+      type: object
+      required: [rule, message, hosts]
+      description: A rule that isn't where its wording suggests, with why and what was probably meant.
+      properties:
+        rule: { type: string }
+        message: { type: string }
+        hosts: { type: array, items: { type: string }, description: Managed hosts whose addresses the rule's destination contains. }
     FwTransaction:
       type: object
       required: [id, host_id, kind, state, transport, epoch, revision, candidate_hash, timeout_s, measured_ms, override_mgmt, override_timeout, allow_drift, detail, steps, created_at, updated_at]
@@ -6618,11 +6634,15 @@ components:
             revision: { type: string }
     FwDocumentSaved:
       type: object
-      required: [document, yaml, revision, summary, hosts]
+      required: [document, yaml, revision, summary, hosts, no_host_rules]
       properties:
         document: { $ref: '#/components/schemas/FwDocument' }
         yaml: { type: string }
         revision: { type: string }
+        no_host_rules:
+          type: array
+          items: { $ref: '#/components/schemas/FwRuleNotice' }
+          description: Enabled rules of the saved policy that apply to no host (their destination names addresses, not hosts).
         hosts:
           type: array
           description: >-
@@ -6686,7 +6706,7 @@ components:
         unverified: { type: boolean }
     FwDocumentCheck:
       type: object
-      required: [document, yaml, valid, problems, notices, changed, revision, impact, management, blockers]
+      required: [document, yaml, valid, problems, notices, changed, revision, impact, management, blockers, no_host_rules]
       properties:
         document: { $ref: '#/components/schemas/FwDocument' }
         yaml: { type: string, description: Canonical YAML of the draft (empty when the YAML didn't parse). }
@@ -6698,6 +6718,10 @@ components:
         impact: { type: array, items: { $ref: '#/components/schemas/FwHostImpact' } }
         management: { type: array, items: { $ref: '#/components/schemas/FwMgmtPath' } }
         blockers: { type: array, items: { type: string }, description: Why applying would be refused (management path conflicts). }
+        no_host_rules:
+          type: array
+          items: { $ref: '#/components/schemas/FwRuleNotice' }
+          description: Enabled rules of the draft that apply to no host (their destination names addresses, not hosts).
     FwDraftExplainRequest:
       allOf:
         - { $ref: '#/components/schemas/FwDocumentInput' }

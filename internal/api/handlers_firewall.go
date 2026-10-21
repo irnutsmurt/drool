@@ -559,10 +559,10 @@ type fwApplyRequest struct {
 	ExpectRulesHash string   `json:"expect_rules_hash"`
 	// ExpectRulesHashes: per host, the rules hash the review showed.
 	ExpectRulesHashes map[string]string `json:"expect_rules_hashes"`
-	// SetEnforce switches hosts that aren't in Enforce mode to Enforce as
-	// part of the reviewed apply (model.FirewallApplyOp.SetEnforce).
-	SetEnforce bool   `json:"set_enforce"`
-	Reason     string `json:"reason"` // required with any override
+	// SetEnforceHosts are the hosts whose review chose to switch them to
+	// Enforce as part of this apply (model.FirewallApplyOp.SetEnforceHosts).
+	SetEnforceHosts []string `json:"set_enforce_hosts"`
+	Reason          string   `json:"reason"` // required with any override
 }
 
 // handleFirewallApply starts a job with one firewall transaction per host.
@@ -607,7 +607,10 @@ func (s *Server) handleFirewallApply(w http.ResponseWriter, r *http.Request) {
 	}
 	step := model.Operation{Type: model.OpFirewallApply, FirewallApply: &model.FirewallApplyOp{Remove: in.Remove, OverrideMgmt: in.OverrideMgmt,
 		OverrideTimeout: in.OverrideTimeout, AllowDrift: in.AllowDrift, ExpectRulesHash: in.ExpectRulesHash, ExpectRulesHashes: in.ExpectRulesHashes,
-		SetEnforce: in.SetEnforce && !in.Remove, TimeoutS: timeout}}
+		TimeoutS: timeout}}
+	if !in.Remove {
+		step.FirewallApply.SetEnforceHosts = in.SetEnforceHosts
+	}
 	name := "Apply firewall policy"
 	if in.Remove {
 		name = "Remove DROOL firewall policy"

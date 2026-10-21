@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -379,8 +380,8 @@ func (s *Service) Apply(ctx context.Context, hostID string, op *model.FirewallAp
 			"firewall transaction %s is still %s on this host", tx.ID, tx.State)
 	}
 	cfg := s.HostConfig(ctx, hostID)
-	switchMode := !op.Remove && cfg.Mode != ModeEnforce && op.SetEnforce
-	if !op.Remove && cfg.Mode != ModeEnforce && !op.SetEnforce {
+	switchMode := !op.Remove && cfg.Mode != ModeEnforce && slices.Contains(op.SetEnforceHosts, hostID)
+	if !op.Remove && cfg.Mode != ModeEnforce && !switchMode {
 		return nil, fail(model.ClassValidation, "Set the host's firewall mode to Enforce first, or review and apply the policy from the host's firewall page.",
 			"the host's firewall mode is %q: DROOL enforces policies only in Enforce mode", cfg.Mode)
 	}
@@ -622,7 +623,8 @@ func (s *Service) Apply(ctx context.Context, hostID string, op *model.FirewallAp
 }
 
 // switchToEnforce sets a host's mode to Enforce for a reviewed apply
-// (FirewallApplyOp.SetEnforce), audited like a change on the host page.
+// (FirewallApplyOp.SetEnforceHosts), audited like a change on the host
+// page.
 func (s *Service) switchToEnforce(ctx context.Context, hostID string, cfg HostConfig) error {
 	next := HostConfig{Mode: ModeEnforce, Outbound: cfg.Outbound, TimeoutS: cfg.TimeoutS}
 	if err := s.d.Store.InTx(ctx, func(q *db.Queries) error { return s.SetHostConfigTx(ctx, q, hostID, next) }); err != nil {

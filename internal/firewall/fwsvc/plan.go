@@ -302,12 +302,15 @@ type Plan struct {
 	// still runs it is Applied.Drift's question.
 	AppliedExplain []compile.Allowance `json:"applied_explain,omitempty"`
 	// Changes since the committed policy (empty when nothing is enforced).
-	ChangesAdded   []string            `json:"changes_added"`
-	ChangesRemoved []string            `json:"changes_removed"`
-	AppliedHP      *compile.HostPolicy `json:"-"`
-	state          *db.FwHostState
-	host           db.Host
-	world          *compile.World
+	ChangesAdded   []string `json:"changes_added"`
+	ChangesRemoved []string `json:"changes_removed"`
+	// AddressOnly are saved rules whose destination contains this host's
+	// address but doesn't name the host: they aren't part of its policy.
+	AddressOnly []RuleNotice        `json:"address_only_rules"`
+	AppliedHP   *compile.HostPolicy `json:"-"`
+	state       *db.FwHostState
+	host        db.Host
+	world       *compile.World
 }
 
 func (s *Service) state(ctx context.Context, hostID string) (*db.FwHostState, error) {
@@ -353,6 +356,7 @@ func (s *Service) Plan(ctx context.Context, hostID string, override bool) (*Plan
 	if p.Explain == nil {
 		p.Explain = []compile.Allowance{}
 	}
+	p.AddressOnly = addressOnly(w, p.Policy, h.ID)
 	if st.EnvJson != "" {
 		p.Env = &nftables.Env{}
 		json.Unmarshal([]byte(st.EnvJson), p.Env)

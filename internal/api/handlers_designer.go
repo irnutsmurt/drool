@@ -93,8 +93,14 @@ func (s *Server) handleSaveFirewallDocument(w http.ResponseWriter, r *http.Reque
 		writeProblem(w, r, s.firewallError(err))
 		return
 	}
+	// Rules the saved policy puts on no host: said again after the save,
+	// which is where "nothing changed" would otherwise go unexplained.
+	noHost, err := s.d.Firewall.NoHostRules(ctx)
+	if err != nil {
+		noHost = []fwsvc.RuleNotice{}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"document": v.Document, "yaml": v.YAML, "revision": v.Revision, "summary": sum,
-		"hosts": s.changedHosts(ctx, before)})
+		"hosts": s.changedHosts(ctx, before), "no_host_rules": noHost})
 }
 
 // changedHosts are the hosts whose compiled policy differs from before,
