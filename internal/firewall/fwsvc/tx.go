@@ -438,6 +438,31 @@ func (s *Service) Apply(ctx context.Context, hostID string, op *model.FirewallAp
 		return tres(c), err
 	}
 
+	// What was reviewed is what is applied: the policy as the review (or
+	// preview) compiled it, from the management path last observed. It is
+	// checked before the fresh measurement below, which may change only
+	// DROOL's own management rules (a path not observed yet, such as a
+	// Shepherd host's SSH fallback, or one that moved). The same snapshot of
+	// the policy is compiled again afterwards, so nothing saved meanwhile is
+	// applied unreviewed.
+	w, err := s.World(ctx)
+	if err != nil {
+		return tres(c), err
+	}
+	reviewed := ""
+	if !op.Remove {
+		hp0, _ := s.compileHost(ctx, w, h, op.OverrideMgmt)
+		reviewed = nftables.Render(hp0).RulesHash
+		if op.ExpectRulesHash != "" && op.ExpectRulesHash != reviewed {
+			return tres(c), fail(model.ClassValidation, "Preview the policy again before applying it.",
+				"the policy changed since it was previewed")
+		}
+		if want := op.ExpectRulesHashes[hostID]; want != "" && want != reviewed {
+			return tres(c), fail(model.ClassValidation, "Review the policy again before applying it.",
+				"the policy for %s changed since it was reviewed", h.Name)
+		}
+	}
+
 	// Measure a fresh management path (DESIGN §17.4); this also records
 	// how the host sees its management connections.
 	var measured time.Duration
@@ -461,10 +486,6 @@ func (s *Service) Apply(ctx context.Context, hostID string, op *model.FirewallAp
 	}
 	say("fresh connection established in %s", measured.Round(time.Millisecond))
 
-	w, err := s.World(ctx)
-	if err != nil {
-		return tres(c), err
-	}
 	hp, warns := s.compileHost(ctx, w, h, op.OverrideMgmt)
 	for _, wmsg := range warns {
 		say("warning: %s", wmsg)
@@ -484,13 +505,8 @@ func (s *Service) Apply(ctx context.Context, hostID string, op *model.FirewallAp
 			return tres(c), fail(model.ClassValidation, "Change the policy, or use the audited emergency override (automatic rollback protection still applies).",
 				"refused: %s", strings.Join(msgs, "; "))
 		}
-		if op.ExpectRulesHash != "" && op.ExpectRulesHash != rend.RulesHash {
-			return tres(c), fail(model.ClassValidation, "Preview the policy again before applying it.",
-				"the policy changed since it was previewed")
-		}
-		if want := op.ExpectRulesHashes[hostID]; want != "" && want != rend.RulesHash {
-			return tres(c), fail(model.ClassValidation, "Review the policy again before applying it.",
-				"the policy for %s changed since it was reviewed", h.Name)
+		if rend.RulesHash != reviewed {
+			say("DROOL's management rules follow the connection just measured (they come ahead of every rule); the policy is the one reviewed")
 		}
 		for _, cf := range hp.Overrode {
 			say("EMERGENCY OVERRIDE: %s", cf.Message)

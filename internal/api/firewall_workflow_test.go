@@ -288,3 +288,78 @@ func TestFirewallHostNeedsNftables(t *testing.T) {
 		t.Fatalf("supported: %+v", s)
 	}
 }
+
+// A host whose management path DROOL hasn't observed yet (a Shepherd host's
+// SSH fallback that was never measured, or a host whose path moved): the
+// review's policy has no rule for it, and the apply measures it over a
+// fresh connection, which adds DROOL's own management rule. That is still
+// the reviewed policy: the apply goes ahead, with the management path as
+// measured, instead of refusing it as "changed since it was reviewed". A
+// review that really is stale is still refused.
+func TestFirewallApplyMeasuresAManagementPathNotObservedYet(t *testing.T) {
+	e := newFwEnv(t)
+	ctx := context.Background()
+	hostID, _ := e.sshFwHost(t, "fresh")
+	e.h.st.W.UpsertHostAddress(ctx, upsertAddr(hostID, "10.40.0.9"))
+	e.setHost(t, hostID, map[string]any{"mode": "monitor", "rollback_timeout_s": 30})
+	if r := e.c.do("POST", "/api/v1/firewall/hosts/"+hostID+"/detect", nil); r.status != 200 {
+		t.Fatalf("detect: %d %s", r.status, r.body)
+	}
+	var cur struct{ Revision string }
+	e.c.do("GET", "/api/v1/firewall/document", nil).json(t, &cur)
+	doc := "policy:\n  - name: lan-to-fresh\n    from: internal\n    to: fresh\n    allow: [https]\n"
+	if r := e.c.do("PUT", "/api/v1/firewall/document", map[string]any{"yaml": doc, "revision": cur.Revision}); r.status != 200 {
+		t.Fatalf("save: %d %s", r.status, r.body)
+	}
+	type plan struct {
+		MgmtWarnings []string `json:"management_warnings"`
+		Explain      []struct {
+			Reason struct {
+				Kind string `json:"kind"`
+			} `json:"reason"`
+		} `json:"explain"`
+		Rendered struct {
+			RulesHash string `json:"rules_hash"`
+		} `json:"rendered"`
+		Applied struct {
+			Enforced     bool `json:"enforced"`
+			RulesChanged bool `json:"rules_changed"`
+		} `json:"applied"`
+	}
+	getPlan := func() plan {
+		t.Helper()
+		var p plan
+		e.c.do("GET", "/api/v1/firewall/hosts/"+hostID, nil).json(t, &p)
+		return p
+	}
+	mgmtLines := func(p plan) int {
+		n := 0
+		for _, a := range p.Explain {
+			if a.Reason.Kind == "management" {
+				n++
+			}
+		}
+		return n
+	}
+	// The SSH path isn't observed (yet): the review has no rule for it, and
+	// says it is measured when the policy is applied.
+	e.h.st.W.DeleteFwMgmtObservations(ctx, db.DeleteFwMgmtObservationsParams{HostID: hostID, Kind: "ssh_in"})
+	p := getPlan()
+	if mgmtLines(p) != 0 || len(p.MgmtWarnings) == 0 || !strings.Contains(strings.Join(p.MgmtWarnings, " "), "has not been observed yet") {
+		t.Fatalf("the review before the SSH path is observed: %d management lines, warnings %v", mgmtLines(p), p.MgmtWarnings)
+	}
+	// A stale review is refused, before anything is measured or switched.
+	if jh, _ := e.apply(t, hostID, map[string]any{"set_enforce_hosts": []string{hostID}, "expect_rules_hashes": map[string]string{hostID: "0000"}}); jh.State != "failed" ||
+		!strings.Contains(jh.ErrorMessage, "changed since it was reviewed") {
+		t.Fatalf("stale review: %+v", jh)
+	}
+	// The reviewed one goes ahead, with the management path as measured.
+	jh, tx := e.apply(t, hostID, map[string]any{"set_enforce_hosts": []string{hostID}, "expect_rules_hashes": map[string]string{hostID: p.Rendered.RulesHash}})
+	if jh.State != "succeeded" || tx.State != "committed" {
+		t.Fatalf("the reviewed apply: %+v %+v\n%s", jh, tx, tx.timeline())
+	}
+	after := getPlan()
+	if !after.Applied.Enforced || after.Applied.RulesChanged || mgmtLines(after) == 0 || after.Rendered.RulesHash == p.Rendered.RulesHash {
+		t.Fatalf("after applying: enforced %v, changed %v, %d management lines", after.Applied.Enforced, after.Applied.RulesChanged, mgmtLines(after))
+	}
+}
