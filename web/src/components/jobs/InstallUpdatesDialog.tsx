@@ -43,9 +43,12 @@ export function InstallUpdatesDialog({ targets, label, onClose }: {
   const step = useMemo(() => ({ type: "system_update" as const, mode: sys.mode, refresh: sys.refresh, reboot: sys.reboot,
     allow_removals: sys.allowRemovals, timeout_s: defaultTimeouts.system_update }), [sys]);
   // Where it runs, as the engine resolves the targets (skips, warnings).
+  // Asked with the plain rollout: the rollout is worked out here once the
+  // number of hosts is known (a canary for one host would only be warned
+  // about).
   const preview = useQuery({
     queryKey: ["jobs", "preview", targets, "install-updates"],
-    queryFn: () => unwrap(api.POST("/jobs/preview", { body: { targets, strategy: strategyFrom(recommendedRollout) } })),
+    queryFn: () => unwrap(api.POST("/jobs/preview", { body: { targets, strategy: strategyFrom(defaultRollout) } })),
   });
   const run = (preview.data?.hosts ?? []).filter((h) => !h.skip);
   const skipped = (preview.data?.hosts ?? []).filter((h) => h.skip);

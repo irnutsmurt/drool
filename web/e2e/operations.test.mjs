@@ -73,6 +73,7 @@ test("Install updates from a host's header: one review with the dry run, the opt
     assert.match(review, /web-1\s*apt\s*2 to upgrade, 1 new/);
     assert.match(review, /No host reboots\. Where an update needs one, the host says so afterwards/);
     assert.ok(!review.includes("Rollout"), "a rollout for one host");
+    assert.ok(!/canary/i.test(review), "a rollout warning for one host");
     assert.deepEqual(s.simulate.targets, { hosts: [ids["web-1"]] });
     assert.equal(s.simulate.step.type, "system_update");
     assert.ok(!s.calls.includes("POST /api/v1/jobs"), "nothing started before the confirmation");
