@@ -4853,6 +4853,15 @@ it. `hostexec.Runner.Start` now takes a context bounding the start (session, pty
 exec request was sent but never answered is a `MaybeStartedError`: never retried or sent the other way as if nothing
 ran. Committed separately (`sshx: starting a streamed command or file read gives up at its deadline too`).
 
+**Firewall: a reviewed apply and a management path not observed yet** (correctness, committed separately; found while
+capturing the Phase 1 evidence). The first apply on a Shepherd host with SSH fallback whose SSH path DROOL had never
+measured was refused with *the policy for media-01 changed since it was reviewed*: the review's policy had no rule
+for the unobserved path, the transaction's fresh measurement added DROOL's own management rule, and §45's
+`expect_rules_hashes` compared the hash after that. The reviewed hash is now checked before the measurement, against
+the snapshot the review saw; the same snapshot is compiled again with the fresh management path and applied (the run
+says so). A stale review, and a rule cutting the management path, are still refused.
+`TestFirewallApplyMeasuresAManagementPathNotObservedYet` fails on the previous code with the reported message.
+
 ### 46.6 Still open
 
 - **PiZeroWopenwx**: the saved SSH rule and its compiled policy on the real host are still not verified (§45.1). The
