@@ -104,7 +104,7 @@ test("Packs that disagree about a host: said plainly on its health checks, settl
     await click(page, '[data-testid="pack-conflicts"] button', "Let e2e-rules-b win…");
     await waitText(page, "Let e2e-rules-b win over e2e-rules-a?");
     assert.match(await inner('[role="dialog"]'), /monitoring priority becomes 1, above e2e-rules-a \(0\)/);
-    await click(page, '[role="dialog"] button', "Set e2e-rules-b's priority to 1");
+    await click(page, '[role="dialog"] button', "Set e2e-rules-b's monitoring priority to 1");
     await waitFor(page, async () => !(await page.$('[data-testid="pack-conflicts"]')), "settled");
     const row = await page.$$eval("tbody tr", (rs) => rs.map((r) => r.innerText).find((t) => t.startsWith("Memory pressure")));
     assert.match(row, /warning 75%/);

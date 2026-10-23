@@ -301,7 +301,7 @@ function DestinationDialog({ dest, onClose }: { dest?: Destination; onClose: () 
 function routeSummary(r: Route, hostName: (id: string) => string, groupName: (id: string) => string) {
   const parts: string[] = [];
   parts.push(r.severities.length === 0 || r.severities.length === 2 ? "Warning and Critical" : r.severities.map((s) => (s === "critical" ? "Critical" : "Warning")).join(", "));
-  const scope = [...r.host_ids.map(hostName), ...r.group_ids.map((g) => `pack ${groupName(g)}`)];
+  const scope = [...r.host_ids.map(hostName), ...r.group_ids.map((g) => `Pack ${groupName(g)}`)];
   if (scope.length) parts.push(`on ${scope.join(", ")}`);
   const what = [...r.categories.map((c) => categoryLabel[c] ?? c), ...r.checks.map((c) => checkLabel[c] ?? c)];
   if (what.length) parts.push(`(${what.join(", ")})`);
@@ -385,7 +385,7 @@ function RouteDialog({ route, categories, onClose }: { route?: Route; categories
           </div>
         </fieldset>
         <fieldset>
-          <legend className="mb-1 text-sm font-medium">Hosts and packs <span className="font-normal text-muted">(none: all hosts)</span></legend>
+          <legend className="mb-1 text-sm font-medium">Hosts and Packs <span className="font-normal text-muted">(none: all hosts)</span></legend>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             {(groups.data?.items ?? []).map((g) => <Checkbox key={g.id} checked={r.group_ids.includes(g.id)} onChange={() => up({ group_ids: toggle(r.group_ids, g.id) })} label={<>Pack <b>{g.name}</b></>} />)}
           </div>

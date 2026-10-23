@@ -53,7 +53,7 @@ export function PackPage() {
   if (can("maintenance.manage") && g.host_ids.length > 0) {
     actions.push({ label: "Start maintenance…", hint: "Pause notifications for the Pack's hosts", onSelect: () => setDialog("maintenance") });
   }
-  if (write) actions.push({ label: "Delete pack…", hint: "Its hosts stay in DROOL", danger: true, separated: actions.length > 0, onSelect: () => setDialog("delete") });
+  if (write) actions.push({ label: "Delete Pack…", hint: "Its hosts stay in DROOL", danger: true, separated: actions.length > 0, onSelect: () => setDialog("delete") });
 
   return (
     <>
@@ -61,7 +61,7 @@ export function PackPage() {
         description={g.description || <span className="text-muted">A Pack: hosts you run, schedule and configure together.</span>}
         actions={(
           <div className="flex flex-wrap gap-2">
-            {run && <Button variant="primary" onClick={() => navigate(`/jobs/new?groups=${g.id}`)}>Run on this pack</Button>}
+            {run && <Button variant="primary" onClick={() => navigate(`/jobs/new?groups=${g.id}`)}>Run on this Pack</Button>}
             {run && <Button className="max-sm:hidden" onClick={() => setDialog("updates")}>Install updates…</Button>}
             {actions.length > 0 && <MenuButton label="Actions" items={actions} testId="pack-actions" />}
           </div>

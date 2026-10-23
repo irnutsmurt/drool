@@ -34,7 +34,7 @@ export function PriorityDialog({ groupId, name, current, onClose }: { groupId: s
     <Dialog title={`Desired-state priority: ${name}`} onClose={onClose}>
       <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
         <p className="text-sm text-muted">
-          When a host is in several packs (groups) whose baselines declare the same resource differently, the pack with the higher priority
+          When a host is in several Packs (groups) whose baselines declare the same resource differently, the Pack with the higher priority
           wins. Equal priorities that disagree are a conflict: DROOL shows it and doesn't choose. A host's own setting always wins.
         </p>
         <Field label="Priority" hint="-1000 to 1000. Default 0.">

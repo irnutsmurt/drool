@@ -121,7 +121,7 @@ function AlertList({ view, params, set }: { view: "active" | "acknowledged" | "r
         </Field>
         <Field label="Pack">
           <Select value={f.group_id ?? ""} onChange={(e) => set("group_id", e.target.value)}>
-            <option value="">All packs</option>
+            <option value="">All Packs</option>
             {(groups.data?.items ?? []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </Select>
         </Field>
@@ -235,7 +235,7 @@ function MaintenanceTab() {
                 <div className="font-medium">{x.reason || "No reason given"}</div>
                 {x.schedule_id && <div className="text-xs"><Link className="text-accent" to={`/jobs/schedules/${x.schedule_id}`}>Started by a recurring window</Link></div>}
                 <div className="text-muted">
-                  {x.targets.map((t) => (t.kind === "group" ? `pack ${t.name}` : t.name)).join(", ")} · {x.host_count} host{x.host_count === 1 ? "" : "s"}
+                  {x.targets.map((t) => (t.kind === "group" ? `Pack ${t.name}` : t.name)).join(", ")} · {x.host_count} host{x.host_count === 1 ? "" : "s"}
                 </div>
                 <div className="text-xs text-muted">
                   Started {fmtTime(x.started_at)} by {x.created_by || "unknown"} ·{" "}
@@ -270,7 +270,7 @@ function RecurringWindows() {
       )}>
       <p className="mb-3 text-sm text-muted">
         Maintenance that starts by itself, for example every Sunday 02:00–04:00. Each window is ordinary maintenance;
-        pack membership is checked live while it lasts. A scheduled job can be tied to a window to run inside it.
+        Pack membership is checked live while it lasts. A scheduled job can be tied to a window to run inside it.
       </p>
       {list.error && <Notice>{errorMessage(list.error)}</Notice>}
       {rows.length === 0 ? (

@@ -70,7 +70,7 @@ const groups: Group[] = [
     entries: [
       { title: "System", to: "/settings/system", description: "Version, effective configuration, backup and restore." },
       { title: "Secure your installation", to: "/settings/system#secure", description: "What DROOL's security setup looks like and what to do about it.", permissions: ["settings.read"] },
-      { title: "Audit log", to: "/audit", where: "Protect", description: "Who did what, when; its integrity checks and its remote copy.", permissions: ["audit.read"] },
+      { title: "Audit Log", to: "/audit", where: "Protect", description: "Who did what, when; its integrity checks and its remote copy.", permissions: ["audit.read"] },
     ],
   },
 ];

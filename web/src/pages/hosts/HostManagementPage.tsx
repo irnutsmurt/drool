@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { qk, useCredentials, useGroups, useHosts, type Host } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
-import { ConnectionCard, ShepherdCard } from "@/components/agents/ManagementCard";
+import { ConnectionCard, ShepherdCard, ShepherdDangerRows } from "@/components/agents/ManagementCard";
 import { HostForm, type HostRequest } from "@/components/hosts/HostForm";
 import { RemoveHostDialog } from "@/components/hosts/RemoveHostDialog";
 import { SSHSignIn } from "@/components/hosts/SSHSignIn";
@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { plainLink } from "@/components/ui/links";
+import { plainLink, touchLink } from "@/components/ui/links";
 import { errorMessage, formatDateTime } from "@/lib/format";
 
 /** How DROOL reaches and manages one host, by purpose: the connection
@@ -78,11 +78,16 @@ export function HostManagementPage() {
           <MembershipCard h={h} />
         </div>
       </div>
-      {can("hosts.write") && (
+      {(can("hosts.write") || can("agents.manage")) && (
         <Card title="Danger zone">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button variant="danger" onClick={() => setRemoving(true)}>Remove host…</Button>
-            <span className="text-xs text-muted">Remove it from DROOL only (nothing on the host changes), or first clean up what DROOL installed there: its Shepherd, and the SSH account DROOL created.</span>
+          <div className="space-y-3">
+            {managed && <ShepherdDangerRows host={h} />}
+            {can("hosts.write") && (
+              <div className="flex flex-wrap items-center gap-3">
+                <Button variant="danger" onClick={() => setRemoving(true)}>Remove host…</Button>
+                <span className="text-xs text-muted">Remove it from DROOL only (nothing on the host changes), or first clean up what DROOL installed there: its Shepherd, and the SSH account DROOL created.</span>
+              </div>
+            )}
           </div>
           {removing && (
             <RemoveHostDialog hostId={h.id} hostName={h.name} onClose={() => setRemoving(false)}
@@ -153,7 +158,7 @@ function MembershipCard({ h }: { h: Host }) {
         <dt className="text-muted">Packs <span className="text-xs">(groups)</span></dt>
         <dd>
           {packs.length ? packs.map((g, i) => <span key={g.id}>{i > 0 && ", "}<Link className="text-accent" to={`/groups/${g.id}`}>{g.name}</Link></span>) : "—"}
-          {can("hosts.write") && <button type="button" className={`ml-2 text-xs ${plainLink}`} onClick={() => setPacksOpen(true)}>Change…</button>}
+          {can("hosts.write") && <button type="button" className={`ml-2 text-xs ${plainLink} ${touchLink}`} onClick={() => setPacksOpen(true)} aria-label={`Change the Packs of ${h.name}`}>Change…</button>}
           {packsOpen && <HostPacksDialog host={h} packs={groups.data?.items ?? []} onClose={() => setPacksOpen(false)} />}
         </dd>
         <dt className="text-muted">Tags</dt>
@@ -161,7 +166,7 @@ function MembershipCard({ h }: { h: Host }) {
         <dt className="text-muted">Description</dt><dd>{h.description || "—"}</dd>
         {h.jump_only && (<><dt className="text-muted">Role</dt><dd>Jump host only</dd></>)}
       </dl>
-      <p className="mt-3 text-xs text-muted">A Pack&apos;s settings (monitoring, desired state, firewall policy) apply to its hosts; tags and Packs both work as run and schedule targets.</p>
+      <p className="mt-3 text-xs text-muted">A Pack&apos;s settings (monitoring, Desired State, firewall policy) apply to its hosts; tags and Packs both work as run and schedule targets.</p>
     </Card>
   );
 }

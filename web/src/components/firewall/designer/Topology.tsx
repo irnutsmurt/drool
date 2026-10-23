@@ -498,7 +498,7 @@ function TopologyInner(p: TopologyProps) {
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8 text-center text-sm text-muted">
             {filter ? "Nothing matches the filter."
               : mode === "observed" ? (obsQ.isLoading ? "Loading observed connections…" : "No observed connections match. Hosts with a Shepherd report continuously; SSH hosts only after a snapshot.")
-                : "No rules yet. Place hosts, packs or networks on the canvas, then drag from the right edge of one to another to allow traffic — or use New rule."}
+                : "No rules yet. Place hosts, Packs or networks on the canvas, then drag from the right edge of one to another to allow traffic — or use New rule."}
           </div>
         )}
       </div>

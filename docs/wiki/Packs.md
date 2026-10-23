@@ -21,7 +21,7 @@ A host can be in several Packs. Membership is looked up when it's used: a host y
 
 ## Create a Pack
 
-1. Open **Packs** in the sidebar and click **Create pack**.
+1. Open **Packs** in the sidebar and click **Create Pack**.
 2. Type a name, for example `media-servers`, and if you like a description. Click **Create**.
 
    Names can contain letters, digits, `.`, `_` and `-`, and must start with a letter or digit: no
@@ -72,8 +72,8 @@ in this order:
 
 | Where | What it's for |
 |---|---|
-| **Run on this pack**, **Install updates…** (header) | A new run with the Pack as its target ([Running a Command](Running-a-Command.md)); the review of updating its hosts (each one's dry run, the recommended rollout for two or more), then the run, followed in place ([System Updates](System-Updates.md#install-updates-where-you-see-them)) |
-| **Actions** (header) | **Start maintenance…** for the Pack's hosts ([Maintenance Mode](Maintenance-Mode.md)), and last, **Delete pack…** (see below) |
+| **Run on this Pack**, **Install updates…** (header) | A new run with the Pack as its target ([Running a Command](Running-a-Command.md)); the review of updating its hosts (each one's dry run, the recommended rollout for two or more), then the run, followed in place ([System Updates](System-Updates.md#install-updates-where-you-see-them)) |
+| **Actions** (header) | **Start maintenance…** for the Pack's hosts ([Maintenance Mode](Maintenance-Mode.md)), and last, **Delete Pack…** (see below) |
 | **Hosts** | Its hosts with their health, connection and pending updates; **Add hosts…**, **Remove…** |
 | **Where another Pack decides** | Hosts where this Pack's setting doesn't apply because another of their Packs disagrees (see below) |
 | **What this Pack sets for its hosts** | Its **Health checks…** ([Health Overrides](Health-Overrides.md)), its **monitoring priority** and **Desired State priority** (**Change…**, with what changes before saving), the baselines assigned to it, the firewall rules that name it and its rollback timeout, standing monitoring-helper approvals, and the schedules, maintenance, notification routes, enrollment tokens and classifications that target it, each linking to where it's changed |
@@ -107,7 +107,7 @@ in it, unless the host sets its own.*
 
 ## Delete a Pack
 
-**Actions → Delete pack…** (on the Pack's page) first asks every part of DROOL what still uses the Pack,
+**Actions → Delete Pack…** (on the Pack's page) first asks every part of DROOL what still uses the Pack,
 and shows the answer.
 
 **While anything depends on it, DROOL won't delete it.** The dialog lists each thing, with what to
@@ -132,7 +132,7 @@ Once nothing depends on it, the dialog says exactly what deleting it removes, an
   standing approval to install monitoring helpers on its hosts, which only ever applied to the Pack;
 - the Pack's name on used, revoked or expired enrollment tokens (their history stays).
 
-Click **Delete pack** to confirm. If something started depending on the Pack in the meantime, DROOL
+Click **Delete Pack** to confirm. If something started depending on the Pack in the meantime, DROOL
 still refuses and shows the new list. The deletion is audited with what it removed.
 
 ## Packs and tags

@@ -16,6 +16,7 @@ import { isActive, visibleSections, type NavIcon, type NavItem } from "./nav";
 import { CommandPalette, shortcutLabel, typingIn } from "./CommandPalette";
 import { PageTitle } from "./PageTitle";
 import { watchTableFit } from "@/lib/tableFit";
+import { roleInfo } from "@/auth/roles";
 import { useSecurityItems, useSystemInfo, type SecurityItem } from "./security";
 
 export { useSystemInfo } from "./security";
@@ -86,9 +87,10 @@ export function AppShell() {
             <SecurityStatus />
             <div className="hidden md:block"><ThemeSwitcher compact /></div>
             {/* Beside the sidebar (1024–1279 px) the role gives way, so nothing wraps. */}
-            <span className="hidden whitespace-nowrap text-sm md:inline">
-              {me?.user.username} <span className="hidden text-muted xl:inline">({me?.user.role})</span>
-            </span>
+            <Link to="/settings/account" title="Your account: password, two-factor, appearance"
+              className="hidden whitespace-nowrap rounded-ui px-1 text-sm hover:bg-surface-2 md:inline">
+              {me?.user.username} <span className="hidden text-muted xl:inline">({roleName(me?.user.role)})</span>
+            </Link>
             <span className="hidden md:inline-flex"><Button size="sm" variant="ghost" className="whitespace-nowrap" onClick={() => void logout()}>Sign out</Button></span>
             <AccountMenu />
           </div>
@@ -292,7 +294,10 @@ export function SecurityNote({ item }: { item: SecurityItem }) {
   );
 }
 
-/** Narrow screens: the account, appearance and sign-out in one menu. */
+const roleName = (r?: string) => (r && r in roleInfo ? roleInfo[r as keyof typeof roleInfo].name : r);
+
+/** Narrow screens: the account, appearance, the way to every setting (the
+ * drawer's Settings is at its foot) and sign-out in one menu. */
 function AccountMenu() {
   const { me, logout } = useAuth();
   const [open, setOpen] = useState(false);
@@ -326,10 +331,13 @@ function AccountMenu() {
       </button>
       {open && (
         <div id={id} className="absolute right-0 top-full z-40 mt-2 w-64 space-y-3 rounded-ui border border-line bg-surface p-3 text-sm shadow-lg">
-          <div>{me?.user.username} <span className="text-muted">({me?.user.role})</span></div>
+          <div>{me?.user.username} <span className="text-muted">({roleName(me?.user.role)})</span></div>
           <ThemeSwitcher compact name="theme-menu" />
-          <div className="flex items-center justify-between gap-2 border-t border-line pt-3">
-            <Link to="/settings/account" className="text-sm underline decoration-accent underline-offset-2">Account settings</Link>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
+            <span className="flex gap-4">
+              <Link to="/settings/account" className="text-sm underline decoration-accent underline-offset-2 pointer-coarse:py-2">Account</Link>
+              <Link to="/settings" className="text-sm underline decoration-accent underline-offset-2 pointer-coarse:py-2">All settings</Link>
+            </span>
             <Button size="sm" onClick={() => void logout()}>Sign out</Button>
           </div>
         </div>

@@ -210,7 +210,7 @@ function ResourceDetail({ hostId, r, onRestore, onReview, onAccept }: {
       {r.status === "conflict" && (
         <Alert tone="warn">
           <strong>{src.label}.</strong> DROOL doesn't pick one: this resource isn't checked against either value, restored or restored
-          automatically until the conflict is resolved — give one pack a higher priority, change a baseline, or accept the current
+          automatically until the conflict is resolved — give one Pack a higher priority, change a baseline, or accept the current
           state for this host.
         </Alert>
       )}

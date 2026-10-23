@@ -44,7 +44,7 @@ export function GroupsPage() {
   const hostName = (id: string) => (hosts.data?.items ?? []).find((h) => h.id === id)?.name ?? id;
   const err = groups.error;
   const items = groups.data?.items ?? [];
-  const createButton = can("hosts.write") && <Button variant="primary" onClick={() => setCreating(true)}>Create pack</Button>;
+  const createButton = can("hosts.write") && <Button variant="primary" onClick={() => setCreating(true)}>Create Pack</Button>;
 
   return (
     <>
@@ -53,12 +53,12 @@ export function GroupsPage() {
           Desired State and firewall rules. (What other tools call a <em>host group</em>.)</>}
         actions={createButton} />
       {err && <div className="mb-4"><Alert>{errorMessage(err)}</Alert></div>}
-      {!groups.data && !groups.error && <Loading what="packs" />}
+      {!groups.data && !groups.error && <Loading what="the Packs" />}
       {groups.data && items.length === 0 && (
-        <EmptyState title="No packs yet"
-          body={<>A pack groups hosts — for example <em>web-servers</em> or <em>media</em> — so you can run, schedule and configure them together.
-            Create it first, then add hosts on its page. A host can be in several packs; when packs disagree, their priority decides.</>}
-          action={createButton || <span className="text-sm text-muted">Ask an administrator to create packs.</span>} />
+        <EmptyState title="No Packs yet"
+          body={<>A Pack groups hosts — for example <em>web-servers</em> or <em>media</em> — so you can run, schedule and configure them together.
+            Create it first, then add hosts on its page. A host can be in several Packs; where Packs set something differently, their priority for that area (monitoring, Desired State) decides.</>}
+          action={createButton || <span className="text-sm text-muted">Ask an administrator to create Packs.</span>} />
       )}
       <div className="grid gap-4 md:grid-cols-2">
         {items.map((g: Group) => (
@@ -74,7 +74,7 @@ export function GroupsPage() {
             {g.host_ids.length > 0 && (
               <p className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2 text-xs">
                 {can("alerts.read") && <Link className={plainLink} to={`/alerts?group_id=${g.id}`}>Alerts</Link>}
-                {can("jobs.execute") && <Link className={plainLink} to={`/jobs/new?groups=${g.id}`}>Run on this pack</Link>}
+                {can("jobs.execute") && <Link className={plainLink} to={`/jobs/new?groups=${g.id}`}>Run on this Pack</Link>}
                 {can("network.read") && <Link className={plainLink} to={`/network?group=${g.id}`}>Network Activity</Link>}
               </p>
             )}

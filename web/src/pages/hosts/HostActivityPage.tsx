@@ -12,7 +12,7 @@ import { cx } from "@/components/ui/cx";
 const views = [
   { key: "runs", label: "Runs", permission: "jobs.read" },
   { key: "schedules", label: "Schedules", permission: "schedules.read" },
-  { key: "audit", label: "Audit log", permission: "audit.read" },
+  { key: "audit", label: "Audit Log", permission: "audit.read" },
 ] as const;
 
 /** What has happened, and will happen, on this host: the runs that

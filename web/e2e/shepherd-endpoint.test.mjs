@@ -25,7 +25,7 @@ test("the endpoint Shepherds will connect to, before installing", async () => {
   assert.equal(pki.advertised_endpoints.join(", "), expected, "the endpoint the API resolves");
 
   await page.goto(base + "/agents?tab=trust", { waitUntil: "networkidle0" });
-  await waitText(page, "Agent endpoint");
+  await waitText(page, "Shepherd endpoint");
   const trust = await text(page);
   assert.ok(trust.includes(expected + " — where Shepherds connect"), "trust tab: " + trust);
   assert.ok(trust.includes("DROOL listens on port " + pki.endpoint_port), "trust tab: listen port");

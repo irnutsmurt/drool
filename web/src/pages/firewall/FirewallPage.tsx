@@ -41,7 +41,7 @@ export function FirewallPage() {
       <PageHeader title="Firewall"
         description={<>What may talk to what, applied to plain-nftables hosts with <span className="font-medium text-fg">automatic rollback protection</span>: if a fresh
           management connection can&apos;t verify a change, the host reverts it by itself.</>}
-        actions={can("network.read") && <Link to="/network" className={secondaryLink}>Observed traffic</Link>} />
+        actions={can("network.read") && <Link to="/network" className={secondaryLink}>Network Activity</Link>} />
       <Tabs label="Firewall sections" id="fw" className="-mx-1 mb-4 overflow-x-auto px-1" current={tab}
         tabs={tabs.map((t) => ({ key: t.id, label: t.label }))} onSelect={(k) => setParams({ tab: k })} />
       <TabPanel id="fw" current={tab}>
@@ -207,8 +207,8 @@ function SettingsTab() {
         {save.error && <div className="mt-2"><Alert>{errorMessage(save.error)}</Alert></div>}
         {can("firewall.write") && (ranges !== null || timeout !== null) && <Button className="mt-2" variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>Save</Button>}
       </Card>
-      <Card title="Rollback timeout per pack">
-        <p className="mb-2 text-sm text-muted">A host's own timeout wins; otherwise the shortest of its packs'; otherwise the default.</p>
+      <Card title="Rollback timeout per Pack">
+        <p className="mb-2 text-sm text-muted">A host's own timeout wins; otherwise the shortest of its Packs'; otherwise the default.</p>
         <Table
           rows={groups.data?.items ?? []}
           rowKey={(g) => g.id}

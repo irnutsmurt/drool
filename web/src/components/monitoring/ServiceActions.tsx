@@ -301,12 +301,12 @@ export function ServiceMonitorDialog({ hostId, hostName, unit, onClose }: { host
   });
   const inherited = unit.inherited
     ? `${expectedName[unit.inherited as Expected]}, ${unit.inherited_source}`
-    : unit.inherited_source ? `not monitored: ${unit.inherited_source}` : "not monitored (nothing is set for a pack or every host)";
+    : unit.inherited_source ? `not monitored: ${unit.inherited_source}` : "not monitored (nothing is set for a Pack or every host)";
   const options: { v: "" | Expected; label: string; help: string; admin?: boolean }[] = [
     { v: "", label: own ? "Reset to inherited" : "Inherited (no setting on this host)", help: `What this host gets without its own setting: ${inherited}.` },
     { v: "running", label: "Monitor: expect it to run", help: "Stopped, failed or not installed is a health issue (failed is critical). The Monitor box does this." },
     { v: "stopped", label: "Monitor: expect it to be stopped", help: "Running is the health issue; stopped or failed is what you want." },
-    { v: "ignored", label: "Ignore it on this host", help: "Its state stays visible, but it never alerts here, even where a pack or every host monitors it.", admin: true },
+    { v: "ignored", label: "Ignore it on this host", help: "Its state stays visible, but it never alerts here, even where a Pack or every host monitors it.", admin: true },
   ];
   const write = can("monitoring.manage");
   const current = own ? `${expectedName[unit.expected as Expected]}, set on this host` : unit.expected ? `${expectedName[unit.expected as Expected]}, ${unit.expected_source?.label}` : unit.expected_source ? `not monitored: ${unit.expected_source.label}` : "not monitored";
@@ -343,7 +343,7 @@ export function ServiceMonitorDialog({ hostId, hostName, unit, onClose }: { host
         </fieldset>
         <p className="text-xs text-muted">
           A service no setting monitors is inventory only: DROOL shows its state, failed included, and never alerts on it. Starting or stopping it
-          never changes this. For a pack&apos;s hosts, set it on the pack&apos;s page; for every host, in Monitoring → Health checks.
+          never changes this. For a Pack&apos;s hosts, set it on the Pack&apos;s page; for every host, in Monitoring → Health checks.
         </p>
         {subject ? (
           <p className="text-xs">

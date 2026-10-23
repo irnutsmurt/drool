@@ -67,7 +67,7 @@ How long a host waits for the commit before restoring its previous rules. The de
 seconds**:
 
 - **Firewall → Settings → Default rollback timeout (seconds)** for every host;
-- **Rollback timeout per pack** (**Change** on a Pack): a host uses the shortest of its Packs';
+- **Rollback timeout per Pack** (**Change** on a Pack): a host uses the shortest of its Packs';
 - a host's own **Rollback timeout (s)** on its firewall page wins over both.
 
 A longer timeout gives slow hosts and slow links more time; a shorter one shortens how long a bad

@@ -44,6 +44,11 @@ describe("navigation search", () => {
     expect(searchDestinations("protect", destinations, admin).map((x) => x.dest.to)).toEqual(expect.arrayContaining(["/firewall", "/credentials", "/audit"]));
   });
 
+  it("finds both certificate authorities: the Shepherds' and DROOL's SSH one", () => {
+    const got = searchDestinations("certificate authority", destinations, admin).map((r) => r.dest.to);
+    expect(got).toContain("/agents?tab=trust");
+    expect(got).toContain("/credentials");
+  });
   it("ignores case, punctuation and extra spaces", () => {
     expect(top("  Can a reach B?  ")?.to).toBe("/firewall?tab=simulate");
     expect(top("API-TOKEN")?.to).toBe("/settings/tokens");

@@ -93,7 +93,7 @@ test("sidebar: direct destinations under headings; themed names explain themselv
   assert.match(await page.$eval("main", (m) => m.innerText), /DROOL agents installed on managed hosts/);
   await waitFor(page, async () => (await page.$eval('nav[aria-label="Main"] a[aria-current="page"]', (a) => a.getAttribute("href"))) === "/agents", "Shepherds marked in the sidebar");
   await go(page, "/groups");
-  assert.match(await page.$eval("main", (m) => m.innerText), /Groups of hosts used for targeting and inherited configuration/);
+  assert.match(await page.$eval("main", (m) => m.innerText), /Groups of hosts you run, schedule and configure together/);
   // Nested pages mark the right destination.
   for (const [path, marked] of [[`/hosts/${ids["web-1"]}/firewall`, "/hosts"], ["/jobs/new", "/jobs"], ["/jobs/workflows/new", "/jobs/workflows"], ["/monitoring/settings", "/monitoring"], ["/settings/tokens", "/settings"]]) {
     await go(page, path);

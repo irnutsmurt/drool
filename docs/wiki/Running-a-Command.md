@@ -15,7 +15,7 @@ free disk space on all media servers with `df -h /`.
 
 ## Steps
 
-1. Open **Runs → New run** (or **Run command** on a host's page, or **Run on this pack** on the Packs
+1. Open **Runs → New run** (or **Run command** on a host's page, or **Run on this Pack** on the Packs
    page: the target is then already selected).
 2. Under **What to do**, keep **Command** selected and type the command, for example `df -h /`.
 3. Choose the **Targets** on the right: tick hosts, Packs (`media-servers`), or type tags. The box

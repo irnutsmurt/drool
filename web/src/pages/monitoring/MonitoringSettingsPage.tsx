@@ -162,8 +162,13 @@ function Approvals() {
         {(a.data?.approvals ?? []).map((x) => (
           <li key={x.id} className="flex items-center gap-2">
             <span className="font-mono text-xs">{x.package}</span>
-            <span>{x.scope === "global" ? "on every host" : `in pack ${x.group_name || x.group_id}`}</span>
-            {edit && <Button size="sm" variant="ghost" onClick={() => del.mutate(x.id)}>Remove</Button>}
+            <span>{x.scope === "global" ? "on every host" : `in the Pack ${x.group_name || x.group_id}`}</span>
+            {edit && (
+              <Button size="sm" variant="ghost" aria-label={`Remove the approval for ${x.package} ${x.scope === "global" ? "on every host" : `in the Pack ${x.group_name || x.group_id}`}`}
+                onClick={() => void confirmAction({ title: `Remove the standing approval for ${x.package}?`, confirmLabel: "Remove approval",
+                  body: <p>DROOL then installs {x.package} only when someone clicks Install. Removing the approval never uninstalls anything.</p> })
+                  .then((ok) => ok && del.mutate(x.id))}>Remove…</Button>
+            )}
           </li>
         ))}
         {a.isLoading ? <li className="text-muted">Loading…</li> : a.error ? <li><Alert>{errorMessage(a.error)}</Alert></li>
@@ -179,7 +184,7 @@ function Approvals() {
           <Field label="Where">
             <Select value={scope} onChange={(e) => setScope(e.target.value)}>
               <option value="global">Every host</option>
-              <option value="group">A pack</option>
+              <option value="group">A Pack</option>
             </Select>
           </Field>
           {scope === "group" && (

@@ -11,8 +11,8 @@ Packs in the firewall are DROOL's ordinary Packs (written `group:` in [YAML](YAM
 - **Changing a Pack's members in the firewall designer** (**Rules view → Packs → Members**, or the
   `members` list in YAML) **changes the Pack everywhere** in DROOL: runs, schedules, monitoring
   settings and Desired State included.
-- A Pack can be created in the designer (**New pack**), but **deleted only on its page** (**Actions →
-  Delete pack…**). Removing a group from the YAML doesn't delete the Pack.
+- A Pack can be created in the designer (**New Pack**), but **deleted only on its page** (**Actions →
+  Delete Pack…**). Removing a group from the YAML doesn't delete the Pack.
 - **A Pack that a rule names can't be deleted**: DROOL lists the rule (and anything else that uses
   the Pack) with a link to change it first ([Packs](Packs.md#delete-a-pack)). The Pack's page lists
   the rules that name it under **What this Pack sets for its hosts**.

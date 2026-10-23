@@ -29,7 +29,7 @@ test("create an empty pack, then manage its hosts", async () => {
 
   // Create: a name and a description, no hosts.
   await page.goto(base + "/groups", { waitUntil: "networkidle0" });
-  await click(page, "main button", "Create pack");
+  await click(page, "main button", "Create Pack");
   await waitFor(page, async () => (await page.$('[role="dialog"]')) !== null, "the create dialog");
   assert.ok(!(await dialogText()).includes("nas-01"), "creating a pack doesn't ask for hosts");
   await fill(page, "Name", name);
@@ -43,7 +43,7 @@ test("create an empty pack, then manage its hosts", async () => {
   await waitText(page, "No hosts in this Pack yet");
   const empty = await text(page);
   assert.ok(empty.includes(name) && empty.includes("Pack page test") && empty.includes("Hosts (0)"), empty);
-  assert.ok(!empty.includes("Install updates") && !empty.includes("Run on this pack"), "an empty pack offers no runs");
+  assert.ok(!empty.includes("Install updates") && !empty.includes("Run on this Pack"), "an empty pack offers no runs");
   // What it sets, each where it's changed; Delete only under Actions, last.
   await page.waitForSelector('[data-testid="pack-settings"]');
   assert.match(await page.$eval('[data-testid="pack-settings"]', (d) => d.innerText), /Health checks[\s\S]*None: its hosts use every host's health checks/);
@@ -111,7 +111,7 @@ test("create an empty pack, then manage its hosts", async () => {
 
 const deleteFromMenu = async () => {
   await click(page, '[data-testid="pack-actions"]', "Actions");
-  await click(page, '[role="menuitem"]', "Delete pack…");
+  await click(page, '[role="menuitem"]', "Delete Pack…");
 };
 
 // Deleting a pack something still uses (final After-M17 batch): the dialog
@@ -131,7 +131,7 @@ test("deleting a pack that is still in use", async () => {
   await waitText(page, "is still in use, so DROOL won't delete it");
   const blocked = await page.$eval('[data-testid="delete-pack"]', (d) => d.innerText);
   assert.ok(blocked.includes("Monitoring setting: High CPU utilization") && blocked.includes("Reset it to inherited"), blocked);
-  assert.ok(!(await page.$$eval('[data-testid="delete-pack"] button', (bs) => bs.map((b) => b.textContent))).includes("Delete pack"), "no Delete while in use");
+  assert.ok(!(await page.$$eval('[data-testid="delete-pack"] button', (bs) => bs.map((b) => b.textContent))).includes("Delete Pack"), "no Delete while in use");
   await shot(page, "pack-delete-in-use");
   // The server refuses too, whatever the browser does.
   assert.equal((await api(page, "DELETE", `/groups/${pack.id}`)).status, 409);
@@ -144,7 +144,7 @@ test("deleting a pack that is still in use", async () => {
   const free = await page.$eval('[data-testid="delete-pack"]', (d) => d.innerText);
   assert.ok(free.includes("1 host leaves the Pack; the hosts stay in DROOL") && free.includes("No host is deleted"), free);
   await shot(page, "pack-delete");
-  await click(page, '[data-testid="delete-pack"] button', "Delete pack");
+  await click(page, '[data-testid="delete-pack"] button', "Delete Pack");
   await waitFor(page, async () => page.url().endsWith("/groups"), "back on the packs page");
   assert.equal((await api(page, "GET", `/groups/${pack.id}`)).status, 404);
   assert.equal((await api(page, "GET", `/hosts/${nas}`)).status, 200);
@@ -173,7 +173,7 @@ test("a Pack's page: where another Pack decides, settled by Let … win", async 
     await shot(page, "pack-conflicts");
     await click(page, '[data-testid="pack-conflicts-list"] button', `Let ${name}-a win…`);
     await waitText(page, `Let ${name}-a win over ${name}-b?`);
-    await confirmIn(page, `Set ${name}-a's priority to 1`);
+    await confirmIn(page, `Set ${name}-a's monitoring priority to 1`);
     await page.waitForSelector('[data-testid="pack-conflicts-none"]');
     assert.equal((await api(page, "GET", `/monitoring/health/groups`)).body.groups.find((g) => g.group_id === a.id).priority, 1);
     // The other Pack's page: outranked, said so.

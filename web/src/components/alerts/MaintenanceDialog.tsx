@@ -55,7 +55,7 @@ export function MaintenanceForm({ hostIds = [], groupIds = [], defaultReason = "
   };
   const names = [
     ...managed.filter((h) => selHosts.has(h.id)).map((h) => h.name),
-    ...(groups.data?.items ?? []).filter((g) => selGroups.has(g.id)).map((g) => `pack ${g.name}`),
+    ...(groups.data?.items ?? []).filter((g) => selGroups.has(g.id)).map((g) => `Pack ${g.name}`),
   ];
   const submit = () => {
     const body: MaintenanceInput = { host_ids: [...selHosts], group_ids: [...selGroups], reason };
@@ -77,7 +77,7 @@ export function MaintenanceForm({ hostIds = [], groupIds = [], defaultReason = "
           </div>
         ) : (
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">Hosts and packs</legend>
+            <legend className="text-sm font-medium">Hosts and Packs</legend>
             {(groups.data?.items.length ?? 0) > 0 && (
               <div className="flex flex-wrap gap-x-4 gap-y-1">
                 {groups.data!.items.map((g) => (

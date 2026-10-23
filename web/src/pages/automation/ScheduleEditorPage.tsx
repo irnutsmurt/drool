@@ -196,7 +196,7 @@ function ScheduleForm({ existing, draft }: { existing?: Schedule; draft: Schedul
 
           <Card title="Targets">
             <TargetPicker v={targets} set={setTargets} noTags={maint}
-              groupsHint="Packs are checked again at every run: hosts added to a pack later take part." />
+              groupsHint="Packs are checked again at every run: hosts added to a Pack later take part." />
           </Card>
 
           {maint ? (

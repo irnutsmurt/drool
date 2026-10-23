@@ -235,7 +235,7 @@ export function ServicesTab({ id, o, hostName }: { id: string; o: MonHostOvervie
             DROOL lists every service and its state, but alerts only on the ones you <strong>Monitor</strong>: a monitored service that
             stops, fails or isn&apos;t installed is a health issue. Without it, a failed service is shown as failed and never alerts.
             <strong> Customize monitoring…</strong> (under ⋯) sets more: expected <em>stopped</em> (running is the problem) or <em>ignored</em> on
-            this host, and how long before it alerts. For a pack&apos;s hosts, set it on the pack&apos;s page. Actions run as an ordinary run, DROOL
+            this host, and how long before it alerts. For a Pack&apos;s hosts, set it on the Pack&apos;s page. Actions run as an ordinary run, DROOL
             checks the result on the host, and they never change what is monitored.
           </p>
         </div>

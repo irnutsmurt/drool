@@ -23,7 +23,7 @@ export function useSelectorLabel() {
       case "host":
         return hosts.data?.items.find((h) => h.id === s.id)?.name ?? "host " + s.id;
       case "group":
-        return "pack " + (groups.data?.items.find((g) => g.id === s.id)?.name ?? s.id);
+        return "Pack " + (groups.data?.items.find((g) => g.id === s.id)?.name ?? s.id);
       case "internet":
         return "the internet";
       case "internal":
@@ -163,7 +163,7 @@ function SelectorPicker({ value, onChange, label }: { value: FwSelector[]; onCha
         )}
         {kind === "group" && (
           <Select value={id} onChange={(e) => setId(e.target.value)}>
-            <option value="">choose a pack…</option>
+            <option value="">choose a Pack…</option>
             {(groups.data?.items ?? []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </Select>
         )}

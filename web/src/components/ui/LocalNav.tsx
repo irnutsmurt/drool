@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { cx } from "./cx";
+import { useScrollCue } from "./scrollCue";
 
 export interface LocalTab {
   to: string;
@@ -12,10 +13,12 @@ export interface LocalTab {
 
 /** A page's one level of local navigation: peer views of the same thing,
  * as links (each view has its own address). Scrolls sideways on narrow
- * screens instead of wrapping into a second row. */
+ * screens instead of wrapping into a second row, the edge with more tabs
+ * faded. */
 export function LocalNav({ label, tabs }: { label: string; tabs: LocalTab[] }) {
+  const cue = useScrollCue<HTMLElement>();
   return (
-    <nav aria-label={label} className="-mx-1 mb-4 overflow-x-auto px-1">
+    <nav ref={cue.ref} style={cue.style} aria-label={label} className="-mx-1 mb-4 overflow-x-auto px-1">
       <ul className="flex min-w-max gap-1 border-b border-line">
         {tabs.map((t) => (
           <li key={t.to}>

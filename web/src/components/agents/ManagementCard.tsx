@@ -147,6 +147,37 @@ export function ConnectionCard({ host, children }: { host: Host; children?: Reac
   );
 }
 
+/** The rare, destructive Shepherd actions, for the host's Danger zone (with
+ * Remove host): uninstalling it (or removing what a gone one left) and
+ * revoking its identity. Each opens its review; nothing happens before. */
+export function ShepherdDangerRows({ host }: { host: Host }) {
+  const { can } = useAuth();
+  const { id, live, invalidate } = useHostManagement(host);
+  const [dialog, setDialog] = useState<"uninstall" | "revoke" | null>(null);
+  const uninstall = !!id && can("agents.manage") && can("hosts.write");
+  const revoke = live && !!id && can("agents.manage") && id.status !== "quarantined";
+  if (!uninstall && !revoke) return null;
+  return (
+    <>
+      {uninstall && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="danger" onClick={() => setDialog("uninstall")}>{live ? "Uninstall Shepherd…" : "Remove Shepherd leftovers…"}</Button>
+          <span className="text-xs text-muted">{live ? "Stop the Shepherd and remove it from the host. You see first how DROOL reaches it and what it removes."
+            : "Clean up what a Shepherd left on the host, and its identity in DROOL. You see first what it removes."}</span>
+        </div>
+      )}
+      {revoke && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="danger" onClick={() => setDialog("revoke")}>Revoke Shepherd identity…</Button>
+          <span className="text-xs text-muted">For a lost, stolen or compromised host: the Shepherd is disconnected and can never connect with this identity again. Nothing on the host changes.</span>
+        </div>
+      )}
+      {dialog === "uninstall" && <UninstallDialog host={host} onClose={() => { setDialog(null); invalidate(); }} />}
+      {dialog === "revoke" && id && <RevokeDialog identityId={id.id} hostName={host.name} onClose={() => { setDialog(null); invalidate(); }} />}
+    </>
+  );
+}
+
 /** The host's Shepherd (DROOL agent): whether it has one, its version and
  * compatibility, certificate, what DROOL may do through it, and the
  * per-host actions (install, update, narrow, uninstall, revoke). Releases
@@ -154,7 +185,7 @@ export function ConnectionCard({ host, children }: { host: Host; children?: Reac
 export function ShepherdCard({ host }: { host: Host }) {
   const { can } = useAuth();
   const { a, m, id, live, invalidate } = useHostManagement(host);
-  const [dialog, setDialog] = useState<"install" | "revoke" | "caps" | "manual" | "uninstall" | "update" | "retry" | null>(null);
+  const [dialog, setDialog] = useState<"install" | "caps" | "manual" | "update" | "retry" | null>(null);
   const adopt = useMutation({
     mutationFn: (domain: string) => unwrap(api.POST("/hosts/{id}/state/{domain}/adopt", { params: { path: { id: host.id, domain } } })),
     onSuccess: () => {
@@ -259,19 +290,11 @@ export function ShepherdCard({ host }: { host: Host }) {
           {live && id?.update?.state === "attention" && id.update.retry_version && can("agents.manage") && (
             <Button onClick={() => setDialog("retry")}>Try the update to {id.update.retry_version} again…</Button>
           )}
-          {id && can("agents.manage") && can("hosts.write") && (
-            <Button size="sm" variant="danger" onClick={() => setDialog("uninstall")}>{live ? "Uninstall Shepherd…" : "Remove Shepherd leftovers…"}</Button>
-          )}
-          {live && id && can("agents.manage") && id.status !== "quarantined" && (
-            <Button size="sm" variant="danger" onClick={() => setDialog("revoke")}>Revoke Shepherd identity</Button>
-          )}
         </div>
       </div>
 
       {dialog === "install" && <InstallDialog host={host} onClose={() => { setDialog(null); invalidate(); }} />}
       {dialog === "manual" && <ManualInstallDialog host={host} onClose={() => setDialog(null)} />}
-      {dialog === "uninstall" && <UninstallDialog host={host} onClose={() => { setDialog(null); invalidate(); }} />}
-      {dialog === "revoke" && id && <RevokeDialog identityId={id.id} hostName={host.name} onClose={() => { setDialog(null); invalidate(); }} />}
       {dialog === "caps" && id && capsReported(id.ceiling) && <CapsDialog hostId={host.id} ceiling={id.ceiling} requested={a?.requested_caps ?? null} onClose={() => { setDialog(null); invalidate(); }} />}
       {dialog === "update" && a?.update_available && <UpdateDialog hostId={host.id} hostName={host.name} version={a.update_available} onClose={() => { setDialog(null); invalidate(); }} />}
       {dialog === "retry" && id?.update?.retry_version && <UpdateDialog hostId={host.id} hostName={host.name} version={id.update.retry_version} retry onClose={() => { setDialog(null); invalidate(); }} />}
@@ -415,7 +438,7 @@ export function ManualInstallDialog({ host, onClose, groupId }: { host?: Host; o
             <CodeBlock text={t.install_command} />
             <details className="text-xs text-muted">
               <summary className="cursor-pointer">Details</summary>
-              <p className="mt-1">Agent endpoint: <span className="font-mono">{t.endpoints.join(", ")}</span>. The host must reach it.</p>
+              <p className="mt-1">Shepherd endpoint: <span className="font-mono">{t.endpoints.join(", ")}</span>. The host must reach it.</p>
               <p>Agent Root CA: <span className="font-mono">{t.root_fingerprint}</span></p>
               {t.pinned_web_key && <p>Download pinned to the web key <span className="font-mono">{t.pinned_web_key}</span></p>}
               <p className="mt-1">Without the installer: copy drool-agent to the host and run <span className="font-mono">drool-agent install --preset {preset} --token-file -</span> with the token on standard input.</p>
@@ -481,7 +504,7 @@ function UninstallDialog({ host, onClose }: { host: Host; onClose: () => void })
         <Button variant="danger" disabled={run.isPending} onClick={() => run.mutate("forget")}>Forget the Shepherd</Button>
       )}
       {res && (res.outcome === "partial" || res.outcome === "unknown") && (
-        <Button variant="danger" disabled={run.isPending} onClick={() => { run.reset(); void plan.refetch(); }}>Check again</Button>
+        <Button disabled={run.isPending} onClick={() => { run.reset(); void plan.refetch(); }}>Check again</Button>
       )}
     </>
   );

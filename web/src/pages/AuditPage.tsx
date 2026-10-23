@@ -23,7 +23,7 @@ export function AuditPage() {
 
   return (
     <>
-      <PageHeader title="Audit log" description="Who did what, when: every security-relevant action. Records are chained by hashes, so changes to stored history are detectable." />
+      <PageHeader title="Audit Log" description="Who did what, when: every security-relevant action. Records are chained by hashes, so changes to stored history are detectable." />
       <div className="mb-4 grid gap-4 lg:grid-cols-2">
         <AuditIntegrityCard />
         <AuditSinkCard />

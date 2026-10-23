@@ -17,7 +17,7 @@ import { emptyText } from "@/components/ui/States";
 
 export function appliesText(b: Pick<Baseline, "assignments">): string {
   if (b.assignments.length === 0) return "Not assigned";
-  return b.assignments.map((a) => (a.scope === "global" ? "Everywhere" : a.scope === "group" ? `pack ${a.name}` : a.name)).join(", ");
+  return b.assignments.map((a) => (a.scope === "global" ? "Everywhere" : a.scope === "group" ? `Pack ${a.name}` : a.name)).join(", ");
 }
 
 export function resourcesText(b: Pick<Baseline, "resources">): string {
@@ -42,7 +42,7 @@ export function BaselinesPage() {
       {list.error && <Alert>{errorMessage(list.error)}</Alert>}
       {!list.isPending && items.length === 0 && !archived ? (
         <EmptyState title="No baselines yet"
-          body="A baseline is a named list of services, packages and files with the state they should have, applied everywhere, to packs (host groups), or to single hosts."
+          body="A baseline is a named list of services, packages and files with the state they should have, applied everywhere, to Packs (host groups), or to single hosts."
           action={can("desired.manage") ? <Link to="/desired/baselines/new"><Button variant="primary">Create baseline</Button></Link> : undefined} />
       ) : (
         <Card>

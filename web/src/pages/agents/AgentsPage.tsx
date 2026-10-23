@@ -64,7 +64,7 @@ function AgentsTab() {
   const name = (id: string) => (hosts.data?.items ?? []).find((h) => h.id === id)?.name ?? id;
   return (
     <>
-    <Card title="Enrolled Shepherds" actions={can("agents.enroll") && <Button size="sm" variant="primary" onClick={() => setAdding(true)}>Add a host with a Shepherd</Button>}>
+    <Card title="Enrolled Shepherds" actions={can("agents.enroll") && <Button size="sm" variant="primary" onClick={() => setAdding(true)}>Add a host with a Shepherd…</Button>}>
       <p className="mb-3 text-sm text-muted">To put an existing SSH host under a Shepherd, open the host and choose <em>Install Shepherd (DROOL agent)</em>,
         or select hosts under Monitoring and use <em>Convert to Shepherd</em>.</p>
       <Table
@@ -190,8 +190,9 @@ function EnrollTab() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ak.tokens }),
   });
   return (
-    <Card title="Enrollment tokens" actions={<Button size="sm" variant="primary" onClick={() => setAdding(true)}>New token</Button>}>
-      <p className="mb-3 text-sm text-muted">Tokens are random, single use and short lived. Only a hash is stored; the token itself is shown once.</p>
+    <Card title="Enrollment tokens" actions={<Button size="sm" variant="primary" onClick={() => setAdding(true)}>Add a host with a Shepherd…</Button>}>
+      <p className="mb-3 text-sm text-muted">Adding a host with a Shepherd makes a token for its installation. Tokens are random, single use and short lived.
+        Only a hash is stored; the token itself is shown once.</p>
       {revoke.error && <div className="mb-3"><Alert>{errorMessage(revoke.error)}</Alert></div>}
       <Table
         rows={tokens.data?.items ?? []}
@@ -203,7 +204,16 @@ function EnrollTab() {
           { header: "Preset", cell: (t) => t.preset || "—" },
           { header: "State", cell: (t) => <Badge tone={t.state === "active" ? "accent" : t.state === "used" ? "ok" : "neutral"}>{t.state}</Badge> },
           { header: "Expires", cell: (t) => <span className="text-muted">{formatDateTime(t.expires_at)}</span> },
-          { header: "", cell: (t) => t.state === "active" && <Button size="sm" variant="ghost" onClick={() => revoke.mutate(t.id)}>Revoke</Button> },
+          { header: "", cell: (t) => {
+            if (t.state !== "active") return null;
+            const forWhat = t.host_name ? `for ${t.host_name}` : t.group_name ? `for new hosts in ${t.group_name}` : "for new hosts";
+            return (
+              <Button size="sm" variant="ghost" aria-label={`Revoke the token ${forWhat}`}
+                onClick={() => void confirmAction({ title: `Revoke the enrollment token ${forWhat}?`, confirmLabel: "Revoke token", danger: true,
+                  body: <p>A Shepherd that hasn&apos;t enrolled with it yet can&apos;t any more: make a new token for it. Shepherds that already enrolled stay as they are.</p> })
+                  .then((ok) => ok && revoke.mutate(t.id))}>Revoke…</Button>
+            );
+          } },
         ]}
       />
       {adding && <ManualInstallDialog onClose={() => { setAdding(false); void qc.invalidateQueries({ queryKey: ak.tokens }); }} />}
@@ -258,8 +268,8 @@ function TrustTab() {
           <dt className="text-muted">Intermediate</dt><dd className="break-all font-mono text-xs">{s.intermediate_fingerprint} <span className="text-muted">(until {formatDateTime(s.intermediate_not_after)})</span></dd>
           <dt className="text-muted">Trust manifest</dt><dd>version {s.manifest_version}: {(s.trusted_intermediates ?? []).length} trusted, {(s.revoked_intermediates ?? []).length} revoked intermediate(s)
             {s.newest_agent_manifest > s.manifest_version && <span className="text-warn"> — a Shepherd has version {s.newest_agent_manifest}</span>}</dd>
-          <dt className="text-muted">Agent endpoint</dt><dd><span className="font-mono">{s.advertised_endpoints.join(", ")}</span>
-            <span className="text-muted"> — where Shepherds connect{s.advertised_from === "advertise" ? " (agent.advertise)" : " (this page's address)"}; DROOL listens on port {s.endpoint_port}, separate from the web UI and its certificate</span></dd>
+          <dt className="text-muted">Shepherd endpoint</dt><dd><span className="font-mono">{s.advertised_endpoints.join(", ")}</span>
+            <span className="text-muted"> — where Shepherds connect{s.advertised_from === "advertise" ? " (agent.advertise in the configuration)" : " (this page's address)"}; DROOL listens on port {s.endpoint_port}, separate from the web UI and its certificate</span></dd>
           <dt className="text-muted">Controller epoch</dt><dd className="font-mono text-xs">{s.controller_epoch}</dd>
         </dl>
         <div className="mt-3"><a className="text-sm text-accent" href="/api/v1/agents/pki/root.crt">Download the root certificate (public)</a></div>

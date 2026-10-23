@@ -189,7 +189,7 @@ export function BaselineEditorPage() {
                 <div>
                   <h3 className="mb-1 text-sm font-medium">Packs</h3>
                   <div className="max-h-48 space-y-1 overflow-y-auto rounded-ui border border-line p-2">
-                    {(groups.data?.items ?? []).length === 0 && <p className="text-xs text-muted">No packs yet.</p>}
+                    {(groups.data?.items ?? []).length === 0 && <p className="text-xs text-muted">No Packs yet.</p>}
                     {(groups.data?.items ?? []).map((g) => (
                       <Checkbox key={g.id} checked={pickedGroups.includes(g.id)} label={g.name}
                         onChange={(on) => setPickedGroups(on ? [...pickedGroups, g.id] : pickedGroups.filter((x) => x !== g.id))} />
@@ -209,7 +209,7 @@ export function BaselineEditorPage() {
             )}
             <p className="mt-2 text-xs text-muted">
               When baselines disagree about a resource, the most specific wins: a host's own setting, then baselines assigned to the host,
-              then its packs (the higher <Link className={plainLink} to="/groups">pack priority</Link> wins), then baselines for every host.
+              then its Packs (the higher <Link className={plainLink} to="/groups">Pack priority</Link> wins), then baselines for every host.
               Equal priorities that disagree are shown as a conflict — DROOL never picks one silently.
             </p>
           </Card>

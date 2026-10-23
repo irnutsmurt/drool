@@ -113,7 +113,7 @@ function PackConflicts({ checks }: { checks: HealthCheck[] }) {
     const others = c.groups.filter((x) => x.id !== g.id).map((x) => x.name).join(" and ");
     const pv = await preview.mutateAsync({ scope: "group", group_id: g.id, check: c.check.check, fields: {}, priority: n }).catch(() => undefined);
     const ok = await confirmAction({
-      title: `Let ${g.name} win over ${others}?`, confirmLabel: `Set ${g.name}'s priority to ${n}`,
+      title: `Let ${g.name} win over ${others}?`, confirmLabel: `Set ${g.name}'s monitoring priority to ${n}`,
       body: (
         <div className="space-y-2">
           <p>{g.name}&apos;s monitoring priority becomes {n}, above {others} ({c.priority}): where they set a value differently, {g.name}&apos;s applies, on every host in both.</p>

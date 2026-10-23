@@ -37,7 +37,7 @@ win over allows; DROOL's own management path is always kept open ahead of every 
 - **Networks**: *Named address ranges (IPv4 and IPv6) to use as sources or destinations.* **New
   network**, **Edit**, **Delete**. See [Networks and CIDRs](Networks-and-CIDRs.md).
 - **Packs (host groups)**: DROOL's Packs, shared with runs and everything else. **Members** changes
-  who is in a Pack (everywhere in DROOL); **New pack** creates one. *Existing packs are deleted on the
+  who is in a Pack (everywhere in DROOL); **New Pack** creates one. *Existing Packs are deleted on the
   Packs page, not here.* See [Packs in Firewall Rules](Packs-in-Firewall-Rules.md).
 - **Services**: *Named protocol/port combinations.* **New service**, **Edit**, **Delete**, and **Show
   built-in services**. See [Services and Ports](Services-and-Ports.md).

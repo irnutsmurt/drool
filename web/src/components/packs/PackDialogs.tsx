@@ -47,7 +47,7 @@ export function CreatePackDialog({ onClose, onCreated }: { onClose: () => void; 
     create.mutate();
   }
   return (
-    <Dialog title="Create a pack" onClose={onClose}>
+    <Dialog title="Create a Pack" onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <Field label="Name" hint="Letters, digits, '.', '_' and '-', starting with a letter or digit; no spaces.">
           <Input value={name} placeholder="media-servers" required data-autofocus onChange={(e) => setName(e.target.value)} />
@@ -55,7 +55,7 @@ export function CreatePackDialog({ onClose, onCreated }: { onClose: () => void; 
         <Field label="Description (optional)">
           <Input value={description} placeholder="Jellyfin, Plex and the NAS" onChange={(e) => setDescription(e.target.value)} />
         </Field>
-        <p className="text-sm text-muted">You add hosts on the pack's page, now or later. A pack can stay empty.</p>
+        <p className="text-sm text-muted">You add hosts on the Pack's page, now or later. A Pack can stay empty.</p>
         {create.error && <Alert>{errorMessage(create.error)}</Alert>}
         <div className="flex justify-end gap-2">
           <Button type="button" onClick={onClose}>Cancel</Button>
@@ -118,7 +118,7 @@ export function HostPacksDialog({ host, packs, onClose }: { host: Host; packs: G
     <Dialog title={`Packs of ${host.name}`} onClose={onClose}>
       <div className="space-y-4">
         {packs.length === 0 ? (
-          <p className="text-sm">There are no packs yet. <Link className="text-accent" to="/groups">Create one</Link> on the Packs page.</p>
+          <p className="text-sm">There are no Packs yet. <Link className="text-accent" to="/groups">Create one</Link> on the Packs page.</p>
         ) : (
           <div className="max-h-80 space-y-2 overflow-y-auto">
             {[...packs].sort((a, b) => a.name.localeCompare(b.name)).map((g) => (
@@ -128,7 +128,7 @@ export function HostPacksDialog({ host, packs, onClose }: { host: Host; packs: G
             ))}
           </div>
         )}
-        <p className="text-xs text-muted">Changes are saved as you tick. A pack's settings apply to the host while it's a member.</p>
+        <p className="text-xs text-muted">Changes are saved as you tick. A Pack's settings apply to the host while it's a member.</p>
         {(add.error ?? remove.error) && <Alert>{errorMessage(add.error ?? remove.error)}</Alert>}
         <div className="flex justify-end"><Button onClick={onClose}>Done</Button></div>
       </div>
@@ -166,7 +166,7 @@ export function DeletePackDialog({ pack, onClose, onDeleted }: { pack: Group; on
   const d = del.error instanceof ApiError && del.error.problem?.dependencies ? del.error.problem.dependencies : deps.data;
   const blocked = !!d && d.blocking.length > 0;
   return (
-    <Dialog title={`Delete pack ${pack.name}?`} onClose={onClose} wide={blocked}>
+    <Dialog title={`Delete the Pack ${pack.name}?`} onClose={onClose} wide={blocked}>
       <div className="space-y-4 text-sm" data-testid="delete-pack">
         {deps.error && <Alert>{errorMessage(deps.error)}</Alert>}
         {!d && !deps.error && <p className="text-muted">Checking what uses {pack.name}…</p>}
@@ -191,7 +191,7 @@ export function DeletePackDialog({ pack, onClose, onDeleted }: { pack: Group; on
           <>
             <p>Nothing else uses {pack.name}. Deleting it removes:</p>
             <ul className="list-disc space-y-1 pl-5">
-              <li>the pack itself{pack.description ? ` (“${pack.description}”)` : ""};</li>
+              <li>the Pack itself{pack.description ? ` (“${pack.description}”)` : ""};</li>
               {d.removed.map((x) => <li key={x.kind}>{x.detail}</li>)}
             </ul>
             <p className="text-muted">No host is deleted or changed on the host itself.</p>
@@ -201,7 +201,7 @@ export function DeletePackDialog({ pack, onClose, onDeleted }: { pack: Group; on
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>{blocked ? "Close" : "Cancel"}</Button>
           {!blocked && (
-            <Button variant="danger" disabled={!d || del.isPending} onClick={() => del.mutate()}>{del.isPending ? "Deleting…" : "Delete pack"}</Button>
+            <Button variant="danger" disabled={!d || del.isPending} onClick={() => del.mutate()}>{del.isPending ? "Deleting…" : "Delete Pack"}</Button>
           )}
         </div>
       </div>

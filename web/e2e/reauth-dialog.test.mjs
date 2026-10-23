@@ -51,7 +51,8 @@ for (const vp of [{ name: "desktop" }, { name: "phone", mobile: true, width: 390
     try {
       await page.goto(base + "/settings/users", { waitUntil: "networkidle0" });
       await sleep(3500); // past the test controller's re-authentication window (3 s)
-      await click(page, "main button", `Set password for ${name}`);
+      await click(page, "main button", `More for ${name}`);
+      await click(page, '[role="menuitem"]', "Set password…");
       const title = `Set a new password for ${name}`;
       await waitFor(page, async () => (await layers(page)).open.includes(title), "the dialog");
       await fill(page, "New password", "second-password-456");

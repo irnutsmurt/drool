@@ -25,7 +25,7 @@ export function HostFirewallPage() {
             {can("firewall.write") && h
               ? <Link to={`/firewall?tab=designer&view=rules&rule=new&to=${encodeURIComponent(`host:${h.name}`)}`} className={primaryLink}
                 data-testid="fw-new-rule-for-host">New rule…<span className="sr-only"> for {h.name}</span></Link>
-              : can("network.read") && <Link to={`/hosts/${id}/network`} className={secondaryLink}>Observed traffic</Link>}
+              : can("network.read") && <Link to={`/hosts/${id}/network`} className={secondaryLink}>Network</Link>}
             <Link to="/firewall?tab=designer" className={secondaryLink}>Firewall policy</Link>
           </>
         } />

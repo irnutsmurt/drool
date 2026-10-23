@@ -31,7 +31,7 @@ export function healthScope(src: Src): string {
 }
 
 export type EditScope = "global" | "group" | "host" | "subject";
-export const editScopeName: Record<EditScope, string> = { global: "Global", group: "This pack", host: "This host", subject: "This device" };
+export const editScopeName: Record<EditScope, string> = { global: "Global", group: "This Pack", host: "This host", subject: "This device" };
 
 export interface HealthLayer {
   key: string;

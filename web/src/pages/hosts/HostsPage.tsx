@@ -98,7 +98,7 @@ export function HostsPage() {
           <option value="unsupported">Unsupported</option>
         </Select>
         <Select className="max-w-[12rem]" aria-label="Pack" value={group} onChange={(e) => setGroup(e.target.value)}>
-          <option value="">All packs</option>
+          <option value="">All Packs</option>
           {(groups.data?.items ?? []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
         </Select>
       </div>

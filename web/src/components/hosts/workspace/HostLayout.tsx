@@ -16,6 +16,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { MenuButton, type MenuItem } from "@/components/ui/Menu";
+import { useScrollCue } from "@/components/ui/scrollCue";
 import { LoadError, Loading } from "@/components/ui/States";
 import { cx } from "@/components/ui/cx";
 import { errorMessage } from "@/lib/format";
@@ -295,9 +296,10 @@ function HostSectionNav({ h, current }: { h: Host; current: HostSection }) {
   const { can } = useAuth();
   const navigate = useNavigate();
   const sections = visibleHostSections(h, can);
+  const cue = useScrollCue<HTMLElement>();
   return (
     <>
-      <nav aria-label={`${h.name}: sections`} className="mb-4 hidden overflow-x-auto md:block" data-testid="host-sections">
+      <nav ref={cue.ref} style={cue.style} aria-label={`${h.name}: sections`} className="mb-4 hidden overflow-x-auto md:block" data-testid="host-sections">
         <ul className="flex min-w-max gap-1 border-b border-line">
           {sections.map((s) => (
             <li key={s.key}>

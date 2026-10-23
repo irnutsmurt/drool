@@ -182,7 +182,7 @@ export function PackConflictsCard({ pack }: { pack: Group }) {
     const names = others.map((o) => o.name).join(" and ");
     const pv = await preview.mutateAsync({ scope: "group", group_id: pack.id, check: "cpu", fields: {}, priority: n }).catch(() => undefined);
     const ok = await confirmAction({
-      title: `Let ${pack.name} win over ${names}?`, confirmLabel: `Set ${pack.name}'s priority to ${n}`,
+      title: `Let ${pack.name} win over ${names}?`, confirmLabel: `Set ${pack.name}'s monitoring priority to ${n}`,
       body: (
         <div className="space-y-2">
           <p>{pack.name}&apos;s monitoring priority becomes {n}, above {names}: where they set a health check differently, {pack.name}&apos;s applies, on every host in both.</p>
