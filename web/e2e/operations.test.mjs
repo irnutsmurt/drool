@@ -29,7 +29,7 @@ const simHost = (name, extra = {}) => ({ host_id: ids[name], host_name: name, pa
 /** Answers the dry run and the run API on a page; records what was sent.
  * Once the run has ended, the hosts list says DROOL checked them again
  * after it (rechecked: after that many more requests for it). */
-async function stubRuns(page, { sim, rechecked = 2 }) {
+async function stubRuns(page, { sim, rechecked = 2, finishedAgo = 0 }) {
   const s = { calls: [], polls: 0, hostLists: 0 };
   const realHosts = (await api(page, "GET", "/hosts")).body;
   let finishedAt = null;
@@ -59,7 +59,7 @@ async function stubRuns(page, { sim, rechecked = 2 }) {
     if (m === "GET" && path === "/api/v1/jobs/job_ops_e2e") {
       s.polls++;
       const done = s.polls >= 3;
-      if (done && !finishedAt) finishedAt = new Date().toISOString();
+      if (done && !finishedAt) finishedAt = new Date(Date.now() - finishedAgo).toISOString();
       return json({ id: "job_ops_e2e", name: "System update", status: done ? "completed" : "running", host_count: hosts().length,
         counts: done ? { succeeded: hosts().length } : { running: hosts().length } });
     }
@@ -114,6 +114,26 @@ test("Install updates from a host's header: one review with the dry run, the opt
     await click(page, '[data-testid="install-updates"] button', "Done");
     await waitFor(page, async () => !(await page.$('[data-testid="install-updates"]')), "closed");
     assert.equal(await page.evaluate(() => document.activeElement?.textContent.trim()), "Install updates…", "focus back on the button");
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await page.browserContext().close();
+  }
+});
+
+test("Install updates: a host checked again late (after a reboot, say) is first said not checked again, then shows its count", async () => {
+  const page = await session(browser);
+  try {
+    // The run ended three minutes ago, and DROOL's check of the host comes in
+    // only now: the dialog doesn't stop asking.
+    await stubRuns(page, { sim: () => [simHost("web-1")], rechecked: 1, finishedAgo: 180000 });
+    await page.goto(`${base}/hosts/${ids["web-1"]}`, { waitUntil: "networkidle0" });
+    await click(page, '[data-testid="host-header"] button', "Install updates…");
+    await waitFor(page, async () => /3 package changes on 1 of 1 host\./.test(await inner(page, '[data-testid="install-updates"]')), "the dry run");
+    await click(page, '[data-testid="install-updates"] button', "Install updates on web-1");
+    await waitFor(page, async () => (await inner(page, '[data-testid="install-updates-summary"]')) === "web-1 is updated.", "the outcome", 20000);
+    await waitFor(page, async () => /^Its pending updates haven't been checked again yet: the count DROOL shows is from before the run \(checked .*\)\.$/
+      .test(await inner(page, '[data-testid="pending-after"]')), "not checked again yet");
+    await waitFor(page, async () => /^No pending updates left \(checked /.test(await inner(page, '[data-testid="pending-after"]')), "the late recheck", 40000);
     assert.deepEqual(page.errors, []);
   } finally {
     await page.browserContext().close();

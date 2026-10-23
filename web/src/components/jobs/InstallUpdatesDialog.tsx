@@ -76,7 +76,8 @@ export function InstallUpdatesDialog({ targets, label, onClose }: {
   // Once it's done, DROOL checks each updated host again by itself (the
   // engine's inventory recheck): the hosts are asked for until it has, so
   // the counts here and on the pages beneath are the run's outcome, and
-  // until then this says they aren't.
+  // until then this says they aren't. A slow host (after a reboot, its
+  // checks run one after another) is asked for less often, not given up on.
   const [now, setNow] = useState(() => Date.now());
   const hostsQ = useQuery({
     queryKey: qk.hosts,
@@ -84,7 +85,9 @@ export function InstallUpdatesDialog({ targets, label, onClose }: {
     enabled: progress.done,
     refetchInterval: (q) => {
       const byId = new Map((q.state.data?.items ?? []).map((h) => [h.id, h]));
-      return progress.hosts.some((h) => h.state === "succeeded" && recheckState(h.finished_at, byId.get(h.host_id)?.health?.updates_checked_at, Date.now()) === "checking") ? 3000 : false;
+      const states = progress.hosts.filter((h) => h.state === "succeeded")
+        .map((h) => recheckState(h.finished_at, byId.get(h.host_id)?.health?.updates_checked_at, Date.now()));
+      return states.includes("checking") ? 3000 : states.includes("not_rechecked") ? 15000 : false;
     },
   });
   useEffect(() => {
