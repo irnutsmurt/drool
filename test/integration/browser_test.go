@@ -83,7 +83,7 @@ func TestBrowser(t *testing.T) {
 	if d := os.Getenv("DROOL_E2E_SHOTS"); d != "" {
 		shots = d
 	}
-	files := []string{"addhost", "designer", "network", "monitoring", "alerts", "health", "automation", "desired", "navigation", "workspace", "accessibility", "packs", "reauth-dialog", "security", "shepherd-endpoint", "shepherd-updates", "shepherd-update-states", "firewall-nftables", "firewall-workflow", "operations", "theme", "contrast"}
+	files := []string{"addhost", "designer", "network", "monitoring", "alerts", "health", "automation", "desired", "navigation", "workspace", "accessibility", "packs", "reauth-dialog", "security", "shepherd-endpoint", "shepherd-updates", "shepherd-update-states", "firewall-nftables", "firewall-workflow", "operations", "phase1-ui", "theme", "contrast"}
 	if only := os.Getenv("DROOL_E2E_FILES"); only != "" {
 		files = strings.Split(only, ",") // e.g. "automation,contrast" while iterating
 	}
