@@ -2,18 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type Schemas } from "@/api/client";
-import { jk } from "@/api/queries";
+import { jk, qk, type Host, type JobHost } from "@/api/queries";
 import { defaultRollout, recommendedRollout, rolloutText, strategyFrom } from "@/components/automation/Rollout";
-import { HostStateBadge, JobStatusBadge } from "@/components/jobs/badges";
 import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Dialog } from "@/components/ui/Dialog";
 import { plainLink } from "@/components/ui/links";
 import { useJobProgress } from "@/hooks/useJobProgress";
-import { errorMessage } from "@/lib/format";
+import { errorMessage, formatAgo } from "@/lib/format";
 import { defaultTimeouts, SimHostRow, SystemUpdateForm, type SystemUpdateState } from "@/pages/jobs/OperationForms";
-import { summarizeCounts } from "@/pages/jobs/summary";
+import { recheckState, updateHostWord, updateProgress } from "./updateProgress";
 
 type Targets = { hosts?: string[]; groups?: string[] };
 type SimHost = Schemas["SimulateResult"]["hosts"][number];
@@ -73,17 +73,40 @@ export function InstallUpdatesDialog({ targets, label, onClose }: {
     onSuccess: () => void qc.invalidateQueries({ queryKey: jk.jobs }),
   });
   const progress = useJobProgress(start.data?.id);
-  // Pending-update counts change once it's done.
+  // Once it's done, DROOL checks each updated host again by itself (the
+  // engine's inventory recheck): the hosts are asked for until it has, so
+  // the counts here and on the pages beneath are the run's outcome, and
+  // until then this says they aren't.
+  const [now, setNow] = useState(() => Date.now());
+  const hostsQ = useQuery({
+    queryKey: qk.hosts,
+    queryFn: () => unwrap(api.GET("/hosts")),
+    enabled: progress.done,
+    refetchInterval: (q) => {
+      const byId = new Map((q.state.data?.items ?? []).map((h) => [h.id, h]));
+      return progress.hosts.some((h) => h.state === "succeeded" && recheckState(h.finished_at, byId.get(h.host_id)?.health?.updates_checked_at, Date.now()) === "checking") ? 3000 : false;
+    },
+  });
   useEffect(() => {
-    if (progress.done) void qc.invalidateQueries({ queryKey: ["hosts"] });
-  }, [progress.done, qc]);
+    if (!progress.done) return;
+    const t = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(t);
+  }, [progress.done]);
+  // Each host's own page reads it separately: fetched again with the list.
+  useEffect(() => {
+    if (!progress.done) return;
+    for (const h of progress.hosts) void qc.invalidateQueries({ queryKey: qk.host(h.host_id), exact: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress.done, hostsQ.dataUpdatedAt]);
+  const hostById = new Map((hostsQ.data?.items ?? []).map((h) => [h.id, h]));
 
   const composer = `/jobs/new?op=system_update&${targets.groups?.length ? `groups=${targets.groups.join(",")}` : `hosts=${(targets.hosts ?? []).join(",")}`}`;
   const action = `Install updates on ${label}`;
   const ready = !!preview.data && run.length > 0 && !sim.isLoading;
   const job = progress.job;
+  const said = updateProgress(job?.status, progress.done, progress.hosts, label);
   return (
-    <Dialog title={start.data ? `Installing updates on ${label}` : `Install updates on ${label}?`} onClose={onClose} wide testId="install-updates"
+    <Dialog title={start.data ? said.title : `Install updates on ${label}?`} onClose={onClose} wide testId="install-updates"
       footer={start.data ? (
         <>
           <Link className={plainLink} to={`/jobs/${start.data.id}`}>View the run</Link>
@@ -99,15 +122,16 @@ export function InstallUpdatesDialog({ targets, label, onClose }: {
       )}>
       {start.data ? (
         <div className="space-y-3 text-sm" data-testid="install-updates-progress">
-          <p role="status">
-            {!job ? "Starting…" : progress.done ? <>The run ended: <JobStatusBadge job={job} /> {summarizeCounts(job)}.</>
-              : <>Running: <JobStatusBadge job={job} /> {summarizeCounts(job)}. You can close this: the run continues, and it&apos;s under Runs.</>}
+          <p role="status" data-testid="install-updates-summary">
+            {!job ? "Starting…" : said.summary}{job && !progress.done && " You can close this: the run continues, and it's under Runs."}
           </p>
           <ul className="divide-y divide-line rounded-ui border border-line">
             {progress.hosts.map((h) => (
-              <li key={h.host_id} className="space-y-1 p-3">
-                <div className="flex flex-wrap items-center gap-2"><span className="font-medium">{h.host_name}</span><HostStateBadge state={h.state} /></div>
+              <li key={h.host_id} className="space-y-1 p-3" data-testid="install-updates-host">
+                <div className="flex flex-wrap items-center gap-2"><span className="font-medium">{h.host_name}</span>
+                  <Badge tone={updateHostWord[h.state].tone}>{updateHostWord[h.state].word}</Badge></div>
                 {h.error_message && <p className="text-danger">{h.error_message}{h.error_hint && <span className="block text-xs text-muted">{h.error_hint}</span>}</p>}
+                {progress.done && h.state === "succeeded" && <PendingAfter run={h} host={hostById.get(h.host_id)} now={now} upgradeOnly={sys.mode === "upgrade"} />}
               </li>
             ))}
           </ul>
@@ -159,5 +183,26 @@ export function InstallUpdatesDialog({ targets, label, onClose }: {
         </div>
       )}
     </Dialog>
+  );
+}
+
+/** A host's pending updates after the run: the count only once DROOL has
+ * checked the host again since it finished; until then, that it hasn't. */
+function PendingAfter({ run, host, now, upgradeOnly }: { run: JobHost; host?: Host; now: number; upgradeOnly: boolean }) {
+  const s = host?.health;
+  const state = recheckState(run.finished_at, s?.updates_checked_at, now);
+  if (state === "checking") return <p className="text-xs text-muted" data-testid="pending-after">Checking its pending updates again…</p>;
+  if (state === "not_rechecked") {
+    return <p className="text-xs text-muted" data-testid="pending-after">Its pending updates haven&apos;t been checked again yet: the count DROOL shows is from before the run
+      {s?.updates_checked_at ? ` (checked ${formatAgo(s.updates_checked_at)})` : ""}.</p>;
+  }
+  const n = s?.updates_available;
+  return (
+    <p className="text-xs text-muted" data-testid="pending-after">
+      {n == null ? "Pending updates: not known (no package cache reported)."
+        : n === 0 ? `No pending updates left (checked ${formatAgo(s!.updates_checked_at)}).`
+          : `${n} pending update${n === 1 ? "" : "s"} left${s?.security_updates ? `, ${s.security_updates} security` : ""} (checked ${formatAgo(s!.updates_checked_at)}).`
+            + (upgradeOnly ? " Upgrade holds back updates that need new packages; Full upgrade (Options) installs them." : "")}
+    </p>
   );
 }

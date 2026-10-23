@@ -26,9 +26,13 @@ const simHost = (name, extra = {}) => ({ host_id: ids[name], host_name: name, pa
   plan: { install: [{ name: "linux-image-6.1.0-54-amd64", to: "6.1.190-1" }], upgrade: [{ name: "python3.11", from: "3.11.2-6", to: "3.11.2-6+deb12u7" },
     { name: "ca-certificates", from: "20230311", to: "20230311+deb12u1" }], remove: [], downgrade: [] }, ...extra });
 
-/** Answers the dry run and the run API on a page; records what was sent. */
-async function stubRuns(page, { sim }) {
-  const s = { calls: [], polls: 0 };
+/** Answers the dry run and the run API on a page; records what was sent.
+ * Once the run has ended, the hosts list says DROOL checked them again
+ * after it (rechecked: after that many more requests for it). */
+async function stubRuns(page, { sim, rechecked = 2 }) {
+  const s = { calls: [], polls: 0, hostLists: 0 };
+  const realHosts = (await api(page, "GET", "/hosts")).body;
+  let finishedAt = null;
   await page.setRequestInterception(true);
   page.on("request", async (r) => {
     const path = new URL(r.url()).pathname;
@@ -44,10 +48,18 @@ async function stubRuns(page, { sim }) {
       return json({ id: "job_ops_e2e", name: "System update", status: "pending" }, 201);
     }
     const hosts = () => (s.job?.targets.hosts ?? []).map((id) => ({ host_id: id, host_name: Object.keys(ids).find((n) => ids[n] === id), state: s.polls < 3 ? "running" : "succeeded",
-      transport: "ssh", transport_note: "", current_step: 0, attempt: 1, exit_code: 0, error_class: "", error_message: "", error_hint: "", started_at: null, finished_at: null, wave: 0 }));
+      transport: "ssh", transport_note: "", current_step: 0, attempt: 1, exit_code: 0, error_class: "", error_message: "", error_hint: "", started_at: null, finished_at: finishedAt, wave: 0 }));
+    if (m === "GET" && path === "/api/v1/hosts" && finishedAt) {
+      // Before the recheck: the counts from before the run; after it, checked since.
+      const after = ++s.hostLists > rechecked;
+      return json({ ...realHosts, items: realHosts.items.map((h) => (s.job?.targets.hosts ?? []).includes(h.id)
+        ? { ...h, health: { ...(h.health ?? {}), updates_available: after ? 0 : 6, security_updates: after ? 0 : 6,
+          updates_checked_at: after ? new Date(Date.parse(finishedAt) + 2000).toISOString() : new Date(Date.parse(finishedAt) - 600000).toISOString() } } : h) });
+    }
     if (m === "GET" && path === "/api/v1/jobs/job_ops_e2e") {
       s.polls++;
       const done = s.polls >= 3;
+      if (done && !finishedAt) finishedAt = new Date().toISOString();
       return json({ id: "job_ops_e2e", name: "System update", status: done ? "completed" : "running", host_count: hosts().length,
         counts: done ? { succeeded: hosts().length } : { running: hosts().length } });
     }
@@ -88,9 +100,14 @@ test("Install updates from a host's header: one review with the dry run, the opt
     assert.deepEqual(s.job.steps, [{ type: "system_update", mode: "upgrade", refresh: true, reboot: "if_required", allow_removals: false, timeout_s: 3600 }]);
     assert.deepEqual(s.job.targets, { hosts: [ids["web-1"]] });
     assert.equal(s.job.strategy.canary_count, undefined, "one host has no canary");
-    // Progress, then the outcome, without leaving the host.
-    await waitFor(page, async () => /The run ended: completed\s*1 succeeded\./.test(await inner(page, '[data-testid="install-updates-progress"]')), "the outcome", 20000);
-    assert.match(await inner(page, '[data-testid="install-updates-progress"]'), /web-1\s*succeeded/);
+    // Progress, then the outcome in words, without leaving the host.
+    await waitFor(page, async () => (await inner(page, '[data-testid="install-updates-summary"]')) === "web-1 is updated.", "the outcome", 20000);
+    assert.match(await inner(page, '[data-testid="install-updates"] h2'), /^Updates installed on web-1$/, "the title still says installing");
+    assert.match(await inner(page, '[data-testid="install-updates-host"]'), /web-1\s*Updated/);
+    assert.ok(!/running|succeeded|completed/.test(await inner(page, '[data-testid="install-updates-progress"]')), "engine states in the words");
+    // The count is the run's outcome only once DROOL checked the host again.
+    assert.match(await inner(page, '[data-testid="pending-after"]'), /^Checking its pending updates again…$/);
+    await waitFor(page, async () => /^No pending updates left \(checked /.test(await inner(page, '[data-testid="pending-after"]')), "the recheck", 20000);
     assert.ok(new URL(page.url()).pathname.endsWith(`/hosts/${ids["web-1"]}`), "the page changed");
     assert.ok(await page.$('[data-testid="install-updates"] a[href="/jobs/job_ops_e2e"]'), "View the run");
     await shot(page, "ops-install-updates-done");

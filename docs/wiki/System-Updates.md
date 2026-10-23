@@ -29,9 +29,14 @@ It opens one review:
    removals**.
 3. **Options** has the [mode](#modes-and-options), **Refresh package metadata first** and **Reboot
    afterwards**, set as DROOL recommends: *Upgrade, refresh first, no reboot*.
-4. **Install updates on web-01** (or *on 3 hosts*) starts the ordinary system update run. Its
-   progress and each host's outcome show in the same dialog. You can close it: the run continues,
-   and **View the run** opens its page with the full output.
+4. **Install updates on web-01** (or *on 3 hosts*) starts the ordinary system update run. The same
+   dialog shows how it goes (*Installing updates on web-01*, each host's step in words, such as
+   *Waiting its turn* or *Rebooting*), then how it ended: *Updates installed on web-01*, or, when
+   not every host updated, *1 updated · 1 failed* with each host's error. You can close it: the run
+   continues, and **View the run** opens its page with the full output.
+5. After the run, DROOL checks each updated host's pending updates again, and the dialog says what
+   is left (*No pending updates left*). Until that check is in, it says so: the count DROOL shows is
+   then from before the run.
 
 To change the rollout, schedule the update or save it as a workflow, choose **open it in the run
 composer** in the review: it opens **Runs → New run → System update** with the same hosts.
