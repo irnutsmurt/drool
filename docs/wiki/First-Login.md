@@ -92,15 +92,25 @@ If every administrator is locked out, a new one can be created on the controller
 
 ## 3. Find your way around
 
-![The Overview after the first hosts were added: cards for hosts, alerts, runs, desired state and firewall, and a Security card](images/overview.png)
+![The Overview after the first hosts were added: tiles for hosts, alerts, runs, desired state and firewall, then Needs attention, Updates and reboots, Runs and Recent events](images/overview.png)
 
 - **The sidebar** lists every area under plain headings: **Overview**; *Fleet* — **Hosts**,
   **Packs** (groups of hosts), **Shepherds** (DROOL agents); *Observe* — **Monitoring**, **Alerts**,
   **Network Activity**; *Automate* — **Runs**, **Schedules**, **Workflows**, **Desired State**;
   *Protect* — **Firewall**, **Credentials**, **Audit Log**; and, set apart at the bottom,
   **Settings**. Hover over Packs or Shepherds to see what those names mean.
-- **The Overview** answers "does anything need me right now?": how many hosts are online, open
-  alerts, runs in progress, desired-state drift, the firewall, and a **Security** card.
+- **The Overview** answers "does anything need me right now?". Its tiles say how the hosts, alerts,
+  runs, Desired State and the firewall are doing. Under them:
+  - **Needs attention** lists what is failing or waiting for a decision, most serious first, each
+    with the next step: a host DROOL can't reach (**Test connection…**), an open alert by its own
+    words (for a service, its fix such as **Restart nginx.service…**), a paused run, drift, and
+    notifications that fail.
+  - **Updates and reboots** has the pending updates and the hosts that need a reboot, with
+    **Install updates…** and **Reboot…**.
+  - **Runs** shows what is running, paused or failed in the last day, and **Recent events** what
+    happened lately.
+
+  Anything DROOL couldn't check is said, never shown as fine.
 - **Search:** press **Ctrl+K** (**⌘K** on a Mac) or **/**, or click *Search hosts, services, pages…*
   at the top, and type what you're after in your own words — "api token", "threshold", "can A reach
   B", "who changed", or a host's name or address. Search finds pages and settings, and also hosts

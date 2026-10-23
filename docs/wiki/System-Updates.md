@@ -12,13 +12,14 @@ the host afterwards when the update requires it.
 - **Find out which hosts need updates:** the **Hosts** list has an **UPDATES** column (for example
   *1 (1 security)*), the Overview has an **Updates and reboots** card, and each host's **Overview**
   shows, under **Health now**, **Updates** *0 pending · checked 12 min ago*. DROOL checks every 6
-  hours.
+  hours. A host that isn't reporting now (offline, or its status is old) shows its last known count,
+  marked *last known*; the Overview's totals leave it out and say so.
 
 ## Install updates where you see them
 
 **Install updates…** is wherever pending updates show: a host's header (in **Actions** on a phone),
-**Updates** on the host's **Overview**, a security-updates line under **Needs attention**, the
-**Hosts** list after selecting hosts, the Overview's **Updates and reboots** card, and a Pack's page.
+**Updates** on the host's **Overview**, the **Hosts** list after selecting hosts, the Overview's
+**Updates and reboots** card, and a Pack's page.
 It opens one review:
 
 1. DROOL asks each host's package manager what would change (a dry run: nothing changes) and lists

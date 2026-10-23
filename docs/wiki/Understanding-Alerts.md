@@ -141,8 +141,10 @@ supposed to be busy ([Health Overrides](Health-Overrides.md)). Services alert on
 - Alert history is kept for **180 days**, delivery details for **30 days** (an administrator can
   change both under **Settings → Notifications → Advanced → Settings**).
 - **Removing a host deletes its alert history** ([Removing a Host](Removing-a-Host.md)).
-- A host's **Overview** has an **Alerts** card with its open alerts, a **History** link, and **Start
-  maintenance**.
+- A host's **Overview** lists its open alerts under **Needs attention**, each once, with the fix for a
+  service. Acknowledged alerts and alerts under maintenance are counted under the list, with a link
+  to them. **Start maintenance…** is under the host's **Actions**, and **Alert history** is on its
+  **Recent events** card.
 
 ## Next
 

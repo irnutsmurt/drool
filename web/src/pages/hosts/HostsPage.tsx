@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import { useGroups, useHosts, type Host } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { HostStatusBadge } from "@/components/hosts/HostStatusBadge";
-import { ReachabilityBadge, osLabel } from "@/components/hosts/health";
+import { RebootCell, ReachabilityBadge, UpdatesCell, osLabel } from "@/components/hosts/health";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button, primaryLink } from "@/components/ui/Button";
@@ -144,21 +144,14 @@ export function HostsPage() {
               cell: (h: Host) => {
                 if (h.jump_only) return <Badge>jump host</Badge>;
                 const r = health.get(h.id);
-                return r ? <HealthBadge hasData={r.source !== ""} stale={r.stale} issues={r.issues} worst={r.worst} /> : <span className="text-muted">—</span>;
+                return r ? <HealthBadge hasData={r.source !== ""} stale={r.stale} issues={r.issues} worst={r.worst} />
+                  : <span className="text-muted">{fleet.isError ? "couldn't load" : fleet.isLoading ? "loading…" : "unknown"}</span>;
               },
             } : { header: "Last check", cell: (h: Host) => (h.jump_only ? <Badge>jump host</Badge> : <ReachabilityBadge host={h} />) },
             { header: "Managed via", cell: (h) => (h.jump_only ? "" : <ManagementBadge m={h.management} />) },
             { header: "Connection", cell: (h) => <HostStatusBadge status={h.status} /> },
-            {
-              header: "Updates",
-              cell: (h) => {
-                const u = h.health?.updates_available;
-                if (u == null) return <span className="text-muted">—</span>;
-                const sec = h.health?.security_updates;
-                return <span>{u}{sec ? <span className="text-warn"> ({sec} security)</span> : null}</span>;
-              },
-            },
-            { header: "Reboot", cell: (h) => (h.health?.reboot_required ? <Badge tone="warn">required</Badge> : "") },
+            { header: "Updates", cell: (h) => (h.jump_only ? "" : <UpdatesCell host={h} />) },
+            { header: "Reboot", cell: (h) => (h.jump_only ? "" : <RebootCell host={h} />) },
             { header: "Tags", cell: (h) => <div className="flex flex-wrap gap-1">{h.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div> },
           ]}
         />

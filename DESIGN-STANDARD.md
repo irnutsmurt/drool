@@ -84,6 +84,10 @@ Never nest tab rows. Don't hand-roll `role="tab"`: `Tabs` provides the keyboard 
 
 - **Order a page by urgency:** what needs a person (Needs attention), then the current state, then summaries of each
   area that link to the section that owns it, then history.
+- **Needs attention lists what is failing or waiting for a decision**, each thing once, with its next step next to it
+  (an open alert by its own title, with the fix for a service). Its rows come from the server's verdicts: the UI
+  never judges a threshold itself. Routine work (pending updates, reboots) has its own card or line, and
+  acknowledged or suppressed alerts are counted under the list, not in it.
 - **One place owns each thing.** Summaries link to it. There is never a second editor for the same object; the
   settings directory links to the owning page.
 - **Dense views** show the common filters, the rest under More filters, and a default view that answers the common
@@ -282,8 +286,8 @@ How to write UI text:
   Unknown says unknown.
   - A list's empty text comes from `emptyText()` in `ui/States.tsx`: *Loading …* while its data is on its way,
     *Couldn't load …* after an error, and only then what an empty list means.
-  - A summary that gathers several sources ("Nothing needs attention") names a source it couldn't read and never shows
-    the ✓ then.
+  - A summary that gathers several sources ("Nothing is failing or waiting for a decision") names a source it
+    couldn't read and never shows the ✓ then.
   - Compliance, "in sync" or "no drift" is claimed only for what was checked: unknown and not-yet-applied are said.
 - **Hypothetical results say so.**
   - The firewall simulation: "A simulation: DROOL works out the answer from the firewall policy it wants for these

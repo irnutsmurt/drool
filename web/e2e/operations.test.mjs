@@ -236,6 +236,47 @@ test("a failed-service alert offers Start backup.service…, confirmed and follo
   }
 });
 
+// Phase 2 (ARCHITECTURE-ALPHA §47): Needs attention names the alert and
+// offers its fix next to it, on the Overview and on the host's Overview, each
+// once; the host's Overview has no second list of the same alerts.
+test("Needs attention: the alert by its title with Start backup.service… next to it, on the Overview and the host", async () => {
+  const page = await session(browser);
+  try {
+    await waitFor(admin, async () => ((await api(admin, "GET", `/hosts/${ids["nas-01"]}/monitoring/services?filter=all&all=true`)).body?.units ?? [])
+      .some((u) => u.name === "backup.service"), "nas-01's services (the monitoring fixture)", 120000);
+    const s = await stubServiceAlert(page);
+    await page.goto(`${base}/`, { waitUntil: "networkidle0" });
+    await waitFor(page, async () => (await inner(page, '[data-testid="fleet-attention"]')).includes("Start backup.service…"), "the fix on the Overview", 20000);
+    const fleet = await inner(page, '[data-testid="fleet-attention"]');
+    assert.match(fleet, /nas-01: backup\.service failed · \d+ min ago · Start backup\.service…/);
+    // Its accessible name says where.
+    assert.ok(await page.$('[data-testid="fleet-attention"] button[aria-label="Start backup.service on nas-01"]'), "the fix's name");
+    // Updates are their own card, not attention rows; the Security card is the header's.
+    assert.doesNotMatch(fleet, /security update|reboot/i);
+    const titles = await page.$$eval("main section h2", (hs) => hs.map((h) => h.textContent));
+    assert.ok(!titles.includes("Security") && !titles.includes("Alerts") && titles.includes("Updates and reboots"), `cards: ${titles}`);
+    await shot(page, "overview-attention-fix");
+    await click(page, '[data-testid="fleet-attention"] button', "Start backup.service…");
+    await waitText(page, "Start backup.service on nas-01?");
+    assert.ok(!s.calls.includes("POST /api/v1/jobs"), "nothing ran before the confirmation");
+    await page.keyboard.press("Escape");
+    await waitFor(page, async () => !(await page.$('[role="dialog"]')), "the dialog closed");
+    assert.equal(await page.evaluate(() => document.activeElement?.textContent), "Start backup.service…", "focus back on the fix");
+
+    // The host's Overview: the same alert once, with the same fix; no
+    // separate Alerts card; maintenance is under Actions.
+    await page.goto(`${base}/hosts/${ids["nas-01"]}`, { waitUntil: "networkidle0" });
+    await waitFor(page, async () => (await inner(page, '[data-testid="host-attention"]')).includes("Start backup.service…"), "the fix on the host", 20000);
+    assert.equal((await page.$$('main a[href="/alerts/alr_ops_e2e"]')).length, 1, "the alert once on the host's Overview");
+    const hostTitles = await page.$$eval("main section h2", (hs) => hs.map((h) => h.textContent));
+    assert.ok(!hostTitles.includes("Alerts"), `host cards: ${hostTitles}`);
+    await shot(page, "host-attention-fix");
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await page.browserContext().close();
+  }
+});
+
 test("layout: the Install updates review fits at 1440, 1024 and 390 px, in both themes", async () => {
   for (const [w, h, mobile] of [[1440, 1000, false], [1024, 800, false], [390, 844, true]]) {
     for (const theme of ["light", "dark"]) {

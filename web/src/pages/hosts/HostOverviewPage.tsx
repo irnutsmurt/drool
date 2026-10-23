@@ -19,14 +19,14 @@ import { useFwHost } from "@/components/firewall/queries";
 import { useHostNetwork } from "@/components/network/queries";
 import { CollectionBadge } from "@/components/network/labels";
 import { HostMonitoringSummary } from "@/components/monitoring/HostMonitoringSummary";
-import { HostAlertsCard, HostMaintenanceBanner } from "@/components/alerts/HostAlerts";
+import { HostMaintenanceBanner } from "@/components/alerts/HostAlerts";
 import { EventList } from "@/components/alerts/EventList";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { LoadError, Loading } from "@/components/ui/States";
 import { cx } from "@/components/ui/cx";
-import { plainLink } from "@/components/ui/links";
+import { plainLink, touchLink } from "@/components/ui/links";
 import { errorMessage, formatAgo, formatDateTime, formatUptime } from "@/lib/format";
 import { InstallUpdatesDialog } from "@/components/jobs/InstallUpdatesDialog";
 
@@ -78,22 +78,20 @@ export function HostOverviewPage() {
       )}
       {managed ? <HostAttention h={h} hideStatus={!!help} /> : <JumpHostNote h={h} />}
 
+      {/* Its open alerts are under Needs attention, each once. */}
       {managed && (
-        <div className="grid gap-4 xl:grid-cols-3">
-          <Card title="Health now" className="xl:col-span-2"
-            actions={can("monitoring.read") && (
-              <span className="flex items-center gap-4">
-                <ViewLink to={hostPath(h.id, "monitoring", "tab=services")} label="Services of this host">Services</ViewLink>
-                <ViewLink to={hostPath(h.id, "monitoring")}>Monitoring</ViewLink>
-              </span>
-            )}>
-            <div className="space-y-3">
-              {can("monitoring.read") && <HostMonitoringSummary hostId={h.id} />}
-              <StatusLine h={h} />
-            </div>
-          </Card>
-          {can("alerts.read") && <HostAlertsCard hostId={h.id} />}
-        </div>
+        <Card title="Health now"
+          actions={can("monitoring.read") && (
+            <span className="flex items-center gap-4">
+              <ViewLink to={hostPath(h.id, "monitoring", "tab=services")} label="Services of this host">Services</ViewLink>
+              <ViewLink to={hostPath(h.id, "monitoring")}>Monitoring</ViewLink>
+            </span>
+          )}>
+          <div className="space-y-3">
+            {can("monitoring.read") && <HostMonitoringSummary hostId={h.id} />}
+            <StatusLine h={h} />
+          </div>
+        </Card>
       )}
 
       {managed && <AreaTiles h={h} />}
@@ -128,7 +126,7 @@ function StatusLine({ h }: { h: Host }) {
           <>{s.updates_available} pending{s.security_updates ? <span className="text-warn">, {s.security_updates} security</span> : ""}
             <span className="text-muted"> · checked {formatAgo(s.updates_checked_at)}</span>
             {s.updates_available > 0 && can("jobs.execute") && !h.jump_only && (
-              <> · <button type="button" className={plainLink} onClick={() => setInstalling(true)} data-testid="overview-install-updates">Install updates…</button></>
+              <> · <button type="button" className={cx(plainLink, touchLink)} onClick={() => setInstalling(true)} data-testid="overview-install-updates">Install updates…</button></>
             )}
             {installing && <InstallUpdatesDialog targets={{ hosts: [h.id] }} label={h.name} onClose={() => setInstalling(false)} />}</>
         )}</dd>
@@ -136,7 +134,8 @@ function StatusLine({ h }: { h: Host }) {
       <div className="flex flex-wrap gap-x-2">
         <dt className="text-muted">Reboot</dt>
         <dd>{s.reboot_required == null ? <span className="text-muted">unknown</span>
-          : s.reboot_required ? <span className="text-warn">required{s.reboot_reason && ` (${s.reboot_reason})`}</span> : "not required"}</dd>
+          : s.reboot_required ? <><span className="text-warn">required{s.reboot_reason && ` (${s.reboot_reason})`}</span>
+            {can("jobs.execute") && !h.jump_only && <> · <Link className={plainLink} to={`/jobs/new?hosts=${h.id}&op=reboot`}>Reboot…</Link></>}</> : "not required"}</dd>
       </div>
       <div className="flex flex-wrap gap-x-2">
         <dt className="text-muted">Last status check</dt>
@@ -227,6 +226,7 @@ function FirewallTile({ h }: { h: Host }) {
 function NetworkTile({ h }: { h: Host }) {
   const q = useHostNetwork(h.id);
   const n = q.data;
+  const enforced = n?.firewall.enforcement === "enforced";
   return (
     <Tile title="Network" to={hostPath(h.id, "network")} testId="tile-network">
       {q.error ? <p className="text-danger">Couldn&apos;t load: {errorMessage(q.error)}</p> : !n ? <Loading /> : (
@@ -234,8 +234,10 @@ function NetworkTile({ h }: { h: Host }) {
           <p><CollectionBadge c={n.collection} /></p>
           <p className="text-xs">
             {n.counts.flows} connection{n.counts.flows === 1 ? "" : "s"} observed
-            {n.counts.unclassified > 0 && <> · <span className="text-warn">{n.counts.unclassified} not in policy</span></>}
-            {n.counts.denied > 0 && <> · <span className="text-danger">{n.counts.denied} {n.firewall.enforcement === "enforced" ? "denied" : "would be denied"}</span></>}
+            {/* While DROOL doesn't filter here, nothing is blocked: what
+                isn't in a policy yet is information, not a warning. */}
+            {n.counts.unclassified > 0 && <> · <span className={enforced ? "text-warn" : "text-muted"}>{n.counts.unclassified} not in policy</span></>}
+            {n.counts.denied > 0 && <> · <span className={enforced ? "text-danger" : "text-muted"}>{n.counts.denied} {enforced ? "denied" : "would be denied"}</span></>}
           </p>
         </>
       )}

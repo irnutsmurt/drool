@@ -330,7 +330,8 @@ for (const theme of ["light", "dark"]) {
       assert.ok(len[1] <= 25 && len[0] < 6000, `Network Activity on a phone (height, entries): ${len}`);
       // Dialogs fit and scroll inside.
       await go(page, `/hosts/${ids["nas-01"]}`);
-      await click(page, "button", "Start maintenance");
+      await click(page, '[data-testid="host-actions"]', "Actions");
+      await click(page, '[role="menuitem"]', "Start maintenance…");
       await page.waitForSelector('[role="dialog"]');
       const box = await page.$eval('[role="dialog"]', (d) => { const r = d.getBoundingClientRect(); return [r.left, r.right, r.top, r.bottom, getComputedStyle(d).overflowY]; });
       assert.ok(box[0] >= 0 && box[1] <= 390 && box[2] >= 0 && box[3] <= 844, `dialog inside the viewport: ${box}`);
@@ -430,24 +431,24 @@ test("loading is never shown as empty or healthy", async () => {
     await waitText(page, "Loading…");
     await sleep(800);
     let t = await text(page);
-    assert.doesNotMatch(t, /Nothing needs attention|0 hosts|No open alerts|Nothing running/);
+    assert.doesNotMatch(t, /Nothing is failing|0 hosts|No open alerts|Nothing running/);
     await shot(page, "loading-overview");
     hold = false;
     held.splice(0).forEach((r) => r.continue());
     await waitText(page, "Needs attention");
     t = await text(page);
-    assert.match(t, /\d+ hosts?/);
+    assert.match(t, /\d+ hosts?|All \d+ online/);
     // A host's attention list waits for its sources too, and its
     // inventory summary isn't "0 filesystems" before the inventory is in.
     hold = true;
     await page.goto(base + `/hosts/${ids["web-1"]}`, { waitUntil: "domcontentloaded" });
     await sleep(1500);
     t = await text(page);
-    assert.doesNotMatch(t, /Nothing needs attention on this host|0 filesystems|0 addresses/);
+    assert.doesNotMatch(t, /Nothing is failing or waiting for a decision on this host|0 filesystems|0 addresses/);
     assert.match(t, /Filesystems, addresses and interfaces — loading…/);
     hold = false;
     held.splice(0).forEach((r) => r.continue());
-    await waitFor(page, async () => /Needs attention|Nothing needs attention on this host/.test(await text(page)), "host attention after loading");
+    await waitFor(page, async () => /Needs attention|Nothing is failing or waiting for a decision on this host/.test(await text(page)), "host attention after loading");
     assert.deepEqual(page.errors, []);
   } finally {
     await page.close();

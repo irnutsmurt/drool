@@ -33,7 +33,7 @@ export function MonitoringTiles({ hostId, o, compact }: { hostId: string; o: Mon
               <StatusIcon status={statusOf(t.status)} />
             </span>
             <span className={cx("font-semibold tabular-nums", compact ? "text-base leading-snug" : "text-lg")}>{t.text}</span>
-            {t.detail && <span className="truncate text-xs text-muted" title={t.detail}>{t.detail}</span>}
+            {t.detail && <span className="text-xs text-muted [overflow-wrap:anywhere]">{t.detail}</span>}
             <span className="sr-only">{`. ${statusWord(statusOf(t.status))}. Show details`}</span>
           </Link>
         </li>

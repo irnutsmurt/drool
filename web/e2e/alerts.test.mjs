@@ -103,14 +103,16 @@ test("alert details: timeline, source issue, acknowledge with a note from the ke
 
 test("maintenance from a host page: banner, suppressed alerts, end", async () => {
   await go(`/hosts/${page.ids["nas-01"]}`);
-  await click(page, "button", "Start maintenance");
+  await click(page, '[data-testid="host-actions"]', "Actions");
+  await click(page, '[role="menuitem"]', "Start maintenance…");
   await waitText(page, "Notifications are paused for these hosts");
   await fill(page, "Reason (recommended)", "Replacing storage");
   await click(page, '[role="dialog"] label', "1 hour");
   await shot(page, "maintenance-dialog");
   await click(page, '[role="dialog"] button[type="submit"]', "Start maintenance");
   await waitText(page, "In maintenance until");
-  await waitText(page, "Suppressed by maintenance");
+  // Its alerts aren't listed as needing attention: counted, with the way to them.
+  await waitText(page, "suppressed by maintenance");
   let t = await text(page);
   assert.match(t, /Replacing storage/);
   assert.match(t, /monitoring and alerts continue/);

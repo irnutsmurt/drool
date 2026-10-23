@@ -52,12 +52,11 @@ The header is the same in every section of the host:
 
 | Part | What it shows | Details |
 |---|---|---|
-| **Needs attention** | Everything about this host that wants a person, most serious first, for example *Desired State: 2 drifted*, each with a link. When there's nothing, it says *Nothing needs attention on this host right now.* | — |
-| **Health now** | Tiles for CPU, Memory, Disk space, Temperature, Network, Services, Storage health and Active health issues, how the host is monitored (*Polled over SSH every 5 min* or *Continuous: the Shepherd samples every 10 s*), pending updates, whether a reboot is required, the last status check, and uptime | **Services →**, **Monitoring →** ([Host Monitoring](Host-Monitoring.md)) |
-| **Alerts** | Open alerts for this host; **History**; **Start maintenance** | [Understanding Alerts](Understanding-Alerts.md), [Maintenance Mode](Maintenance-Mode.md) |
+| **Needs attention** | What is failing or waiting for a decision on this host, most serious first, each with the next step: what keeps DROOL from reaching it, its open alerts by their own words (for a service, its fix, such as **Restart nginx.service…**), Desired State, the firewall and management. Acknowledged alerts and alerts under maintenance are counted below the list. When there's nothing, it says *Nothing is failing or waiting for a decision on this host.* | — |
+| **Health now** | Tiles for CPU, Memory, Disk space, Temperature, Network, Services, Storage health and Active health issues, how the host is monitored (*Polled over SSH every 5 min* or *Continuous: the Shepherd samples every 10 s*), pending updates (with **Install updates…**), whether a reboot is required (with **Reboot…**), the last status check, and uptime | **Services →**, **Monitoring →** ([Host Monitoring](Host-Monitoring.md)) |
 | **Desired State** | Whether the host matches its baselines, and what differs | **Open →** ([Drift](Drift.md)) |
 | **Firewall** | The firewall status and mode, and whether DROOL filters this host | **Open →** ([Firewall Modes](Firewall-Modes.md)) |
-| **Network** | How connections are observed, a count of observed connections, and how many aren't in the policy or are denied | **Open →** ([What DROOL Can See](What-DROOL-Can-See.md)) |
+| **Network** | How connections are observed, a count of observed connections, and how many aren't in the policy or are denied. While DROOL doesn't filter this host, those counts are information (*would be denied*), not warnings | **Open →** ([What DROOL Can See](What-DROOL-Can-See.md)) |
 | **Files** | How many files DROOL deployed here, and the first few, each linking to its deployment | **Open →** ([Browsing Files](Browsing-Files.md), [Rolling Back a File](Rolling-Back-a-File.md)) |
 | **Recent runs** | The last runs that included this host | **Activity →** |
 | **Recent events** | What happened lately: alerts opened, acknowledged or recovered, maintenance | **Alert history →** |

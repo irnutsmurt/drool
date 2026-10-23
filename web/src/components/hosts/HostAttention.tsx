@@ -1,16 +1,16 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 import type { Host } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { useHostAgent } from "@/components/agents/queries";
-import { useAlertSummary } from "@/components/alerts/queries";
+import { useAlerts, useAlertSummary } from "@/components/alerts/queries";
+import { AlertLine } from "@/components/alerts/AlertLine";
 import { useDesiredHost } from "@/components/desired/queries";
 import { useFwHost } from "@/components/firewall/queries";
 import { Card } from "@/components/ui/Card";
 import { cx } from "@/components/ui/cx";
 import { plainLink } from "@/components/ui/links";
-import { attentionReasons } from "./health";
-import { InstallUpdatesDialog } from "@/components/jobs/InstallUpdatesDialog";
+import { connectionReasons } from "./health";
 
 interface Attention {
   key: string;
@@ -18,40 +18,36 @@ interface Attention {
   text: ReactNode;
   to?: string;
   action?: string;
-  /** An action done here (a dialog) instead of a link. */
-  onAct?: () => void;
 }
 
-/** What needs a person on this host, across areas, most serious first —
- * honest while the answers are still loading. */
+/** What is failing or waiting for a decision on this host, across areas,
+ * most serious first, each with the next step: what keeps DROOL from the
+ * host, its open alerts by their own words (with the service fix), Desired
+ * State, the firewall and management. Honest while the answers are still
+ * loading. Updates and reboots are in the status line below; acknowledged
+ * and snoozed alerts are counted, not listed. */
 export function HostAttention({ h, hideStatus }: { h: Host; hideStatus: boolean }) {
   const { can } = useAuth();
   const alerts = useAlertSummary(can("alerts.read"));
+  const open = useAlerts({ view: "active", host_id: h.id, suppressed: false }, can("alerts.read"));
   const desired = useDesiredHost(h.id, can("desired.read"));
   const fw = useFwHost(h.id, can("firewall.read"));
   const agent = useHostAgent(h.id);
-  const [installing, setInstalling] = useState(false);
   const items: Attention[] = [];
+  // hideStatus: the page already explains the connection status above.
   const status = new Set(["host key changed", "access denied", "needs host key approval", "offline"]);
 
-  for (const r of attentionReasons(h)) {
+  const reasons = connectionReasons(h);
+  for (const r of reasons) {
     if (hideStatus && status.has(r)) continue;
-    if (/security update/.test(r)) {
-      items.push({ key: r, tone: "warn", text: r, onAct: can("jobs.execute") ? () => setInstalling(true) : undefined, action: "Install updates…" });
-    } else if (r === "reboot required") {
-      items.push({ key: r, tone: "warn", text: "Reboot required", to: can("jobs.execute") ? `/jobs/new?hosts=${h.id}&op=reboot` : undefined, action: "Reboot" });
-    } else if (/full$/.test(r)) {
-      items.push({ key: r, tone: "danger", text: r, to: can("monitoring.read") ? `/hosts/${h.id}/monitoring?tab=metrics` : undefined, action: "View storage" });
-    } else {
-      items.push({ key: r, tone: status.has(r) ? "danger" : "warn", text: r });
-    }
+    items.push({ key: r, tone: status.has(r) ? "danger" : "warn", text: r });
+  }
+  // "No monitoring data" says what the connection already says.
+  const quiet = hideStatus || reasons.length > 0;
+  for (const x of (open.data?.pages[0]?.items ?? []).filter((x) => !(quiet && x.check === "stale"))) {
+    items.push({ key: "alert" + x.id, tone: x.severity === "critical" ? "danger" : "warn", text: <AlertLine a={x} /> });
   }
   const a = alerts.data?.hosts[h.id];
-  if (a && a.critical + a.warning > 0) {
-    const open = a.critical + a.warning;
-    items.push({ key: "alerts", tone: a.critical ? "danger" : "warn", to: `/alerts?host_id=${h.id}`, action: "View alerts",
-      text: <>{open} open alert{open === 1 ? "" : "s"}{a.critical ? ` (${a.critical} critical)` : ""}{a.acknowledged ? `, ${a.acknowledged} acknowledged` : ""}</> });
-  }
   const d = desired.data;
   if (d && d.counts.conflict + d.counts.drift + d.counts.failed > 0) {
     const parts = [d.counts.drift && `${d.counts.drift} drifted`, d.counts.conflict && `${d.counts.conflict} in conflict`, d.counts.failed && `${d.counts.failed} failed to restore`].filter(Boolean);
@@ -72,16 +68,27 @@ export function HostAttention({ h, hideStatus }: { h: Host; hideStatus: boolean 
   else if (ident?.status === "quarantined") items.push({ key: "quarantine", tone: "danger", to: `/hosts/${h.id}/management`, action: "Management", text: "Shepherd identity conflict: management is paused" });
 
   // A source that couldn't be read is never "nothing to see" (DESIGN-STANDARD §8).
-  const failed = [can("alerts.read") && alerts.isError && "alerts", can("desired.read") && desired.isError && "Desired State",
+  const failed = [can("alerts.read") && (alerts.isError || open.isError) && "alerts", can("desired.read") && desired.isError && "Desired State",
     can("firewall.read") && fw.isError && "the firewall", agent.isError && "the Shepherd"].filter(Boolean) as string[];
   if (failed.length > 0) items.push({ key: "unchecked", tone: "warn", text: <>Couldn&apos;t check {failed.join(", ")}: this list may be incomplete.</> });
-  const loading = (can("alerts.read") && alerts.isPending) || (can("desired.read") && desired.isPending) || (can("firewall.read") && fw.isPending) || agent.isPending;
+  const loading = (can("alerts.read") && (alerts.isPending || open.isPending)) || (can("desired.read") && desired.isPending) || (can("firewall.read") && fw.isPending) || agent.isPending;
   items.sort((x, y) => (x.tone === y.tone ? 0 : x.tone === "danger" ? -1 : 1));
+  // Alerts someone took on, or that maintenance holds back: counted.
+  const others = a && (a.acknowledged > 0 || a.suppressed > 0) && (
+    <p className="text-xs text-muted">
+      {a.acknowledged > 0 && <>{a.acknowledged} acknowledged alert{a.acknowledged === 1 ? "" : "s"}: someone is on it. </>}
+      {a.suppressed > 0 && <>{a.suppressed} alert{a.suppressed === 1 ? "" : "s"} suppressed by maintenance. </>}
+      <Link className={plainLink} to={`/alerts?view=open&host_id=${h.id}`}>Open alerts of {h.name}</Link>
+    </p>
+  );
   if (items.length === 0) {
     return (
-      <p className="rounded-ui border border-line bg-surface px-3 py-2 text-sm" role="status" data-testid="host-attention">
-        {loading ? <span className="text-muted">Checking what needs attention…</span> : <><span className="text-ok" aria-hidden="true">✓ </span>Nothing needs attention on this host right now.</>}
-      </p>
+      <div className="space-y-1 rounded-ui border border-line bg-surface px-3 py-2" data-testid="host-attention">
+        <p className="text-sm" role="status">
+          {loading ? <span className="text-muted">Checking what needs attention…</span> : <><span className="text-ok" aria-hidden="true">✓ </span>Nothing is failing or waiting for a decision on this host.</>}
+        </p>
+        {others}
+      </div>
     );
   }
   return (
@@ -93,11 +100,10 @@ export function HostAttention({ h, hideStatus }: { h: Host; hideStatus: boolean 
               <span aria-hidden="true">{x.tone === "danger" ? "✕ " : "⚠ "}</span>{x.text}
             </span>
             {x.to && <Link className={plainLink} to={x.to}>{x.action}</Link>}
-            {x.onAct && <button type="button" className={plainLink} onClick={x.onAct}>{x.action}</button>}
           </li>
         ))}
       </ul>
-      {installing && <InstallUpdatesDialog targets={{ hosts: [h.id] }} label={h.name} onClose={() => setInstalling(false)} />}
+      {others && <div className="mt-2">{others}</div>}
       {loading && <p className="mt-2 text-xs text-muted">Still checking some areas…</p>}
     </Card>
   );

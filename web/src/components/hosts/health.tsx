@@ -17,10 +17,11 @@ export function osLabel(host: Host): string {
   return f.distro_name || [f.distro, f.distro_version].filter(Boolean).join(" ") || f.os_family;
 }
 
-/** Reasons a host needs attention, most important first. A failed systemd
- * unit isn't one by itself: services alert only when monitored, and a
- * monitored one shows up as an open alert. */
-export function attentionReasons(host: Host): string[] {
+/** What stands between DROOL and a host, from its last status check (the
+ * server's verdicts): the host key, sign-in, reachability, and how old the
+ * status is. Health (disk space, services, …) is monitoring's verdict and
+ * shows as its open alerts; updates and reboots have their own line. */
+export function connectionReasons(host: Host): string[] {
   const out: string[] = [];
   const h = host.health;
   if (host.status === "hostkey_mismatch") out.push("host key changed");
@@ -28,8 +29,31 @@ export function attentionReasons(host: Host): string[] {
   if (host.status === "pending_hostkey") out.push("needs host key approval");
   if (h && !h.reachable && !h.stale) out.push("offline");
   if (h?.stale) out.push(`no data since ${formatAgo(h.checked_at)}`);
-  if (h?.reboot_required) out.push("reboot required");
-  if (h?.security_updates) out.push(`${h.security_updates} security update${h.security_updates === 1 ? "" : "s"}`);
-  if (h?.max_fs_used_pct != null && h.max_fs_used_pct >= 90) out.push(`${h.max_fs_mount} ${Math.round(h.max_fs_used_pct)}% full`);
   return out;
+}
+
+/** A host's pending updates in a list. From a host that isn't reporting
+ * now (offline, or its status is old) the number is the last known one,
+ * and says so; never a bare zero for what isn't known. */
+export function UpdatesCell({ host }: { host: Host }) {
+  const h = host.health;
+  if (!h) return <span className="text-muted">not checked yet</span>;
+  if (h.updates_available == null) return <span className="text-muted">unknown</span>;
+  const old = h.stale || !h.reachable;
+  const sec = h.security_updates;
+  return (
+    <span className={old ? "text-muted" : undefined} title={old ? `Checked ${formatAgo(h.updates_checked_at ?? h.checked_at)}` : undefined}>
+      {h.updates_available}{sec ? <span className={old ? undefined : "text-warn"}> ({sec} security)</span> : null}{old && " · last known"}
+    </span>
+  );
+}
+
+/** Whether a host needs a reboot, in a list: "not required" isn't
+ * unknown, and an old answer says it is old. */
+export function RebootCell({ host }: { host: Host }) {
+  const h = host.health;
+  if (!h || h.reboot_required == null) return <span className="text-muted">unknown</span>;
+  const old = h.stale || !h.reachable;
+  if (!h.reboot_required) return <span className="text-muted">no{old && " · last known"}</span>;
+  return old ? <span className="text-muted">required · last known</span> : <Badge tone="warn">required</Badge>;
 }

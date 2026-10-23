@@ -20,6 +20,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { InstallUpdatesDialog } from "@/components/jobs/InstallUpdatesDialog";
 import { MaintenanceDialog } from "@/components/alerts/MaintenanceDialog";
 import { HostStatusBadge } from "@/components/hosts/HostStatusBadge";
+import { UpdatesCell } from "@/components/hosts/health";
 import { HealthBadge } from "@/components/monitoring/Status";
 import { useFleet, type MonFleetHost } from "@/components/monitoring/queries";
 
@@ -84,19 +85,12 @@ export function PackPage() {
                   header: "Health",
                   cell: (h: Host) => {
                     const r = health.get(h.id);
-                    return r ? <HealthBadge hasData={r.source !== ""} stale={r.stale} issues={r.issues} worst={r.worst} /> : <span className="text-muted">{fleet.isLoading ? "…" : "—"}</span>;
+                    return r ? <HealthBadge hasData={r.source !== ""} stale={r.stale} issues={r.issues} worst={r.worst} />
+                  : <span className="text-muted">{fleet.isError ? "couldn't load" : fleet.isLoading ? "loading…" : "unknown"}</span>;
                   },
                 }] : []),
                 { header: "Connection", cell: (h) => <HostStatusBadge status={h.status} /> },
-                {
-                  header: "Updates",
-                  cell: (h) => {
-                    const u = h.health?.updates_available;
-                    if (u == null) return <span className="text-muted">—</span>;
-                    const sec = h.health?.security_updates;
-                    return <span>{u}{sec ? <span className="text-warn"> ({sec} security)</span> : null}</span>;
-                  },
-                },
+                { header: "Updates", cell: (h) => <UpdatesCell host={h} /> },
                 { header: "Tags", cell: (h) => <span className="flex flex-wrap gap-1">{h.tags.map((t) => <Badge key={t}>{t}</Badge>)}</span> },
                 { header: "", cell: (h) => write && (
                   <Button size="sm" disabled={remove.isPending} aria-label={`Remove ${h.name} from ${g.name}`}
@@ -141,8 +135,11 @@ function MemberSummary({ members, health, loading }: { members: Host[]; health: 
     else if (r.worst === "critical") unhealthy++;
     else if (r.worst === "warning") degraded++;
     else ok++;
-    updates += h.health?.updates_available ?? 0;
-    security += h.health?.security_updates ?? 0;
+    // Old numbers from a host that isn't reporting don't add up.
+    if (h.health && !h.health.stale && h.health.reachable) {
+      updates += h.health.updates_available ?? 0;
+      security += h.health.security_updates ?? 0;
+    }
   }
   const parts = [[ok, "healthy"], [degraded, "degraded"], [unhealthy, "unhealthy"], [unknown, "not reporting"]].filter(([n]) => (n as number) > 0).map(([n, w]) => `${n} ${w}`);
   return (

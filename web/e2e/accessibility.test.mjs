@@ -35,6 +35,11 @@ const active = (p) => p.evaluate(() => {
 test("a host's header names each state; the list's Health is monitoring's verdict", async () => {
   // The monitoring fixture arrives shortly after the hosts exist.
   await waitFor(page, async () => (await api(page, "GET", "/monitoring/summary")).body?.counts?.storage > 0, "monitoring fixture", 90000);
+  // nas-01's disk is failing. Another file's reset of a health check can
+  // close its issues until the fixture's next reload (a minute): the
+  // premise is waited for, then checked.
+  await waitFor(page, async () => /^(warning|critical)$/.test((await api(page, "GET", "/monitoring/summary?category=all&sort=name&limit=500")).body?.rows
+    ?.find((r) => r.host_id === ids["nas-01"])?.worst ?? ""), "nas-01's failing disk (the monitoring fixture)", 120000);
   await go(page, `/hosts/${ids["nas-01"]}`);
   await waitFor(page, async () => !!(await page.$('[data-testid="host-health"]')), "the header's Health");
   const h = await page.evaluate(() => ({

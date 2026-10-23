@@ -50,9 +50,10 @@ export function useAlertSummary(enabled = true) {
   return useQuery({ queryKey: alertKeys.summary, queryFn: () => unwrap(api.GET("/alerts/summary")), enabled, ...live });
 }
 
-export function useAlerts(f: AlertFilter) {
+export function useAlerts(f: AlertFilter, enabled = true) {
   return useInfiniteQuery({
     queryKey: alertKeys.list(f),
+    enabled,
     initialPageParam: "",
     queryFn: ({ pageParam }) => unwrap(api.GET("/alerts", { params: { query: { ...f, limit: 50, cursor: pageParam || undefined } } })),
     getNextPageParam: (last) => last.next_cursor || undefined,
