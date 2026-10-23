@@ -4763,13 +4763,16 @@ audit.
   two failures);
 - **Options**: mode, metadata refresh and reboot, with DROOL's defaults (*Upgrade, refresh first, no reboot*);
 - **Install updates on web-01** (or *on 3 hosts*) starts the ordinary system update run (`POST /jobs`). Its progress
-  and each host's outcome then show in the dialog (`hooks/useJobProgress.ts`), with **View the run**;
+  and outcome then show in the dialog in words (`jobs/updateProgress.ts` over `hooks/useJobProgress.ts`), and each
+  host's pending updates once DROOL has checked it again (§46.6), with **View the run**;
 - **open it in the run composer** keeps every other option (rollout, schedule, workflow) one link away.
 
 It opens from the host's header (and its phone menu), **Updates** on the host's Overview, a security-updates line
 under **Needs attention**, the Hosts list's selection bar (**Install updates…** beside **Run command on selected**),
-the Overview's **Updates and reboots** card, and a Pack's header. W04a went from six interactions on four pages to
-three on one; W04b from nine on three pages to five on one, the rollout recommended as before.
+the Overview's **Updates and reboots** card, and a Pack's header. Measured in the evidence lab (the package's
+COMPARISON.md, computed from the capture records): W04a went from 6 interactions on 4 pages to 4 on 2, W04b from 9 on
+3 pages to 8 on 1, the rollout recommended as before. Both after counts include closing the dialog (*Done*), and W04b's
+includes opening *Options*.
 
 **A service alert offers its fix** (`useServiceFix`): *Start backup.service…* for a failed or stopped unit,
 *Restart …* when it runs but is in trouble, *Stop …* when it runs although it's expected stopped — chosen from the
@@ -4795,16 +4798,19 @@ page, the Shepherds list (`identity.update`) and a host's card (`identity.update
 | updating, waiting | in a running rollout (waiting: offline) | *Updating to …*, *Updates to … when online* |
 | attention | the update failed or rolled back here | *Update failed* (Try again…) |
 | blocked | the host refuses it (its policy, trust, protocol, minimum version) | *Can't update* |
-| unavailable | behind, and no release DROOL can install is newer | *No update available* |
-| unknown | behind, and DROOL hasn't been able to check (pending, unreachable) | *Not checked* |
+| unavailable | behind, and a release check that completed found no release DROOL can install that is newer | *No update available* |
+| unknown | behind, and no trusted check completed, so whether a release could update it isn't known | *Not checked* |
 
 - **`verified`**: the release check completed (official verified, or not published yet), or the policy's own
   release is the target. Otherwise all-current reads *Runs DROOL's version*, not *Up to date*.
-- **A missing release is never a failure.** No key, a development build, checks off, a release not published, a
-  release that failed verification (its own problem entry stays), the wrong channel, or no release for a platform
-  make a behind Shepherd *unavailable* (or *unknown*), not *blocked*. The reason is said once, in the summary (*1
-  Shepherd is older than this DROOL (v…), and no release DROOL can install is newer: official Shepherd releases can't
-  be used by this DROOL.*). `blocked[]` and **Needs attention** list only failures and host refusals.
+- **A missing release is never a failure, and "none" needs a check.** A behind Shepherd is *unavailable* only after a
+  trusted check completed (verified, or not published yet) or with the policy's own release as the target: nothing
+  newer published, the wrong channel, no release for its platform. Without one (not checked yet, the source
+  unreachable, no key, a development build, checks off, a release that failed verification) it is *unknown*, *Not
+  checked*, never *No update available*. Neither is *blocked*. The reason is said once, in the summary (*1 Shepherd is
+  older than this DROOL (v…), and whether a release can update it isn't known: this DROOL can't check official
+  Shepherd releases.*). `blocked[]` and **Needs attention** list only failures and host refusals (a release that
+  failed verification keeps its own problem entry).
 - **Easy to find.** The host card's update is no longer `newestRelease` (any newer stored release, ignoring channel,
   cap, trust and refusals): it is the judgement's target, so it is offered only when it can be installed. The card
   shows one state badge (no second *update available*). **Update Shepherd to v1.5.0…** is primary, and **Try the
@@ -4820,10 +4826,11 @@ a forced reinstall of a Shepherd from its host's page.
 ### 46.4 Tests and checks
 
 - Go: `TestFirewallHostNeedsNftables` (nftables missing alone, missing with another obstacle, supported; the host list
-  and the plan agree); `TestShepherdUpdateStates` (a development build: on DROOL's version, an older one with no update
-  available and nothing in `blocked`; no release check: *run this DROOL's version*, not up to date; an unreachable
-  source: *unknown*; verified: up to date and an update the host's page offers; the status, the Shepherds list and the
-  host's page agree); the release-candidate test now expects *unavailable* with the channel said once.
+  and the plan agree); `TestShepherdUpdateStates` (a development build: on DROOL's version, an older one *unknown*,
+  not checked, with the exact summary and nothing in `blocked`; a completed check with nothing published:
+  *unavailable*; no release check: *run this DROOL's version*, not up to date; an unreachable source: *unknown* with
+  the exact summary; verified: up to date and an update the host's page offers; the status, the Shepherds list and
+  the host's page agree); the release-candidate test now expects *unavailable* with the channel said once.
 - Web unit: the rule builder's choices, addresses and ports typed in, the generated name (unique, within the
   server's rule, a rule's own name kept when editing); the picker's matching and group order.
 - Browser: `designer` (a port typed into the service search becomes a custom service; the keyboard path through the
@@ -4838,12 +4845,13 @@ a forced reinstall of a Shepherd from its host's page.
   updates… and the composer link).
 - Found while testing, fixed: a run ended while its host row still said *running* (the host list wasn't fetched
   again at the end); the picker highlighted a host that mentioned a Pack ahead of the Pack itself.
-- On the final tree: gofmt and `go vet ./...` (also with the integration tag) clean; `go test ./...` passes except
+- On the tree of the first Phase 1 report (5a40b56): gofmt and `go vet ./...` (also with the integration tag) clean;
+  `go test ./...` passes except
   `TestShepherdUpdateDefaults`, which fails only with an uncommitted release-key test edit and passes with the
   committed file; `-race` on agentsvc, firewall and the changed api tests; web typecheck and 147 unit tests;
   `TestOfficialShepherdUpdates` (integration, as CI's release job runs it); TestBrowser 117 of 118. The one failure,
   alerts' *a failing destination is visible* (the Alerts list never shows *Delivery failed* for old-vm), fails the
-  same way on 4adbf37, before Phase 1: pre-existing, not investigated in this phase.
+  same way on 4adbf37, before Phase 1: pre-existing. Its cause was found and fixed in the review corrections (§46.6).
 
 ### 46.5 SSH: starting a command gives up at its deadline (correctness)
 
@@ -4862,7 +4870,62 @@ the snapshot the review saw; the same snapshot is compiled again with the fresh 
 says so). A stale review, and a rule cutting the management path, are still refused.
 `TestFirewallApplyMeasuresAManagementPathNotObservedYet` fails on the previous code with the reported message.
 
-### 46.6 Still open
+### 46.6 Review corrections (2026-10-22)
+
+The review of Phase 1 approved its direction and asked for six corrections, each committed separately.
+
+- **Install updates in words** (93a5bf6, 24cdbd6). The dialog showed the engine's states side by side (*Running:
+  running 1 running*) and kept *Installing updates* as its title after the run. `jobs/updateProgress.ts` words the
+  title and summary from the run: *Installing updates on web-01* with what is happening (*Rebooting on web-01…*, *1 of
+  3 hosts done.*), then how it ended (*Updates installed on web-01* · *web-01 is updated.*; *Updates finished on 2
+  hosts, not everywhere* · *1 updated · 1 failed.*; failed, stopped, interrupted). Each host's step has a word
+  (*Waiting its turn*, *Checking it afterwards*, *Updated*, *Interrupted: outcome unknown*); the run's page keeps the
+  engine's states. A host's pending updates are shown only once DROOL checked it again after the run
+  (`health.updates_checked_at` at or after the host's `finished_at`: the engine's inventory recheck): *Checking its
+  pending updates again…*, then *No pending updates left (checked …)* or what is left, with the hint that Upgrade
+  holds back updates needing new packages. After two minutes without that check it says the count is from before the
+  run, and keeps asking every 15 s: a host that rebooted can take minutes, its checks running one after another
+  (found capturing W04b, where media-02's came 4m44s after the run). The hosts list and each host's own page are
+  fetched with it. The same job infrastructure: no new endpoint or state.
+- **Shepherd availability** (5e6a035): *No update available* only after a trusted check that completed; otherwise
+  *Not checked*, the reason said once (§46.3).
+- **The alerts browser test** (9d4edaa, ae66107, 08004fd). *A failing destination is visible* failed intermittently
+  waiting for *Delivery failed* on old-vm's alert. Root cause, from a debug loop and a run that forced the timing:
+  - any state DROOL received closed *No monitoring data*, even one dated past the stale limit. The browser fixture
+    re-sends old-vm's hour-old state every minute, so its stale alert closed and a new one opened about once a minute.
+    A Shepherd's state carries its host's clock, so a host whose clock is behind did the same, with an opening and a
+    recovery notification each time. Now only a state within the limit ends it
+    (`TestMonitoringStaleNotEndedByOldData`, failing on the previous code);
+  - when the alert in play had opened while the test's webhook still answered 204, its opening was delivered; ending
+    maintenance rightly sent no second one, but its timeline said *notifying in 2m 0s* and *Notifying: …* anyway.
+    The timeline now names only the notifications actually queued, and the end of maintenance says *already notified
+    before the maintenance: no new message* (`TestAlertMaintenanceAfterNotified`, failing on the previous code);
+  - the test's premise (an alert nobody was told about) is made true and checked: old-vm's stale alert exists before
+    any destination, the test waits for that alert's own opening and its failed delivery, and expects exactly
+    *Delivery failed*. No assertion was weakened.
+- **Responsive and visual verification** (cf3fd2e): `phase1-ui` walks the rule builder (search open, then filled), the
+  review of a host that needs nftables with the installation's confirmation over it, the Install updates review and
+  outcome, a service alert's fix in its panel and the Shepherd states, at 1440, 1280, 1024 and 390 px (touch) in both
+  themes. It checks sideways scroll, clipping, controls outside the window (a sideways-scrolling navigation row is
+  allowed, §6), 44 px touch targets on the phone, contrast, the keyboard focus ring and where focus goes. It found
+  nothing to fix in the UI. The evidence package was captured again on 24cdbd6, with light and phone screens and the
+  browser test's screenshots; the single-host review was checked for rollout wording on desktop and phone.
+- **Measurements reconciled.** §46.2 had said W04a went to "three on one" and W04b to "five on one": estimates
+  written before the capture, not what the records say. The records, counted the same way before and after by
+  `uxr-compare.py`: W04a 6 → 4 interactions (4 → 2 pages), W04b 9 → 8 (3 → 1), W06a 6 → 4 (3 → 2), W10 21 → 16 (5 → 5),
+  W10h 13 (4 pages) from the host's page. Dialogs are counted by title, so the after column counts more than there are
+  (the Install updates dialog shows three titles). §46.2 now says this.
+- **Final verification** on 24cdbd6, the last code commit (the release-key test edits set aside, then restored and
+  checksummed): gofmt, `go vet ./...` and `go vet -tags integration` clean; `go test ./...` 51 packages; `make
+  test-race` 51 packages; web typecheck, 150 unit tests and build; TestBrowser 127 of 127, plus both network-database
+  phases; `TestOfficialShepherdUpdates`. Earlier in the work, agentmon's `TestEngineProducesPointsStateAndServiceEvents`
+  timed out once under a full `go test ./...` on a busy machine (pre-existing; it passes alone, with `-race` and in
+  this run).
+
+### 46.7 Still open
 
 - **PiZeroWopenwx**: the saved SSH rule and its compiled policy on the real host are still not verified (§45.1). The
   lab reproduces the cause; the real document hasn't been seen.
+- **Alerts browser test, a different failure seen once**: in one of 13 runs of the alerts file during the
+  investigation, the first test's setup got a `GET /hosts` answer without `items` 2.4 s after signing in. It didn't
+  recur with a debug log in place (the next 10 runs passed), so its cause isn't known.

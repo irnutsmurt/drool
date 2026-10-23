@@ -64,6 +64,9 @@ When maintenance ends, DROOL checks the alerts it suppressed:
 - An alert that is **still open** gets its first message after a **two-minute grace period**, in
   case the problem was just finishing (a service still starting up after a reboot, for example).
   If it recovers within those two minutes, nothing is sent.
+- An alert that was **already sent before the maintenance** isn't sent again; its timeline says
+  *already notified before the maintenance: no new message*. A destination that never had it (added
+  during the maintenance, say) still gets it after the grace period.
 - An alert someone **acknowledged** during the maintenance gets no message: it already has an owner.
 
 ## Maintenance on a timetable
