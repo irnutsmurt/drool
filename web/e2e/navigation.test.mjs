@@ -257,7 +257,8 @@ test("a read-only role: no destinations it can't view, a clear 403 on direct lin
     await waitText(page, "Read-only: you can see these settings");
     assert.equal(await page.$$eval('main input[type="number"]', (xs) => xs.every((x) => x.disabled)), true);
     const settingsButtons = await page.$$eval("main button", (bs) => bs.map((b) => b.textContent.trim()));
-    assert.ok(settingsButtons.includes("Show checks") && !settingsButtons.includes("Customize"), `the checks toggle offers no customizing: ${settingsButtons}`);
+    // Each check can be looked at (View…), none customized.
+    assert.ok(settingsButtons.includes("View…") && !settingsButtons.some((b) => /^Customize/.test(b)), `the checks offer no customizing: ${settingsButtons}`);
     await go(page, "/firewall?tab=designer&view=rules");
     await waitText(page, "only administrators can change the firewall policy");
     assert.deepEqual(page.errors, []);
@@ -313,7 +314,7 @@ for (const theme of ["light", "dark"]) {
         "/desired", "/firewall", "/groups", "/agents", "/settings/notifications", "/monitoring/settings"]) {
         await go(page, p);
         // A host's monitoring tab is measured with its tables drawn, not while loading.
-        if (/tab=(metrics|services|hardware)/.test(p)) await waitFor(page, async () => !!(await page.$("#monpanel table tbody tr")), `${p} tables`);
+        if (/tab=(metrics|services|hardware)/.test(p)) await waitFor(page, async () => !!(await page.$("#mon-panel table tbody tr")), `${p} tables`);
         const w = await page.evaluate(() => {
           const wide = [...document.querySelectorAll("main *")].filter((el) => el.getBoundingClientRect().right > window.innerWidth + 1 && !el.closest(".overflow-x-auto"))
             .slice(0, 3).map((el) => `${el.tagName.toLowerCase()} "${(el.textContent || "").trim().slice(0, 50)}" right=${Math.round(el.getBoundingClientRect().right)}`);
@@ -372,15 +373,17 @@ test("related pages link to each other", async () => {
   await go(page, "/alerts");
   assert.ok(await page.$('main a[href="/settings/notifications"]'), "Alerts link to notification settings");
   await go(page, "/monitoring");
-  await click(page, "nav[aria-label='Monitoring'] a", "Health checks and settings");
+  await click(page, "nav[aria-label='Monitoring'] a", "Health checks");
   await waitFor(page, async () => page.url().endsWith("/monitoring/settings"), "monitoring settings");
-  await waitText(page, "Using the Recommended profile");
+  await waitText(page, "The Recommended profile");
   // An alert links to its host and the host's monitoring.
   const open = (await api(page, "GET", `/alerts?view=open&host_id=${ids["nas-01"]}&limit=1`)).body.items;
   if (open.length) {
     await go(page, `/alerts/${open[0].id}`);
     await waitText(page, "Timeline");
-    for (const want of [`/hosts/${ids["nas-01"]}`, `/hosts/${ids["nas-01"]}/monitoring`]) assert.ok(await page.$(`main a[href="${want}"]`), `alert links to ${want}`);
+    // Its host, and the host's monitoring on the tab where the alert's subject is shown.
+    assert.ok(await page.$(`main a[href="/hosts/${ids["nas-01"]}"]`), "alert links to its host");
+    assert.ok(await page.$(`main a[href^="/hosts/${ids["nas-01"]}/monitoring"]`), "alert links to the host's monitoring");
   }
   // Network Activity ↔ Firewall.
   await go(page, "/network");

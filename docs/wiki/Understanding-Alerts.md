@@ -38,9 +38,11 @@ when a destination is failing.
 
 Each open alert has **Actions…** on its row. It opens the alert in a panel beside the list (the
 list stays in view): what's wrong, where, since when and who was told, then **Acknowledge…** (*I'm
-on it*), **Snooze…** (maintenance for its host until a time you choose) and **Ignore…** (*this is on
-purpose*: change the setting behind it, for that host only), each a step in the same panel with
-**Back** ([Acknowledging an Alert](Acknowledging-an-Alert.md)). Links lead on: **View host …**,
+on it*), **Adjust when this alerts…** (the rule that fired and where it comes from, changed for that
+device or service, the host, one of its Packs or every host), **Snooze…** (maintenance for its host
+until a time you choose) and **Ignore…** (*this is on purpose*: turn the check off, or change what
+DROOL expects, for that host only), each a step in the same panel with **Back**
+([Acknowledging an Alert](Acknowledging-an-Alert.md)). Links lead on: **View host …**,
 **View monitoring** (for a failed service, **View** *the service*: the host's services with that one
 found), and **Open the alert** for its full page. Closed alerts have no **Actions…**.
 
@@ -117,9 +119,10 @@ failing system can never be marked healthy by mistake. To say "I'm on it", ackno
 
 To stop being alerted about something that isn't a problem for you, **Actions… → Ignore…** on the
 alert's row changes the setting behind it for that host (ignore a service, or turn that check off
-for that disk or filesystem), and the alert closes as *cleared by configuration*. Or change the
-health check yourself ([Health Overrides](Health-Overrides.md)), for example turn off *High CPU
-utilization* on a machine that is supposed to be busy. Services alert only when you monitor them
+for that disk or filesystem), and the alert closes as *cleared by configuration*. When the threshold
+is wrong rather than the check, **Adjust when this alerts…** changes it where it belongs: for
+example warn at 97% for a media archive that's meant to be full, or at 99% CPU on a machine that is
+supposed to be busy ([Health Overrides](Health-Overrides.md)). Services alert only when you monitor them
 ([Service Monitoring](Service-Monitoring.md)).
 
 ## Before you start

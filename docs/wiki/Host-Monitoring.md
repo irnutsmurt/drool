@@ -25,12 +25,12 @@ Everyone can view it (**monitoring.read**). Buttons that change something say wh
 
 | Tab | What's there | More |
 |---|---|---|
-| **Summary** | Tiles for CPU, Memory, Storage, Temperature, Network, Services and Storage devices, and the host's **Active health issues** | — |
+| **Summary** | Tiles for CPU, Memory, Disk space, Temperature, Network, Services and Storage health, and the host's **Active health issues**, each with a link to where it's shown | — |
 | **Metrics** | Charts for the last hour, 6 hours, 24 hours, 7 days or 30 days | [CPU, Memory and Load](CPU-Memory-and-Load.md), [Filesystems and Disk Space](Filesystems-and-Disk-Space.md) |
 | **Services** | Every systemd service, its state and history; **Monitor** (DROOL alerts only on the services you monitor); **Actions…** to start, stop, enable or disable it; and **⋯** with **Customize monitoring…** (expected running, stopped or ignored) and **State history** | [Service Monitoring](Service-Monitoring.md) |
 | **Storage health** | Each disk's own health report, its partitions, and kernel storage errors | [Storage Health](Storage-Health.md) |
 | **Sensors & GPU** | Temperatures with the hardware's own limits; GPU use, memory, temperature, power | [Temperatures](Temperatures.md), [GPUs](GPUs.md) |
-| **Health settings** | Which checks run on this host, their thresholds, and where each setting comes from; **Customize** | [Health Overrides](Health-Overrides.md) |
+| **Health checks** | Which checks run on this host, their thresholds, and where each setting comes from (and which Packs disagree, with **Let ⟨Pack⟩ win…**); **Customize…** | [Health Overrides](Health-Overrides.md) |
 | **Collection & helpers** | How this host is monitored, optional helper tools, and (Shepherd hosts) the Shepherd's resource budget | [Monitoring Through SSH vs Shepherd](Monitoring-Through-SSH-vs-Shepherd.md) |
 
 ## Reading the tiles

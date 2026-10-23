@@ -20,7 +20,7 @@ export const hostSections: HostSection[] = [
   { key: "overview", label: "Overview", path: "", permission: "hosts.read",
     description: "Health, warnings, open alerts and recent activity at a glance." },
   { key: "monitoring", label: "Monitoring", path: "monitoring", permission: "monitoring.read", managedOnly: true,
-    description: "Metrics, services, storage health, sensors, health settings and collection." },
+    description: "Metrics, services, storage health, sensors, health checks and collection." },
   { key: "files", label: "Files", path: "files", permission: "files.read", managedOnly: true,
     description: "Browse and edit files on the host." },
   { key: "network", label: "Network", path: "network", permission: "network.read", managedOnly: true,

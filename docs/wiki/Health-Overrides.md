@@ -13,16 +13,21 @@ Settings inherit through five levels, broadest first. The most specific one wins
 
 | Level | Example | Where to change it |
 |---|---|---|
-| **Global** (every host) | "Filesystem space: warn at 80%" | **Monitoring → Health checks and settings → Health checks → Customize** |
-| **Pack** | `media-servers`: no high-CPU warning while transcoding | **Packs →** the Pack's **Customize monitoring** |
-| **Host** | `gpu-01`: high GPU utilization on | The host's monitoring page **→ Health settings → Customize** |
+| **Global** (every host) | "Disk space: warn at 80%" | **Monitoring → Health checks → Customize…** |
+| **Pack** | `media-servers`: no high-CPU warning while transcoding | The Pack's page **→ Health checks…** |
+| **Host** | `gpu-01`: high GPU utilization on | The host's **Monitoring → Health checks → Customize…** |
 | **Device** | `/srv/media` on `nas-01`: warning 92%, critical 98% (while `/` keeps 85% / 95%) | **Customize health check** next to that filesystem, disk, sensor, GPU or service |
+
+**From an alert:** **Adjust when this alerts…** in the alert's panel (Alerts → **Actions…**) or on its
+page shows the rule that fired and where it comes from, then lets you change it for that device or
+service, the host, one of the host's Packs or every host, in the same place. Each choice shows what
+it's set to now; a choice your role can't change is greyed out.
 
 You change only what you need; everything else keeps coming from the level above. Every setting
 shows where it comes from: *Recommended*, *Hardware limit*, *Global*, *Pack: media-servers*,
 *This host*, *Device: /srv/media*.
 
-![nas-01's Health settings tab: using recommended defaults, its Pack, the inheritance chain, and every check with its current value, source and a Customize button](images/monitoring-health-settings.png)
+![nas-01's Monitoring → Health checks: using recommended defaults, its Packs, the inheritance chain, and every check with its current value, source and a Customize… button](images/monitoring-health-settings.png)
 
 ## Before you start
 
@@ -34,10 +39,13 @@ shows where it comes from: *Recommended*, *Hardware limit*, *Global*, *Pack: med
 
 ## Change a setting
 
-1. Open the right level (table above) and click **Customize** next to the check, for example
-   **High CPU utilization** on `media-servers`.
-2. Change only the fields you mean to: on/off, warning and critical levels, how long a condition must
-   last, and when it counts as recovered. A yes/no check (like a SMART failure) only has on/off.
+1. Open the right level (table above) and click **Customize…** next to the check, for example
+   **High CPU utilization** on `media-servers`. Inside a Pack's or a device's checks, the check opens
+   in the same window (**Back** returns to the list).
+2. Type a value into the fields you mean to change: on/off, warning and critical levels, how long a
+   condition must last. An empty field inherits; it shows the value it inherits and from where. When
+   a condition counts as recovered is under **More options**. A yes/no check (like a SMART failure)
+   only has on/off.
 3. For fleet-wide and Pack changes, DROOL first shows the **impact**: how many hosts are affected, how
    many are above the old and the new threshold, and which open problems would close. *This turns a
    check off: matching conditions won't be reported for these hosts* appears when that's the case.
@@ -66,14 +74,15 @@ Nothing is copied back: the setting simply follows the level above again.
   is kept (shown as *currently unavailable*) and applies again if it returns; it never moves to a
   different device. Network interfaces are identified by name only.
 - **Hosts in several Packs:** if two Packs set the same thing differently, the Pack with the higher
-  **priority** wins (**Health overrides (advanced) → Pack priorities**). With equal priorities,
-  DROOL doesn't choose: it shows a *pack conflict* and uses the fleet-wide value until you set a
-  priority or a host setting.
+  **monitoring priority** wins. With equal priorities, DROOL doesn't choose: the host's **Health
+  checks** say which Packs disagree about which value and what applies meanwhile (the fleet-wide
+  value), with **Let ⟨Pack⟩ win…** for each. That raises the Pack's priority just above the other's
+  after showing what changes on every host in both; or set the value on the host itself.
 - **Per-device settings belong to one host.** A Pack can't target "/srv/media on every member".
 
 ## Health versus notifications
 
-Health settings decide *whether something is a problem*. "Don't warn me about GPU load on gpu-01" is a
+Health checks decide *whether something is a problem*. "Don't warn me about GPU load on gpu-01" is a
 health setting; "send gpu-01's critical alerts only to Discord" is a
 [notification route](Notification-Routing.md).
 

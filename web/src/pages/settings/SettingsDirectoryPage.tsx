@@ -47,7 +47,8 @@ const groups: Group[] = [
   {
     title: "Monitoring",
     entries: [
-      { title: "Health checks and thresholds", to: "/monitoring/settings", where: "Monitoring", description: "What counts as a problem — CPU, memory, disks, services, temperatures — for every host, a Pack or one host; collection intervals and retention.", permissions: ["monitoring.read"] },
+      { title: "Health checks", to: "/monitoring/settings", where: "Monitoring", description: "What counts as a problem — CPU, memory, disk space, services, temperatures — for every host, a Pack, a host or one device.", permissions: ["monitoring.read"] },
+      { title: "Monitoring collection", to: "/monitoring/settings?advanced=1", where: "Monitoring → Health checks → Advanced", description: "How often hosts are observed, history retention, the Shepherd resource budget, SSH polling and helpers.", permissions: ["monitoring.read"] },
     ],
   },
   {

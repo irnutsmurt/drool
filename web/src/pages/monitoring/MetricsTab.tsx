@@ -107,7 +107,7 @@ export function MetricsTab({ id, o, compact }: { id: string; o: MonHostOverview;
               <thead><tr className="border-b border-line text-xs text-muted">
                 <th className="py-1 font-medium">Mount</th><th className="py-1 font-medium">Device</th><th className="py-1 font-medium">Used</th>
                 <th className="py-1 font-medium">Free</th><th className="py-1 font-medium">Inodes</th><th className="py-1 font-medium">State</th>
-                <th className="py-1"><span className="sr-only">Health settings</span></th>
+                <th className="py-1"><span className="sr-only">Health checks</span></th>
               </tr></thead>
               <tbody>
                 {(st?.filesystems ?? []).map((f) => (

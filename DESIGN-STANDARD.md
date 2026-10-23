@@ -145,6 +145,9 @@ There are three interaction patterns. Choose by the task.
   - The list stays in view beside it; on a phone it takes the whole screen. Only one is open at a time.
   - A follow-up step (acknowledge, classify) replaces the inspector's content and has a Back button. It is never a dialog
     on top of the inspector.
+  - A dialog's follow-up step works the same way (`Dialog` with `onBack` and `step`): customizing one of a Pack's or a
+    device's health checks, or a service's checks from its monitoring dialog, replaces the dialog's content, with Back.
+    Dialogs are never stacked for one task.
   - Focus moves into the panel when it opens and into the step when a step opens. Back returns focus to the button that
     opened the step. Closing returns focus to the row.
 - **Confirmation** (`ConfirmDialog`, `confirmAction()`): an action with consequences.
@@ -258,7 +261,10 @@ Use one word for one thing, everywhere: in pages, dialogs, the API docs and the 
 | Run | One execution of a command, script or operation (a job) | "Runs" in navigation |
 | Schedule, Workflow | A run at set times; saved steps that are reused | |
 | Baseline, Desired State | What hosts should have; DROOL's view of whether they do | Drift: differs. Restore managed state: correct it. |
-| Alert | A confirmed problem with a life cycle | Acknowledge, Snooze, Ignore, Maintenance |
+| Alert | A confirmed problem with a life cycle | Acknowledge, Adjust when this alerts, Snooze, Ignore, Maintenance |
+| Health checks | What monitoring counts as a problem: each check's thresholds and durations, for every host, a Pack, a host or one device or service | One name for every editor of them ("Health checks for every host", a Pack's "Health checks…", a host's Monitoring → Health checks). Not "health settings" or "monitoring overrides". A service's *expected state* is set with "Customize monitoring…" |
+| Disk space, Storage health | How full a filesystem is; the health of the disks themselves (SMART, read-only, kernel errors) | Not "Filesystem space", "Storage" or "Storage devices" |
+| Monitoring priority | Which of a host's Packs wins when they set a health check differently | Always qualified: a Pack also has a Desired State priority |
 | Connection, Last check, Health, Managed via | The host states in §4 | Never use "Health" for reachability, "Ready" for health, or "online" for healthy |
 | Policy | The firewall rules DROOL wants | "Can A reach B?" is a simulation of the policy |
 | Observed connection | A connection DROOL saw (Network Activity) | Classification: what it is |

@@ -156,7 +156,7 @@ var checkSpecs = []CheckSpec{
 	{ID: CheckMemory, Label: "Memory pressure", Category: "memory", Description: "Memory in use, excluding reclaimable cache.",
 		Fields: []FieldSpec{fEnabled(), fPct(FieldWarning, "Warning at"), fPct(FieldCritical, "Critical at"), fMin(FieldDuration, "For at least"),
 			fPct(FieldClear, "Clears below"), fMin(FieldClearDuration, "Clears after")}},
-	{ID: CheckFilesystem, Label: "Filesystem space", Category: "disk", Subject: SubjectFilesystem,
+	{ID: CheckFilesystem, Label: "Disk space", Category: "disk", Subject: SubjectFilesystem,
 		Description: "How full a filesystem is; two readings in a row decide it. Physical disk health is a separate check.",
 		Fields:      []FieldSpec{fEnabled(), fPct(FieldWarning, "Warning at"), fPct(FieldCritical, "Critical at"), fPct(FieldClear, "Clears below")}},
 	{ID: CheckInodes, Label: "Filesystem inodes", Category: "disk", Subject: SubjectFilesystem, Description: "Running out of inodes (files can't be created even with free space).",

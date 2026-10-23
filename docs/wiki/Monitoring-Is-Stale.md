@@ -18,7 +18,7 @@ data** for the host, which becomes an [alert](Understanding-Alerts.md) like any 
 | **The host is down or unreachable** | Its status on the host page; [Host Won't Connect](Host-Wont-Connect.md) |
 | **Its Shepherd is offline** | [Shepherd Offline](Shepherd-Offline.md) |
 | **SSH polling fails** (a host-key change, a credential problem) | **Actions → Test connection** on the host's page |
-| **Monitoring is off**, for the whole fleet | **Monitoring → Health checks and settings → Monitor hosts** |
+| **Monitoring is off**, for the whole fleet | **Monitoring → Health checks → Advanced → Monitor hosts** |
 | **The controller was down** | Data from that time is missing; Shepherds deliver what they kept in memory (about a day for a typical host) when it's back |
 | **The host's clock is behind** (a Shepherd host) | A Shepherd's reports carry its host's time, so they arrive already too old to count. Check the clock on the host (`timedatectl`: *System clock synchronized: yes*) and set up time synchronization; boards without a battery-backed clock, like a Raspberry Pi, need it after every boot |
 

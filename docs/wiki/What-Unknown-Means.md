@@ -9,7 +9,7 @@ couldn't check. An Unknown is a question, not an answer.
 | Where | What it means | Usually |
 |---|---|---|
 | A **Temperature** tile: *No sensors* | The host exposes no temperature sensors | Normal for VMs and containers. Nothing to do |
-| **Storage devices**: *Health unknown* | At least one disk can't report its health | Virtual disks; missing `smartmontools`/`nvme-cli`; SSH hosts without passwordless sudo. See [Storage Health](Storage-Health.md) |
+| **Storage health**: *Health unknown* | At least one disk can't report its health | Virtual disks; missing `smartmontools`/`nvme-cli`; SSH hosts without passwordless sudo. See [Storage Health](Storage-Health.md) |
 | A storage device: *Limited — No failure indicators detected* | The device (SD card, USB stick) reports nothing about itself | Normal. DROOL watches kernel errors instead; consider the write/read probe |
 | A service state: *Unknown* | DROOL hasn't seen that unit's state | The host hasn't reported yet, or the data is too old |
 | A host's **Health**: *No data yet* | Monitoring hasn't received anything from the host | A host just added (wait one poll, up to 5 minutes), or one DROOL can't reach |

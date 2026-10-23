@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
 import { useMutation } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { useGroups } from "@/api/queries";
@@ -15,9 +16,17 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ReadOnlyNote } from "@/components/ui/ReadOnlyNote";
 import { MonitoringTabs } from "./MonitoringTabs";
 import { ExpectedServicesCard } from "@/components/monitoring/ExpectedServices";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 
+/** Monitoring → Health checks: what counts as unhealthy (the checks, the
+ * services to watch, what Packs, hosts and devices set), first; how hosts
+ * are observed (intervals, history, the Shepherd budget, SSH polling,
+ * helpers) under Advanced, one click away and kept in the address. */
 export function MonitoringSettingsPage() {
   const { can } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const advanced = params.get("advanced") === "1";
+  const setAdvanced = (v: boolean) => setParams((p) => { if (v) p.set("advanced", "1"); else p.delete("advanced"); return p; }, { replace: true });
   const q = useMonSettings();
   const inv = useMonInvalidate();
   const [s, setS] = useState<MonSettings>();
@@ -29,30 +38,49 @@ export function MonitoringSettingsPage() {
   const edit = can("monitoring.settings");
   const header = (
     <>
-      <PageHeader title="Monitoring" description="What monitoring considers unhealthy, how often hosts are observed, and how long history is kept." />
+      <PageHeader title="Monitoring" description="What counts as unhealthy, for every host; a Pack, a host or one device can set its own." />
       <MonitoringTabs />
     </>
   );
-  if (q.error) return <>{header}<Alert>{errorMessage(q.error)}</Alert></>;
-  if (!s || !q.data) return <>{header}<p className="text-sm text-muted">Loading…</p></>;
-  const set = <K extends keyof MonSettings>(k: K, v: MonSettings[K]) => setS({ ...s, [k]: v });
-  const int = (v: string) => Math.max(0, Number(v) || 0);
-  return (
-    <div className="space-y-4">
-      {header}
+  const routine = (
+    <>
       {!edit && (
         <ReadOnlyNote>
           you can see these settings; changing them needs the monitoring.settings permission (administrators).
-          {can("monitoring.manage") && " Host and device health settings can be changed on each host's monitoring page."}
+          {can("monitoring.manage") && " A host's and its devices' health checks can be changed on the host's Monitoring → Health checks."}
         </ReadOnlyNote>
       )}
       <HealthChecksCard />
       <ExpectedServicesCard scope="global" />
       <HealthOverridesCard />
-      <h2 className="pt-2 text-sm font-semibold">Collection</h2>
+      <div>
+        <Button variant="ghost" aria-expanded={advanced} aria-controls="monitoring-advanced" onClick={() => setAdvanced(!advanced)}>
+          {advanced ? "▾" : "▸"} Advanced: collection, history, Shepherd resource budget, SSH polling and helpers
+        </Button>
+      </div>
+    </>
+  );
+  if (!advanced) return <div className="space-y-4">{header}{routine}</div>;
+  if (q.error) return <div className="space-y-4">{header}{routine}<Alert>{errorMessage(q.error)}</Alert></div>;
+  if (!s || !q.data) return <div className="space-y-4">{header}{routine}<p className="text-sm text-muted">Loading…</p></div>;
+  const set = <K extends keyof MonSettings>(k: K, v: MonSettings[K]) => setS({ ...s, [k]: v });
+  const int = (v: string) => Math.max(0, Number(v) || 0);
+  // Turning monitoring off for the whole fleet asks first.
+  const setEnabled = async (v: boolean) => {
+    if (!v && !(await confirmAction({
+      title: "Stop monitoring every host?", confirmLabel: "Stop monitoring", danger: true,
+      body: <p>Once saved, no host is observed: health stays as it was last seen and is shown as stale, and no new health issue or alert opens. Nothing else changes.</p>,
+    }))) return;
+    set("enabled", v);
+  };
+  return (
+    <div className="space-y-4">
+      {header}
+      {routine}
+      <div id="monitoring-advanced" className="space-y-4">
       <Card title="Monitoring">
         <div className="space-y-3">
-          <Checkbox label="Monitor hosts (Shepherds stream continuously; SSH hosts are polled)" checked={s.enabled} disabled={!edit} onChange={(v) => set("enabled", v)} />
+          <Checkbox label="Monitor hosts (Shepherds stream continuously; SSH hosts are polled)" checked={s.enabled} disabled={!edit} onChange={(v) => void setEnabled(v)} />
         </div>
       </Card>
       <Card title="History">
@@ -94,12 +122,13 @@ export function MonitoringSettingsPage() {
       </Card>
       {edit && (
         <div className="flex items-center gap-3">
-          <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate(s)}>{save.isPending ? "Saving…" : "Save monitoring settings"}</Button>
+          <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate(s)}>{save.isPending ? "Saving…" : "Save collection settings"}</Button>
           {save.error && <Alert>{errorMessage(save.error)}</Alert>}
           {save.isSuccess && <span className="text-sm text-ok">✓ Saved and sent to connected Shepherds.</span>}
         </div>
       )}
       <Approvals />
+      </div>
     </div>
   );
 }
@@ -137,7 +166,8 @@ function Approvals() {
             {edit && <Button size="sm" variant="ghost" onClick={() => del.mutate(x.id)}>Remove</Button>}
           </li>
         ))}
-        {(a.data?.approvals ?? []).length === 0 && <li className="text-muted">No standing approvals.</li>}
+        {a.isLoading ? <li className="text-muted">Loading…</li> : a.error ? <li><Alert>{errorMessage(a.error)}</Alert></li>
+          : (a.data?.approvals ?? []).length === 0 && <li className="text-muted">No standing approvals.</li>}
       </ul>
       {edit && (
         <div className="flex flex-wrap items-end gap-3">

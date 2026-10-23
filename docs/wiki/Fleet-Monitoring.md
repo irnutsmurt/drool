@@ -20,8 +20,11 @@ From the top:
 
 - **How many hosts report**, and how: *6 of 6 hosts reporting: 3 with a Shepherd (agent, continuous),
   3 over SSH (polled)*. See [Monitoring Through SSH vs Shepherd](Monitoring-Through-SSH-vs-Shepherd.md).
-- **Two tabs:** **Fleet health** (this page) and **Health checks and settings**
+- **Two tabs:** **Fleet health** (this page) and **Health checks**
   ([Monitoring Settings](Monitoring-Settings.md)).
+- **Health issues now:** every problem across the fleet, most severe first, before the table. Each
+  host's name opens where the problem is shown (its charts, its services, its storage health).
+  Notices about collection (*reduced fidelity*: nothing is wrong) are grouped under them, collapsed.
 - **Alerts:** open alerts by severity, how many are acknowledged, and how many hosts are in
   maintenance. Click to open [Alerts](Understanding-Alerts.md).
 - **Filter buttons** with counts. **All hosts**, **Needs attention** and **Unreachable / stale** are
@@ -38,13 +41,14 @@ From the top:
   - **Alerts** — open alerts, and *maintenance* if the host is in maintenance;
   - **Monitoring** — *Shepherd · continuous* or *SSH · polled*, plus notes such as *reduced
     fidelity* or *helpers would help: nvme-cli*;
-  - **CPU**, **Memory**, **Disk** (the fullest filesystem, e.g. *96% /srv/media*), **Temp.**
+  - **CPU**, **Memory**, **Disk space** (the fullest filesystem, e.g. *96% /srv/media*), **Temp.**
     (the hottest sensor), **Services** (*50 listed*, or *✕ 1 monitored problem*; a service that failed
     but nobody monitors shows as *1 failed, not alerting* and doesn't make the host unhealthy),
-    **Storage devices** (disk health: *Warning*, *Health unknown*…);
+    **Storage health** (disk health: *Warning*, *Health unknown*…);
   - **Updated** — how old the data is.
-- **Active health issues:** every problem across the fleet, most severe first, with when it started,
-  for example *Critical — nas-01 — /srv/media is over 95% full — 327.7 GiB free of 8.0 TiB*.
+
+The **Health issues now** list above it reads, for example, *Critical — nas-01 — /srv/media is over 95%
+full — 327.7 GiB free of 8.0 TiB*, with when it started.
 
 Click a host to open its monitoring page ([Host Monitoring](Host-Monitoring.md)).
 

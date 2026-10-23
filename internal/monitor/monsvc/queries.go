@@ -635,11 +635,11 @@ func (s *Service) Overview(ctx context.Context, hostID string) (*HostOverview, e
 		}
 	}
 	if full != nil {
-		t := pct("storage", "Storage", &full.UsedPercent, CheckFilesystem, CheckInodes, CheckFSReadOnly)
+		t := pct("storage", "Disk space", &full.UsedPercent, CheckFilesystem, CheckInodes, CheckFSReadOnly)
 		t.Detail = "Fullest: " + full.Mount
 		o.Tiles = append(o.Tiles, t)
 	} else {
-		o.Tiles = append(o.Tiles, Tile{Key: "storage", Label: "Storage", Text: "Not reported", Status: "unknown",
+		o.Tiles = append(o.Tiles, Tile{Key: "storage", Label: "Disk space", Text: "Not reported", Status: "unknown",
 			Detail: "No local filesystems are visible (in a container, its own storage is an overlay)."})
 	}
 	// Temperature: the hottest CPU sensor, else the hottest sensor.
@@ -735,7 +735,7 @@ func (s *Service) Overview(ctx context.Context, hostID string) (*HostOverview, e
 	}
 	o.Tiles = append(o.Tiles, svc)
 	// Storage devices: the worst judged state.
-	dt := Tile{Key: "devices", Label: "Storage devices", Text: "No data yet", Status: "unknown"}
+	dt := Tile{Key: "devices", Label: "Storage health", Text: "No data yet", Status: "unknown"}
 	if sto != nil && len(sto.Devices) == 0 && sto.Note != "" {
 		dt.Text, dt.Detail = "Not applicable", sto.Note
 	}

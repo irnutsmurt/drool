@@ -1,34 +1,46 @@
 # Monitoring settings
 
-**Monitoring → Health checks and settings** decides what monitoring considers unhealthy, how often
-hosts are observed, how long history is kept, and which helper tools DROOL may install. Most
-installations never need to change anything here.
+**Monitoring → Health checks** decides what monitoring considers unhealthy on every host. Under
+**Advanced** are how often hosts are observed, how long history is kept, the Shepherd resource budget
+and which helper tools DROOL may install. Most installations never need to change anything here.
 
-![Monitoring → Health checks and settings: the Recommended profile, the inheritance chain Recommended → Global → Pack → Host → Device, health overrides, collection intervals, history, the Shepherd resource budget, SSH polling, and helper approvals](images/monitoring-settings.png)
+![Monitoring → Health checks: the health checks for every host with the Recommended profile and the inheritance chain Recommended → Global → Pack → Host → Device, the services watched on every host, the settings of Packs, hosts and devices, and Advanced](images/monitoring-settings.png)
 
 ## Before you start
 
 Everyone can read these settings. Changing them needs **monitoring.settings** (administrators).
 Everything you change is in the audit log.
 
-## Health checks
+## Health checks for every host
 
-**Health checks → Customize** changes a check for the whole fleet. Out of the box every host uses the
-**Recommended** profile: *useful health checks with no configuration. Temperatures use each sensor's
-own hardware limits; high GPU utilization is off.*
+Every check is listed with what it does now and where that comes from; **Customize…** next to one
+changes it for the whole fleet. Out of the box every host uses the **Recommended** profile.
+Temperatures use each sensor's own hardware limits; high GPU utilization is off.
 
 Settings inherit **Recommended → Global → Pack → Host → Device**, and the most specific one wins. How
-to change any level is explained in [Health Overrides](Health-Overrides.md). **Health overrides
-(advanced)** lists every override in the fleet, and the Pack priorities.
+to change any level is explained in [Health Overrides](Health-Overrides.md). The quickest way is often
+from the alert itself: **Adjust when this alerts…**.
+
+Below the checks:
+
+- **Monitored services on every host**: the services DROOL watches everywhere
+  ([Service Monitoring](Service-Monitoring.md)).
+- **Set for Packs, hosts and devices**: every setting made below the fleet level, with where it's set
+  and **Reset…** (it asks first), and each Pack's **monitoring priority**.
 
 This decides what is *unhealthy*. Who gets told about it is separate:
 [Notification Routing](Notification-Routing.md).
 
-## Collection
+## Advanced: collection, history, Shepherd resource budget, SSH polling and helpers
+
+**▸ Advanced** opens the settings about *how* hosts are observed. It stays open in the page's address,
+so a link can lead straight to it.
 
 - **Monitor hosts** — switch monitoring on or off for the whole fleet. *Shepherds stream continuously;
-  SSH hosts are polled.* Several features depend on it: Desired State reads services from monitoring,
-  and workflows' *Verify services* and *Verify health* steps need it.
+  SSH hosts are polled.* Turning it off asks first: once saved, no host is observed, health stays as
+  last seen and is shown as stale, and no new alert opens. Several features depend on it: Desired
+  State reads services from monitoring, and workflows' *Verify services* and *Verify health* steps
+  need it.
 - **Keep hourly history for (days)** — default 30. One-minute values are kept for about a day and
   five-minute averages for eight days.
 
@@ -56,9 +68,9 @@ other operations run outside it. One host can get its own budget on its **Collec
 - **Read SMART and kernel storage messages with sudo where the host allows it** — only during the
   storage health check, *so routine polls don't fill the host's auth log*.
 
-Click **Save monitoring settings**.
+Click **Save collection settings**.
 
-## Monitoring helper approvals
+### Monitoring helper approvals
 
 *A standing approval lets DROOL install an allowlisted helper (smartmontools, nvme-cli, lm-sensors)
 wherever it would add monitoring detail, as a normal package job on your behalf.* Choose the

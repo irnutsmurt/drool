@@ -13,7 +13,7 @@ host key*. The most common reasons:
 |---|---|
 | **The host isn't reachable** (status *Unreachable*, *Host key changed*, *Access denied*, *Needs host key*) | Fix the connection first: [Troubleshooting](Troubleshooting.md#hosts-and-connections) |
 | **The data is too old** | [Monitoring Is Stale](Monitoring-Is-Stale.md) |
-| **Monitoring is off** (Desired State services and workflow checks read monitoring) | **Monitoring → Health checks and settings → Monitor hosts** ([Monitoring Settings](Monitoring-Settings.md#collection)) |
+| **Monitoring is off** (Desired State services and workflow checks read monitoring) | **Monitoring → Health checks → Advanced → Monitor hosts** ([Monitoring Settings](Monitoring-Settings.md#advanced-collection-history-shepherd-resource-budget-ssh-polling-and-helpers)) |
 | **The host was just added** | Wait for the first check (up to 5 minutes for SSH hosts; Desired State checks packages and files every 15 minutes, or click **Check now**) |
 | **The host can't report it** (a virtual disk's health, no sensors in a VM, an SSH host without passwordless sudo for SMART data) | Often normal: see [Storage Health](Storage-Health.md) and [Temperatures](Temperatures.md) |
 | **The host is in maintenance** | Maintenance doesn't stop monitoring, but the reason it's unknown is usually one of the above |

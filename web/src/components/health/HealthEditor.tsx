@@ -30,12 +30,29 @@ function toFields(d: Draft, c: HealthCheck): HealthFields {
   return out as HealthFields;
 }
 
-const scopeWord = { global: "every host", group: "this pack", host: "this host" } as const;
+const scopeWord = { global: "every host", group: "this Pack", host: "this host" } as const;
 
-/** Customize one health check at one scope. Every field is either
- * inherited (shown with its value and where it comes from) or set here;
- * "Reset to inherited" undoes an override without copying any value. */
+/** The fields set most: the rest (when a condition clears, …) are under
+ * More options, open when one of them is set here. */
+const primary = ["enabled", "warning", "critical", "duration_min", "missed_intervals", "expected"];
+
+/** Customize one health check at one scope, in a dialog. */
 export function HealthEditor({ k, check, title, onClose }: { k: OverrideKey; check: HealthCheck; title: string; onClose: () => void }) {
+  return (
+    <Dialog title={title} onClose={onClose} wide>
+      <HealthEditorForm k={k} check={check} onDone={onClose} onCancel={onClose} />
+    </Dialog>
+  );
+}
+
+/** Customize one health check at one scope: in a dialog, or as a step of
+ * one (a Pack's or a device's checks, an alert). Every field is either
+ * inherited (empty, showing the value it inherits and from where) or set
+ * here by typing a value; "Reset to inherited" undoes an override without
+ * copying any value. */
+export function HealthEditorForm({ k, check, onDone, onCancel, cancelLabel }: {
+  k: OverrideKey; check: HealthCheck; onDone: () => void; onCancel: () => void; cancelLabel?: string;
+}) {
   const { can } = useAuth();
   const [draft, setDraft] = useState<Draft>(() => initial(check));
   const put = usePutOverride();
@@ -58,31 +75,37 @@ export function HealthEditor({ k, check, title, onClose }: { k: OverrideKey; che
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, changed, invalid]);
   const edit = k.scope === "host" ? can("monitoring.manage") : can("monitoring.settings");
-  const save = () => put.mutate({ ...k, fields }, { onSuccess: onClose });
+  const save = () => put.mutate({ ...k, fields }, { onSuccess: onDone });
+  const scope = k.subject ? "subject" : k.scope;
+  const main = check.fields.filter((f) => primary.includes(f.name));
+  const more = check.fields.filter((f) => !primary.includes(f.name));
+  const row = (f: HealthField) => <FieldRow key={f.name} f={f} scope={scope} value={draft[f.name]} disabled={!edit} onChange={(v) => setDraft({ ...draft, [f.name]: v })} />;
   return (
-    <Dialog title={title} onClose={onClose} wide>
+    <div data-testid="health-editor">
       <p className="mb-3 text-sm text-muted">{check.description}</p>
       <p className="mb-4 text-xs text-muted">
-        Changes here decide what monitoring considers unhealthy for {k.subject ? "this device" : scopeWord[k.scope]}. Who gets notified is set separately under
+        For {k.subject ? "this device or service" : scopeWord[k.scope]}. Type a value to set it here; leave a field empty to inherit it. Who gets notified is set under
         Settings → Notifications.
       </p>
-      <div className="space-y-3">
-        {check.fields.map((f) => (
-          <FieldRow key={f.name} f={f} scope={k.subject ? "subject" : k.scope} value={draft[f.name]} disabled={!edit} onChange={(v) => setDraft({ ...draft, [f.name]: v })} />
-        ))}
-      </div>
+      <div className="space-y-3">{main.map(row)}</div>
+      {more.length > 0 && (
+        <details className="mt-3" open={more.some((f) => draft[f.name] !== undefined)}>
+          <summary className="cursor-pointer text-sm">More options: {more.map((f) => f.label.toLowerCase()).join(", ")}</summary>
+          <div className="mt-3 space-y-3">{more.map(row)}</div>
+        </details>
+      )}
       {changed && !invalid && (preview.data || preview.isPending) && <Impact p={preview.data} pending={preview.isPending} broad={broad} />}
       {preview.error && <div className="mt-3"><Alert>{errorMessage(preview.error)}</Alert></div>}
       {(put.error || del.error) && <div className="mt-3"><Alert>{errorMessage(put.error ?? del.error)}</Alert></div>}
       <div className="mt-5 flex flex-wrap items-center gap-2">
         {edit && <Button variant="primary" onClick={save} disabled={!changed || invalid || put.isPending}>{put.isPending ? "Saving…" : "Save"}</Button>}
         {edit && check.override_id && (
-          <Button onClick={() => del.mutate(check.override_id!, { onSuccess: onClose })} disabled={del.isPending}>Reset all to inherited</Button>
+          <Button onClick={() => del.mutate(check.override_id!, { onSuccess: onDone })} disabled={del.isPending}>Reset all to inherited</Button>
         )}
-        <Button variant="ghost" onClick={onClose}>{edit ? "Cancel" : "Close"}</Button>
+        <Button variant="ghost" onClick={onCancel}>{cancelLabel ?? (edit ? "Cancel" : "Close")}</Button>
         {!edit && <span className="text-xs text-muted">You can view these settings; changing them needs more permissions.</span>}
       </div>
-    </Dialog>
+    </div>
   );
 }
 
@@ -116,16 +139,12 @@ function FieldRow({ f, scope, value, disabled, onChange }: { f: HealthField; sco
           </Select>
         ) : (
           <>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={custom} disabled={disabled} aria-describedby={`${id}-label`}
-                onChange={(e) => onChange(e.target.checked ? String(f.inherited.value ?? f.min) : undefined)} />
-              Custom
-            </label>
-            <Input type="number" aria-labelledby={`${id}-label`} aria-invalid={bad || undefined} aria-describedby={bad ? `${id}-err` : undefined}
+            <Input type="number" aria-labelledby={`${id}-label`} aria-invalid={bad || undefined} aria-describedby={bad ? `${id}-err` : `${id}-state`}
               className="max-w-[8rem]" min={f.min} max={f.max} step={f.type === "minutes" || f.type === "count" ? 1 : "any"}
-              value={custom ? value : ""} placeholder={f.inherited.value === null ? "—" : String(f.inherited.value)} disabled={disabled || !custom}
-              onChange={(e) => onChange(e.target.value)} />
+              value={custom ? value : ""} placeholder={f.inherited.value === null ? "—" : String(f.inherited.value)} disabled={disabled}
+              onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)} />
             <span className="text-sm text-muted">{f.unit}</span>
+            <span id={`${id}-state`} className="text-xs text-muted">{custom ? "set here" : `inherited: ${inherited}`}</span>
           </>
         )}
         {custom && !disabled && <Button size="sm" variant="ghost" onClick={() => onChange(undefined)}>Reset to inherited</Button>}

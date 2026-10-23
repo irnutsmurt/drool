@@ -152,7 +152,7 @@ export function AgentTab({ id, o }: { id: string; o: MonHostOverview }) {
       {(o.agent || o.state?.agent) && <Budget id={id} o={o} />}
       <Card title="Health checks">
         <p className="text-sm text-muted">
-          Which checks run on this host, and their thresholds, are under <Link className="text-accent" to="?tab=health">Health settings</Link>.
+          Which checks run on this host, and their thresholds, are under <Link className="text-accent" to="?tab=health">Health checks</Link>.
         </p>
       </Card>
       {o.agent?.connected && can("monitoring.manage") && <Diagnostics id={id} />}

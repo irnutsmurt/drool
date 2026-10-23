@@ -6,6 +6,8 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Field";
+import { GuideLink } from "@/components/ui/GuideLink";
+import { errorMessage } from "@/lib/format";
 
 type Expected = "running" | "stopped" | "ignored";
 const labels: Record<Expected, string> = { running: "Running", stopped: "Stopped", ignored: "Ignored" };
@@ -41,7 +43,7 @@ export function ExpectedServicesCard({ scope, groupId }: { scope: "group" | "glo
     onSuccess: () => { setUnit(""); done(); },
   });
   const items = (list.data?.items ?? []).filter((o) => o.fields.expected);
-  const where = scope === "group" ? "this pack's hosts" : "every host";
+  const where = scope === "group" ? "this Pack's hosts" : "every host";
   function add(e: FormEvent) {
     e.preventDefault();
     // Added: the cleared field takes the focus (Add stays disabled until it
@@ -51,14 +53,11 @@ export function ExpectedServicesCard({ scope, groupId }: { scope: "group" | "glo
   return (
     <Card title={scope === "group" ? "Monitored services" : "Monitored services on every host"} className="mb-4">
       <p className="mb-3 text-sm text-muted">
-        Services DROOL monitors on {where}, and the state each should be in. <strong>Running</strong>: stopped, failed or missing is a health
-        issue. <strong>Stopped</strong>: running is. <strong>Ignored</strong>: never alerts there, even where {scope === "global" ? "a pack" : "every host"} monitors it.
-        A service nobody monitors is listed with its state and never alerts. A host&apos;s own setting (its Services tab) beats this
-        {scope === "global" ? ", and so does a pack's" : "; packs that disagree follow their monitoring priority"}. Starting or stopping a
-        service never changes it.
+        Services watched on {where}, and the state each should be in; a host&apos;s own setting{scope === "global" ? " or a Pack's" : ""} wins.{" "}
+        <GuideLink page="Service-Monitoring">How monitored services work</GuideLink>
       </p>
-      {list.error && <Alert>{String(list.error)}</Alert>}
-      {items.length === 0 ? <p className="text-sm text-muted">No services set{scope === "group" ? " for this pack" : ""}.</p> : (
+      {list.error ? <Alert>{errorMessage(list.error)}</Alert> : list.isLoading ? <p className="text-sm text-muted">Loading…</p>
+        : items.length === 0 ? <p className="text-sm text-muted">None{scope === "group" ? " for this Pack" : ""}: a service nobody watches is listed with its state and never alerts.</p> : (
         <ul className="divide-y divide-line text-sm" aria-label={`Monitored services on ${where}`}>
           {items.map((o) => {
             const name = o.subject_label || (o.subject ?? "").replace(/^unit:/, "");

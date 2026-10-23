@@ -7,7 +7,7 @@ export function MonitoringTabs() {
   return (
     <LocalNav label="Monitoring" tabs={[
       { to: "/monitoring", label: "Fleet health", current: pathname === "/monitoring" },
-      { to: "/monitoring/settings", label: "Health checks and settings", current: pathname === "/monitoring/settings" },
+      { to: "/monitoring/settings", label: "Health checks", current: pathname === "/monitoring/settings" },
     ]} />
   );
 }

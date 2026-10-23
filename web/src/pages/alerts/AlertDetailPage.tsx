@@ -5,6 +5,7 @@ import { Alert as Notice } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Dialog } from "@/components/ui/Dialog";
 import { secondaryLink } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -13,6 +14,7 @@ import { fmtTime } from "@/components/monitoring/format";
 import { useAcknowledge, useAlert, type AlertDetail, type Delivery } from "@/components/alerts/queries";
 import { MaintenanceDialog } from "@/components/alerts/MaintenanceDialog";
 import { IgnoreDialog } from "@/components/alerts/AlertActions";
+import { AlertRulePanel, ruleText, useAlertRule } from "@/components/alerts/AlertRule";
 import { ServiceActionsDialog, useServiceFix } from "@/components/monitoring/ServiceActions";
 import { AlertSeverity, AlertStateBadge, alertMonitoringLink, categoryLabel, checkLabel, clearedBy, fmtDuration, NotificationBadge, resolutionWord, untilText } from "@/components/alerts/ui";
 
@@ -108,7 +110,7 @@ function Facts({ d }: { d: AlertDetail }) {
       {d.issue && (
         <p className="mt-3 text-xs text-muted">
           Source: health issue {d.issue.state === "active" ? "still active" : `resolved ${fmtTime(d.issue.resolved_at)}`} ·{" "}
-          <Link className="text-accent" to={`/hosts/${a.host_id}/monitoring`}>monitoring</Link>
+          <Link className="text-accent" to={alertMonitoringLink(a).to}>{alertMonitoringLink(a).label.toLowerCase()}</Link>
         </p>
       )}
     </Card>
@@ -155,11 +157,22 @@ function Quieter({ d }: { d: AlertDetail }) {
   const a = d.alert;
   const [snooze, setSnooze] = useState(false);
   const [ignore, setIgnore] = useState(false);
+  const [adjust, setAdjust] = useState(false);
+  const rule = useAlertRule(a, a.state !== "resolved");
   if (a.state === "resolved") return null;
   const service = serviceChecks.has(a.check);
   return (
     <Card title="Quieter, for a while or for good">
       <dl className="space-y-2 text-sm" data-testid="alert-quieter">
+        {rule.check && (
+          <div>
+            <dt className="font-medium">Adjust when it alerts</dt>
+            <dd className="text-xs text-muted">
+              If the threshold is wrong for {a.subject || a.host_name}: now {ruleText(rule.check)}. Change it for {rule.subject ? `${rule.subject.label}, ` : ""}{a.host_name},
+              one of its Packs or every host. <button type="button" className="text-accent underline" onClick={() => setAdjust(true)}>Adjust when this alerts…</button>
+            </dd>
+          </div>
+        )}
         <div>
           <dt className="font-medium">Acknowledge</dt>
           <dd className="text-xs text-muted">You've seen it: no more reminders. It stays open until the condition recovers.</dd>
@@ -181,13 +194,18 @@ function Quieter({ d }: { d: AlertDetail }) {
                 nothing alerts.</>
             ) : (
               <>If this is how {a.host_name} is meant to be: turn this check off for it, on {a.host_name} only (its{" "}
-                <Link className="text-accent underline" to={`/hosts/${a.host_id}/monitoring`}>health settings</Link>). Then it isn&apos;t a problem, and nothing alerts.</>
+                <Link className="text-accent underline" to={`/hosts/${a.host_id}/monitoring?tab=health`}>health checks</Link>). Then it isn&apos;t a problem, and nothing alerts.</>
             )}
             {can("monitoring.manage") && <> <button type="button" className="text-accent underline" onClick={() => setIgnore(true)}>Ignore…</button></>}
           </dd>
         </div>
       </dl>
       {snooze && <MaintenanceDialog hostIds={[a.host_id]} defaultReason={`Snoozed: ${a.title}`} onClose={() => setSnooze(false)} />}
+      {adjust && (
+        <Dialog title={`When it alerts: ${a.title}`} onClose={() => setAdjust(false)} wide>
+          <AlertRulePanel a={a} onDone={() => setAdjust(false)} onCancel={() => setAdjust(false)} />
+        </Dialog>
+      )}
       {ignore && <IgnoreDialog a={a} onClose={() => setIgnore(false)} />}
     </Card>
   );

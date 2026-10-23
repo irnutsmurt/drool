@@ -29,7 +29,7 @@ export function HardwareTab({ o }: { o: MonHostOverview }) {
             <thead><tr className="border-b border-line text-xs text-muted">
               <th className="py-1 font-medium">Sensor</th><th className="py-1 font-medium">Type</th><th className="py-1 font-medium">Now</th>
               <th className="py-1 font-medium">High</th><th className="py-1 font-medium">Critical</th><th className="py-1 font-medium">State</th>
-              <th className="py-1"><span className="sr-only">Health settings</span></th>
+              <th className="py-1"><span className="sr-only">Health checks</span></th>
             </tr></thead>
             <tbody>
               {sensors.map((s) => (

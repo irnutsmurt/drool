@@ -56,11 +56,11 @@ test("host overview: headline tiles link to details; unknown is never zero", asy
   let t = await text(page);
   // Services counts what is monitored (jellyfin and smbd, the fixture's);
   // the failed backup.service nobody monitors is a note, not a problem.
-  for (const want of ["CPU", "Memory", "Storage", "Temperature", "Network", "Services", "Storage devices", "Active health issues",
+  for (const want of ["CPU", "Memory", "Disk space", "Temperature", "Network", "Services", "Storage health", "Active health issues",
     "2/2 monitored as expected", "1 failed, not monitored."]) {
     assert.ok(t.includes(want), `host page shows ${want}`);
   }
-  await click(page, "main a", "Storage devices");
+  await click(page, "main a", "Storage health");
   await waitFor(page, async () => page.url().includes("tab=storage"), "storage tab");
   // A container host over SSH: values it can't know say so.
   await go(`/hosts/${page.ids["old-vm"]}/monitoring`);
@@ -304,13 +304,27 @@ test("bulk: helpers and Shepherd (agent) conversion previews", async () => {
   assert.deepEqual(page.errors, []);
 });
 
-test("settings: the Recommended health profile and saving fleet settings", async () => {
+test("settings: health checks first; collection under Advanced, saved there", async () => {
   // Thresholds are health overrides since M12.1 (web/e2e/health.test.mjs);
-  // the fleet's sampling and retention settings still save here.
+  // the fleet's sampling and retention settings save under Advanced.
   await go("/monitoring/settings");
-  await waitText(page, "Health checks");
-  assert.match(await text(page), /Recommended profile/);
-  await click(page, "button", "Save monitoring settings");
+  await waitText(page, "Health checks for every host");
+  let t = await text(page);
+  assert.match(t, /Recommended profile/);
+  assert.match(t, /Monitored services on every host/);
+  assert.doesNotMatch(t, /Keep hourly history|Default Shepherd resource budget|Poll every/, "technical settings in the default view");
+  await click(page, "button", "▸ Advanced: collection, history, Shepherd resource budget, SSH polling and helpers");
+  await waitFor(page, async () => new URL(page.url()).searchParams.get("advanced") === "1", "kept in the address");
+  await waitText(page, "Keep hourly history for (days)");
+  t = await text(page);
+  assert.match(t, /Default Shepherd resource budget/);
+  assert.match(t, /Helper|helper/);
+  // Turning monitoring off for every host asks first; Cancel changes nothing.
+  await click(page, "label", "Monitor hosts (Shepherds stream continuously; SSH hosts are polled)");
+  await waitText(page, "Stop monitoring every host?");
+  await click(page, '[role="dialog"] button', "Cancel");
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll("label")].find((l) => l.innerText.startsWith("Monitor hosts")).querySelector("input").checked), true, "still on");
+  await click(page, "button", "Save collection settings");
   await waitText(page, "Saved and sent to connected Shepherds");
   assert.deepEqual(page.errors, []);
 });

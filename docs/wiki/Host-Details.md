@@ -53,7 +53,7 @@ The header is the same in every section of the host:
 | Part | What it shows | Details |
 |---|---|---|
 | **Needs attention** | Everything about this host that wants a person, most serious first, for example *Desired State: 2 drifted*, each with a link. When there's nothing, it says *Nothing needs attention on this host right now.* | — |
-| **Health now** | Tiles for CPU, Memory, Storage, Temperature, Network, Services, Storage devices and Active health issues, how the host is monitored (*Polled over SSH every 5 min* or *Continuous: the Shepherd samples every 10 s*), pending updates, whether a reboot is required, the last status check, and uptime | **Services →**, **Monitoring →** ([Host Monitoring](Host-Monitoring.md)) |
+| **Health now** | Tiles for CPU, Memory, Disk space, Temperature, Network, Services, Storage health and Active health issues, how the host is monitored (*Polled over SSH every 5 min* or *Continuous: the Shepherd samples every 10 s*), pending updates, whether a reboot is required, the last status check, and uptime | **Services →**, **Monitoring →** ([Host Monitoring](Host-Monitoring.md)) |
 | **Alerts** | Open alerts for this host; **History**; **Start maintenance** | [Understanding Alerts](Understanding-Alerts.md), [Maintenance Mode](Maintenance-Mode.md) |
 | **Desired State** | Whether the host matches its baselines, and what differs | **Open →** ([Drift](Drift.md)) |
 | **Firewall** | The firewall status and mode, and whether DROOL filters this host | **Open →** ([Firewall Modes](Firewall-Modes.md)) |

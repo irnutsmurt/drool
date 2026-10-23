@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
-import { useParams, useSearchParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 import { useHost } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { cx } from "@/components/ui/cx";
+import { TabPanel, Tabs } from "@/components/ui/Tabs";
 import { errorMessage } from "@/lib/format";
 import { MonitoringTiles, fidelityText } from "@/components/monitoring/HostMonitoringSummary";
 import { HostMaintenanceBanner } from "@/components/alerts/HostAlerts";
@@ -19,6 +19,7 @@ import { StorageTab } from "./StorageTab";
 import { HardwareTab } from "./HardwareTab";
 import { AgentTab } from "./AgentTab";
 import { HostHealthPanel } from "@/components/health/HostHealth";
+import { issueLink } from "@/components/monitoring/links";
 
 const tabs = [
   // "Summary": the workspace already has an Overview (old links keep ?tab=overview).
@@ -27,7 +28,7 @@ const tabs = [
   { key: "services", label: "Services" },
   { key: "storage", label: "Storage health" },
   { key: "hardware", label: "Sensors & GPU" },
-  { key: "health", label: "Health settings" },
+  { key: "health", label: "Health checks" },
   { key: "agent", label: "Collection & helpers" },
 ] as const;
 
@@ -44,14 +45,7 @@ export function HostMonitoringPage() {
     p.set("tab", t);
     return p;
   }, { replace: true });
-  const onKey = (e: React.KeyboardEvent, i: number) => {
-    const n = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : -2;
-    if (n === -2) return;
-    e.preventDefault();
-    const k = tabs[(n + tabs.length) % tabs.length]!.key;
-    setTab(k);
-    document.getElementById(`montab-${k}`)?.focus();
-  };
+  const current = (tabs.find((t) => t.key === tab) ?? tabs[0]).key;
   return (
     <>
       <SectionHeader
@@ -68,19 +62,13 @@ export function HostMonitoringPage() {
       {can("alerts.read") && <HostMaintenanceBanner hostId={id} />}
       {mon.error && <Alert>{errorMessage(mon.error)}</Alert>}
       {o?.stale && <div className="mb-4"><Alert tone="warn">No monitoring data since {fmtTime(o.updated_at)}. The host may be unreachable; values are from before.</Alert></div>}
-      {/* The section's own views: pills, a level below the host's sections. */}
-      <div role="tablist" aria-label="Monitoring" className="mb-4 flex flex-wrap gap-1">
-        {tabs.map((t, i) => (
-          <button key={t.key} id={`montab-${t.key}`} role="tab" type="button" aria-selected={tab === t.key} aria-controls="monpanel"
-            tabIndex={tab === t.key ? 0 : -1} onKeyDown={(e) => onKey(e, i)} onClick={() => setTab(t.key)}
-            className={cx("rounded-ui border px-3 py-1 text-sm", tab === t.key ? "border-accent bg-accent/15 font-medium text-fg" : "border-line text-muted hover:bg-surface-2 hover:text-fg")}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <div id="monpanel" role="tabpanel" aria-labelledby={`montab-${tab}`}>
-        {!o ? <p className="text-sm text-muted">Loading…</p> : <Panel tab={tab} id={id} o={o} hostName={host.data?.name ?? id} />}
-      </div>
+      {/* The section's own views, a level below the host's sections; on a
+          phone the row scrolls sideways (local navigation, §6). */}
+      <Tabs label="Monitoring views" id="mon" small className="-mx-1 mb-4 overflow-x-auto px-1" current={current}
+        tabs={tabs.map((t) => ({ key: t.key, label: t.label }))} onSelect={setTab} />
+      <TabPanel id="mon" current={current}>
+        {!o ? (!mon.error && <p className="text-sm text-muted">Loading…</p>) : <Panel tab={current} id={id} o={o} hostName={host.data?.name ?? id} />}
+      </TabPanel>
     </>
   );
 }
@@ -130,6 +118,7 @@ function OverviewTab({ id, o }: { id: string; o: MonHostOverview }) {
                   {i.detail && <div className="text-xs text-muted">{i.detail}</div>}
                 </div>
                 <span className="text-xs text-muted">since {fmtTime(i.started_at)}</span>
+                <Link className="basis-full text-xs text-accent sm:basis-auto" to={issueLink({ ...i, host_id: id }).to}>{issueLink({ ...i, host_id: id }).label}</Link>
               </li>
             ))}
           </ul>

@@ -10,7 +10,8 @@ import { Dialog } from "@/components/ui/Dialog";
 import { plainLink } from "@/components/ui/links";
 import { errorMessage } from "@/lib/format";
 import { useHostHealth } from "@/components/health/queries";
-import { SubjectHealthDialog } from "@/components/health/HostHealth";
+import { SubjectHealthPanel } from "@/components/health/HostHealth";
+import type { HealthCheck } from "@/components/health/queries";
 import { useServices, type MonService } from "./queries";
 
 type Action = MonService["actions"][number];
@@ -284,6 +285,7 @@ export function ServiceMonitorDialog({ hostId, hostName, unit, onClose }: { host
   const own = !!unit.expected_source?.override_id;
   const [value, setValue] = useState<"" | Expected>(own ? (unit.expected as Expected) : "");
   const [timing, setTiming] = useState(false);
+  const [editing, setEditing] = useState<HealthCheck>();
   const health = useHostHealth(hostId, undefined, can("monitoring.read"));
   const subject = (health.data?.subjects ?? []).find((x) => x.kind === "service" && x.ref === unit.name);
   const save = useMutation({
@@ -308,6 +310,17 @@ export function ServiceMonitorDialog({ hostId, hostName, unit, onClose }: { host
   ];
   const write = can("monitoring.manage");
   const current = own ? `${expectedName[unit.expected as Expected]}, set on this host` : unit.expected ? `${expectedName[unit.expected as Expected]}, ${unit.expected_source?.label}` : unit.expected_source ? `not monitored: ${unit.expected_source.label}` : "not monitored";
+  // How long before it alerts: the dialog's next step (its health checks,
+  // then one check's editor), never a dialog on top.
+  if (timing && subject) {
+    return (
+      <Dialog title={editing ? `${editing.label}: ${unit.name}` : `Health checks: ${unit.name} on ${hostName}`} onClose={onClose} wide
+        onBack={() => (editing ? setEditing(undefined) : setTiming(false))} backLabel={editing ? `Back to ${unit.name}'s checks` : `Back to monitoring ${unit.name}`}
+        step={editing ? `edit:${editing.check}` : "checks"}>
+        <SubjectHealthPanel hostId={hostId} subject={subject} editing={editing} onEdit={setEditing} />
+      </Dialog>
+    );
+  }
   return (
     <Dialog title={`Monitoring ${unit.name} on ${hostName}`} onClose={onClose}>
       <form className="space-y-4 text-sm" data-testid="service-monitor" onSubmit={(e) => { e.preventDefault(); save.mutate(value); }}>
@@ -346,7 +359,6 @@ export function ServiceMonitorDialog({ hostId, hostName, unit, onClose }: { host
           {write && <Button type="submit" variant="primary" disabled={save.isPending || value === (own ? unit.expected : "")}>{save.isPending ? "Saving…" : "Save"}</Button>}
         </div>
       </form>
-      {timing && subject && <SubjectHealthDialog hostId={hostId} subject={subject} onClose={() => setTiming(false)} />}
     </Dialog>
   );
 }

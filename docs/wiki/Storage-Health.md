@@ -74,7 +74,7 @@ The **Collection & helpers** tab of a host says which tools would add informatio
 **Install** next to a helper shows exactly what would be installed, then runs an ordinary package run
 (audited, in **Runs**). On **Monitoring** you can select several hosts and choose **Install
 recommended helpers**. An administrator can also give a *standing approval* under **Monitoring →
-Health checks and settings → Monitoring helper approvals** (for every host, or one Pack): DROOL then
+Health checks → Advanced → Monitoring helper approvals** (for every host, or one Pack): DROOL then
 installs a needed helper once per host by itself. DROOL never uninstalls helpers and never installs
 GPU drivers.
 

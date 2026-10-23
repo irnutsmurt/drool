@@ -18,7 +18,7 @@ separate topic ([Storage Health](Storage-Health.md)).
 
 | Check | Recommended setting |
 |---|---|
-| **Filesystem space** | Warning at 85% full, critical at 95%. Two readings in a row decide it, so a short burst of temporary files doesn't count |
+| **Disk space** | Warning at 85% full, critical at 95%. Two readings in a row decide it, so a short burst of temporary files doesn't count |
 | **Filesystem inodes** | Warning at 90%, critical at 97% of inodes used (a filesystem out of inodes can't create files even with free space) |
 | **Filesystem turned read-only** | A filesystem that was writable earlier in this boot became read-only, usually because the kernel hit errors on the disk |
 
@@ -28,8 +28,8 @@ free of 8.0 TiB"*.
 ## Different thresholds for different filesystems
 
 A media library that's meant to be nearly full shouldn't warn at 85%, but the root filesystem should.
-Click **Customize health check** next to that filesystem (on **Metrics**, or on the **Health settings**
-tab) and set, for example, warning 92% and critical 98% for `/srv/media` only, while `/` keeps 85% and
+Click **Customize health check** next to that filesystem (on **Metrics**, or on the **Health checks**
+tab), or **Adjust when this alerts…** on its alert, and set, for example, warning 92% and critical 98% for `/srv/media` only, while `/` keeps 85% and
 95%. DROOL recognises the filesystem by its UUID, so the setting stays with it even if it's mounted
 elsewhere later. See [Health Overrides](Health-Overrides.md).
 

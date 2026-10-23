@@ -269,7 +269,7 @@ test("the Overview and the Monitoring page show alert counts and recent events",
   await waitText(page, "Alerts:");
   t = await text(page);
   assert.match(t, /\d+ critical/);
-  assert.match(t, /Warning and Critical health issues become alerts/);
+  assert.match(t, /Warning and Critical issues become alerts/);
   assert.deepEqual(page.errors, []);
 });
 

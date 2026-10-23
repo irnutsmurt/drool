@@ -14,20 +14,24 @@ export const categoryLabel: Record<string, string> = {
   temperature: "Temperature", gpu: "GPU", stale: "Unreachable / stale", fidelity: "Monitoring fidelity",
 };
 
+/** The server's names for the health checks (monsvc/policy.go), for
+ * people who can read alerts but not monitoring settings. */
 export const checkLabel: Record<string, string> = {
-  cpu: "Sustained CPU", memory: "Memory pressure", filesystem: "Filesystem space", inodes: "Inodes", filesystem_readonly: "Filesystem read-only",
-  device_readonly: "Device read-only", service_failed: "Service failed", service_stopped: "Watched service stopped", interface_down: "Interface down",
-  temperature: "Temperature", storage_health: "Storage health", media_errors: "Media errors", kernel_storage: "Kernel storage errors",
-  probe: "Write/read probe", stale: "No monitoring data", fidelity: "Reduced fidelity", gpu_utilization: "High GPU utilization",
+  cpu: "High CPU utilization", memory: "Memory pressure", filesystem: "Disk space", inodes: "Filesystem inodes", filesystem_readonly: "Filesystem turned read-only",
+  device_readonly: "Device turned read-only", storage_health: "Disk health (SMART / NVMe)", media_errors: "New media errors", kernel_storage: "Kernel storage errors",
+  probe: "Write/read probe", service_expected: "Expected state", service_failed: "Service failed", service_stopped: "Service not running",
+  service_unexpected: "Service running unexpectedly", interface_down: "Network interface down", temperature: "Temperature", gpu_utilization: "High GPU utilization",
+  stale: "No monitoring data", fidelity: "Reduced monitoring fidelity",
 };
 
 /** Where an alert's subject is looked at on its host: a failed service
  * among the host's services (found and highlighted, as from the search),
- * storage and hardware on their tabs, anything else the monitoring summary. */
+ * CPU, memory, disk space and interfaces with their charts (Metrics),
+ * storage health and hardware on their tabs, anything else the summary. */
 export function alertMonitoringLink(a: Alert): { to: string; label: string } {
   const base = `/hosts/${a.host_id}/monitoring`;
   if (a.category === "services" && a.subject) return { to: `${base}?tab=services&unit=${encodeURIComponent(a.subject)}`, label: `View ${a.subject}` };
-  const tab = ({ services: "services", storage: "storage", temperature: "hardware", gpu: "hardware" } as Record<string, string>)[a.category ?? ""];
+  const tab = ({ services: "services", storage: "storage", temperature: "hardware", gpu: "hardware", cpu: "metrics", memory: "metrics", disk: "metrics", network: "metrics" } as Record<string, string>)[a.category ?? ""];
   return { to: tab ? `${base}?tab=${tab}` : base, label: "View monitoring" };
 }
 

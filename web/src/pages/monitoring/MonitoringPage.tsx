@@ -9,7 +9,8 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { cx } from "@/components/ui/cx";
 import { errorMessage } from "@/lib/format";
-import { useFleet, type MonFleetHost } from "@/components/monitoring/queries";
+import { useFleet, type MonFleet, type MonFleetHost } from "@/components/monitoring/queries";
+import { issueLink } from "@/components/monitoring/links";
 import { deviceHealth, HealthBadge, SeverityBadge, StatusBadge } from "@/components/monitoring/Status";
 import { fmtPct, fmtSince, fmtTemp } from "@/components/monitoring/format";
 import { HelperInstallDialog } from "@/components/monitoring/HelperInstall";
@@ -86,6 +87,7 @@ export function MonitoringPage() {
           {Object.keys(as.maintenance).length > 0 && <span className="text-muted"> · {Object.keys(as.maintenance).length} host{Object.keys(as.maintenance).length === 1 ? "" : "s"} in maintenance</span>}
         </p>
       )}
+      <FleetIssues issues={d?.issues} f={f} />
       <FleetFilters category={category} counts={d?.counts} hosts={d?.hosts} setCat={setCat} q={q}
         reset={() => { setQ(""); setCat("all"); }} />
       <Card>
@@ -133,10 +135,10 @@ export function MonitoringPage() {
                 <th className="px-2 py-1 font-medium">Monitoring</th>
                 <th className="px-2 py-1 font-medium">CPU</th>
                 <th className="px-2 py-1 font-medium">Memory</th>
-                <th className="px-2 py-1 font-medium">Disk</th>
+                <th className="px-2 py-1 font-medium">Disk space</th>
                 <th className="px-2 py-1 font-medium">Temp.</th>
                 <th className="px-2 py-1 font-medium">Services</th>
-                <th className="px-2 py-1 font-medium">Storage devices</th>
+                <th className="px-2 py-1 font-medium">Storage health</th>
                 <th className="px-2 py-1 font-medium">Updated</th>
               </tr>
             </thead>
@@ -166,13 +168,13 @@ export function MonitoringPage() {
                   </td>
                   <td data-label="CPU" className="px-2 py-1.5 tabular-nums">{fmtPct(r.cpu)}</td>
                   <td data-label="Memory" className="px-2 py-1.5 tabular-nums">{fmtPct(r.memory)}</td>
-                  <td data-label="Disk" className="px-2 py-1.5 tabular-nums">{fmtPct(r.disk)}{r.disk_mount && <span className="text-xs text-muted"> {r.disk_mount}</span>}</td>
+                  <td data-label="Disk space" className="px-2 py-1.5 tabular-nums">{fmtPct(r.disk)}{r.disk_mount && <span className="text-xs text-muted"> {r.disk_mount}</span>}</td>
                   <td data-label="Temperature" className="px-2 py-1.5 tabular-nums">{fmtTemp(r.temperature)}</td>
                   <td data-label="Services" className="px-2 py-1.5 tabular-nums">
                     {r.services === 0 ? "—" : r.service_issues ? <span className="text-danger">✕ {r.service_issues} monitored {r.service_issues === 1 ? "problem" : "problems"}</span> : `${r.services} listed`}
                     {r.failed_services > 0 && !r.service_issues && <div className="text-xs text-muted">{r.failed_services} failed, not alerting</div>}
                   </td>
-                  <td data-label="Storage devices" className="px-2 py-1.5">{r.storage ? <StatusBadge status={deviceHealth[r.storage]?.status ?? "unknown"}>{deviceHealth[r.storage]?.word ?? r.storage}</StatusBadge> : "—"}</td>
+                  <td data-label="Storage health" className="px-2 py-1.5">{r.storage ? <StatusBadge status={deviceHealth[r.storage]?.status ?? "unknown"}>{deviceHealth[r.storage]?.word ?? r.storage}</StatusBadge> : "—"}</td>
                   <td data-label="Updated" className="px-2 py-1.5 text-xs text-muted">{r.updated_at ? fmtSince(r.updated_at) : "never"}</td>
                 </tr>
               ))}
@@ -187,28 +189,42 @@ export function MonitoringPage() {
           </div>
         )}
       </Card>
-      <Card title="Active health issues" className="mt-4">
-        {(d?.issues ?? []).length === 0 ? <p className="text-sm text-muted">{emptyText("health issues", f, "None.")}</p> : (
-          <ul className="divide-y divide-line">
-            {d!.issues.map((i) => (
-              <li key={i.id} className="flex flex-wrap items-start gap-2 py-2 text-sm">
-                <SeverityBadge severity={i.severity} />
-                <Link className="text-accent" to={`/hosts/${i.host_id}/monitoring`}>{i.host_name}</Link>
-                <span className="min-w-0 flex-1">{i.title}{i.detail && <span className="block text-xs text-muted">{i.detail}</span>}</span>
-                <span className="text-xs text-muted">{fmtSince(i.started_at)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="mt-2 text-xs text-muted">
-          What counts as an issue is set under <Link className="text-accent" to="/monitoring/settings">Health checks and settings</Link>.
-          Warning and Critical health issues become <Link className="text-accent" to="/alerts">alerts</Link>, which notify the destinations set up under{" "}
-          <Link className="text-accent" to="/settings/notifications">Settings → Notifications</Link>. Informational issues are shown here only.
-        </p>
-      </Card>
       {dialog === "helpers" && <HelperInstallDialog hostIds={[...sel]} onClose={() => setDialog("")} />}
       {dialog === "convert" && <ConvertDialog hostIds={[...sel]} onClose={() => setDialog("")} />}
     </>
+  );
+}
+
+/** The health issues now, before the table: problems first, each linking to
+ * where its subject is shown; informational notices about collection
+ * (reduced fidelity) grouped apart, since nothing is wrong. */
+function FleetIssues({ issues, f }: { issues?: MonFleet["issues"]; f: { isLoading: boolean; error: unknown } }) {
+  const all = issues ?? [];
+  const problems = all.filter((i) => i.severity !== "info");
+  const notices = all.filter((i) => i.severity === "info");
+  const row = (i: MonFleet["issues"][number]) => (
+    <li key={i.id} className="flex flex-wrap items-start gap-2 py-2 text-sm">
+      <SeverityBadge severity={i.severity} />
+      <Link className="text-accent" to={issueLink(i).to}>{i.host_name}</Link>
+      <span className="min-w-0 flex-1">{i.title}{i.detail && <span className="block text-xs text-muted">{i.detail}</span>}</span>
+      <span className="text-xs text-muted">{fmtSince(i.started_at)}</span>
+    </li>
+  );
+  return (
+    <Card title={`Health issues now${problems.length ? ` (${problems.length})` : ""}`} className="mb-4">
+      {problems.length === 0 ? <p className="text-sm text-muted">{emptyText("health issues", f, "None: every host that reports is healthy.")}</p>
+        : <ul className="divide-y divide-line" data-testid="fleet-issues">{problems.map(row)}</ul>}
+      {notices.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-sm text-muted">{notices.length} notice{notices.length === 1 ? "" : "s"} about collection (informational: nothing is wrong)</summary>
+          <ul className="divide-y divide-line">{notices.map(row)}</ul>
+        </details>
+      )}
+      <p className="mt-2 text-xs text-muted">
+        What counts as an issue: <Link className="text-accent" to="/monitoring/settings">Health checks</Link>. Warning and Critical issues become{" "}
+        <Link className="text-accent" to="/alerts">alerts</Link>.
+      </p>
+    </Card>
   );
 }
 

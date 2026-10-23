@@ -16,6 +16,7 @@ import { MaintenanceForm } from "./MaintenanceDialog";
 import { ServiceActionsDialog, useServiceFix } from "@/components/monitoring/ServiceActions";
 import { AlertSeverity, AlertStateBadge, MaintenanceNote, NotificationBadge, alertMonitoringLink, categoryLabel } from "./ui";
 import { alertKeys, useAcknowledge, type Alert } from "./queries";
+import { AlertRulePanel, ruleText, useAlertRule } from "./AlertRule";
 
 type IgnoreOption = Schemas["AlertIgnoreOptions"]["options"][number];
 
@@ -59,14 +60,16 @@ function Choice({ title, help, onClick, disabled, note }: { title: string; help:
  * view. */
 export function AlertInspector({ a, onClose }: { a: Alert; onClose: () => void }) {
   const c = useCanAct(a);
-  const [step, setStep] = useState<"menu" | "ack" | "snooze" | "ignore" | "service">("menu");
+  const [step, setStep] = useState<"menu" | "ack" | "snooze" | "ignore" | "service" | "rule">("menu");
   const back = () => setStep("menu");
   const open = a.state !== "resolved";
   // A service alert offers what fixes it (start, restart or stop the unit),
   // reviewed and followed in this panel.
   const fix = useServiceFix(a.host_id, a.category === "services" ? a.subject : undefined, a.check, open);
+  // The health check behind it, to adjust when it alerts.
+  const rule = useAlertRule(a, open);
   const title = step === "ack" ? `Acknowledge: ${a.title}` : step === "snooze" ? `Snooze: ${a.title}` : step === "ignore" ? `Ignore: ${a.title}`
-    : step === "service" && fix ? `${fix.label.replace(/…$/, "")} on ${a.host_name}` : a.title;
+    : step === "service" && fix ? `${fix.label.replace(/…$/, "")} on ${a.host_name}` : step === "rule" ? `When it alerts: ${a.title}` : a.title;
   return (
     <Inspector title={title} onClose={onClose} onBack={step === "menu" ? undefined : back} testId="alert-inspector"
       subtitle={<span className="inline-flex flex-wrap items-center gap-2"><AlertSeverity severity={a.severity} /><AlertStateBadge a={a} /><span>{a.host_name}</span></span>}>
@@ -75,6 +78,7 @@ export function AlertInspector({ a, onClose }: { a: Alert; onClose: () => void }
         : step === "snooze" ? <MaintenanceForm hostIds={[a.host_id]} defaultReason={`Snoozed: ${a.title}`} onClose={back} onDone={onClose} cancelLabel="Back" />
           : step === "ignore" ? <IgnoreForm a={a} onBack={back} onClose={onClose} />
             : step === "service" && fix ? <ServiceActionsDialog hostId={a.host_id} hostName={a.host_name} unit={fix.unit} initial={fix.action} inline onClose={back} />
+            : step === "rule" ? <AlertRulePanel a={a} onDone={back} onCancel={back} cancelLabel="Back" />
             : (
               <div className="space-y-5 text-sm">
                 <dl className="grid grid-cols-[minmax(6.5rem,8rem)_1fr] gap-y-1.5" data-testid="alert-summary">
@@ -98,10 +102,14 @@ export function AlertInspector({ a, onClose }: { a: Alert; onClose: () => void }
                         <Choice title="Acknowledge…" disabled={!c.ack} onClick={() => setStep("ack")}
                           help="You've seen it: no more reminders. It stays open until the condition recovers." />
                       )}
+                      {rule.check && (
+                        <Choice title="Adjust when this alerts…" onClick={() => setStep("rule")}
+                          help={<>Now: {ruleText(rule.check)}. Change it for {rule.subject ? `${rule.subject.label}, ` : ""}{a.host_name}, one of its Packs or every host.</>} />
+                      )}
                       <Choice title="Snooze…" disabled={!c.snooze} onClick={() => setStep("snooze")}
                         help={<>Maintenance for {a.host_name} until a time you choose: no notifications meanwhile, health is still recorded, and what is still wrong when it ends is notified then.</>} />
                       <Choice title="Ignore…" disabled={!c.ignore} onClick={() => setStep("ignore")}
-                        help="If it's meant to be this way: change the health setting behind it, so it isn't a problem any more. The alert closes as cleared, not recovered." />
+                        help="If it's meant to be this way: turn the check off here, or change what DROOL expects, so it isn't a problem any more. The alert closes as cleared, not recovered." />
                     </ul>
                     {!(c.ack && c.snooze && c.ignore) && <p className="mt-2 text-xs text-muted">Greyed out: your role can&apos;t do that.</p>}
                   </section>
