@@ -132,6 +132,10 @@ test("maintenance from a host page: banner, suppressed alerts, end", async () =>
 });
 
 test("notifications: empty state, add a webhook, test it, save; advanced routing", async () => {
+  // old-vm's stale alert opens before there is any destination, so nobody
+  // was told about it: the failing destination's test below needs one.
+  await waitFor(page, async () => (await api(page, "GET", `/alerts?view=active&host_id=${page.ids["old-vm"]}`)).body.items.some((a) => a.check === "stale"),
+    "old-vm's stale alert", 120000);
   await go("/settings/notifications");
   await waitText(page, "No destinations configured");
   await click(page, "button", "Add destination");
@@ -205,24 +209,31 @@ test("notifications: a Telegram destination: setup steps, a write-only token, a 
 test("a failing destination is visible; alert state stays accurate", async () => {
   receiver.status = 401;
   const before = receiver.hits.length;
-  // A host leaves maintenance with an active alert: one opening notification
-  // after the grace period. old-vm's: it never reports, so its stale alert
-  // stays open (an alert whose evidence decays could close meanwhile).
+  // A host leaves maintenance with an active alert nobody was told about:
+  // its one opening notification after the grace period. old-vm's: it
+  // never reports, so its stale alert stays open (an alert whose evidence
+  // decays could close meanwhile), and it opened before there was any
+  // destination (an alert notified before its maintenance isn't notified
+  // again).
   let open;
   await waitFor(page, async () => {
     open = (await api(page, "GET", `/alerts?view=active&host_id=${page.ids["old-vm"]}`)).body.items.filter((a) => a.check === "stale");
     return open.length > 0;
   }, "old-vm's stale alert", 120000);
+  assert.equal(open[0].notification.status, "none", "old-vm's alert wasn't notified before its maintenance");
   const vm = open[0].host_id;
   const m = (await api(page, "POST", "/maintenance", { host_ids: [vm], indefinite: true, reason: "test" })).body;
   await api(page, "POST", `/maintenance/${m.id}/end`);
-  await waitFor(page, async () => receiver.hits.length > before, "opening after maintenance", 30000);
-  assert.ok(receiver.hits[receiver.hits.length - 1].headers["idempotency-key"], "delivery id sent for deduplication");
+  const opening = () => receiver.hits.slice(before).find((h) => h.body?.event === "opened" && h.body?.alert?.id === open[0].id);
+  await waitFor(page, async () => !!opening(), "old-vm's opening after maintenance", 30000);
+  assert.ok(opening().headers["idempotency-key"], "delivery id sent for deduplication");
+  // HTTP 401 isn't retried: the delivery failed.
+  await waitFor(page, async () => (await api(page, "GET", `/alerts/${open[0].id}`)).body.alert.notification.status === "failed", "old-vm's delivery failed");
   await go("/settings/notifications");
   await waitText(page, "Delivery failing");
   assert.match(await text(page), /Last failure: .* the receiver refused the credentials \(HTTP 401\)/);
   await go(`/alerts?view=active&host_id=${vm}`);
-  await waitFor(page, async () => /Delivery failed|Partly delivered/.test(await text(page)), "delivery failure shown");
+  await waitFor(page, async () => /Delivery failed/.test(await text(page)), "delivery failure shown");
   await shot(page, "alerts-delivery-failed");
   const a = (await api(page, "GET", `/alerts/${open[0].id}`)).body.alert;
   assert.equal(a.state, "active", "a delivery failure never resolves an alert");
