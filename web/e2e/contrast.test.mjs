@@ -126,25 +126,21 @@ for (const theme of ["light", "dark"]) {
       if (low.length) failures.push(`${p}:\n  ${low.join("\n  ")}`);
       await shot(page, `${theme}${p.replace(/[/?&=]+/g, "-")}`);
     }
-    // M12.1: the fleet's health checks and a check's editor.
+    // M12.1: the fleet's health checks and a check's editor (the checks are
+    // on the page since Phase 2: no Customize to show them first). Both are
+    // required, so a renamed button fails here instead of skipping the check.
     await page.goto(base + "/monitoring/settings", { waitUntil: "networkidle0" });
+    await page.waitForSelector('button[aria-label="Customize Temperature"]', { timeout: 15000 });
     await sleep(600);
-    const cust = await page.evaluateHandle(() => [...document.querySelectorAll("button")].find((b) => b.textContent === "Customize"));
-    if (cust.asElement()) {
-      await cust.asElement().click();
-      await sleep(400);
-      const t = await page.evaluateHandle(() => [...document.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Customize Temperature"));
-      if (t.asElement()) {
-        await t.asElement().click();
-        await sleep(500);
-        const low = await page.evaluate(lowContrast);
-        if (low.length) failures.push(`health editor:\n  ${low.join("\n  ")}`);
-        await shot(page, `${theme}-health-editor`);
-        await page.keyboard.press("Escape");
-      }
-      const low = await page.evaluate(lowContrast);
-      if (low.length) failures.push(`health checks:\n  ${low.join("\n  ")}`);
-    }
+    const checksLow = await page.evaluate(lowContrast);
+    if (checksLow.length) failures.push(`health checks:\n  ${checksLow.join("\n  ")}`);
+    await page.click('button[aria-label="Customize Temperature"]');
+    await page.waitForSelector('[data-testid="health-editor"]', { timeout: 15000 });
+    await sleep(500);
+    const editorLow = await page.evaluate(lowContrast);
+    if (editorLow.length) failures.push(`health editor:\n  ${editorLow.join("\n  ")}`);
+    await shot(page, `${theme}-health-editor`);
+    await page.keyboard.press("Escape");
     // M14: a conflict's details, Review difference and the restore plan.
     if (desiredFixture) {
       await page.goto(base + `/hosts/${desiredFixture.host}/desired`, { waitUntil: "networkidle0" });

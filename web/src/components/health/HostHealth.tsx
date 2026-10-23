@@ -70,7 +70,7 @@ export function HostHealthPanel({ hostId }: { hostId: string }) {
                   <IdentityBadge s={s} />
                   {s.customized && <Badge tone="accent">Customized</Badge>}
                   <Button size="sm" className="ml-auto" onClick={() => setSubject(s)} aria-label={`${s.customized ? "Edit" : "Customize"} health check for ${s.label}`}>
-                    {s.customized ? "Edit" : "Customize"}
+                    {s.customized ? "Edit…" : "Customize…"}
                   </Button>
                 </li>
               ))}
