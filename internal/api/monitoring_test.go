@@ -368,6 +368,39 @@ func TestMonitoringServicesStaleAndTransitions(t *testing.T) {
 	}
 }
 
+// A report dated past the stale limit (from a host whose clock is behind,
+// say) leaves "No monitoring data" open: still the same issue, not closed
+// by the report and opened again as a new one by the next check. A recent
+// report ends it.
+func TestMonitoringStaleNotEndedByOldData(t *testing.T) {
+	e := newFwEnv(t)
+	hostID, _ := e.sshFwHost(t, "app1")
+	m := e.h.mon
+	clk := &monClock{t: time.Now().Add(-time.Hour).Truncate(time.Minute)}
+	m.SetClock(clk.now)
+	ctx := context.Background()
+	send(t, m, hostID, "monitor_state", stateAt(clk.now()))
+	clk.add(10 * time.Minute)
+	m.Tick(ctx)
+	first, ok := e.issues(t, hostID)["stale|"]
+	if !ok {
+		t.Fatalf("stale host: %+v", e.issues(t, hostID))
+	}
+	send(t, m, hostID, "monitor_state", stateAt(clk.now().Add(-9*time.Minute)))
+	if _, ok := e.issues(t, hostID)["stale|"]; !ok {
+		t.Fatal("a report dated 9 minutes back ended No monitoring data")
+	}
+	clk.add(time.Minute)
+	m.Tick(ctx)
+	if i := e.issues(t, hostID)["stale|"]; i.ID != first.ID {
+		t.Fatalf("No monitoring data opened again as a new issue: %+v, first %+v", i, first)
+	}
+	send(t, m, hostID, "monitor_state", stateAt(clk.now()))
+	if _, ok := e.issues(t, hostID)["stale|"]; ok {
+		t.Fatal("a recent report didn't end No monitoring data")
+	}
+}
+
 func ptr[T any](v T) *T { return &v }
 
 func TestMonitoringStorageAndEvidence(t *testing.T) {

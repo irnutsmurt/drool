@@ -890,7 +890,12 @@ func (e *evaluator) onPoints(ctx context.Context, hostID string, ps []monitor.Po
 
 func (e *evaluator) onState(ctx context.Context, hostID string, prev, st *monitor.State) {
 	pol := e.current(ctx)
-	e.resolve(ctx, hostID, CheckStale, "")
+	// Only recent data ends "No monitoring data". A report dated past the
+	// limit (a host whose clock is behind) leaves the host stale, rather
+	// than closing the issue until the next check opens a new one.
+	if !e.isStale(hostID, pol, e.s.now()) {
+		e.resolve(ctx, hostID, CheckStale, "")
+	}
 	now := time.UnixMilli(st.At)
 	_, rep := e.snapshot(hostID)
 	uuids := mountUUIDs(rep)
