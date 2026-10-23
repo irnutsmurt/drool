@@ -1,7 +1,12 @@
 package api
 
 import (
+	"context"
+	"slices"
 	"testing"
+
+	"drool/internal/auth"
+	"drool/internal/packdeps"
 )
 
 type packConflictsResp struct {
@@ -143,5 +148,101 @@ func TestNewEmptyPackHasHealthChecks(t *testing.T) {
 		if x.GroupID == g.ID && x.Name != "renamed" {
 			t.Fatalf("the old name: %+v", x)
 		}
+	}
+}
+
+// The conflicts of a Pack combine monitoring and Desired State; each area
+// is read only with its own permission, whatever the route allowed. Every
+// built-in role holds all three, so the narrower principals are given here.
+func TestPackConflictsAreasNeedTheirOwnPermission(t *testing.T) {
+	e := newDesiredAPI(t)
+	pack := func(name string) string {
+		t.Helper()
+		var g struct{ ID string }
+		e.admin.do("POST", "/api/v1/groups", map[string]any{"name": name}).json(t, &g)
+		e.admin.do("POST", "/api/v1/groups/"+g.ID+"/members", map[string]any{"host_ids": []string{e.hostA}})
+		return g.ID
+	}
+	media, backups := pack("media"), pack("backups")
+	for _, ov := range []struct {
+		g string
+		v int
+	}{{media, 70}, {backups, 75}} {
+		if r := e.admin.do("PUT", "/api/v1/monitoring/health/overrides", map[string]any{"scope": "group", "group_id": ov.g, "check": "memory",
+			"fields": map[string]any{"warning": ov.v}}); r.status != 200 {
+			t.Fatalf("override: %d %s", r.status, r.body)
+		}
+	}
+	for _, b := range []struct{ pack, state string }{{media, "installed"}, {backups, "absent"}} {
+		if r := e.admin.do("POST", "/api/v1/desired/baselines", map[string]any{"name": "telnet " + b.state,
+			"resources": []map[string]any{{"kind": "package", "name": "telnet", "state": b.state}}, "assignments": []map[string]any{{"scope": "group", "group_id": b.pack}}}); r.status != 201 {
+			t.Fatalf("baseline: %d %s", r.status, r.body)
+		}
+	}
+	e.step()
+	grant := func(perms ...auth.Permission) func(auth.Permission) bool {
+		return func(p auth.Permission) bool { return slices.Contains(perms, p) }
+	}
+	areas := func(can func(auth.Permission) bool) (checked, items []string) {
+		t.Helper()
+		out, err := e.h.srv.groupConflicts(context.Background(), media, can)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, it := range out.Items {
+			items = append(items, it.Area)
+		}
+		return out.Checked, items
+	}
+	for _, tc := range []struct {
+		name  string
+		can   func(auth.Permission) bool
+		areas []string
+	}{
+		{"hosts only", grant(auth.PermHostsRead), nil},
+		{"monitoring", grant(auth.PermHostsRead, auth.PermMonitoringRead), []string{"monitoring"}},
+		{"desired", grant(auth.PermHostsRead, auth.PermDesiredRead), []string{"desired"}},
+		{"both", grant(auth.PermHostsRead, auth.PermMonitoringRead, auth.PermDesiredRead), []string{"monitoring", "desired"}},
+	} {
+		checked, items := areas(tc.can)
+		if !slices.Equal(checked, tc.areas) {
+			t.Fatalf("%s: checked %v, want %v", tc.name, checked, tc.areas)
+		}
+		for _, a := range items {
+			if !slices.Contains(tc.areas, a) {
+				t.Fatalf("%s: an item from %s: %v", tc.name, a, items)
+			}
+		}
+		for _, a := range tc.areas {
+			if !slices.Contains(items, a) {
+				t.Fatalf("%s: no %s conflict although there is one: %v", tc.name, a, items)
+			}
+		}
+	}
+	// Without hosts.read the route itself refuses (every role has it today:
+	// checked through a client that isn't signed in).
+	if r := (&client{h: e.h}).do("GET", "/api/v1/groups/"+media+"/conflicts", nil); r.status != 401 {
+		t.Fatalf("signed out: %d", r.status)
+	}
+}
+
+// Every kind of Pack reference has the permission its own page needs; a
+// kind without one would be hidden from everyone, administrators included.
+func TestPackDependencyKindsHaveAPermission(t *testing.T) {
+	rep := &packdeps.Report{}
+	for _, k := range []string{packdeps.KindFirewallPolicy, packdeps.KindSchedule, packdeps.KindNotificationRoute, packdeps.KindMaintenance,
+		packdeps.KindDesiredAssignment, packdeps.KindHealthOverride, packdeps.KindEnrollmentToken, packdeps.KindNetworkRule} {
+		rep.Blocking = append(rep.Blocking, packdeps.Ref{Kind: k})
+	}
+	for _, k := range []string{"membership", "monitoring_priority", "desired_priority", "firewall_timeout", "helper_approvals", "token_history"} {
+		rep.Removed = append(rep.Removed, packdeps.Removal{Kind: k})
+	}
+	all := visibleDependencies(rep, func(auth.Permission) bool { return true })
+	if len(all.Blocking) != len(rep.Blocking) || len(all.Removed) != len(rep.Removed) {
+		t.Fatalf("a kind without a permission: %+v", all)
+	}
+	admin := func(p auth.Permission) bool { return auth.RoleHas(auth.RoleAdmin, p) }
+	if a := visibleDependencies(rep, admin); len(a.Blocking) != len(rep.Blocking) || len(a.Removed) != len(rep.Removed) {
+		t.Fatalf("an administrator misses something: %+v", a)
 	}
 }

@@ -338,3 +338,83 @@ func TestShepherdUpdatePolicyMigration(t *testing.T) {
 		})
 	}
 }
+
+// 0028: creating or renaming a Pack counts as a change to monitoring's
+// health configuration (mon_health_gen), on a new database and on one
+// upgraded from 27 with Packs already in it. Other changes to a Pack (its
+// description) don't count, and the Packs that were there stay as they were.
+func TestPackHealthGenMigration(t *testing.T) {
+	ctx := context.Background()
+	gen := func(st *Store) int {
+		t.Helper()
+		var g int
+		if err := st.Reader.QueryRow(`SELECT gen FROM mon_health_gen WHERE id = 1`).Scan(&g); err != nil {
+			t.Fatal(err)
+		}
+		return g
+	}
+	exec := func(st *Store, q string) {
+		t.Helper()
+		if _, err := st.Writer.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	check := func(t *testing.T, st *Store, existing string) {
+		for _, name := range []string{"mon_health_gen_grp_ins", "mon_health_gen_grp_upd"} {
+			var n int
+			st.Reader.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'trigger' AND name = ?`, name).Scan(&n)
+			if n != 1 {
+				t.Fatalf("trigger %s: %d", name, n)
+			}
+		}
+		g := gen(st)
+		exec(st, `INSERT INTO groups (id, name, created_at, updated_at) VALUES ('g_new','fresh',1,1)`)
+		if gen(st) != g+1 {
+			t.Fatalf("creating a Pack: gen %d → %d", g, gen(st))
+		}
+		exec(st, `UPDATE groups SET name = 'renamed' WHERE id = '`+existing+`'`)
+		if gen(st) != g+2 {
+			t.Fatalf("renaming a Pack: gen %d → %d", g+1, gen(st))
+		}
+		exec(st, `UPDATE groups SET description = 'notes' WHERE id = '`+existing+`'`)
+		if gen(st) != g+2 {
+			t.Fatalf("a description counted: gen %d", gen(st))
+		}
+	}
+	t.Run("new database", func(t *testing.T) {
+		st := openTemp(t)
+		if _, err := st.Migrate(ctx); err != nil {
+			t.Fatal(err)
+		}
+		exec(st, `INSERT INTO groups (id, name, created_at, updated_at) VALUES ('g1','web',1,1)`)
+		check(t, st, "g1")
+	})
+	t.Run("upgraded from 27", func(t *testing.T) {
+		st := openTemp(t)
+		if _, err := st.MigrateTo(ctx, 27); err != nil {
+			t.Fatal(err)
+		}
+		exec(st, `INSERT INTO hosts (id, name, connect_address, ssh_user, created_at, updated_at) VALUES ('h1','web1','10.0.0.5','deploy',1,1)`)
+		exec(st, `INSERT INTO groups (id, name, created_at, updated_at) VALUES ('g1','web',1,1)`)
+		exec(st, `INSERT INTO group_members (group_id, host_id) VALUES ('g1','h1')`)
+		before := gen(st)
+		applied, err := st.Migrate(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(applied) != LatestVersion()-27 {
+			t.Fatalf("applied %v", applied)
+		}
+		if gen(st) != before {
+			t.Fatalf("the upgrade itself changed gen: %d → %d", before, gen(st))
+		}
+		var name string
+		var members int
+		st.Reader.QueryRow(`SELECT name FROM groups WHERE id = 'g1'`).Scan(&name)
+		st.Reader.QueryRow(`SELECT count(*) FROM group_members WHERE group_id = 'g1'`).Scan(&members)
+		if name != "web" || members != 1 {
+			t.Fatalf("the Pack after the upgrade: %q, %d members", name, members)
+		}
+		check(t, st, "g1")
+	})
+}

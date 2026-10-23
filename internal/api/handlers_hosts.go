@@ -765,7 +765,53 @@ func (s *Server) handleGroupDependencies(w http.ResponseWriter, r *http.Request)
 		writeProblem(w, r, errInternal)
 		return
 	}
-	writeJSON(w, http.StatusOK, rep)
+	writeJSON(w, http.StatusOK, visibleDependencies(rep, principalFrom(r.Context()).Can))
+}
+
+// dependencyPerms is the permission each kind of reference needs on its own
+// page: reading a Pack's dependencies (hosts.read) shows only what the role
+// may read there, so a viewer doesn't learn the names of notification
+// routes, network classifications or enrollment tokens through it. A kind
+// not listed here is never shown. Deleting a Pack (hosts.write:
+// administrators, who may read everything) still checks every reference.
+var dependencyPerms = map[string]auth.Permission{
+	packdeps.KindFirewallPolicy:    auth.PermFirewallRead,
+	packdeps.KindSchedule:          auth.PermSchedulesRead,
+	packdeps.KindNotificationRoute: auth.PermNotificationsRead,
+	packdeps.KindMaintenance:       auth.PermAlertsRead,
+	packdeps.KindDesiredAssignment: auth.PermDesiredRead,
+	packdeps.KindHealthOverride:    auth.PermMonitoringRead,
+	packdeps.KindEnrollmentToken:   auth.PermAgentsEnroll,
+	packdeps.KindNetworkRule:       auth.PermNetworkRead,
+	// What deleting the Pack drops with it.
+	"membership":          auth.PermHostsRead,
+	"monitoring_priority": auth.PermMonitoringRead,
+	"desired_priority":    auth.PermDesiredRead,
+	"firewall_timeout":    auth.PermFirewallRead,
+	"helper_approvals":    auth.PermMonitoringRead,
+	"token_history":       auth.PermAgentsEnroll,
+}
+
+// visibleDependencies is rep with only what can may read.
+func visibleDependencies(rep *packdeps.Report, can func(auth.Permission) bool) *packdeps.Report {
+	allowed := func(kind string) bool {
+		p, ok := dependencyPerms[kind]
+		return ok && can(p)
+	}
+	out := *rep
+	out.Blocking = []packdeps.Ref{}
+	for _, b := range rep.Blocking {
+		if allowed(b.Kind) {
+			out.Blocking = append(out.Blocking, b)
+		}
+	}
+	out.Removed = []packdeps.Removal{}
+	for _, x := range rep.Removed {
+		if allowed(x.Kind) {
+			out.Removed = append(out.Removed, x)
+		}
+	}
+	return &out
 }
 
 // handleDeleteGroup deletes a Pack only when nothing that changes what

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -47,33 +49,51 @@ type packConflictsJSON struct {
 // handleGroupConflicts lists, for each host in the Pack, the health check
 // fields and Desired State resources where this Pack's setting doesn't
 // apply because of another Pack. A host's own setting decides for that
-// host and isn't listed.
+// host and isn't listed. The route needs hosts.read; each area is read only
+// with its own permission (monitoring.read, desired.read), so the combined
+// answer never says more than its parts would.
 func (s *Server) handleGroupConflicts(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	id := r.PathValue("id")
-	g, err := s.d.Inventory.GetGroup(ctx, id)
-	if err != nil {
-		writeProblem(w, r, s.inventoryError(err))
+	out, err := s.groupConflicts(ctx, r.PathValue("id"), principalFrom(ctx).Can)
+	var inv *inventoryErr
+	if errors.As(err, &inv) {
+		writeProblem(w, r, s.inventoryError(inv.err))
 		return
 	}
-	hosts, err := s.d.Store.R.ListHosts(ctx)
 	if err != nil {
 		writeProblem(w, r, errInternal)
 		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// inventoryErr marks the Pack's own lookup failing (404 and the like).
+type inventoryErr struct{ err error }
+
+func (e *inventoryErr) Error() string { return e.err.Error() }
+
+// groupConflicts gathers what handleGroupConflicts answers, reading each
+// area only when can allows it.
+func (s *Server) groupConflicts(ctx context.Context, id string, can func(auth.Permission) bool) (packConflictsJSON, error) {
+	out := packConflictsJSON{Items: []packConflict{}, Checked: []string{}}
+	g, err := s.d.Inventory.GetGroup(ctx, id)
+	if err != nil {
+		return out, &inventoryErr{err}
+	}
+	hosts, err := s.d.Store.R.ListHosts(ctx)
+	if err != nil {
+		return out, err
 	}
 	names := map[string]string{}
 	for _, h := range hosts {
 		names[h.ID] = h.Name
 	}
-	p := principalFrom(ctx)
-	out := packConflictsJSON{Items: []packConflict{}, Checked: []string{}}
 
-	if s.d.Monitor != nil && p.Can(auth.PermMonitoringRead) {
+	if s.d.Monitor != nil && can(auth.PermMonitoringRead) {
 		out.Checked = append(out.Checked, "monitoring")
 		gv, err := s.d.Monitor.GroupView(ctx, id)
 		if err != nil {
-			writeProblem(w, r, errInternal)
-			return
+			return out, err
 		}
 		// What this Pack sets itself (check → field → value).
 		sets := map[string]map[string]*float64{}
@@ -126,7 +146,7 @@ func (s *Server) handleGroupConflicts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if s.d.Desired != nil && p.Can(auth.PermDesiredRead) {
+	if s.d.Desired != nil && can(auth.PermDesiredRead) {
 		out.Checked = append(out.Checked, "desired")
 		for _, hid := range g.HostIDs {
 			v, err := s.d.Desired.Host(ctx, hid)
@@ -158,7 +178,7 @@ func (s *Server) handleGroupConflicts(w http.ResponseWriter, r *http.Request) {
 		}
 		return a.What < b.What
 	})
-	writeJSON(w, http.StatusOK, out)
+	return out, nil
 }
 
 func hasGroup(gs []monsvc.GroupRef, id string) bool {

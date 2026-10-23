@@ -4974,6 +4974,15 @@ it lost keystrokes (the navigation browser test caught it); typing is now the fi
   Packs of equal priority disagree or a higher one wins, and Desired State conflicts, in words with what applies
   instead.
 - *Add hosts…* says what the hosts get from the Pack before they join.
+- **Authorization of the combined answers** (checked before the push, commit after 507f54a). `GET
+  /groups/{id}/conflicts` needs hosts.read and reads each area only with its own permission (monitoring.read,
+  desired.read); `TestPackConflictsAreasNeedTheirOwnPermission` gives narrower principals than any built-in role
+  (all four hold the three). `GET /groups/{id}/dependencies` (from §38) returned every reference to any role: a
+  viewer got the names of notification routes, and anyone but an administrator those of enrollment tokens, which
+  their own pages refuse them. It now shows each kind only with the permission its page needs (`dependencyPerms`;
+  a kind without one is shown to no one), tested per role and for completeness. Deleting a Pack (hosts.write,
+  administrators) still checks every reference. Migration 0028 is tested on a new database and on one upgraded from
+  27 with Packs in it (`TestPackHealthGenMigration`); the evidence lab's database is a real 27 → 28 upgrade.
 - Migration 0028: creating or renaming a Pack counts as a change to the health configuration (a new empty Pack
   couldn't load its health checks).
 

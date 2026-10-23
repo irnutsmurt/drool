@@ -194,6 +194,48 @@ func TestPackDeletionDependencies(t *testing.T) {
 		}
 	}
 
+	// Each role sees only what it may read on its own page: the
+	// dependencies never tell a viewer the names of notification routes, or
+	// anyone but an administrator those of enrollment tokens.
+	for _, rc := range []struct {
+		role   string
+		hidden []string
+	}{
+		{auth.RoleViewer, []string{"notification_route", "enrollment_token", "token_history"}},
+		{auth.RoleOperator, []string{"enrollment_token", "token_history"}},
+		{auth.RoleAuditor, []string{"enrollment_token", "token_history"}},
+	} {
+		h.mkUser("dep-"+rc.role, rc.role)
+		var d packDeps
+		r := h.login("dep-"+rc.role).do("GET", "/api/v1/groups/"+g+"/dependencies", nil)
+		if r.status != 200 {
+			t.Fatalf("%s: %d %s", rc.role, r.status, r.body)
+		}
+		r.json(t, &d)
+		seen := map[string]bool{}
+		for _, b := range d.Blocking {
+			seen[b.Kind] = true
+		}
+		for _, x := range d.Removed {
+			seen[x.Kind] = true
+		}
+		for _, k := range rc.hidden {
+			if seen[k] {
+				t.Fatalf("%s sees %s: %s", rc.role, k, r.body)
+			}
+		}
+		for _, k := range []string{"firewall_policy", "schedule", "maintenance", "desired_assignment", "health_override", "membership"} {
+			if !seen[k] {
+				t.Fatalf("%s doesn't see %s: %s", rc.role, k, r.body)
+			}
+		}
+		for _, secret := range []string{"lab install", "old install"} {
+			if strings.Contains(string(r.body), secret) {
+				t.Fatalf("%s sees the token %q: %s", rc.role, secret, r.body)
+			}
+		}
+	}
+
 	// Refused while in use: nothing deleted, nothing changed.
 	r := c.do("DELETE", "/api/v1/groups/"+g, nil)
 	var p Problem

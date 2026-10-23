@@ -939,7 +939,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** @description What depends on the pack, across every subsystem, and what deleting it would drop. */
+        /** @description What depends on the Pack, across every subsystem, and what deleting it would drop. Each kind of reference is listed only for a role that may read it on its own page (notification routes need notifications.read, enrollment tokens agents.enroll, network classifications network.read, and so on). */
         get: operations["getGroupDependencies"];
         put?: never;
         post?: never;
