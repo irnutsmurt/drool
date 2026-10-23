@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useGroups, useHosts, type Host } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
@@ -31,12 +31,24 @@ export function HostsPage() {
   // The search box is in the address (?q=), so the navigation search's
   // "More hosts…" and a shared link open the same list.
   const [params, setParams] = useSearchParams();
-  const q = params.get("q") ?? "";
-  const setQ = (v: string) => setParams((p) => {
-    if (v) p.set("q", v);
-    else p.delete("q");
-    return p;
-  }, { replace: true });
+  const urlQ = params.get("q") ?? "";
+  // What is typed is the field's own state, written to the address: a field
+  // fed back from the address loses keystrokes when the page lags behind
+  // typing. A change of address from elsewhere (the navigation search, back)
+  // is taken over while the field isn't being typed in.
+  const [q, setText] = useState(urlQ);
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (document.activeElement !== searchRef.current) setText(urlQ);
+  }, [urlQ]);
+  const setQ = (v: string) => {
+    setText(v);
+    setParams((p) => {
+      if (v) p.set("q", v);
+      else p.delete("q");
+      return p;
+    }, { replace: true });
+  };
   const [status, setStatus] = useState("");
   const [group, setGroup] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -74,7 +86,7 @@ export function HostsPage() {
     <>
       {header}
       <div className="mb-4 flex flex-wrap gap-3">
-        <Input className="max-w-xs" aria-label="Search hosts" placeholder="Search name, address, tag…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input ref={searchRef} className="max-w-xs" aria-label="Search hosts" placeholder="Search name, address, tag…" value={q} onChange={(e) => setQ(e.target.value)} />
         <Select className="max-w-[14rem]" aria-label="Connection" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">Any connection status</option>
           <option value="ready">Ready</option>
