@@ -1,13 +1,12 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router";
 import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
-import { Input } from "@/components/ui/Field";
 import { errorMessage } from "@/lib/format";
-import { useDeleteOverride, useHealthGlobal, useHealthGroup, useHealthGroups, useHealthOverrides, usePreview, useSetGroupPriority, type HealthCheck, type HealthGroup, type HealthOverride } from "./queries";
+import { useDeleteOverride, useHealthGlobal, useHealthGroup, useHealthGroups, useHealthOverrides, type HealthCheck, type HealthOverride } from "./queries";
 import { HealthChecksTable } from "./ui";
 import { HealthEditorForm } from "./HealthEditor";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
@@ -120,11 +119,17 @@ export function HealthOverridesCard() {
           <div>
             <h3 className="mb-1 text-sm font-medium">Monitoring priority of each Pack</h3>
             <p className="mb-2 text-xs text-muted">
-              Only matters when a host is in several packs that set the same value differently: the higher priority wins. Equal
-              priorities with different values are shown as a conflict and use the global value until settled.
+              Only matters when a host is in several Packs that set the same value differently: the higher priority wins. Equal
+              priorities with different values are a conflict and use the global value until settled. Each is changed on its Pack&apos;s page.
             </p>
             <ul className="divide-y divide-line text-sm">
-              {(groups.data?.groups ?? []).map((g) => <PriorityRow key={g.group_id} g={g} />)}
+              {(groups.data?.groups ?? []).map((g) => (
+                <li key={g.group_id} className="flex flex-wrap items-center gap-2 py-1.5">
+                  <Link className="w-40 font-medium text-accent" to={`/groups/${g.group_id}`}>{g.name}</Link>
+                  <span className="text-xs text-muted">{g.hosts} hosts · {g.overrides} set</span>
+                  <span className="ml-auto text-xs">priority {g.priority}</span>
+                </li>
+              ))}
               {groups.isLoading ? <li className="py-1 text-muted">Loading…</li> : groups.error ? <li className="py-1"><Alert>{errorMessage(groups.error)}</Alert></li>
                 : (groups.data?.groups ?? []).length === 0 && <li className="py-1 text-muted">No Packs yet.</li>}
             </ul>
@@ -132,52 +137,6 @@ export function HealthOverridesCard() {
         </div>
       </details>
     </Card>
-  );
-}
-
-function PriorityRow({ g }: { g: HealthGroup }) {
-  const { can } = useAuth();
-  const [v, setV] = useState(String(g.priority));
-  const set = useSetGroupPriority();
-  const preview = usePreview();
-  useEffect(() => setV(String(g.priority)), [g.priority]);
-  const n = Number(v);
-  const changed = v !== "" && n !== g.priority && Number.isInteger(n);
-  useEffect(() => {
-    if (!changed || g.overrides === 0) return;
-    const t = setTimeout(() => preview.mutate({ scope: "group", group_id: g.group_id, check: "cpu", fields: {}, priority: n }), 300);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v]);
-  return (
-    <li className="flex flex-wrap items-center gap-2 py-1.5">
-      <span className="w-40 font-medium">{g.name}</span>
-      <span className="text-xs text-muted">{g.hosts} hosts · {g.overrides} overridden fields</span>
-      <label className="ml-auto flex items-center gap-2 text-xs">
-        Priority
-        <Input type="number" className="w-20" min={-1000} max={1000} value={v} disabled={!can("monitoring.settings")} onChange={(e) => setV(e.target.value)} />
-      </label>
-      {changed && can("monitoring.settings") && (
-        <Button size="sm" onClick={() => set.mutate({ id: g.group_id, priority: n })} disabled={set.isPending}>Save</Button>
-      )}
-      {changed && preview.data && <span className="basis-full text-right text-xs text-muted">{preview.data.summary}</span>}
-      {set.error && <span className="basis-full"><Alert>{errorMessage(set.error)}</Alert></span>}
-    </li>
-  );
-}
-
-/** A group's monitoring overrides (Groups page): hidden until somebody
- * chooses to customize the group. */
-export function GroupHealthButton({ groupId, name }: { groupId: string; name: string }) {
-  const groups = useHealthGroups();
-  const [open, setOpen] = useState(false);
-  const info = groups.data?.groups.find((g) => g.group_id === groupId);
-  const label = info && info.overrides > 0 ? `Health checks (${info.overrides} set)…` : "Health checks…";
-  return (
-    <>
-      <Button size="sm" variant="ghost" onClick={() => setOpen(true)} aria-label={`${label.replace(/…$/, "")}: ${name}`}>{label}</Button>
-      {open && <GroupHealthDialog groupId={groupId} name={name} onClose={() => setOpen(false)} />}
-    </>
   );
 }
 

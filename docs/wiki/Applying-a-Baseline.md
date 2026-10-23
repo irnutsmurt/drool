@@ -32,8 +32,9 @@ always wins until you **Reset to inherited**.
 If a host is in two Packs whose baselines say different things about the same resource, the Pack with
 the higher **desired-state priority** wins. To set it:
 
-1. Open **Packs**.
-2. On the Pack's row, next to *Desired State: … · priority 0*, click **Change priority**.
+1. Open **Packs**, then the Pack.
+2. Under **What this Pack sets for its hosts** → **Desired State**, click **Change priority…**. (The
+   page's **Where another Pack decides** lists the resources the Packs disagree about.)
 3. Enter a **Priority** from -1000 to 1000 (default 0; higher wins). The **Impact** shows which hosts'
    desired state would change.
 4. Click **Save**.

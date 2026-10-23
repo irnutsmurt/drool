@@ -14,7 +14,7 @@ Settings inherit through five levels, broadest first. The most specific one wins
 | Level | Example | Where to change it |
 |---|---|---|
 | **Global** (every host) | "Disk space: warn at 80%" | **Monitoring → Health checks → Customize…** |
-| **Pack** | `media-servers`: no high-CPU warning while transcoding | The Pack's page **→ Health checks…** |
+| **Pack** | `media-servers`: no high-CPU warning while transcoding | The Pack's page **→ What this Pack sets → Health checks…** |
 | **Host** | `gpu-01`: high GPU utilization on | The host's **Monitoring → Health checks → Customize…** |
 | **Device** | `/srv/media` on `nas-01`: warning 92%, critical 98% (while `/` keeps 85% / 95%) | **Customize health check** next to that filesystem, disk, sensor, GPU or service |
 

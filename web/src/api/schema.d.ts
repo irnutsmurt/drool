@@ -949,6 +949,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/groups/{id}/conflicts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * @description Where the Pack's settings don't decide what a member host gets because of another Pack: health check fields where
+         *     Packs of equal monitoring priority set different values (conflict) or a Pack of higher priority sets another
+         *     (outranked), and Desired State resources in conflict. A host's own setting decides for it and isn't listed. Areas
+         *     the role can't read are left out (checked says which were read).
+         */
+        get: operations["getGroupConflicts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/groups/{id}/members": {
         parameters: {
             query?: never;
@@ -4822,6 +4846,33 @@ export interface components {
                 message: string;
             }[];
             message: string;
+        };
+        PackConflicts: {
+            checked: ("monitoring" | "desired")[];
+            items: {
+                /** @enum {string} */
+                area: "monitoring" | "desired";
+                /** @enum {string} */
+                kind: "conflict" | "outranked";
+                host_id: string;
+                host_name: string;
+                /** @description What disagrees, in words ("Disk space, warning at", "package telnet"). */
+                what: string;
+                check?: string;
+                field?: string;
+                /** @description Desired State resource key. */
+                key?: string;
+                /** @description This Pack's value, in words (monitoring). */
+                value?: string;
+                others: {
+                    id: string;
+                    name: string;
+                    priority: number;
+                    value?: string;
+                }[];
+                /** @description What applies on the host instead */
+                applies: string;
+            }[];
         };
         PackDependencies: {
             pack_id: string;
@@ -10584,6 +10635,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PackDependencies"];
+                };
+            };
+            404: components["responses"]["Problem"];
+        };
+    };
+    getGroupConflicts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Conflicts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackConflicts"];
                 };
             };
             404: components["responses"]["Problem"];

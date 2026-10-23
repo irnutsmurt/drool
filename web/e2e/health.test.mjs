@@ -165,8 +165,8 @@ test("group: overrides only when chosen, with an impact preview; hosts show the 
   const g = (await api(page, "POST", "/groups", { name: "e2e-render" })).body;
   await api(page, "PATCH", `/groups/${g.id}`, { host_ids: [page.ids["gpu-01"], page.ids["nas-01"]] });
   try {
-    await go("/groups");
-    await click(page, "button", "Health checks: e2e-render");
+    await go(`/groups/${g.id}`);
+    await click(page, "button", "Health checks of e2e-render");
     await waitFor(page, async () => /Health checks: e2e-render/.test((await page.$('[role="dialog"]')) ? await dialogText() : ""), "group dialog");
     assert.match(await dialogText(), /2 hosts/);
     await click(page, '[role="dialog"] button', "Customize High CPU utilization");
@@ -178,7 +178,7 @@ test("group: overrides only when chosen, with an impact preview; hosts show the 
     await click(page, '[role="dialog"] button', "Save");
     await waitFor(page, async () => !(await page.$('[role="dialog"] [data-testid="health-editor"]')), "saved");
     await page.keyboard.press("Escape");
-    await waitText(page, "Health checks (1 set)…");
+    await waitFor(page, async () => /Set here: High CPU utilization/.test(await page.$eval('[data-testid="pack-settings"]', (d) => d.innerText)), "the Pack's settings say it");
     await go(`/hosts/${page.ids["nas-01"]}/monitoring?tab=health`);
     await waitText(page, "1 inherited pack override");
     const row = await page.$$eval("tbody tr", (rs) => rs.map((r) => r.innerText).find((t) => t.startsWith("High CPU utilization")));

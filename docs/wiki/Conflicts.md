@@ -21,7 +21,7 @@ Choose whichever matches what you meant:
 
 | Option | Effect | How |
 |---|---|---|
-| **Give one Pack a higher priority** | That Pack's value wins on every host in both Packs | **Packs** → **Change priority** on one of them ([Applying a Baseline](Applying-a-Baseline.md#when-two-packs-disagree-pack-priority)) |
+| **Give one Pack a higher priority** | That Pack's value wins on every host in both Packs | The Pack's page → **What this Pack sets** → **Desired State** → **Change priority…** ([Applying a Baseline](Applying-a-Baseline.md#when-two-packs-disagree-pack-priority)). The page's **Where another Pack decides** lists the conflicts ([Packs](Packs.md#when-packs-disagree)) |
 | **Change a baseline** | Make the two baselines agree, or remove the resource from one | Open the baseline → **Edit** ([Creating a Baseline](Creating-a-Baseline.md)) |
 | **Accept the current state for this host** | Whatever the host has now becomes its own desired state; both Packs are overruled on this host only | The resource → **Accept current state** ([Accept Current State](Accept-Current-State.md)) |
 

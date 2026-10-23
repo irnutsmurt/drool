@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
-import { useAuth } from "@/auth/AuthContext";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
@@ -10,28 +9,11 @@ import { Field, Input } from "@/components/ui/Field";
 import { plainLink } from "@/components/ui/links";
 import { useDebounced } from "@/hooks/useDebounced";
 import { errorMessage } from "@/lib/format";
-import { useDesiredGroups, useInvalidateDesired } from "./queries";
+import { useInvalidateDesired } from "./queries";
 
-/** A pack's (group's) desired state: the baselines assigned to it and its
- * priority when a host's packs disagree. */
-export function GroupDesiredState({ groupId }: { groupId: string }) {
-  const { can } = useAuth();
-  const groups = useDesiredGroups();
-  const g = groups.data?.items.find((x) => x.group_id === groupId);
-  const [edit, setEdit] = useState(false);
-  if (!g) return null;
-  return (
-    <div className="mt-3 border-t border-line pt-2 text-sm">
-      <span className="text-muted">Desired State: </span>
-      {g.baselines.length ? g.baselines.join(", ") : <span className="text-muted">no baseline assigned</span>}
-      <span className="text-muted"> · priority {g.priority}</span>
-      {can("desired.manage") && <button type="button" className={`ml-2 ${plainLink}`} onClick={() => setEdit(true)}>Change priority</button>}
-      {edit && <PriorityDialog groupId={groupId} name={g.name} current={g.priority} onClose={() => setEdit(false)} />}
-    </div>
-  );
-}
-
-function PriorityDialog({ groupId, name, current, onClose }: { groupId: string; name: string; current: number; onClose: () => void }) {
+/** A Pack's Desired State priority, with its impact before saving (the
+ * Pack's page, What this Pack sets). */
+export function PriorityDialog({ groupId, name, current, onClose }: { groupId: string; name: string; current: number; onClose: () => void }) {
   const invalidate = useInvalidateDesired();
   const [value, setValue] = useState(String(current));
   const n = Number(value);

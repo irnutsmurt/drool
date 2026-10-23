@@ -1138,6 +1138,24 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PackDependencies' }
         '404': { $ref: '#/components/responses/Problem' }
+  /groups/{id}/conflicts:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getGroupConflicts
+      tags: [groups]
+      description: |
+        Where the Pack's settings don't decide what a member host gets because of another Pack: health check fields where
+        Packs of equal monitoring priority set different values (conflict) or a Pack of higher priority sets another
+        (outranked), and Desired State resources in conflict. A host's own setting decides for it and isn't listed. Areas
+        the role can't read are left out (checked says which were read).
+      responses:
+        '200':
+          description: Conflicts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PackConflicts' }
+        '404': { $ref: '#/components/responses/Problem' }
   /groups/{id}/members:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string } }
@@ -4479,6 +4497,33 @@ components:
             properties: { what: { type: string, enum: [shepherd, account] }, outcome: { type: string }, message: { type: string } }
         message: { type: string }
 
+    PackConflicts:
+      type: object
+      required: [items, checked]
+      properties:
+        checked: { type: array, items: { type: string, enum: [monitoring, desired] } }
+        items:
+          type: array
+          items:
+            type: object
+            required: [area, kind, host_id, host_name, what, others, applies]
+            properties:
+              area: { type: string, enum: [monitoring, desired] }
+              kind: { type: string, enum: [conflict, outranked] }
+              host_id: { type: string }
+              host_name: { type: string }
+              what: { type: string, description: 'What disagrees, in words ("Disk space, warning at", "package telnet").' }
+              check: { type: string }
+              field: { type: string }
+              key: { type: string, description: Desired State resource key. }
+              value: { type: string, description: "This Pack's value, in words (monitoring)." }
+              others:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, priority]
+                  properties: { id: { type: string }, name: { type: string }, priority: { type: integer }, value: { type: string } }
+              applies: { type: string, description: What applies on the host instead, in words. }
     PackDependencies:
       type: object
       required: [pack_id, pack_name, members, blocking, removed]

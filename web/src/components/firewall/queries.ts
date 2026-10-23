@@ -38,7 +38,7 @@ export const useFwHost = (id: string, enabled = true) =>
 export const useFwPolicies = () => useQuery({ queryKey: fk.policies, queryFn: () => unwrap(api.GET("/firewall/policies")) });
 export const useFwServices = () => useQuery({ queryKey: fk.services, queryFn: () => unwrap(api.GET("/firewall/services")), staleTime: 60_000 });
 export const useFwSettings = () => useQuery({ queryKey: fk.settings, queryFn: () => unwrap(api.GET("/firewall/settings")) });
-export const useFwGroups = () => useQuery({ queryKey: fk.groups, queryFn: () => unwrap(api.GET("/firewall/groups")) });
+export const useFwGroups = (enabled = true) => useQuery({ queryKey: fk.groups, queryFn: () => unwrap(api.GET("/firewall/groups")), enabled });
 export const useFwTransactions = (host?: string) =>
   useQuery({
     queryKey: fk.txs(host),

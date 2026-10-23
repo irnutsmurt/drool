@@ -31,7 +31,7 @@ A host can be in several Packs. Membership is looked up when it's used: a host y
 
 3. DROOL opens the new Pack's page. It has no hosts yet:
 
-   ![The media-servers pack's page: no hosts assigned yet, an Add hosts button in the header and in the empty Hosts card, Customize monitoring and Delete pack, its Desired State baseline, and the Monitored services card](images/pack-empty.png)
+   ![The media-servers pack's page: no hosts in it yet, Add hosts… in the empty Hosts card, Actions in the header, what the Pack sets for its hosts, and the Monitored services card](images/pack-empty.png)
 
 An empty Pack is a Pack like any other: schedules, firewall rules and baselines can already name it,
 and its hosts are included from the moment you add them. A run started on it while it's empty is
@@ -41,18 +41,22 @@ refused (*the selected targets match no hosts*), and a schedule skips that time.
 
 On the Pack's page:
 
-1. Click **Add hosts**.
+1. Click **Add hosts…** (in the **Hosts** card).
 2. Tick the hosts that belong in the Pack (`media-01`, `media-02`, `nas-01`) and click **Add 3 hosts**.
    With many hosts, a search box narrows the list by name, address or tag. Hosts already in the Pack
-   aren't listed.
+   aren't listed. Under the list, **What they get from media-servers** says what joining means: the
+   health checks the Pack sets, its monitored services, its Desired State baselines, the firewall
+   rules that name it, and the schedules, maintenance and routes that include its hosts.
 
    ![The "Add hosts to media-servers" dialog with database-01, gpu-01, media-01, media-02, nas-01 and web-01; media-01, media-02 and nas-01 ticked, and the Add 3 hosts button](images/pack-add-hosts.png)
 
 The Pack's page then lists its hosts:
 
-![The media-servers pack with media-01, media-02 and nas-01, their addresses and tags, a Remove button on each, its Desired State, the Monitored services card, and links to run on the pack, its alerts, its network activity and the baselines](images/pack-hosts.png)
+![The media-servers pack with media-01, media-02 and nas-01: their health, connection, pending updates and tags with a Remove… button on each; where another Pack decides; what the Pack sets for its hosts; and the Monitored services card](images/pack-hosts.png)
 
-- **Remove** takes a host out of the Pack, after DROOL asks *Remove media-01 from media-servers?*
+- Above the list: how its hosts are (*2 healthy, 1 unhealthy · 6 updates pending*), from monitoring.
+  A host that isn't reporting counts as *not reporting*, never as healthy.
+- **Remove…** takes a host out of the Pack, after DROOL asks *Remove media-01 from media-servers?*
   (**Remove from the Pack**). The host stays in DROOL, and the Pack stays too, even when its last host
   is gone; the Pack's settings stop applying to that host, and runs or schedules that target the Pack
   no longer include it.
@@ -61,20 +65,34 @@ The Pack's page then lists its hosts:
   unticking removes it.
 - Each change is saved on its own, so two people adding hosts at the same time both keep theirs.
 
-## What each Pack offers
+## The Pack's page
+
+The **Packs** list shows each Pack's hosts and how they are; everything about one Pack is on its page,
+in this order:
 
 | Where | What it's for |
 |---|---|
-| **Customize monitoring** (Packs page and the Pack's page) | Health-check adjustments for this Pack's hosts, e.g. no high-CPU warning for a render farm ([Health Overrides](Health-Overrides.md)) |
-| **Monitored services** (the Pack's page) | Services monitored on its hosts, and the state each should be in: running, stopped or ignored, e.g. `plexmediaserver.service` stopped on every media server ([Service Monitoring](Service-Monitoring.md#customize-monitoring-the-expected-state)) |
-| **Manage hosts** or the Pack's name (Packs page) | Opens the Pack's page, where you add and remove hosts |
-| **Delete** / **Delete pack** | Remove the Pack (see below) |
-| **Desired State: … · priority 0 — Change priority** | Which baselines apply to the Pack, and its priority when two Packs disagree ([Conflicts](Conflicts.md)) |
-| **Alerts** | Alerts of this Pack's hosts |
-| **Run on this pack** (the Pack's page header and the Packs page) | A new run with the Pack as its target ([Running a Command](Running-a-Command.md)) |
-| **Install updates…** (the Pack's page header) | The review of updating the Pack's hosts (each one's dry run, the recommended rollout for two or more), then the run, followed in place ([System Updates](System-Updates.md#install-updates-where-you-see-them)) |
-| **Network Activity** | Connections of this Pack's hosts |
-| **Baselines** | Desired State baselines assigned to the Pack |
+| **Run on this pack**, **Install updates…** (header) | A new run with the Pack as its target ([Running a Command](Running-a-Command.md)); the review of updating its hosts (each one's dry run, the recommended rollout for two or more), then the run, followed in place ([System Updates](System-Updates.md#install-updates-where-you-see-them)) |
+| **Actions** (header) | **Start maintenance…** for the Pack's hosts ([Maintenance Mode](Maintenance-Mode.md)), and last, **Delete pack…** (see below) |
+| **Hosts** | Its hosts with their health, connection and pending updates; **Add hosts…**, **Remove…** |
+| **Where another Pack decides** | Hosts where this Pack's setting doesn't apply because another of their Packs disagrees (see below) |
+| **What this Pack sets for its hosts** | Its **Health checks…** ([Health Overrides](Health-Overrides.md)), its **monitoring priority** and **Desired State priority** (**Change…**, with what changes before saving), the baselines assigned to it, the firewall rules that name it and its rollback timeout, standing monitoring-helper approvals, and the schedules, maintenance, notification routes, enrollment tokens and classifications that target it, each linking to where it's changed |
+| **Monitored services** | Services monitored on its hosts, and the state each should be in: running, stopped or ignored, e.g. `plexmediaserver.service` stopped on every media server ([Service Monitoring](Service-Monitoring.md#customize-monitoring-the-expected-state)) |
+| **Alerts for this Pack**, **Network Activity** | Its hosts' alerts and connections |
+
+## When Packs disagree
+
+A host in two Packs can get two different values for the same thing. The **monitoring priority** (for
+health checks) and the **Desired State priority** (for baselines) decide: the higher wins. With equal
+priorities DROOL picks neither ([Conflicts](Conflicts.md)).
+
+**Where another Pack decides** on the Pack's page lists every such place for its hosts, in words, for
+example *media-01 · Disk space, warning at: This Pack (90%) and backup-sources (85%) disagree at equal
+priority (0): 80% from every host's setting applies.* When a higher-priority Pack wins, it says *…
+outranks it*. For a health check, **Let media-servers win…** raises this Pack's monitoring priority
+just above the other's, after showing what changes on every host in both. A Desired State conflict
+links to the host's Desired State. When there are none: *None: this Pack's settings apply on every host
+in it, unless the host sets its own.*
 
 ## Where Packs are used
 
@@ -89,7 +107,8 @@ The Pack's page then lists its hosts:
 
 ## Delete a Pack
 
-**Delete pack…** first asks every part of DROOL what still uses the Pack, and shows the answer.
+**Actions → Delete pack…** (on the Pack's page) first asks every part of DROOL what still uses the Pack,
+and shows the answer.
 
 **While anything depends on it, DROOL won't delete it.** The dialog lists each thing, with what to
 do and a link to it:
@@ -101,7 +120,7 @@ do and a link to it:
 | A **notification route** whose filter names it | Take the Pack out of the route's filter, or delete the route |
 | A **maintenance** window that covers it | End the maintenance |
 | A **Desired State baseline** assigned to it | Unassign the baseline from the Pack |
-| A **monitoring setting** customized for it (monitored services included) | Reset it to inherited on the Pack's page |
+| A **monitoring setting** customized for it (monitored services included) | Reset it to inherited on the Pack's page (**Health checks…**, **Monitored services**) |
 | A **Shepherd enrollment token** that adds new hosts to it | Revoke the token, or let it expire |
 | A **network classification** that matches it | Change it to other hosts, or delete it ([Classifying Traffic](Classifying-Traffic.md)) |
 

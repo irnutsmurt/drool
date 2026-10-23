@@ -6,6 +6,7 @@ import { qk, type Group, type Host } from "@/api/queries";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { PackJoinSummary } from "./PackSettings";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input } from "@/components/ui/Field";
 import { errorMessage } from "@/lib/format";
@@ -95,6 +96,7 @@ export function AddHostsDialog({ pack, hosts, onClose }: { pack: Group; hosts: H
             </div>
           </>
         )}
+        {candidates.length > 0 && <PackJoinSummary pack={pack} />}
         {add.error && <Alert>{errorMessage(add.error)}</Alert>}
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>Cancel</Button>
