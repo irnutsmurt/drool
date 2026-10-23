@@ -205,7 +205,8 @@ func (s *Service) targets(ctx context.Context, qq q, a *Alert, sev string) ([]ta
 // queue puts the notifications for one alert event into the outbox and
 // returns how many. Queueing is idempotent per (alert, destination, kind,
 // reminder number); a cancelled one (suppressed by maintenance) is
-// re-queued.
+// re-queued. The timeline names only the destinations queued now: one that
+// already had it (an opening sent before maintenance) isn't sent it again.
 func (s *Service) queue(ctx context.Context, tx *sql.Tx, a *Alert, kind, sev string, reminder int, at int64) (int, error) {
 	ts, err := s.targets(ctx, tx, a, sev)
 	if err != nil {
@@ -230,10 +231,13 @@ func (s *Service) queue(ctx context.Context, tx *sql.Tx, a *Alert, kind, sev str
 	minRem := 0
 	var names []string
 	for _, t := range ts {
-		if err := s.insertDelivery(ctx, tx, a.ID, t, kind, reminder, msg, at); err != nil {
+		queued, err := s.insertDelivery(ctx, tx, a.ID, t, kind, reminder, msg, at)
+		if err != nil {
 			return 0, err
 		}
-		names = append(names, t.Name)
+		if queued {
+			names = append(names, t.Name)
+		}
 		if t.Reminder > 0 && (minRem == 0 || t.Reminder < minRem) {
 			minRem = t.Reminder
 		}
@@ -247,24 +251,26 @@ func (s *Service) queue(ctx context.Context, tx *sql.Tx, a *Alert, kind, sev str
 			return 0, err
 		}
 	}
-	if kind != notify.MsgReminder {
+	if kind != notify.MsgReminder && len(names) > 0 {
 		label := map[string]string{notify.MsgOpening: "Notifying", notify.MsgEscalation: "Notifying about the escalation"}[kind]
 		if label != "" {
 			s.timeline(ctx, tx, a.ID, at, "notify", label+": "+strings.Join(names, ", "), "")
 		}
 	}
-	return len(ts), nil
+	return len(names), nil
 }
 
-func (s *Service) insertDelivery(ctx context.Context, tx *sql.Tx, alertID string, t target, kind string, reminder int, msg notify.Message, at int64) error {
-	key := fmt.Sprintf("%s|%s|%s", alertID, t.ID, kind)
+// insertDelivery queues one notification, and says whether it did: not
+// when that destination already has it (sent, sending or failed).
+func (s *Service) insertDelivery(ctx context.Context, tx *sql.Tx, alertID string, t target, kind string, reminder int, msg notify.Message, at int64) (bool, error) {
+	key := deliveryKey(alertID, t.ID, kind)
 	switch kind {
 	case notify.MsgReminder:
 		key += fmt.Sprintf("|%d", reminder)
 	case notify.MsgEscalation:
 		key += "|" + msg.Severity
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO notify_deliveries (id, dedupe_key, alert_id, destination_id, destination_name, destination_kind, kind,
+	res, err := tx.ExecContext(ctx, `INSERT INTO notify_deliveries (id, dedupe_key, alert_id, destination_id, destination_name, destination_kind, kind,
 		recovery_wanted, message_json, status, attempts, next_attempt_at, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?)
 		ON CONFLICT (dedupe_key) DO UPDATE SET status = 'queued', attempts = 0, next_attempt_at = excluded.next_attempt_at,
@@ -272,7 +278,36 @@ func (s *Service) insertDelivery(ctx context.Context, tx *sql.Tx, alertID string
 			last_status_code = NULL, finished_at = NULL, ambiguous = 0, created_at = excluded.created_at
 		WHERE notify_deliveries.status = 'cancelled'`,
 		ids.New(ids.NotifyDelivery), key, alertID, t.ID, t.Name, t.Kind, kind, b2i(t.Recovery), marshal(msg), at, at)
-	return err
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+func deliveryKey(alertID, destID, kind string) string {
+	return fmt.Sprintf("%s|%s|%s", alertID, destID, kind)
+}
+
+// unsentOpening says how many of the destinations an alert goes to now
+// would be sent its opening (those that never had it, or whose opening
+// maintenance cancelled), and how many it goes to.
+func (s *Service) unsentOpening(ctx context.Context, qq q, a *Alert) (unsent, targets int, err error) {
+	ts, err := s.targets(ctx, qq, a, a.Severity)
+	if err != nil {
+		return 0, 0, err
+	}
+	n := 0
+	for _, t := range ts {
+		var st string
+		err := qq.QueryRowContext(ctx, `SELECT status FROM notify_deliveries WHERE dedupe_key = ?`, deliveryKey(a.ID, t.ID, notify.MsgOpening)).Scan(&st)
+		if errors.Is(err, sql.ErrNoRows) || err == nil && st == "cancelled" {
+			n++
+		} else if err != nil {
+			return 0, 0, err
+		}
+	}
+	return n, len(ts), nil
 }
 
 // --- route management ---

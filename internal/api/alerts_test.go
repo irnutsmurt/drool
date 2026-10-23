@@ -569,6 +569,71 @@ func TestAlertMaintenance(t *testing.T) {
 	}
 }
 
+// An alert notified before maintenance and still active when it ends gets
+// no second opening (one per alert and destination), and its timeline says
+// so instead of announcing a notification that never goes out. A
+// destination that never had it (added during the maintenance) still gets
+// it after the grace period, and only that one is named.
+func TestAlertMaintenanceAfterNotified(t *testing.T) {
+	e := newAlertEnv(t)
+	rcv := newReceiver(t)
+	e.dest("hook", "webhook", rcv.srv.URL, "recommended")
+	h := e.host("web1")
+	cycle := func(during func()) {
+		t.Helper()
+		var m alerts.Maintenance
+		r := e.c.do("POST", "/api/v1/maintenance", map[string]any{"host_ids": []string{h}, "indefinite": true, "reason": "work"})
+		if r.status != 201 {
+			t.Fatalf("start maintenance: %d %s", r.status, r.body)
+		}
+		r.json(t, &m)
+		during()
+		if r := e.c.do("POST", "/api/v1/maintenance/"+m.ID+"/end", nil); r.status != 200 {
+			t.Fatalf("end: %d %s", r.status, r.body)
+		}
+		e.tick(3 * time.Minute)
+	}
+	// What the timeline says from the last "Maintenance ended" on.
+	sinceEnd := func(id string) []string {
+		t.Helper()
+		var out []string
+		for _, x := range e.detail(id).Timeline {
+			if strings.HasPrefix(x.Text, "Maintenance ended") {
+				out = nil
+			}
+			out = append(out, x.Text)
+		}
+		if len(out) == 0 || !strings.HasPrefix(out[0], "Maintenance ended") {
+			t.Fatalf("no end of maintenance in the timeline: %q", out)
+		}
+		return out
+	}
+
+	e.issue(h, "service_failed", "a.service", "critical", "a.service failed")
+	if e.deliver() != 1 || len(rcv.events()) != 1 {
+		t.Fatalf("not notified: %v", rcv.events())
+	}
+	a := e.only("view=active&host_id=" + h)
+	cycle(func() {})
+	if n := e.deliver(); n != 0 || len(rcv.events()) != 1 {
+		t.Fatalf("notified again after maintenance: %d %v", n, rcv.events())
+	}
+	got := sinceEnd(a.ID)
+	if !strings.Contains(got[0], "already notified") || strings.Contains(strings.Join(got, "\n"), "otifying") {
+		t.Errorf("an alert notified before maintenance: %q", got)
+	}
+
+	r2 := newReceiver(t)
+	cycle(func() { e.dest("hook2", "webhook", r2.srv.URL, "recommended") })
+	if n := e.deliver(); n != 1 || len(r2.events()) != 1 || r2.last().Event != "opened" || len(rcv.events()) != 1 {
+		t.Fatalf("the new destination: %d, %v, %v", n, r2.events(), rcv.events())
+	}
+	got = sinceEnd(a.ID)
+	if !strings.Contains(got[0], "notifying in") || got[len(got)-2] != "Notifying: hook2" {
+		t.Errorf("only the destination without it: %q", got)
+	}
+}
+
 func TestAlertRouting(t *testing.T) {
 	e := newAlertEnv(t)
 	ra, rb, rc := newReceiver(t), newReceiver(t), newReceiver(t)

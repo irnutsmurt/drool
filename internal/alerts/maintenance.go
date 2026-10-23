@@ -316,8 +316,24 @@ func (s *Service) applySuppression(ctx context.Context, tx *sql.Tx, at int64) er
 			var notifyAfter any
 			text := "Maintenance ended; the alert is still active"
 			if o.state == StateActive {
+				// Still due after the grace (the opening checks again then),
+				// but said as it is: an alert notified before the
+				// maintenance isn't notified again.
 				notifyAfter = at + s.cfg.Grace.Milliseconds()
-				text += " — notifying in " + notify.Duration(s.cfg.Grace) + " unless it recovers"
+				a, err := s.loadAlert(ctx, tx, `id = ?`, o.id)
+				if err != nil {
+					return err
+				}
+				unsent, targets, err := s.unsentOpening(ctx, tx, a)
+				if err != nil {
+					return err
+				}
+				switch {
+				case unsent > 0:
+					text += " — notifying in " + notify.Duration(s.cfg.Grace) + " unless it recovers"
+				case targets > 0:
+					text += " (already notified before the maintenance: no new message)"
+				}
 			} else {
 				text += " (acknowledged: no notification)"
 			}

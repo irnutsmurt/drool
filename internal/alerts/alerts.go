@@ -612,7 +612,7 @@ func (s *Service) resolveAlert(ctx context.Context, tx *sql.Tx, a *Alert, at int
 	rows.Close()
 	msg := s.message(ctx, tx, a, msgKind, 0)
 	for _, t := range targets {
-		if err := s.insertDelivery(ctx, tx, a.ID, t, notify.MsgRecovery, 0, msg, at); err != nil {
+		if _, err := s.insertDelivery(ctx, tx, a.ID, t, notify.MsgRecovery, 0, msg, at); err != nil {
 			return false, err
 		}
 	}
