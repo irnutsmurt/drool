@@ -29,8 +29,8 @@ At the top is how updates stand, in a word and a sentence:
 | **Update available** | Shepherds can be updated, and automatic updates are off (or someone cancelled the update to that version): **Update N Shepherds to …** starts it |
 | **Needs attention** | An update was paused, failed or rolled back, or a release failed its check. See [below](#when-something-needs-attention) |
 | **Can't update** | A host refuses the update (its own settings or trust; the reason is next to each one) |
-| **No update available** | Some Shepherds run an older version than DROOL, and there's no release DROOL can install for them. This isn't a failure: the sentence says why, once (for example, *official Shepherd releases can't be used by this DROOL*) |
-| **Not checked** | Some Shepherds run an older version, and DROOL hasn't been able to check for a release yet (it tries again) |
+| **No update available** | Some Shepherds run an older version than DROOL, and DROOL's release check found no release it can install for them (none published yet, none in your channel, or none for their platform). This isn't a failure: the sentence says why, once |
+| **Not checked** | Some Shepherds run an older version, and DROOL can't tell whether a release would update them: it hasn't checked yet, couldn't reach its release source, or can't check official Shepherd releases (a development build, for example). The sentence says which, once. This isn't a failure either, and nothing needs your attention |
 | **No Shepherds yet** | None installed. Shepherds you install get DROOL's own version |
 
 Below it:

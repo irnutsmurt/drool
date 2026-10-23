@@ -66,26 +66,28 @@ async function stub(page, st) {
 const base_ = () => ({ ...real, counts: { total: 2, current: 0, behind: 0, updating: 0, waiting: 0, blocked: 0, unavailable: 0, unknown: 0, offline: 0 },
   blocked: [], problems: [], active: [], history: [], stopped: undefined, latest: undefined });
 
-test("a development build: an older Shepherd has no update available — information, said once, not a failure", async () => {
+test("a development build: an older Shepherd is not checked — not \"no update available\", not a failure, said once", async () => {
   const page = await session(browser);
   try {
-    await stub(page, { ...base_(), state: "unavailable", verified: false, target: "",
-      summary: "1 Shepherd is older than this DROOL (v1.4.0-12-gabcdef0), and no release DROOL can install is newer: official Shepherd releases can't be used by this DROOL.",
-      counts: { ...base_().counts, current: 1, unavailable: 1 },
-      shepherds: [shep(hostA, "unavailable", { version: "v1.3.0", reason: "official Shepherd releases can't be used by this DROOL" }), shep(hostB, "current", { version: "v1.4.0-12-gabcdef0" })] });
+    await stub(page, { ...base_(), state: "unknown", verified: false, target: "",
+      official: { ...real.official, state: "development", detail: "This DROOL (v1.4.0-12-gabcdef0) is a development build, not an official release: there are no official Shepherd releases for it." },
+      summary: "1 Shepherd is older than this DROOL (v1.4.0-12-gabcdef0), and whether a release can update it isn't known: this DROOL can't check official Shepherd releases.",
+      counts: { ...base_().counts, current: 1, unknown: 1 },
+      shepherds: [shep(hostA, "unknown", { version: "v1.3.0", reason: "this DROOL can't check official Shepherd releases" }), shep(hostB, "current", { version: "v1.4.0-12-gabcdef0" })] });
     await page.goto(`${base}/agents?tab=updates`, { waitUntil: "networkidle0" });
     await page.waitForSelector('[data-testid="updates-overview"]');
     const top = await inner(page, '[data-testid="updates-overview"]');
-    assert.match(top, /No update available\s*1 Shepherd is older than this DROOL/);
-    assert.ok(!/Can't update|Needs attention/.test(top), top);
-    assert.match(await inner(page, '[data-testid="updates-counts"]'), /1 Shepherd on this DROOL's version · 1 older, no update available/);
-    assert.equal(await page.$('[data-testid="updates-attention"]'), null, "a missing release listed as needing attention");
+    assert.match(top, /Not checked\s*1 Shepherd is older than this DROOL/);
+    assert.ok(!/Can't update|Needs attention|No update available/.test(top), top);
+    assert.match(top, /is a development build, not an official release/, "the reason, once, in the notice");
+    assert.match(await inner(page, '[data-testid="updates-counts"]'), /1 Shepherd on this DROOL's version · 1 older, not checked/);
+    assert.equal(await page.$('[data-testid="updates-attention"]'), null, "an unchecked release listed as needing attention");
     await shot(page, "shepherd-states-unavailable");
     // The Shepherds list says the same, per Shepherd, with the reason.
     await page.goto(`${base}/agents`, { waitUntil: "networkidle0" });
     await waitFor(page, async () => (await page.$$('[data-testid="shepherd-update-state"]')).length === 2, "the update states");
     const states = await page.$$eval('[data-testid="shepherd-update-state"]', (xs) => xs.map((x) => [x.dataset.state, x.innerText.replace(/\s+/g, " ").replace(" :", ":").trim(), x.getAttribute("title")]));
-    assert.deepEqual(states.sort(), [["current", "On DROOL's version", null], ["unavailable", "No update available: official Shepherd releases can't be used by this DROOL", "official Shepherd releases can't be used by this DROOL"]].sort());
+    assert.deepEqual(states.sort(), [["current", "On DROOL's version", null], ["unknown", "Not checked: this DROOL can't check official Shepherd releases", "this DROOL can't check official Shepherd releases"]].sort());
     assert.ok(!(await inner(page, "main")).includes("Update…"), "an update offered with nothing to install");
     assert.deepEqual(page.errors, []);
   } finally {

@@ -254,13 +254,17 @@ func (s *Service) UpdateStatus(ctx context.Context) (*UpdateStatus, error) {
 	// policy keeps Shepherds on a release of its own.
 	out.Verified = out.Official.State == OfficialVerified || out.Official.State == OfficialNotPublished || (out.Target != "" && !out.TargetOfficial)
 	// Why no release is newer, when that is the controller's doing (one
-	// reason for every Shepherd), and whether it is known at all.
+	// reason for every Shepherd). Only a trusted check that completed can
+	// say there is none (unavailable); without one (no key, a development
+	// build, checks off or unreachable, a release that failed verification,
+	// not checked yet) whether there is one isn't known (unknown).
 	noRelease := noReleaseReason(out.Official)
 	if out.Official.State == OfficialVerified && !ChannelIncludes(p.Channel, b.Channel) {
 		noRelease = fmt.Sprintf("this DROOL (%s) is a %s build, and Shepherds update from the %s channel: choose %s to update them to it",
 			b.Version, channelWord(b.Channel), p.Channel, channelChoice(b.Channel))
 	}
-	unchecked := out.Official.State == "" || out.Official.State == OfficialPending || out.Official.State == OfficialUnreachable
+	unchecked := !out.Verified
+	notChecked := notCheckedReason(out.Official)
 
 	// Rollouts.
 	names := s.hostNames(ctx)
@@ -382,7 +386,7 @@ func (s *Service) UpdateStatus(ctx context.Context) (*UpdateStatus, error) {
 			// doing, the same for every Shepherd — not this host's fault.
 			if unchecked {
 				out.Counts.Unknown++
-				set("unknown", "", noRelease)
+				set("unknown", "", notChecked)
 			} else {
 				out.Counts.Unavailable++
 				set("unavailable", "", noRelease)
@@ -441,8 +445,8 @@ func (s *Service) UpdateStatus(ctx context.Context) (*UpdateStatus, error) {
 	case out.Counts.Blocked > 0:
 		out.State, out.Summary = "blocked", fmt.Sprintf("%s can't be updated: %s.", plural(out.Counts.Blocked, "Shepherd"), firstReason(out.Blocked))
 	case out.Counts.Unknown > 0:
-		out.State, out.Summary = "unknown", fmt.Sprintf("%s older than this DROOL (%s), and DROOL hasn't been able to check for a release to update %s to.",
-			isAre(out.Counts.Unknown, "Shepherd"), b.Version, itThem(out.Counts.Unknown))
+		out.State, out.Summary = "unknown", fmt.Sprintf("%s older than this DROOL (%s), and whether a release can update %s isn't known: %s.",
+			isAre(out.Counts.Unknown, "Shepherd"), b.Version, itThem(out.Counts.Unknown), notChecked)
 	case out.Counts.Unavailable > 0:
 		out.State, out.Summary = "unavailable", fmt.Sprintf("%s older than this DROOL (%s), and no release DROOL can install is newer: %s.",
 			isAre(out.Counts.Unavailable, "Shepherd"), b.Version, strings.TrimSuffix(unavailReason, "."))
@@ -548,6 +552,24 @@ func channelChoice(c string) string {
 		return "the Release candidates channel"
 	}
 	return "its channel"
+}
+
+// notCheckedReason says why DROOL couldn't check for a release, from the
+// official check (the status's notice says more, once).
+func notCheckedReason(o OfficialStatus) string {
+	switch o.State {
+	case "", OfficialPending:
+		return "DROOL hasn't checked for its Shepherd release yet"
+	case OfficialUnreachable:
+		return "DROOL couldn't reach its release source"
+	case OfficialNoKey, OfficialDevelopment:
+		return "this DROOL can't check official Shepherd releases"
+	case OfficialOff:
+		return "checking for official Shepherd releases is turned off"
+	case OfficialRejected:
+		return "the Shepherd release DROOL found failed verification"
+	}
+	return strings.TrimSuffix(lowerFirst(o.Detail), ".")
 }
 
 // noReleaseReason says, from the official check, why there is no release

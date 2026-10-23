@@ -86,7 +86,7 @@ func (e *agentEnv) shepherdState(t *testing.T, st updStates, hostID string) (age
 }
 
 func TestShepherdUpdateStates(t *testing.T) {
-	t.Run("a development build: Shepherds on its version, an older one with no update available", func(t *testing.T) {
+	t.Run("a development build: Shepherds on its version, an older one not checked (not a missing release)", func(t *testing.T) {
 		o := newOfficialSource(t, "v1.4.0-12-gabcdef0", "development")
 		e := newAgentEnv(t)
 		o.attach(e)
@@ -94,20 +94,39 @@ func TestShepherdUpdateStates(t *testing.T) {
 		old := e.shepherd(t, "v1.3.0", "")
 		e.check(t)
 		st := e.updStates(t)
-		if st.State != "unavailable" || st.Verified || st.Counts.Current != 1 || st.Counts.Unavailable != 1 || st.Counts.Blocked != 0 ||
-			len(st.Blocked) != 0 || len(st.Problems) != 0 {
-			t.Fatalf("a missing release reported as a failure: %+v", st)
+		// It can't check official releases: whether one could update the
+		// older Shepherd isn't known. Neither "no update available" nor a
+		// failure.
+		if st.State != "unknown" || st.Verified || st.Counts.Current != 1 || st.Counts.Unknown != 1 || st.Counts.Unavailable != 0 ||
+			st.Counts.Blocked != 0 || len(st.Blocked) != 0 || len(st.Problems) != 0 {
+			t.Fatalf("an unverifiable source: %+v", st)
 		}
-		want := "1 Shepherd is older than this DROOL (v1.4.0-12-gabcdef0), and no release DROOL can install is newer: official Shepherd releases can't be used by this DROOL."
+		want := "1 Shepherd is older than this DROOL (v1.4.0-12-gabcdef0), and whether a release can update it isn't known: this DROOL can't check official Shepherd releases."
 		if st.Summary != want {
 			t.Errorf("summary %q, want %q", st.Summary, want)
 		}
 		if su, upd, _ := e.shepherdState(t, st, cur.host); su.State != "current" || su.Verified || upd != "" {
 			t.Errorf("on DROOL's version: %+v %q", su, upd)
 		}
-		if su, upd, compat := e.shepherdState(t, st, old.host); su.State != "unavailable" || su.Reason != "official Shepherd releases can't be used by this DROOL" ||
+		if su, upd, compat := e.shepherdState(t, st, old.host); su.State != "unknown" || su.Reason != "this DROOL can't check official Shepherd releases" ||
 			upd != "" || compat == agentsvc.CompatUpdateAvailable {
-			t.Errorf("older, nothing to install: %+v %q %q", su, upd, compat)
+			t.Errorf("older, not checked: %+v %q %q", su, upd, compat)
+		}
+	})
+
+	t.Run("a check that completed and found no release published: no update available", func(t *testing.T) {
+		o := newOfficialSource(t, "v1.4.0", "stable")
+		e := newAgentEnv(t)
+		o.attach(e)
+		old := e.shepherd(t, "v1.3.0", "")
+		e.check(t)
+		st := e.updStates(t)
+		if st.State != "unavailable" || !st.Verified || st.Counts.Unavailable != 1 || st.Counts.Unknown != 0 || len(st.Blocked) != 0 ||
+			!strings.Contains(st.Summary, "1 Shepherd is older than this DROOL (v1.4.0), and no release DROOL can install is newer: ") {
+			t.Fatalf("checked, nothing published: %+v", st)
+		}
+		if su, upd, _ := e.shepherdState(t, st, old.host); su.State != "unavailable" || upd != "" {
+			t.Errorf("older, checked, nothing to install: %+v %q", su, upd)
 		}
 	})
 
@@ -139,7 +158,7 @@ func TestShepherdUpdateStates(t *testing.T) {
 		e.check(t)
 		st := e.updStates(t)
 		if st.State != "unknown" || st.Counts.Unknown != 1 || st.Counts.Blocked != 0 || len(st.Blocked) != 0 ||
-			!strings.Contains(st.Summary, "1 Shepherd is older than this DROOL (v1.4.0), and DROOL hasn't been able to check for a release to update it to.") {
+			st.Summary != "1 Shepherd is older than this DROOL (v1.4.0), and whether a release can update it isn't known: DROOL couldn't reach its release source." {
 			t.Fatalf("unreachable: %+v", st)
 		}
 		if su, upd, _ := e.shepherdState(t, st, old.host); su.State != "unknown" || upd != "" {
