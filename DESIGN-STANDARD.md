@@ -313,7 +313,11 @@ How to write UI text:
   applies the policy and switches the host. A saved rule the compiler puts on no host says so where it is written,
   saved and reviewed: valid isn't the same as in effect.
 - **Previews say they change nothing.** The button that executes names what it does (§5).
-- **Destructive actions** use danger styling, are confirmed, and come last in menus.
+- **Destructive actions** use danger styling, are confirmed, and come last in menus. On a page, the rare ones (remove,
+  uninstall, revoke) are in its **Danger zone** card at the end, each with a line saying what it does, never beside
+  everyday actions.
+- **A consequential choice is saved by a button that names it**, never by a select's change: an arrow key changes a
+  select. A role, for example, changes in *Change role…*, whose button says *Make sam a viewer*.
 - **The UI never weakens a server check.** It can explain a refusal (a busy host, a missing permission, a blocked
   management path), but the server decides.
 - **Secrets** are never shown again after they are entered, and never logged. Copy buttons are only for public material

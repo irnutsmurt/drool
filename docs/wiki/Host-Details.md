@@ -6,7 +6,7 @@ section, the **Overview**, is a summary built to answer three questions in order
 attention?*, *is this host okay?*, and *what happened lately?*. Every summary links to the section
 with the details.
 
-![web-01's Overview: the header (web-01; Ubuntu 24.04.5 LTS, 10.10.40.21, managed via SSH; Connection Ready, Last check online, Health Degraded · 1 issue, 1 open alert) with Run command, Install updates and Actions; the sections Overview, Monitoring, Files, Network, Firewall, Desired State, Management and Activity; Needs attention (/ 91% full, the open alert, 2 drifted resources); Health now with its tiles; the Alerts card; the Desired State, Firewall, Network and Files summaries; Recent runs, Recent events and the System card](images/host-page-web-01.png)
+![media-01's Overview: the header (media-01; Debian GNU/Linux 12, 10.10.20.15, managed via Shepherd with SSH fallback; Connection Ready, Last check online, Health Healthy · 1 notice) with Run command, Install updates… and Actions; the sections Overview, Monitoring, Files, Network, Firewall, Desired State, Management and Activity; Needs attention (Desired State: 2 drifted); Health now with its tiles, then Updates (6 pending, 6 security, with Install updates…), Reboot, the last status check and uptime; the Desired State, Firewall, Network and Files summaries; Recent runs, Recent events and the System card](images/host-page-media-01.png)
 
 ## The top of the page
 
@@ -83,9 +83,9 @@ The **Management** section has **Edit host details** at the top, and these cards
 |---|---|
 | **Connection** | SSH or Shepherd, the fallback, what DROOL uses right now (*Operations now*); **Test connection**, and the buttons that switch between SSH and the Shepherd |
 | **SSH access** | The SSH user and address, credential, sudo setting (*Privilege*), jump host (*Connect through*), trusted host key, last test, and how DROOL signs in, with **Set up a dedicated DROOL SSH account…** and the SSH certificate buttons |
-| **Shepherd (DROOL agent)** | Whether the host has a Shepherd, its version, state and certificate; buttons to install, update, uninstall or revoke it |
+| **Shepherd (DROOL agent)** | Whether the host has a Shepherd, its version, state and certificate; buttons to install or update it |
 | **Membership** | Packs (each links to its page; **Change…** adds the host to Packs or removes it), tags, description |
-| **Danger zone** | **Remove host…** (also under **Actions**) ([Removing a Host](Removing-a-Host.md)) |
+| **Danger zone** | **Uninstall Shepherd…** and **Revoke Shepherd identity…** for a host with a Shepherd ([Removing a Host](Removing-a-Host.md#uninstalling-a-shepherd), [Shepherd PKI](Shepherd-PKI.md#revoking-a-shepherd)), and **Remove host…** (also under **Actions**) ([Removing a Host](Removing-a-Host.md)), each with a line saying what it does |
 
 A Shepherd host's **Shepherd (DROOL agent)** card also has **Shepherd details**: its protocol,
 identity, certificate, trust manifest, when it was last seen and from where, and **What DROOL may do

@@ -51,7 +51,7 @@ pages link to it.
 
 ## How DROOL checks
 
-- **Services** come from DROOL's monitoring, so [monitoring must be on](Monitoring-Settings.md#collection).
+- **Services** come from DROOL's monitoring, so [monitoring must be on](Monitoring-Settings.md#advanced-collection-history-shepherd-resource-budget-ssh-polling-and-helpers).
   Shepherds report changes within about a minute; SSH hosts are polled every 5 minutes.
 - **Packages** are checked with a read-only query of just those packages: no updates, no root needed.
 - **Files** are checked by size, owner, group, permissions and a SHA-256 checksum computed on the

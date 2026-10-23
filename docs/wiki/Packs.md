@@ -27,7 +27,7 @@ A host can be in several Packs. Membership is looked up when it's used: a host y
    Names can contain letters, digits, `.`, `_` and `-`, and must start with a letter or digit: no
    spaces. (`media-servers` works, `Media Servers` doesn't.)
 
-   ![The "Create a pack" dialog: name media-servers, description "Jellyfin servers and the file server", a note that hosts are added on the pack's page, now or later, and the Create button](images/pack-create.png)
+   ![The "Create a Pack" dialog: name media-servers, description "Jellyfin servers and the file server", a note that hosts are added on the Pack's page, now or later, and the Create button](images/pack-create.png)
 
 3. DROOL opens the new Pack's page. It has no hosts yet:
 
@@ -48,7 +48,7 @@ On the Pack's page:
    health checks the Pack sets, its monitored services, its Desired State baselines, the firewall
    rules that name it, and the schedules, maintenance and routes that include its hosts.
 
-   ![The "Add hosts to media-servers" dialog with database-01, gpu-01, media-01, media-02, nas-01 and web-01; media-01, media-02 and nas-01 ticked, and the Add 3 hosts button](images/pack-add-hosts.png)
+   ![The "Add hosts to media-servers" dialog with backup-01, database-01, gpu-01, media-01, media-02, nas-01 and web-01; media-01, media-02 and nas-01 ticked; what they get from media-servers (no health checks of its own, its two baselines, two firewall rules naming it, and the schedules, notification route and classification that include it); and the Add 3 hosts button](images/pack-add-hosts.png)
 
 The Pack's page then lists its hosts:
 

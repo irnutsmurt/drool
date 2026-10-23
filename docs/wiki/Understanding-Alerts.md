@@ -78,7 +78,7 @@ Each row shows:
 
 Click a problem, then **Open the alert** in the panel beside the list.
 
-![The alert "/srv/media is over 95% full" on nas-01: Critical, Active, Delivery retrying; the timeline, the notifications (delivered to Home Assistant, retrying to Ops mailbox after "connection refused"), the details and the Acknowledge box](images/alert-detail.png)
+![The alert "/srv/media is over 95% full" on nas-01: Critical, Active, Partly delivered; the timeline, the notifications (delivered to Home Assistant, failed to Ops mailbox: could not connect), the details, the Acknowledge box, and Quieter, for a while or for good: Adjust when this alerts… (now warning 80% · critical 95%, Global), Acknowledge, Snooze and Ignore](images/alert-detail.png)
 
 - **The badges** at the top: severity (and *peaked at critical* if it was worse earlier), state,
   notification status, and maintenance.

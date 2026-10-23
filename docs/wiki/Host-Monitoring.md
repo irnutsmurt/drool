@@ -11,7 +11,7 @@ Everyone can view it (**monitoring.read**). Buttons that change something say wh
 
 ## The page
 
-![nas-01's Monitoring section, Summary tab, under the host's header and its notices: continuous Shepherd monitoring every 10 s, tiles for CPU, memory, storage (96% /srv/media), temperature, network, services (3/3 monitored as expected; 1 failed, not monitored), storage devices and active health issues, the active health issues, the range buttons and the CPU and memory charts](images/monitoring-host-overview.png)
+![nas-01's Monitoring section, Summary tab, under the host's header and its notices: continuous Shepherd monitoring every 10 s; the tabs Summary, Metrics, Services, Storage health, Sensors & GPU, Health checks and Collection & helpers; tiles for CPU, memory, disk space (96%, fullest /srv/media), temperature, network, services (3/3 monitored as expected; 1 failed, not monitored), storage health and active health issues; the active health issues, each linking to where it shows; the range buttons and the CPU and memory charts](images/monitoring-host-overview.png)
 
 - **The title line** says how the host is monitored and how fresh the data is: *Continuous: the
   Shepherd samples every 10 s · updated just now*, or *Polled over SSH every 5 min (not continuous)*.

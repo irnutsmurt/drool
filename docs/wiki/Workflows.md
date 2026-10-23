@@ -16,7 +16,7 @@ servers* workflow does this on each media server:
   Running one needs **jobs.execute**; scheduling one also needs **schedules.manage**. Everyone can
   see workflows.
 - The *Verify services are running* and *Verify health* checks read DROOL's monitoring, so
-  [monitoring must be on](Monitoring-Settings.md#collection).
+  [monitoring must be on](Monitoring-Settings.md#advanced-collection-history-shepherd-resource-budget-ssh-polling-and-helpers).
 
 ## Create a workflow
 

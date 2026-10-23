@@ -4,7 +4,7 @@
 **Advanced** are how often hosts are observed, how long history is kept, the Shepherd resource budget
 and which helper tools DROOL may install. Most installations never need to change anything here.
 
-![Monitoring → Health checks: the health checks for every host with the Recommended profile and the inheritance chain Recommended → Global → Pack → Host → Device, the services watched on every host, the settings of Packs, hosts and devices, and Advanced](images/monitoring-settings.png)
+![Monitoring → Health checks: the health checks for every host (the Recommended profile, with Disk space changed for every host) and the inheritance chain Recommended → Global → Pack → Host → Device, each check with its value, source and Customize… or Edit… and Reset; below, the services watched on every host, the settings of Packs, hosts and devices, and Advanced](images/monitoring-settings.png)
 
 ## Before you start
 

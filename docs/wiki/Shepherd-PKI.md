@@ -28,8 +28,8 @@ When it comes back, it recovers by proving it still holds its key, within **180 
 ## Revoking a Shepherd
 
 If a host was compromised, sold, or re-imaged: open the host's **Management** section and click
-**Revoke Shepherd identity** on its **Shepherd (DROOL agent)** card, give a **Reason (recorded in
-the audit log)**, and click **Revoke**. It takes effect immediately: the Shepherd can no longer
+**Revoke Shepherd identity…** under **Danger zone**, give a **Reason (recorded in the audit log)**,
+and click **Revoke identity**. It takes effect immediately: the Shepherd can no longer
 connect. To manage the host with a Shepherd again, reinstall the host and enroll it again.
 
 ## Cloned machines (identity conflict)

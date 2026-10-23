@@ -108,7 +108,7 @@ Either way:
 ## Uninstalling a Shepherd
 
 To stop using a Shepherd on a host, you don't need to remove the host. In its **Management**
-section, on the **Shepherd (DROOL agent)** card, click **Uninstall Shepherd…** (**agents.manage** and
+section, under **Danger zone**, click **Uninstall Shepherd…** (**agents.manage** and
 **hosts.write**: administrators; DROOL asks for your password again). The dialog says how it will
 go and what it removes.
 
@@ -167,9 +167,9 @@ sudo rm -f /etc/drool/agent.yaml
 This stops the Shepherd, removes its service, its programs, its identity (the private key it used to
 prove itself to DROOL), its log and its settings. On a host without systemd (a container), the
 Shepherd runs under a small supervisor script instead; stop that process, then delete the same
-folders. Then **Forget the Shepherd** (or **Revoke Shepherd identity**) on the host's **Shepherd
-(DROOL agent)** card, under **Management**, so it can't connect again even if a copy of its identity
-survived.
+folders. Then, in the host's **Management** section under **Danger zone**, **Uninstall Shepherd…**
+offers **Forget the Shepherd** (or use **Revoke Shepherd identity…**), so it can't connect again even
+if a copy of its identity survived.
 
 The same commands check a self-removal that DROOL reported as *initiated*: once it's done, none of
 these files exist (`ls /usr/libexec/drool-agent /var/lib/drool-agent` finds nothing).

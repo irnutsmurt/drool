@@ -27,7 +27,7 @@ You change only what you need; everything else keeps coming from the level above
 shows where it comes from: *Recommended*, *Hardware limit*, *Global*, *Pack: media-servers*,
 *This host*, *Device: /srv/media*.
 
-![nas-01's Monitoring → Health checks: using recommended defaults, its Packs, the inheritance chain, and every check with its current value, source and a Customize… button](images/monitoring-health-settings.png)
+![nas-01's Monitoring → Health checks: global custom settings with 3 overrides for individual devices or services, its Pack media-servers with its monitoring priority, the inheritance chain, and every check with its current value, source and a Customize… button](images/monitoring-health-settings.png)
 
 ## Before you start
 

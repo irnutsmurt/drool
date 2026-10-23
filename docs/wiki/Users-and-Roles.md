@@ -28,7 +28,7 @@ Managing users needs **users.manage** (administrators), and you'll be asked to
 Tell them the initial password through a safe channel. They can change it under **Settings → Account →
 Change password**, and should turn on [two-factor authentication](Two-Factor-Authentication.md).
 
-![Settings → Users: the Add user form, and the users alex (admin, you), jordan (viewer) and sam (operator) with their role, status, two-factor state and last login, Set password… for the others, the Disable and Delete buttons, and where to change your own password or recover a locked-out installation](images/users.png)
+![Settings → Users: the Add user form with the role's description under it, and the users alex (Administrator, you), jordan (Viewer) and sam (Operator) with their role, status, two-factor state and last login; Change role… and More for the others, Your account on your own row, and where to change your own password or recover a locked-out installation](images/users.png)
 
 ## Change someone's account
 

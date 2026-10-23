@@ -92,7 +92,7 @@ If every administrator is locked out, a new one can be created on the controller
 
 ## 3. Find your way around
 
-![The Overview after the first hosts were added: tiles for hosts, alerts, runs, desired state and firewall, then Needs attention, Updates and reboots, Runs and Recent events](images/overview.png)
+![The Overview: tiles for hosts, alerts, runs, Desired State and the firewall, then Needs attention and Updates and reboots](images/overview.png)
 
 - **The sidebar** lists every area under plain headings: **Overview**; *Fleet* — **Hosts**,
   **Packs** (groups of hosts), **Shepherds** (DROOL agents); *Observe* — **Monitoring**, **Alerts**,

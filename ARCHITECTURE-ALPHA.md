@@ -4929,3 +4929,207 @@ The review of Phase 1 approved its direction and asked for six corrections, each
 - **Alerts browser test, a different failure seen once**: in one of 13 runs of the alerts file during the
   investigation, the first test's setup got a `GET /hosts` answer without `items` 2.4 s after signing in. It didn't
   recur with a debug log in place (the next 10 runs passed), so its cause isn't known.
+
+## 47. 1.0 usability refinement, Phase 2: organisation and clarity (2026-10-23)
+
+The second phase (*Simple by default. Powerful by choice.*), after Phase 1 was approved and pushed (5fb6b7a, CI green).
+It works on the workflows across monitoring, Packs, the dashboards and the settings: fewer steps where DROOL can
+decide, one owner for each setting, honest states, and actions next to what they act on. Thresholds, inheritance,
+provenance, conflict resolution and every advanced setting are kept; no new engine, page framework or roadmap feature.
+The before evidence was captured on 5fb6b7a; the after evidence on the Phase 2 build, with the same lab preparation and
+the same counting (§47.6).
+
+Found on the way and fixed first (f0725c2): the Hosts list's search field was fed back from the address, so under load
+it lost keystrokes (the navigation browser test caught it); typing is now the field's own state, written to the address.
+
+### 47.1 Monitoring (35e0ec0)
+
+- **From an alert to its rule.** *Adjust when this alerts…* (an alert's panel and its page) shows the rule that fired
+  and where its values come from (*Disk space for /srv/media: warning 85% · critical 95%, from Recommended*), the
+  scopes it can be changed for (the device or service, every one of its kind on the host, each of the host's Packs,
+  every host) with what each sets now, and the ordinary editor and impact preview in place. The narrowest scope is
+  chosen; a scope the role can't change is greyed.
+- **The editor.** Typing a value sets it; an empty field inherits and says from where. No *Custom* box first. When a
+  condition clears is under *More options*.
+- **No stacked dialogs.** A Pack's, a device's or a service's checks open their editor as a step of the same dialog,
+  with Back (`Dialog` `onBack`/`step`: Escape goes back, focus moves into each step and returns to its opener).
+- **Packs that disagree** are said on a host's Health checks (which value, which Packs with what, what applies
+  meanwhile), with *Let <Pack> win…*: its monitoring priority goes one above the other's, after a preview.
+- **Monitoring → Health checks** has the checks on the page; collection, history, the Shepherd budget, SSH polling and
+  helpers are under *Advanced* (`?advanced=1`), saved by *Save collection settings*. Stopping monitoring for every host
+  and resetting a Pack's setting ask first.
+- The fleet's health issues come before the table, each linking to where its subject is shown.
+- One name for each thing: *Health checks* (every threshold editor), *Disk space* (fullness) and *Storage health*
+  (the disks).
+
+### 47.2 Packs (aeaa38f)
+
+- The Packs list is for finding a Pack: its hosts and how they are. Its editors and its red Delete are gone.
+- A Pack's page: *Run on this Pack* and *Install updates…* in the header; *Actions* with *Start maintenance…* and,
+  separated and last, *Delete Pack…*. The Hosts card has each host's health, connection and updates, and *Add hosts…*.
+- *What this Pack sets for its hosts*: health checks, monitoring priority (its owner now; the global list is read
+  only), baselines and Desired State priority, firewall rules and rollback timeout, helper approvals, and what
+  targets it, each linking to where it's changed.
+- *Where another Pack decides* (`GET /groups/{id}/conflicts`): for each member host, the health check fields where
+  Packs of equal priority disagree or a higher one wins, and Desired State conflicts, in words with what applies
+  instead.
+- *Add hosts…* says what the hosts get from the Pack before they join.
+- Migration 0028: creating or renaming a Pack counts as a change to the health configuration (a new empty Pack
+  couldn't load its health checks).
+
+### 47.3 Dashboards and status (3d363d5)
+
+The Overview and a host's Overview answer what is working, what needs attention, why, and what to do, from the
+server's verdicts.
+
+- **Needs attention lists what is failing or waiting for a decision**, each thing once, most serious first:
+  - a host DROOL can't reach, with *Test connection…* (its *No monitoring data* alert folded into that row);
+  - open alerts by their own titles, with since when, and for a service its fix (*Start jellyfin.service…*,
+    `alerts/AlertLine.tsx`, the reviewed `ServiceActionsDialog`);
+  - paused runs, Desired State, the firewall, failing notifications;
+  - acknowledged alerts and alerts under maintenance counted under the list (suppressed ones are no longer listed
+    as needing attention: `suppressed=false`).
+  Its empty state is *Nothing is failing or waiting for a decision* (DESIGN-STANDARD §3, §8).
+- **The UI no longer judges disk space.** `attentionReasons` marked any filesystem at 90 % or more as *full* and red,
+  ignoring the configured thresholds: a host at 91 % showed ✕ while the server said Warning, and one at 96 % that the
+  server called Critical could be missing. It is now `connectionReasons` (host key, sign-in, reachability, age of
+  the status); disk space shows as monitoring's own alert.
+- **Duplicates removed.** Security updates and reboots were attention rows and the Updates card; they are the
+  Updates card's (*Install updates…*, and *Reboot…* next to the hosts that need it). The Overview's Alerts card
+  (the same alerts as the list) and its Security card (the same as the header's indicator) are gone. On a host's
+  Overview its alerts were in Needs attention as a count and again in an Alerts card: now once, by title, and
+  *Start maintenance…* is in the host's Actions; *Install updates…* is offered in the header and next to the count.
+- **Honest numbers.** Totals count only hosts that report now and say how many don't; a host list shows an offline
+  or stale host's updates and reboot as *last known*, *unknown* or *not checked yet*, never a bare 0 or a blank;
+  the Health column says loading, couldn't load or unknown. The Hosts tile puts the colour on the problem (*1 offline*,
+  *All 7 online*); the Desired State tile names its units. A host's Network tile shows *not in policy* and *would be
+  denied* as information while DROOL doesn't filter the host.
+- Runs on the Overview: in progress, paused, and failed in the last day.
+
+### 47.4 Settings, navigation and terminology (64c34d3, e0a4a06, 85b644c)
+
+- **Users.** The role select saved on change, so an arrow key changed someone's role. *Change role…* shows the four
+  roles with what each may do and the current one; the button names the change (*Make sam a viewer*); it applies at
+  once, to sessions and API tokens, as it says. The rest is under *More*: *Set password…*, *Reset two-factor…*,
+  *Disable…* (now confirmed, saying what it does) or *Enable*, and *Delete user…* last. Your own row links to your
+  account instead (the server already refused self-disable, -demotion and -deletion). Roles are shown by name
+  (`auth/roles.ts`), also in the header.
+- **Destructive actions in their place.** A host's Shepherd *Uninstall…* and *Revoke identity…* were two filled red
+  buttons on its card; they are in the host's Danger zone with *Remove host…*, each with a line saying what it does.
+  *Check again* after an uninstall isn't styled as danger. Revoking an enrollment token and removing a helper
+  approval ask first.
+- **Words.** *Pack* as the product term in buttons and text (*Create Pack*, *Delete Pack…*); *monitoring priority*
+  where a priority is set from monitoring; *Audit Log* everywhere; *Shepherd endpoint*, and *Shepherd* in the
+  search's descriptions; the firewall's link to Network Activity named after it; one name for adding a host with a
+  Shepherd (it was also *New token*); *Desired State priority* (the dialog said *Desired-state priority*).
+- **Finding things.** Search finds both certificate authorities (the Shepherds' and DROOL's SSH one). The header's
+  user name opens Account; the phone's account menu has *All settings*. The Settings description is on the
+  directory only. Tab rows that scroll sideways fade at the edge with more and keep the current tab in view
+  (`ui/scrollCue.ts`).
+- A host's devices and services say *Customize…* / *Edit…* like the checks above them (e0a4a06), and the contrast
+  test checks the health checks and their editor again: since 35e0ec0 it had skipped them without failing.
+- DESIGN-STANDARD: §3 says what Needs attention lists; §8 that a page's rare destructive actions are in its Danger
+  zone, and that a consequential choice is saved by a button that names it, never by a select's change; §5 and §7 (in
+  35e0ec0) dialog steps and the terms Health checks, Disk space, Storage health, Monitoring priority.
+
+### 47.5 Recorded for Phase 3
+
+Found while reviewing the other areas; not changed in Phase 2:
+- Credentials page layout; bulk host actions split between Hosts and Monitoring (*Convert to Shepherd* and *Install
+  helpers* only on the Monitoring table); adding a host with a Shepherd is reached only from Shepherds.
+- Desired State: buttons inside links (BaselinesPage, DesiredOverviewPage, BaselineDetailPage, BaselineEditorPage),
+  *Check now* before *Restore*; a baseline's automatic restore resumed from two places.
+- The Alerts page's hand-rolled tab list; recurring maintenance windows highlighted as Schedules while their crumbs
+  say Alerts; Files' *Upload* after *New folder*; one-off link classes in the workflow editor; a Network pointer
+  that isn't a link; the firewall's *Transactions* wording.
+- Permission keys in eleven notes (*needs monitoring.manage*) instead of what the role can't do.
+- Server-written text still says *pack* (provenance and conflict labels, schedule and maintenance targets,
+  classifications, audit details): changing it touches notifications, audit and many tests.
+- Long server alert titles (a SMART alert's counters; *No monitoring data since <UTC time>*).
+- The Shepherd budget's fleet default is under Monitoring, its per-host value under Collection & helpers, nothing
+  from Shepherds.
+
+### 47.6 Measurements
+
+Before: the package captured on 5fb6b7a (the approved Phase 1 build), W05 from the 2026-10-21 package. After: the
+Phase 2 build 64c34d3, the same lab rebuilt (`uxr-reset-p1.sh`) and the same preparation before each workflow
+(`uxr-p2lib.mjs`). Counted from the capture records by `uxr-compare-p2.py`, the same way as §46.6: interactions are
+clicks or taps, typing into one field, a choice in a list, a key; pages are routes with their tab; dialogs are
+counted by title (a dialog whose step changes its title counts twice, so the after column can only look worse).
+
+| Workflow | Interactions | Pages | Dialogs | Decisions | Manual |
+|---|---|---|---|---|---|
+| W12a a threshold for every host | 7 → 5 | 3 → 3 | 1 → 1 | 0 → 0 | 0 → 0 |
+| W12b a threshold for one Pack | 7 → 7 | 2 → 3 | 2 → 2 | 0 → 0 | 0 → 0 |
+| W12c a threshold for one host | 8 → 7 | 5 → 5 | 1 → 1 | 0 → 0 | 0 → 0 |
+| W12d from an alert, for one filesystem | 11 → 5 | 3 → 1 | 3 → 2 | 0 → 0 | 0 → 0 |
+| W12e from an alert, for its host | 7 → 4 | 4 → 2 | 1 → 1 | 0 → 0 | 0 → 0 |
+| W12f why a host gets a value; settle a Pack conflict | 11 → 6 | 7 → 5 | 1 → 1 | 1 → 1 | 1 → 0 |
+| W13a add a host to a Pack, see what it gets | 7 → 5 | 3 → 3 | 2 → 1 | 0 → 0 | 0 → 0 |
+| W13b delete an unused Pack | 3 → 5 | 2 → 3 | 1 → 1 | 0 → 0 | 0 → 0 |
+| W14a Overview → unreachable host → connection test | 2 → 1 | 2 → 1 | 1 → 1 | 0 → 0 | 0 → 0 |
+| W14b Overview → disk problem → the rule that fired | 3 → 1 | 4 → 2 | 0 → 0 | 0 → 0 | 0 → 0 |
+| W15 change a user's role | 3 → 5 | 3 → 3 | 0 → 1 | 0 → 0 | 0 → 0 |
+| W05 watch a service, notify, a threshold | 20 → 18 | 10 → 9 | 3 → 3 | 1 → 1 | 1 → 1 |
+
+What makes the difference, and what doesn't:
+- Typing a value sets it (no *Custom* box first): one interaction per field in W12a, W12c, W05, two in W12d.
+- From an alert, the rule that fired and its scopes in place (W12d, W12e), and the rule with its source on the alert's
+  page (W14b). The narrowest scope is chosen by DROOL; the person can choose another.
+- A Pack conflict said on the host, settled by *Let <Pack> win…* with the priority proposed and previewed (W12f): the
+  priority number the person had to choose and type is gone; which Pack should win is still their decision.
+- What a Pack gives, shown before a host joins (W13a); *Test connection…* on the Overview's row (W14a).
+- **More, on purpose:** W13b (Delete is on the Pack's page under *Actions*, no longer a red button on every card) and
+  W15 (the role list saved on any change, an arrow key included; *Change role…* is a decision with its consequences).
+  **The same:** W12b, where the Pack's checks moved from the list to the Pack's page (one owner); the editor is now a
+  step with Back instead of a second dialog on top.
+- Nothing was hidden to save a step: every setting the before runs used is still where the workflow reaches it.
+
+Evidence package: `scratchpad/drool-ux-phase2-2026-10-23` (workflows in dark at 1440 px; the changed screens in dark
+and light at 1440 px and on a phone in both themes; COMPARISON.md with every counted step).
+
+### 47.7 User guide
+
+Text updated with each change (Monitoring Settings, Health Overrides, Understanding Alerts, Fleet and Host Monitoring,
+Packs, Conflicts, Host Details, First Login, System Updates, Users and Roles, Removing a Host, Shepherd PKI and
+smaller pages). Screenshots retaken on the Phase 2 build where the lab reproduces the guide's example (light, 1280 px):
+the Overview (2), Packs (4), Monitoring (4), alerts (3), Users, the settings directory, maintenance, a Shepherd host's
+Management, and a host's Overview, now media-01's (`host-page-media-01.png`: web-01 is off in this lab). Two
+anchors that 35e0ec0 renamed were fixed. The wiki isn't published (frozen until 1.0).
+
+### 47.8 Tests and checks
+
+- Go: `TestPackConflicts` (a conflict for both Packs, outranked after a priority change, a host's own setting not
+  listed, a Desired State conflict, 404) and `TestNewEmptyPackHasHealthChecks` (fails without migration 0028).
+- Web unit (163, from 150): Pack conflicts on a host, the rule in one line, alert and issue links (6); a host's
+  connection reasons never judge disk space, and list cells are never a bare 0 or blank (6); search finds both
+  certificate authorities (1).
+- Browser: `monitoring-rules` (new: from an alert's panel to one filesystem, from its page for every host with the
+  impact first, a Pack conflict settled by *Let … win*); `phase2-ui` (new: the Users role change, and the changed
+  screens at 1440, 1280, 1024 and 390 px in both themes for sideways scroll, clipping, controls out of the window, 44
+  px touch targets, contrast and focus); `operations` (new: the alert by its title with *Start backup.service…* on the
+  Overview and the host, once); `packs`, `health`, `monitoring`, `navigation`, `alerts`, `accessibility`, `desired`,
+  `reauth-dialog`, `shepherd-endpoint` and `contrast` updated for the moved controls and words.
+- Found by the new layout test and fixed: link-styled actions in attention rows were 20 px touch targets; a monitoring
+  tile's detail was cut off at 1024 px; a host's Packs *Change…* was 16 px on touch.
+- Found by the first full run of the verification and fixed (85b644c): `phase2-ui` and `monitoring-rules` assumed
+  nas-01's /srv/media alert was unacknowledged, while the alerts file acknowledges it earlier in the suite (their
+  setups timed out, 12 failures); `desired` changed a Pack's priority on the Packs list, where aeaa38f removed it. The
+  application was not at fault in either. The contrast test had skipped the health checks' editor since 35e0ec0 without
+  failing (e0a4a06).
+- Final verification (the release-key test edits set aside, then restored and checksummed): on e0a4a06, gofmt, `go
+  vet ./...` and `go vet -tags integration` clean, `go test ./...` 51 packages, `make test-race` 51 packages and
+  `TestOfficialShepherdUpdates`; on 85b644c (no Go change since), web typecheck, 163 unit tests and build, and
+  TestBrowser 141 of 141.
+
+### 47.9 Still open
+
+- **PiZeroWopenwx** (§46.7): the saved SSH rule on the real host is still not verified.
+- **Alerts browser test, `/hosts` without items** (§46.7): seen once, not reproduced.
+- **TestBrowser setup, host-key scan reset**: once, the harness's host-key scan of a test container got *connection
+  reset* (the container's sshd not ready yet); no test had started, and the next run passed.
+- **User guide screenshots**: Your First Host's `first-host-page.png` (backup-01 right after it was added) still shows
+  the host's former Alerts card and wording; the host monitoring tabs' screenshots (Metrics, Storage health, Sensors &
+  GPU, Services, Collection) show the earlier tab row. They need the docs lab's VMs (backup-01, web-01): to retake in
+  the final documentation pass before 1.0.
+- Phase 3 (§47.5) and the final end-to-end acceptance remain before 1.0.

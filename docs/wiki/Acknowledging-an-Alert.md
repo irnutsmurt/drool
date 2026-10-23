@@ -32,7 +32,7 @@ From the list:
 3. Optionally write a **Note** for the others (up to 500 characters), for example *Replacing the failed
    disk this evening*, and click **Acknowledge**.
 
-![The panel beside the Alerts list for "jellyfin.service failed" on media-01: critical, active, since when, notification partly delivered, and what failed (the unit, expected to run, failed); Deal with it: Acknowledge…, Snooze… and Ignore…, each with what it does; Look further: View host media-01, View jellyfin.service and Open the alert](images/alert-quick-actions.png)
+![The panel beside the Alerts list for "jellyfin.service failed" on media-01: critical, active, since when, delivery retrying, and what failed (the unit, expected to run, failed); Deal with it: Start jellyfin.service…, Acknowledge…, Adjust when this alerts… (now: for 1 min, Recommended), Snooze… and Ignore…, each with what it does; Look further: View host media-01, View jellyfin.service and Open the alert](images/alert-quick-actions.png)
 
 Or from the alert's page:
 

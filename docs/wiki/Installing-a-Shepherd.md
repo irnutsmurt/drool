@@ -73,7 +73,7 @@ SSH.
 
 Afterwards the host's **Management** section looks like this:
 
-![media-01's Management section: Connection (managed via Shepherd, connected, SSH as fallback only while the agent is unreachable, operations through the Shepherd; Test connection, Turn off SSH fallback, Manage over SSH only); the Shepherd card (its version, compatible, connected, the certificate's expiry, Shepherd details, Uninstall Shepherd… and Revoke Shepherd identity); SSH access; Membership; and the Danger zone](images/host-management-shepherd.png)
+![media-01's Management section: Connection (managed via Shepherd, connected, SSH as fallback only while the agent is unreachable, operations through the Shepherd; Test connection, Turn off SSH fallback, Manage over SSH only); the Shepherd card (its version, on DROOL's version, connected, the certificate's expiry, Shepherd details); SSH access; Membership; and the Danger zone with Uninstall Shepherd…, Revoke Shepherd identity… and Remove host…, each with a line saying what it does](images/host-management-shepherd.png)
 
 ## A host that DROOL can't reach over SSH
 

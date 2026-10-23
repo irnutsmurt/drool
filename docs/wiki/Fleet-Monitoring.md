@@ -14,7 +14,7 @@ Everyone who can sign in can see monitoring (**monitoring.read**). The buttons t
 
 ## The page
 
-![The Monitoring page: 7 of 7 hosts reporting (5 with a Shepherd, 2 over SSH), the alert counts and the host in maintenance; the common filters (All hosts, Needs attention, Unreachable / stale, CPU, Low disk space, Storage health, Service failures, Reduced fidelity, Missing helpers, each with its count) and More filters; a host search and sort; the host table with health, alerts, monitoring method, CPU, memory, disk, temperature, services and storage devices; and the active health issues](images/monitoring-fleet.png)
+![The Monitoring page: 7 of 7 hosts reporting (5 with a Shepherd, 2 over SSH) and the alert counts; Health issues now (7), most serious first, each with its host, what is wrong and since when, the notices about collection folded away; then the common filters (All hosts, Needs attention, Unreachable / stale, CPU, Low disk space, Storage health, Reduced fidelity, Missing helpers, each with its count) and More filters; a host search and sort; and each host's health, alerts, monitoring method, CPU, memory, disk space, temperature, services and storage health](images/monitoring-fleet.png)
 
 From the top:
 
