@@ -31,7 +31,7 @@ export function PriorityDialog({ groupId, name, current, onClose }: { groupId: s
   });
   const i = impact.data;
   return (
-    <Dialog title={`Desired-state priority: ${name}`} onClose={onClose}>
+    <Dialog title={`Desired State priority: ${name}`} onClose={onClose}>
       <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
         <p className="text-sm text-muted">
           When a host is in several Packs (groups) whose baselines declare the same resource differently, the Pack with the higher priority

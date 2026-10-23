@@ -196,18 +196,11 @@ test("equal group priorities that disagree are a conflict until a priority settl
   const restore = await page.$$eval("button", (bs) => bs.filter((b) => b.textContent === "Restore managed state").map((b) => b.disabled));
   assert.deepEqual(restore, [true]);
   await shot(page, "host-conflict");
-  // Groups page: change a priority, with its impact before saving.
-  await go("/groups");
-  await waitText(page, `storage-${run}`);
-  const buttons = await page.$$("button");
-  for (const b of buttons) {
-    const card = await b.evaluate((x) => x.closest("section")?.innerText ?? "");
-    if ((await b.evaluate((x) => x.textContent)) === "Change priority" && card.startsWith(`storage-${run}`)) {
-      await b.click();
-      break;
-    }
-  }
-  await waitText(page, "Desired-state priority");
+  // The Pack's page (the priority's owner since Phase 2): change it, with
+  // its impact before saving.
+  await go(`/groups/${g1}`);
+  await click(page, "main button", `Change the Desired State priority of storage-${run}`);
+  await waitText(page, `Desired State priority: storage-${run}`);
   await fill(page, "Priority", "10");
   await waitText(page, "1 conflict resolved");
   await shot(page, "group-priority-impact");

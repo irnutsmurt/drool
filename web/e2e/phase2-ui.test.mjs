@@ -27,7 +27,8 @@ before(async () => {
   browser = await launch();
   admin = await session(browser);
   for (const h of (await api(admin, "GET", "/hosts")).body.items) ids[h.name] = h.id;
-  await waitFor(admin, async () => ((await api(admin, "GET", `/alerts?view=active&host_id=${ids["nas-01"]}`)).body?.items ?? [])
+  // Open, not necessarily active: the alerts file acknowledges it earlier.
+  await waitFor(admin, async () => ((await api(admin, "GET", `/alerts?view=open&host_id=${ids["nas-01"]}`)).body?.items ?? [])
     .some((a) => a.check === "filesystem" && a.subject === "/srv/media"), "nas-01's /srv/media alert (the monitoring fixture)", 120000);
   const run = Date.now().toString(36);
   pack = (await api(admin, "POST", "/groups", { name: `e2e-p2-${run}`, description: "Phase 2 layout" })).body;
@@ -41,7 +42,7 @@ after(async () => {
 });
 
 const inner = (page, sel) => page.$eval(sel, (e) => e.innerText).catch(() => "");
-const mediaAlert = async () => ((await api(admin, "GET", `/alerts?view=active&host_id=${ids["nas-01"]}`)).body?.items ?? [])
+const mediaAlert = async () => ((await api(admin, "GET", `/alerts?view=open&host_id=${ids["nas-01"]}`)).body?.items ?? [])
   .find((a) => a.check === "filesystem" && a.subject === "/srv/media");
 
 /** Layout, contrast, touch and clipping inside scope (a selector), as in
@@ -158,12 +159,15 @@ for (const [w, h, mobile] of widths) {
 
         // The Overview: Needs attention first, then Updates and reboots.
         await go("/", async () => !!(await page.$('[data-testid="fleet-attention"]')));
-        assert.match(await inner(page, '[data-testid="fleet-attention"]'), /nas-01: \/srv\/media is over 95% full/);
+        const media = await mediaAlert();
+        // Listed while nobody has taken it on; acknowledged, it is counted under the list.
+        if (media.state === "active") assert.match(await inner(page, '[data-testid="fleet-attention"]'), /nas-01: \/srv\/media is over 95% full/);
+        else assert.match(await inner(page, "main"), /acknowledged alerts?: someone is on it/);
         await check(page, "main", `${tag} Overview`, mobile);
         await shot(page, `p2-overview-${tag}`);
 
         // A host's Overview: its alerts once, under Needs attention.
-        await go(`/hosts/${ids["nas-01"]}`, async () => (await inner(page, '[data-testid="host-attention"]')).includes("/srv/media"));
+        await go(`/hosts/${ids["nas-01"]}`, async () => (await inner(page, '[data-testid="host-attention"]')).includes(media.state === "active" ? "/srv/media" : "acknowledged"));
         await check(page, "main", `${tag} host Overview`, mobile);
         await shot(page, `p2-host-overview-${tag}`);
 
@@ -211,7 +215,7 @@ for (const [w, h, mobile] of widths) {
 
         // From an alert to the check behind it, in its panel.
         const a = await mediaAlert();
-        await go("/alerts", async () => (await inner(page, "main")).includes(a.title));
+        await go(`/alerts?view=${a.state}`, async () => (await inner(page, "main")).includes(a.title));
         const act = await page.evaluateHandle((l) => [...document.querySelectorAll("main button")].find((b) => b.getAttribute("aria-label") === l), `Actions for ${a.title} on nas-01`);
         await open(page, act, mobile);
         await waitFor(page, async () => (await inner(page, '[data-testid="alert-actions"]')).includes("Adjust when this alerts…"), "the choice", 30000);

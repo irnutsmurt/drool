@@ -20,7 +20,9 @@ before(async () => {
 });
 after(async () => browser?.close());
 
-const mediaAlert = async () => ((await api(page, "GET", `/alerts?view=active&host_id=${ids["nas-01"]}`)).body?.items ?? [])
+// Open, not necessarily active: the alerts file acknowledges nas-01's
+// critical alert earlier in the suite.
+const mediaAlert = async () => ((await api(page, "GET", `/alerts?view=open&host_id=${ids["nas-01"]}`)).body?.items ?? [])
   .find((a) => a.check === "filesystem" && a.subject === "/srv/media");
 const inner = (sel) => page.$eval(sel, (e) => e.innerText).catch(() => "");
 const overrides = async () => {
@@ -35,7 +37,7 @@ test("from an alert's panel: what fired, the scopes, and a change for one filesy
   const a = await mediaAlert();
   await cleanup((o) => o.host_id === ids["nas-01"] && o.check === "filesystem");
   try {
-    await page.goto(`${base}/alerts`, { waitUntil: "networkidle0" });
+    await page.goto(`${base}/alerts?view=${a.state}`, { waitUntil: "networkidle0" });
     await click(page, "button", `Actions for ${a.title} on nas-01`);
     await waitFor(page, async () => (await inner('[data-testid="alert-actions"]')).includes("Adjust when this alerts…"), "the choice", 30000);
     // The choice already says what fired.
